@@ -16,7 +16,7 @@ allow GitHub, in which case openfootball is the one that works):
 |---------------------------|-------------------------------------------------------------------------|------|
 | Historical results + real fixtures, one source | [openfootball/football.json](https://github.com/openfootball/football.json) on GitHub — no signup, no key, one JSON file per league/season with both played and not-yet-played matches | Free |
 | Historical results (10+ seasons, 20+ leagues) — alternative | [football-data.co.uk](https://www.football-data.co.uk/data.php) CSV downloads — no signup, no key | Free |
-| Upcoming fixtures — alternative | [TheSportsDB](https://www.thesportsdb.com/api.php) public test key (`3`) | Free |
+| Upcoming fixtures — alternative | [TheSportsDB](https://www.thesportsdb.com/api.php) shared free key (currently `123`; check their API docs page if it stops working -- a *personal* key there is a paid-Patreon perk, so we deliberately stick to the shared free one) | Free |
 | Database                  | SQLite by default (file on disk); swap in Postgres via `DATABASE_URL` if you want | Free (self-hosted) |
 | ML / stats                | scikit-learn, numpy, pandas (all open-source, run locally)              | Free |
 | Backend                   | FastAPI + Uvicorn                                                       | Free |
