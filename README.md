@@ -16,7 +16,7 @@ allow GitHub, in which case openfootball is the one that works):
 |---------------------------|-------------------------------------------------------------------------|------|
 | Historical results + real fixtures, one source | [openfootball/football.json](https://github.com/openfootball/football.json) on GitHub — no signup, no key, one JSON file per league/season with both played and not-yet-played matches | Free |
 | Historical results (10+ seasons, 20+ leagues) — alternative | [football-data.co.uk](https://www.football-data.co.uk/data.php) CSV downloads — no signup, no key | Free |
-| Upcoming fixtures — alternative | [TheSportsDB](https://www.thesportsdb.com/api.php) shared free key (currently `123`; check their API docs page if it stops working -- a *personal* key there is a paid-Patreon perk, so we deliberately stick to the shared free one) | Free |
+| Upcoming fixtures — alternative | [TheSportsDB](https://www.thesportsdb.com/api.php) — **currently non-functional**: every league-listing method is capped at a handful of results on the free tier as of this writing, so it can't reliably find a league by name any more. Kept in the codebase in case they loosen this. | Free (when it works) |
 | Database                  | SQLite by default (file on disk); swap in Postgres via `DATABASE_URL` if you want | Free (self-hosted) |
 | ML / stats                | scikit-learn, numpy, pandas (all open-source, run locally)              | Free |
 | Backend                   | FastAPI + Uvicorn                                                       | Free |
@@ -123,12 +123,14 @@ python scripts/generate_predictions.py --league "English Premier League" --days-
 uvicorn app.main:app --reload
 ```
 
-Prefer football-data.co.uk + TheSportsDB instead (e.g. GitHub isn't reachable
-but those are)? Use `scripts/fetch_historical_data.py` (`--league E0 --seasons
-2223 2324 2425`, football-data.co.uk's own season codes) and
-`scripts/build_predictions.py --league "English Premier League"` in place of
-steps 1 and 3, and `--league E0` instead of `--league-name "..."` in step 2 --
+Prefer football-data.co.uk instead for historical data (e.g. GitHub isn't
+reachable but that is)? Use `scripts/fetch_historical_data.py` (`--league E0
+--seasons 2223 2324 2425`, football-data.co.uk's own season codes) in place
+of step 1, and `--league E0` instead of `--league-name "..."` in step 2 --
 everything downstream (models, API, frontend) is identical either way.
+`scripts/build_predictions.py` (the TheSportsDB-backed fixture fetcher) is
+currently unreliable -- see the table above -- so step 3 stays on
+`generate_predictions.py` regardless of which historical source you used.
 
 ```bash
 cd frontend

@@ -1,11 +1,19 @@
-"""Free upcoming-fixtures provider.
+"""Upcoming-fixtures provider -- currently non-functional on TheSportsDB's
+free tier, kept for reference / in case they loosen this again.
 
-TheSportsDB (https://www.thesportsdb.com/api.php) offers a public test key
-("3") that is free forever and requires no signup. It is rate-limited and
-not meant for high-volume production use, but it is more than enough to
-discover a league's next fixtures for a demo/dev deployment. Swap
-``api_key`` for your own free key (still no cost) if you outgrow the shared
-test key's rate limit.
+As of this writing, TheSportsDB's shared free key ("123", after they
+rotated away from the old "3") caps every league-listing method
+(``search_all_leagues.php``, ``all_leagues.php``) at a handful of results
+regardless of the ``s=Soccer`` filter -- confirmed by hand, not a bug in
+this code. ``_find_league_id`` below can therefore only ever find a league
+that happens to land in that small capped page, which in practice means it
+finds almost nothing. A personal (non-shared) key exists but is a
+paid-Patreon perk on their site, which this project deliberately avoids.
+
+Prefer ``openfootball.py`` for anything it covers. This module is left in
+place because TheSportsDB's limits have changed before and may loosen
+again, and because it's still a reasonable pattern to adapt if you do have
+a personal/paid key.
 """
 
 from __future__ import annotations
@@ -38,7 +46,7 @@ def _find_league_id(league_name: str, api_key: str, timeout: int = 15) -> str | 
     return None
 
 
-def fetch_upcoming_fixtures(league_name: str, api_key: str = "3", timeout: int = 15) -> list[UpcomingFixture]:
+def fetch_upcoming_fixtures(league_name: str, api_key: str = "123", timeout: int = 15) -> list[UpcomingFixture]:
     league_id = _find_league_id(league_name, api_key, timeout=timeout)
     if league_id is None:
         return []
