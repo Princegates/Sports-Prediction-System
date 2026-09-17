@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { SearchCommand } from "./SearchCommand";
+import { useAuth } from "../lib/AuthContext";
 
 const LEAGUES = [
   "English Premier League",
@@ -61,10 +62,36 @@ function ThemeToggle({ theme, onToggle }: { theme: Theme; onToggle: () => void }
   );
 }
 
+function UserMenu() {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
+  if (!user) return null;
+
+  function handleLogout() {
+    logout();
+    navigate("/login", { replace: true });
+  }
+
+  return (
+    <div className="user-menu">
+      <span className="user-menu-name" title={user.email}>
+        {user.name}
+        {user.role === "superadmin" && <span className="status-tag active" style={{ marginLeft: 6 }}>admin</span>}
+      </span>
+      <button className="btn ghost" onClick={handleLogout}>
+        Sign out
+      </button>
+    </div>
+  );
+}
+
 export function AppShell() {
   const [league, setLeague] = useState(LEAGUES[0]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [theme, setTheme] = useTheme();
+  const { user } = useAuth();
+  const navItems = user?.role === "superadmin" ? [...NAV_ITEMS, { to: "/admin", label: "Admin", icon: "⚙" }] : NAV_ITEMS;
 
   useEffect(() => {
     function handler(e: KeyboardEvent) {
@@ -91,7 +118,7 @@ export function AppShell() {
 
           <nav className="nav-group">
             <div className="nav-label">Intelligence</div>
-            {NAV_ITEMS.map((item) => (
+            {navItems.map((item) => (
               <NavLink key={item.to} to={item.to} end={item.to === "/"} className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
                 <span className="nav-icon">{item.icon}</span>
                 {item.label}
@@ -106,6 +133,8 @@ export function AppShell() {
               Search teams
             </button>
           </nav>
+
+          <UserMenu />
 
           <div className="sidebar-footer">
             Predictions are model probabilities based on historical validation, never a guarantee of outcome.
@@ -150,7 +179,7 @@ export function AppShell() {
         </div>
 
         <nav className="mobile-bottom-nav">
-          {NAV_ITEMS.map((item) => (
+          {navItems.map((item) => (
             <NavLink key={item.to} to={item.to} end={item.to === "/"} className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
               <span className="nav-icon">{item.icon}</span>
               {item.label}

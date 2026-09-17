@@ -1569,3 +1569,175 @@ table.predictions-table {
     font-size: 17px;
   }
 }
+
+/* ==========================================================================
+   AUTH PAGES
+   ========================================================================== */
+.auth-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5);
+  background: radial-gradient(circle at 20% 20%, var(--accent-soft), transparent 45%),
+    radial-gradient(circle at 80% 80%, var(--ai-violet-soft), transparent 45%), var(--bg-page);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 400px;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.auth-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.auth-form input {
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 14px;
+  color: var(--text-primary);
+  font-weight: 400;
+}
+
+.auth-form input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.auth-error {
+  font-size: 12.5px;
+  color: var(--critical);
+  background: var(--critical-soft);
+  border: 1px solid rgba(230, 103, 103, 0.35);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  margin: 0;
+}
+
+/* ==========================================================================
+   ADMIN PANEL
+   ========================================================================== */
+.admin-table-wrapper {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+table.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  min-width: 720px;
+}
+
+.admin-table th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface-2);
+}
+
+.admin-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.admin-table tr:last-child td {
+  border-bottom: none;
+}
+
+.status-tag {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid;
+}
+
+.status-tag.pending {
+  color: var(--warning);
+  border-color: rgba(250, 178, 25, 0.4);
+  background: var(--warning-soft);
+}
+
+.status-tag.active {
+  color: var(--good);
+  border-color: rgba(12, 163, 12, 0.4);
+  background: var(--good-soft);
+}
+
+.status-tag.suspended {
+  color: var(--critical);
+  border-color: rgba(230, 103, 103, 0.4);
+  background: var(--critical-soft);
+}
+
+.admin-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.admin-actions button {
+  font-size: 11.5px;
+  padding: 5px 10px;
+}
+
+/* ==========================================================================
+   USER MENU (sidebar)
+   ========================================================================== */
+.user-menu {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  margin-top: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-2);
+}
+
+.user-menu-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+}
+
+.user-menu button {
+  flex-shrink: 0;
+  font-size: 11.5px;
+  padding: 5px 10px;
+}
+
+.btn.ghost.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
