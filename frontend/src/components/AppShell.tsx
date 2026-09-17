@@ -1,7 +1,8 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { SearchCommand } from "./SearchCommand";
 import { AccentPicker } from "./AccentPicker";
+import { ChatDock } from "./ChatDock";
 import { useAuth } from "../lib/AuthContext";
 import { readStoredAccent, storeAccent } from "../lib/accentProfiles";
 
@@ -26,9 +27,9 @@ const LeagueContext = createContext<LeagueContextValue>({ league: LEAGUES[0], se
 export const useLeague = () => useContext(LeagueContext);
 
 const NAV_ITEMS = [
-  { to: "/", label: "Dashboard", icon: "◆" },
-  { to: "/predictions", label: "Predictions", icon: "▤" },
-  { to: "/live", label: "Live", icon: "●" },
+  { to: "/app", label: "Dashboard", icon: "◆" },
+  { to: "/app/predictions", label: "Predictions", icon: "▤" },
+  { to: "/app/live", label: "Live", icon: "●" },
 ];
 
 type Theme = "dark" | "light";
@@ -123,8 +124,8 @@ export function AppShell() {
   const [accent, setAccent] = useAccent((a) => setPreferences({ accent_profile: a }).catch(() => {}));
   const navItems =
     user?.role === "superadmin"
-      ? [...NAV_ITEMS, { to: "/profile", label: "Profile", icon: "◍" }, { to: "/admin", label: "Admin", icon: "⚙" }]
-      : [...NAV_ITEMS, { to: "/profile", label: "Profile", icon: "◍" }];
+      ? [...NAV_ITEMS, { to: "/app/profile", label: "Profile", icon: "◍" }, { to: "/app/admin", label: "Admin", icon: "⚙" }]
+      : [...NAV_ITEMS, { to: "/app/profile", label: "Profile", icon: "◍" }];
 
   useEffect(() => {
     function handler(e: KeyboardEvent) {
@@ -141,18 +142,18 @@ export function AppShell() {
     <LeagueContext.Provider value={{ league, setLeague }}>
       <div className="app-shell">
         <aside className="app-sidebar">
-          <a href="/" className="brand">
+          <Link to="/app" className="brand">
             <span className="brand-mark">AI</span>
             <span className="brand-text">
               <strong>Match Intelligence</strong>
               <span>Football AI</span>
             </span>
-          </a>
+          </Link>
 
           <nav className="nav-group">
             <div className="nav-label">Intelligence</div>
             {navItems.map((item) => (
-              <NavLink key={item.to} to={item.to} end={item.to === "/"} className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
+              <NavLink key={item.to} to={item.to} end={item.to === "/app"} className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
                 <span className="nav-icon">{item.icon}</span>
                 {item.label}
               </NavLink>
@@ -193,12 +194,12 @@ export function AppShell() {
           </header>
 
           <header className="mobile-topbar">
-            <a href="/" className="brand">
+            <Link to="/app" className="brand">
               <span className="brand-mark">AI</span>
               <span className="brand-text">
                 <strong>Match Intelligence</strong>
               </span>
-            </a>
+            </Link>
             <div style={{ display: "flex", gap: 8 }}>
               <AccentPicker accent={accent} onChange={setAccent} />
               <ThemeToggle theme={theme} onToggle={() => setTheme(theme === "dark" ? "light" : "dark")} />
@@ -215,7 +216,7 @@ export function AppShell() {
 
         <nav className="mobile-bottom-nav">
           {navItems.map((item) => (
-            <NavLink key={item.to} to={item.to} end={item.to === "/"} className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
+            <NavLink key={item.to} to={item.to} end={item.to === "/app"} className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
               <span className="nav-icon">{item.icon}</span>
               {item.label}
             </NavLink>
@@ -223,6 +224,11 @@ export function AppShell() {
         </nav>
 
         <SearchCommand open={searchOpen} onClose={() => setSearchOpen(false)} leagues={LEAGUES} />
+
+        {/* Mounted at shell level rather than per page, so the conversation
+            survives navigation between matches -- which is the whole point of
+            being able to ask a follow-up about the fixture you just opened. */}
+        <ChatDock />
       </div>
     </LeagueContext.Provider>
   );

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { registerAccount } from "../api";
 import { Mascot } from "../components/Mascot";
+import { PublicShell } from "../components/PublicShell";
 
 export function Register() {
   const navigate = useNavigate();
@@ -29,21 +30,41 @@ export function Register() {
 
   if (done) {
     return (
-      <div className="auth-shell">
-        <div className="card card-pad auth-card">
-          <Mascot pose="celebrating" size={72} className="auth-mascot" />
-          <h1 style={{ fontSize: 20, marginBottom: 10, textAlign: "center" }}>Account created</h1>
-          <p style={{ fontSize: 13.5, color: "var(--text-secondary)" }}>{done}</p>
-          <button className="btn" style={{ marginTop: 16 }} onClick={() => navigate("/login")}>
-            Go to sign in
-          </button>
+      <PublicShell>
+        <div className="auth-shell">
+          <div className="card card-pad auth-card">
+            <Mascot pose="celebrating" size={72} className="auth-mascot" />
+            <h1 style={{ fontSize: 20, marginBottom: 10, textAlign: "center" }}>Account created</h1>
+            <p style={{ fontSize: 13.5, color: "var(--text-secondary)" }}>{done}</p>
+
+            <div className="register-next-steps">
+              <h3>What happens now</h3>
+              <ol>
+                <li>Your account sits in the Super Admin's approval queue.</li>
+                <li>
+                  They verify your payment reference out of band and approve it. There's no automatic
+                  approval — until they sign off, signing in will be refused.
+                </li>
+                <li>Once approved, sign in and the full platform opens up.</li>
+              </ol>
+              <p>Nothing further is needed from you in the meantime.</p>
+            </div>
+
+            <button className="btn" style={{ marginTop: 16 }} onClick={() => navigate("/login")}>
+              Go to sign in
+            </button>
+            <Link className="btn ghost" style={{ marginTop: 8 }} to="/account-status">
+              Check application status
+            </Link>
+          </div>
         </div>
-      </div>
+      </PublicShell>
     );
   }
 
   return (
-    <div className="auth-shell">
+    <PublicShell>
+      <div className="auth-shell">
       <div className="card card-pad auth-card">
         <div className="brand" style={{ marginBottom: 24 }}>
           <span className="brand-mark">AI</span>
@@ -87,6 +108,7 @@ export function Register() {
           Already have an account? <Link to="/login">Sign in</Link>
         </p>
       </div>
-    </div>
+      </div>
+    </PublicShell>
   );
 }

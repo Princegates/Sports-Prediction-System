@@ -130,3 +130,95 @@ export interface UnavailableResource {
   status: "unavailable";
   reason: string;
 }
+
+// --- AI assistant chat ----------------------------------------------------
+
+export interface ChatSource {
+  kind: "match" | "team" | "page";
+  label: string;
+  ref: string | number | null;
+}
+
+export interface ChatAnswer {
+  id: number | null;
+  text: string;
+  intent: string;
+  sources: ChatSource[];
+  suggestions: string[];
+  includes_probability: boolean;
+  caveat: string | null;
+}
+
+export interface ChatMessage {
+  id: number;
+  role: "user" | "assistant";
+  content: string;
+  intent: string | null;
+  context_match_id: number | null;
+  sources: ChatSource[];
+  suggestions: string[];
+  created_at: string;
+}
+
+// --- Public landing-page data --------------------------------------------
+
+export interface PublicStats {
+  matches_analyzed: number;
+  teams_tracked: number;
+  leagues_covered: number;
+  predictions_generated: number;
+  upcoming_fixtures: number;
+  active_members: number;
+  league_names: string[];
+  markets_per_match: number;
+}
+
+export interface PublicAccuracy {
+  has_data: boolean;
+  model_version: string | null;
+  computed_at: string | null;
+  split: string | null;
+  leagues: string[];
+  accuracy: number | null;
+  log_loss: number | null;
+  brier_score: number | null;
+  matches_evaluated: number | null;
+}
+
+export interface PublicFixture {
+  league: string;
+  kickoff: string;
+  home_team: string;
+  away_team: string;
+  has_prediction: boolean;
+  confidence: string | null;
+}
+
+export interface AccountStatus {
+  status: UserStatus;
+  message: string;
+  submitted_at: string | null;
+}
+
+// --- Admin ---------------------------------------------------------------
+
+export interface AdminOverview {
+  pending_users: number;
+  active_users: number;
+  suspended_users: number;
+  superadmins: number;
+  total_users: number;
+  matches_analyzed: number;
+  predictions_generated: number;
+  upcoming_fixtures: number;
+  chat_messages: number;
+}
+
+export interface AuditLogEntry {
+  id: number;
+  actor_email: string | null;
+  action: string;
+  target_user_id: number | null;
+  detail: Record<string, unknown> | null;
+  created_at: string;
+}

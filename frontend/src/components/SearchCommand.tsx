@@ -42,7 +42,7 @@ export function SearchCommand({ open, onClose, leagues }: Props) {
 
   function select(team: Team) {
     onClose();
-    navigate(`/teams/${team.id}`);
+    navigate(`/app/teams/${team.id}`);
   }
 
   if (!open) return null;

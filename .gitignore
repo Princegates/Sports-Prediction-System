@@ -12,6 +12,10 @@ dist/
 .vite/
 *.tsbuildinfo
 frontend/.env
+# Vite loads .env.local / .env.*.local for machine-specific overrides
+# (e.g. pointing VITE_API_URL at a local backend). Never committed.
+.env.local
+.env.*.local
 .DS_Store
 *.log
 .pytest_cache/

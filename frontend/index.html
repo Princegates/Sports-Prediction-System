@@ -3,7 +3,32 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AI Match Intelligence</title>
+
+    <title>AI Match Intelligence — Calibrated Football Predictions</title>
+    <meta
+      name="description"
+      content="Ensemble football prediction across 18 markets per fixture: Elo, Dixon-Coles Poisson and gradient boosting, blended and calibrated on held-out history. Every output carries a confidence band and the factors behind it. Model probabilities, never guarantees."
+    />
+    <meta name="theme-color" content="#0b0c0e" />
+
+    <!-- Open Graph, so a shared link renders as something other than a bare URL. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="AI Match Intelligence — Calibrated Football Predictions" />
+    <meta
+      property="og:description"
+      content="Three statistical models, blended and calibrated, scored across 18 markets per match — with the reasoning and the confidence shown. Probabilities, never guarantees."
+    />
+    <meta name="twitter:card" content="summary" />
+
+    <!--
+      Inline SVG favicon. Declared rather than left to the browser's implicit
+      /favicon.ico probe, which 404s on every page load otherwise. Inline so it
+      costs no extra request and needs no binary asset in the repo.
+    -->
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%233987e5'/%3E%3Cpath d='M9 22V10h2.6l2.9 7.4L17.4 10H20v12h-2.3v-7.6l-2.4 6.1h-1.6l-2.4-6.1V22H9z' fill='white'/%3E%3Ccircle cx='24' cy='10' r='2.4' fill='%239085e9'/%3E%3C/svg%3E"
+    />
   </head>
   <body>
     <div id="root"></div>

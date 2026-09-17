@@ -45,7 +45,7 @@ export function TeamPage() {
 
   return (
     <div>
-      <Link className="back-link" to="/">
+      <Link className="back-link" to="/app">
         ← Back to dashboard
       </Link>
 

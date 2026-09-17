@@ -1,11 +1,19 @@
 import type {
+  AccountStatus,
+  AdminOverview,
   AdminUser,
+  AuditLogEntry,
+  ChatAnswer,
+  ChatMessage,
   HeadToHeadMatch,
   LivePrediction,
   MatchHistoryEntry,
   MatchStatistics,
   MatchSummary,
   Prediction,
+  PublicAccuracy,
+  PublicFixture,
+  PublicStats,
   Team,
   TeamForm,
   TokenResponse,
@@ -77,6 +85,10 @@ function patch<T>(path: string, body: unknown): Promise<T> {
   return request(path, { method: "PATCH", body: JSON.stringify(body) });
 }
 
+function del<T>(path: string): Promise<T> {
+  return request(path, { method: "DELETE" });
+}
+
 export function onAuthLogout(handler: () => void): () => void {
   window.addEventListener(AUTH_LOGOUT_EVENT, handler);
   return () => window.removeEventListener(AUTH_LOGOUT_EVENT, handler);
@@ -96,6 +108,131 @@ export function fetchMe(): Promise<User> {
   return get("/api/auth/me");
 }
 
+export function fetchAccountStatus(email: string, password: string): Promise<AccountStatus> {
+  return post("/api/auth/status", { email, password });
+}
+
+// --- Public (no auth required) -----------------------------------------
+
+export function fetchPublicStats(): Promise<PublicStats> {
+  return get("/api/public/stats");
+}
+
+export function fetchPublicAccuracy(): Promise<PublicAccuracy> {
+  return get("/api/public/accuracy");
+}
+
+export function fetchPublicFixtures(daysAhead = 5, limit = 6): Promise<PublicFixture[]> {
+  return get(`/api/public/fixtures?days_ahead=${daysAhead}&limit=${limit}`);
+}
+
+// --- AI assistant chat --------------------------------------------------
+
+export function sendChatMessage(message: string, contextMatchId?: number | null): Promise<ChatAnswer> {
+  return post("/api/chat/message", { message, context_match_id: contextMatchId ?? null });
+}
+
+export function fetchChatHistory(limit = 50): Promise<ChatMessage[]> {
+  return get(`/api/chat/history?limit=${limit}`);
+}
+
+export function clearChatHistory(): Promise<{ deleted: number }> {
+  return del("/api/chat/history");
+}
+
+interface StreamHandlers {
+  onChunk: (text: string) => void;
+  onDone: (answer: ChatAnswer) => void;
+  onError: (message: string) => void;
+}
+
+/**
+ * Streams an assistant reply over SSE.
+ *
+ * `fetch` + a manual parser rather than `EventSource`, because EventSource
+ * can only issue GETs and cannot set an Authorization header -- the token
+ * would have to go in the query string, where it lands in access logs.
+ *
+ * Returns an abort function. Calling it stops the client reading, but the
+ * answer was already persisted server-side before the first chunk was sent,
+ * so an aborted stream still leaves the exchange in the user's history.
+ */
+export function streamChatMessage(
+  message: string,
+  contextMatchId: number | null,
+  handlers: StreamHandlers,
+): () => void {
+  const controller = new AbortController();
+  const token = getStoredToken();
+
+  (async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/chat/stream`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ message, context_match_id: contextMatchId }),
+        signal: controller.signal,
+      });
+
+      if (response.status === 401) {
+        clearStoredToken();
+        window.dispatchEvent(new Event(AUTH_LOGOUT_EVENT));
+        handlers.onError("Session expired -- please log in again.");
+        return;
+      }
+      if (!response.ok || !response.body) {
+        const detail = await response.json().catch(() => null);
+        handlers.onError(detail?.detail ?? `Chat failed: ${response.status}`);
+        return;
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      // SSE frames are separated by a blank line. A frame can arrive split
+      // across reads, so anything after the last separator stays buffered
+      // until the rest of it turns up.
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const frames = buffer.split("\n\n");
+        buffer = frames.pop() ?? "";
+
+        for (const frame of frames) {
+          if (!frame.trim()) continue;
+          let event = "message";
+          const dataLines: string[] = [];
+          for (const line of frame.split("\n")) {
+            if (line.startsWith("event: ")) event = line.slice(7).trim();
+            else if (line.startsWith("data: ")) dataLines.push(line.slice(6));
+          }
+          if (dataLines.length === 0) continue;
+
+          try {
+            const payload = JSON.parse(dataLines.join("\n"));
+            if (event === "chunk") handlers.onChunk(payload.text);
+            else if (event === "done") handlers.onDone(payload as ChatAnswer);
+            else if (event === "error") handlers.onError(payload.detail ?? "Assistant error");
+          } catch {
+            // A malformed frame shouldn't kill the rest of the stream.
+          }
+        }
+      }
+    } catch (err) {
+      if ((err as Error)?.name === "AbortError") return;
+      handlers.onError(err instanceof Error ? err.message : String(err));
+    }
+  })();
+
+  return () => controller.abort();
+}
+
 export function updatePreferences(payload: { theme?: string; accent_profile?: string }): Promise<User> {
   return patch("/api/auth/preferences", payload);
 }
@@ -112,6 +249,18 @@ export function fetchMatchHistory(): Promise<MatchHistoryEntry[]> {
 
 export function fetchAdminUsers(status?: string): Promise<AdminUser[]> {
   return get(`/api/admin/users${status ? `?status=${status}` : ""}`);
+}
+
+export function fetchAdminOverview(): Promise<AdminOverview> {
+  return get("/api/admin/overview");
+}
+
+export function fetchAuditLog(limit = 50): Promise<AuditLogEntry[]> {
+  return get(`/api/admin/audit-log?limit=${limit}`);
+}
+
+export function reinstateUser(userId: number): Promise<AdminUser> {
+  return post(`/api/admin/users/${userId}/reinstate`, {});
 }
 
 export function approveUser(userId: number, paymentReference?: string): Promise<AdminUser> {

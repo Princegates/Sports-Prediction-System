@@ -8,7 +8,12 @@ services:
       - model-artifacts:/app/model_artifacts
     environment:
       DATABASE_URL: sqlite:////data/sports_prediction.db
-      THESPORTSDB_API_KEY: "3"
+      THESPORTSDB_API_KEY: "123"
+      # Override both of these for anything reachable from a network. The
+      # default SECRET_KEY is published in this repository, so session tokens
+      # signed with it can be forged; the API warns about it at startup.
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-change-me-in-production}
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://localhost:4173}
 
   frontend:
     build:

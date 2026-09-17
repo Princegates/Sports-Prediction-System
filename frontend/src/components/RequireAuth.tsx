@@ -27,7 +27,7 @@ export function RequireSuperadmin() {
 
   if (loading) return <AuthLoading />;
   if (!user) return <Navigate to="/login" replace />;
-  if (user.role !== "superadmin") return <Navigate to="/" replace />;
+  if (user.role !== "superadmin") return <Navigate to="/app" replace />;
 
   return <Outlet />;
 }

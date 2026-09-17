@@ -110,7 +110,7 @@ export function MatchDetail() {
   return (
     <div>
       <GoalCelebration triggerKey={goalTrigger} team={goalTeam} />
-      <Link className="back-link" to="/">
+      <Link className="back-link" to="/app">
         ← Back to dashboard
       </Link>
 

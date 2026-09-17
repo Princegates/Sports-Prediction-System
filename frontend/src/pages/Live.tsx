@@ -91,7 +91,7 @@ export function Live() {
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {upcoming.map((m) => (
-              <div key={m.id} className="transparency-row" style={{ cursor: "pointer" }} onClick={() => navigate(`/match/${m.id}?tab=Live`)}>
+              <div key={m.id} className="transparency-row" style={{ cursor: "pointer" }} onClick={() => navigate(`/app/match/${m.id}?tab=Live`)}>
                 <span className="name" style={{ width: "auto", flex: 1 }}>
                   {m.home_team.name} vs {m.away_team.name}
                 </span>

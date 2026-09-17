@@ -187,6 +187,11 @@ def main() -> None:
         print(f"BTTS Brier:          {btts_brier:.3f}")
 
         metrics = [
+            # Sample size is stored alongside the scores because a metric
+            # without one is not interpretable -- 46% over 285 matches and
+            # 46% over 12 are very different claims, and the API surfaces
+            # these figures to users who can't see this script.
+            ("n", float(len(test_matches))),
             ("accuracy", accuracy),
             ("log_loss", ll),
             ("brier_score", brier),

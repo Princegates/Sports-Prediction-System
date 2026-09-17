@@ -60,7 +60,7 @@ export function Profile() {
           {history.map(({ match, viewed_at }) => (
             <Link
               key={match.id}
-              to={`/match/${match.id}`}
+              to={`/app/match/${match.id}`}
               className="transparency-row"
               style={{ display: "flex", padding: "12px 16px", borderBottom: "1px solid var(--border)", textDecoration: "none", color: "inherit" }}
             >

@@ -119,7 +119,7 @@ export function Predictions() {
             </thead>
             <tbody>
               {visible.map(({ prediction, match }) => (
-                <tr key={prediction.match_id} onClick={() => navigate(`/match/${prediction.match_id}`)}>
+                <tr key={prediction.match_id} onClick={() => navigate(`/app/match/${prediction.match_id}`)}>
                   <td>
                     <div className="match-cell">
                       {match.home_team.name} vs {match.away_team.name}

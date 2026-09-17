@@ -22,7 +22,7 @@ export function PredictionCard({ prediction, homeTeam, awayTeam, kickoff, compet
     <div
       ref={tilt.ref}
       className="card match-card tilt-card"
-      onClick={() => navigate(`/match/${prediction.match_id}`)}
+      onClick={() => navigate(`/app/match/${prediction.match_id}`)}
       onMouseMove={tilt.onMouseMove}
       onMouseLeave={tilt.onMouseLeave}
     >

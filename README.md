@@ -5,6 +5,80 @@ Requirements Specification: an ensemble prediction system that turns historical
 football data into calibrated probabilities across multiple markets, and picks
 the single **Global Most-Likely Outcome** for each match.
 
+Plus a full public website, a Super-Admin-gated membership flow, and a grounded
+AI chat assistant. See **[ROADMAP.md](ROADMAP.md)** for a candid audit of what
+works, what doesn't, and what it would take to make this world-class.
+
+## The site at a glance
+
+| Route | Access | What it is |
+|---|---|---|
+| `/` | Public | Welcome page — live corpus stats, measured accuracy, how it works, FAQ |
+| `/how-it-works` | Public | Full methodology, including what the system *can't* do |
+| `/responsible` | Public | Responsible-use guidance and helplines |
+| `/register` | Public | Request access — creates a **pending** account |
+| `/account-status` | Public | Check where a pending application stands |
+| `/login` | Public | Sign in (refused until approved) |
+| `/app` | Members | Dashboard of today's fixtures |
+| `/app/match/:id` | Members | Full probability table, correct-score grid, AI explanation |
+| `/app/predictions`, `/app/live`, `/app/teams/:id`, `/app/profile` | Members | Predictions table, in-play, team pages, personal profile |
+| `/app/admin` | Super Admin | Approval queue, account management, audit log |
+
+Every figure on the public pages is read live from `/api/public/*`. A deployment
+with no data imported says so, rather than displaying invented numbers.
+
+## Membership requires Super Admin approval
+
+This is enforced at the router level, not just in the UI:
+
+1. A visitor registers at `/register`, optionally submitting a payment reference.
+   The account is created with `status="pending"`.
+2. `get_current_user` rejects any account whose status isn't `active`, and it
+   guards every router except `/api/auth/*` and `/api/public/*`. A pending
+   account therefore has **no** access to any prediction, team, match or chat
+   endpoint — there is no partial access and no trial tier.
+3. A Super Admin reviews the queue at `/app/admin`, confirms the payment
+   reference out of band, and approves. The approval is written to an
+   append-only audit log along with who did it and when.
+4. The member can now sign in. Their theme, colour profile and viewing history
+   are stored on the account, so they follow them across devices.
+
+Suspension is reversible (`/reinstate`), self-suspension and self-demotion are
+refused, and the system will not let you remove the last Super Admin.
+
+Create the first Super Admin — which can't go through the approval flow, for
+obvious reasons — with:
+
+```bash
+python scripts/create_superadmin.py --email you@example.com --name "Site Admin"
+```
+
+## The AI chat assistant
+
+A floating chat dock on every member page (⌘J / Ctrl-J), plus
+`POST /api/chat/message` and an SSE streaming endpoint.
+
+It is **grounded, not generative**. It parses the question, resolves the teams
+against the `teams` table, fetches the relevant rows, and composes a reply from
+them. That ordering is what makes a fabricated statistic structurally
+impossible rather than merely unlikely — and it's why the assistant answers
+"no backtest has been recorded" instead of inventing a plausible hit rate.
+
+It handles fixture predictions, reasoning ("why is this favored?", "what are the
+risks?"), team form, head-to-head, best picks, live status, and questions about
+the model's own accuracy and methodology. Answers carry clickable citations to
+the match or team they came from. On a match page it picks up that match as
+context, so follow-ups don't need to re-name the teams. Anything it can't
+classify gets an honest "I don't know", never a guess.
+
+Questions about guaranteed wins or recovering losses are routed to a
+responsible-use answer with helpline details, ahead of every other pattern.
+
+An **optional** phrasing-only rewriter can be pointed at a local LLM (Ollama
+etc.) via `ASSISTANT_LLM_ENABLED`. It's off by default, forbidden from
+introducing any number not already in the grounded text, and falls back to that
+text on any failure — so the assistant costs nothing to run.
+
 ## Zero-cost by design
 
 Every data source and every piece of infrastructure in this build is free.
@@ -82,6 +156,22 @@ prediction logic.
   Most-Likely-Outcome badge, and a match detail page with the full
   probability table, correct-score grid, and AI explanation — responsive for
   desktop/tablet/phone.
+
+## Security notes before deploying
+
+Two things to do before this touches a network:
+
+1. **Set `SECRET_KEY`.** Session tokens are HMAC-signed with it, and the default
+   is published in this repository — anyone who has read it can forge a token
+   for any account, including a Super Admin. The app logs a warning at startup
+   while the default is in place. Generate one with
+   `python -c "import secrets; print(secrets.token_urlsafe(48))"`.
+2. **Set `CORS_ALLOW_ORIGINS`** to your real origins instead of `*`.
+
+Login, registration and chat are rate-limited per client IP. That limiter is
+in-process, so limits are per-worker and reset on restart — fine for a single
+uvicorn worker, and `app/api/rate_limit.py` documents the Redis upgrade path
+for anything larger.
 
 ## What's intentionally out of scope for this pass
 

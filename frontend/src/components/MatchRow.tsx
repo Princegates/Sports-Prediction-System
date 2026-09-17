@@ -39,7 +39,7 @@ export function MatchRow({ match, perspectiveTeamId }: { match: MatchSummary; pe
     <div
       className="transparency-row"
       style={{ cursor: "pointer" }}
-      onClick={() => navigate(`/match/${match.id}`)}
+      onClick={() => navigate(`/app/match/${match.id}`)}
     >
       {resultTag && <span className={`form-chip ${resultClass}`}>{resultTag}</span>}
       <span className="name" style={{ width: "auto", flex: 1 }}>

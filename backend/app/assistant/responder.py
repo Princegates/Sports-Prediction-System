@@ -479,16 +479,27 @@ def _accuracy(db: Session, q: ParsedQuery) -> Answer:
         "",
     ]
 
+    # Explicit labels rather than derived ones: title-casing the stored keys
+    # turns "over_2_5_log_loss" into "Over 2 5 Log Loss", and the goal-line
+    # metrics are exactly the ones a user is most likely to ask about.
     label_map = {
-        "accuracy": ("1X2 accuracy", "{:.1%}"),
-        "log_loss": ("Log loss", "{:.4f}"),
-        "brier_score": ("Brier score", "{:.4f}"),
-        "brier": ("Brier score", "{:.4f}"),
         "n": ("Matches evaluated", "{:.0f}"),
         "matches": ("Matches evaluated", "{:.0f}"),
+        "accuracy": ("1X2 accuracy", "{:.1%}"),
+        "log_loss": ("1X2 log loss", "{:.4f}"),
+        "brier_score": ("1X2 Brier score", "{:.4f}"),
+        "brier": ("1X2 Brier score", "{:.4f}"),
+        "calibration_error": ("Calibration error (ECE)", "{:.4f}"),
+        "over_2_5_log_loss": ("Over 2.5 log loss", "{:.4f}"),
+        "over_2_5_brier": ("Over 2.5 Brier score", "{:.4f}"),
+        "btts_log_loss": ("Both-teams-to-score log loss", "{:.4f}"),
+        "btts_brier": ("Both-teams-to-score Brier score", "{:.4f}"),
     }
-    for key, value in preferred.items():
-        label, fmt = label_map.get(key, (key.replace("_", " ").title(), "{:.4f}"))
+    # Report in a deliberate order (headline first) rather than dict order.
+    ordering = list(label_map)
+    for key in sorted(preferred, key=lambda k: (ordering.index(k) if k in ordering else len(ordering), k)):
+        value = preferred[key]
+        label, fmt = label_map.get(key, (key.replace("_", " ").capitalize(), "{:.4f}"))
         lines.append(f"- {label}: {fmt.format(value)}")
 
     if snapshot.leagues:
