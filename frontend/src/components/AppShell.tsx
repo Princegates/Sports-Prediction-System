@@ -1,7 +1,9 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { SearchCommand } from "./SearchCommand";
+import { AccentPicker } from "./AccentPicker";
 import { useAuth } from "../lib/AuthContext";
+import { readStoredAccent, storeAccent } from "../lib/accentProfiles";
 
 const LEAGUES = [
   "English Premier League",
@@ -54,6 +56,17 @@ function useTheme() {
   return [theme, setTheme] as const;
 }
 
+function useAccent() {
+  const [accent, setAccent] = useState<string>(readStoredAccent);
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-accent", accent);
+    storeAccent(accent);
+  }, [accent]);
+
+  return [accent, setAccent] as const;
+}
+
 function ThemeToggle({ theme, onToggle }: { theme: Theme; onToggle: () => void }) {
   return (
     <button className="btn ghost" onClick={onToggle} aria-label={theme === "dark" ? "Switch to day theme" : "Switch to night theme"} title={theme === "dark" ? "Day" : "Night"}>
@@ -90,6 +103,7 @@ export function AppShell() {
   const [league, setLeague] = useState(LEAGUES[0]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [theme, setTheme] = useTheme();
+  const [accent, setAccent] = useAccent();
   const { user } = useAuth();
   const navItems = user?.role === "superadmin" ? [...NAV_ITEMS, { to: "/admin", label: "Admin", icon: "⚙" }] : NAV_ITEMS;
 
@@ -155,6 +169,7 @@ export function AppShell() {
                 </option>
               ))}
             </select>
+            <AccentPicker accent={accent} onChange={setAccent} />
             <ThemeToggle theme={theme} onToggle={() => setTheme(theme === "dark" ? "light" : "dark")} />
           </header>
 
@@ -166,6 +181,7 @@ export function AppShell() {
               </span>
             </a>
             <div style={{ display: "flex", gap: 8 }}>
+              <AccentPicker accent={accent} onChange={setAccent} />
               <ThemeToggle theme={theme} onToggle={() => setTheme(theme === "dark" ? "light" : "dark")} />
               <button className="btn ghost" onClick={() => setSearchOpen(true)} aria-label="Search">
                 ⌕
