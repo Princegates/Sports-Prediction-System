@@ -1,0 +1,44 @@
+# Keeps predictions current without paying for a scheduler.
+#
+# GitHub Actions gives 2,000 free minutes a month; this job uses a couple of
+# minutes a day. It re-imports fixtures, retrains, and regenerates predictions
+# against whatever DATABASE_URL points at.
+#
+# Set DATABASE_URL under Settings -> Secrets and variables -> Actions. If you
+# deployed to a VM with its own disk (see DEPLOYMENT.md, Option A), use a cron
+# entry on the box instead -- this workflow is for hosts whose database lives
+# somewhere the runner can reach.
+name: Refresh predictions
+
+on:
+  schedule:
+    # 06:00 UTC daily -- before most European kickoffs.
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Refresh data, models and predictions
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret is not set -- skipping."
+            echo "Add it under Settings > Secrets and variables > Actions."
+            exit 0
+          fi
+          python scripts/bootstrap.py --days-ahead 10

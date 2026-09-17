@@ -1,0 +1,10 @@
+# SPA fallback for Cloudflare Pages and Netlify.
+#
+# The app is client-routed, so /how-it-works, /app/predictions and friends
+# exist only once React has booted. Without this rule the host looks for a
+# matching file on disk, finds none, and returns 404 for every deep link and
+# every hard refresh -- the app appears to work until someone shares a URL.
+#
+# 200 rather than 301: the browser keeps the requested path so the router can
+# read it, instead of being bounced to /.
+/*    /index.html   200

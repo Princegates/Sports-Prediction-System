@@ -1,6 +1,10 @@
 fastapi>=0.111
 uvicorn[standard]>=0.30
 sqlalchemy>=2.0
+# Postgres driver. Not needed for the default SQLite setup, but free hosts
+# without a persistent disk require an external database, and installing it
+# unconditionally means DATABASE_URL is the only thing that has to change.
+psycopg[binary]>=3.1
 pydantic>=2.7
 pydantic-settings>=2.3
 numpy>=1.26

@@ -61,6 +61,28 @@ class Settings(BaseSettings):
     assistant_llm_timeout: float = 20.0
 
     @property
+    def normalized_database_url(self) -> str:
+        """``database_url`` in a form SQLAlchemy 2 actually accepts.
+
+        Managed Postgres providers (Neon, Supabase, Railway, Heroku) hand out
+        connection strings beginning ``postgres://``. SQLAlchemy 2 removed
+        that alias, so pasting the provider's URL straight into ``.env``
+        fails at import with an unhelpful "Can't load plugin" error. And bare
+        ``postgresql://`` resolves to psycopg2, which this project doesn't
+        install -- it uses psycopg 3.
+
+        Rewriting both to ``postgresql+psycopg://`` means the copy-paste path
+        works, which matters because that's the path everyone takes.
+        """
+
+        url = self.database_url.strip()
+        if url.startswith("postgres://"):
+            return "postgresql+psycopg://" + url[len("postgres://") :]
+        if url.startswith("postgresql://"):
+            return "postgresql+psycopg://" + url[len("postgresql://") :]
+        return url
+
+    @property
     def cors_origins_list(self) -> list[str]:
         raw = (self.cors_allow_origins or "").strip()
         if raw in ("", "*"):

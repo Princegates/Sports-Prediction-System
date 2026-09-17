@@ -41,6 +41,14 @@ def fixture_data(db_session):
 
     now = dt.datetime.utcnow()
 
+    # The upcoming fixture has to be BOTH today (the "what's on today?"
+    # handler queries today 00:00 -> tomorrow 00:00) AND in the future
+    # (best-picks ranks from now forward). A naive now + 6h satisfies both
+    # in the morning and neither after 18:00 UTC, which made this suite pass
+    # all morning and fail all evening -- the worst kind of flake, and one
+    # that would break scheduled CI specifically.
+    upcoming_kickoff = now + dt.timedelta(minutes=2)
+
     played = Match(
         league=LEAGUE,
         season="2025-26",
@@ -54,7 +62,7 @@ def fixture_data(db_session):
     upcoming = Match(
         league=LEAGUE,
         season="2025-26",
-        date=now + dt.timedelta(hours=6),
+        date=upcoming_kickoff,
         home_team_id=home.id,
         away_team_id=away.id,
         status="SCHEDULED",
@@ -271,6 +279,10 @@ def test_head_to_head_counts_real_results(db_session, auth_headers, fixture_data
 
 
 def test_todays_card_reports_actual_fixtures(db_session, auth_headers, fixture_data):
+    now = dt.datetime.utcnow()
+    if (now + dt.timedelta(minutes=2)).date() != now.date():
+        pytest.skip("fixture kickoff crosses midnight UTC; today's-card window is untestable here")
+
     body = _ask("what's on today?", auth_headers)
     assert body["intent"] == "todays_card"
     assert "Arsenal" in body["text"] and "Chelsea" in body["text"]
