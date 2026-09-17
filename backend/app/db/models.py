@@ -9,6 +9,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    Text,
     UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -64,6 +65,54 @@ class MatchView(Base):
     viewed_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
 
     __table_args__ = (UniqueConstraint("user_id", "match_id", name="uq_match_view_user_match"),)
+
+
+class ChatMessage(Base):
+    """One turn of a user's conversation with the AI assistant.
+
+    Stored per user so a conversation survives a page reload and a device
+    switch. ``intent``, ``sources`` and ``suggestions`` are only set on
+    assistant rows: keeping the resolved intent makes it possible to audit
+    later which questions the rule-based parser failed to classify (an
+    ``unknown`` rate is the signal for which phrasings to teach it next),
+    and keeping ``sources`` means the citation links survive a reload rather
+    than being regenerated.
+    """
+
+    __tablename__ = "chat_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    # "user" or "assistant"
+    role: Mapped[str] = mapped_column(String(16))
+    content: Mapped[str] = mapped_column(Text)
+    intent: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # The match the user had open when they asked, so follow-ups like "why is
+    # this favored?" resolve without naming the teams again.
+    context_match_id: Mapped[int | None] = mapped_column(ForeignKey("matches.id"), nullable=True)
+    sources: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    suggestions: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
+
+
+class AuditLog(Base):
+    """Append-only record of privileged actions.
+
+    Account approval is the gate on this whole system, so who opened it for
+    whom needs to be answerable after the fact. ``User.approved_by_user_id``
+    only survives until the next status change overwrites it; this keeps the
+    full sequence, including suspensions and role changes.
+    """
+
+    __tablename__ = "audit_log"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    actor_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    action: Mapped[str] = mapped_column(String(48), index=True)
+    target_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    detail: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
 
 
 class Team(Base):

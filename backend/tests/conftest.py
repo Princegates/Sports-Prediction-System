@@ -10,11 +10,27 @@ os.environ["DATABASE_URL"] = f"sqlite:///{_tmp_dir}/test.db"
 
 import pytest
 
+from app.api import rate_limit
 from app.auth.passwords import hash_password
 from app.auth.tokens import create_token
 from app.config import get_settings
 from app.db.models import Base, User
 from app.db.session import SessionLocal, engine
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limits():
+    """The rate limiter keeps its counters in module-level state, and every
+    test hits the API from the same synthetic client address. Without this,
+    the 5-registrations-per-hour limit is shared across the whole suite and
+    whichever test happens to run sixth starts failing with a 429 -- a
+    failure that disappears when that test is run on its own, which is the
+    worst kind to debug. Tests that want to assert the limiter *does* fire
+    call it deliberately instead."""
+
+    rate_limit.reset()
+    yield
+    rate_limit.reset()
 
 
 @pytest.fixture()

@@ -32,6 +32,45 @@ class Settings(BaseSettings):
     secret_key: str = "dev-secret-change-me-in-production"
     session_ttl_seconds: int = 7 * 24 * 60 * 60
 
+    # Comma-separated list of browser origins allowed to call this API, or
+    # "*" for any. Tokens are sent in an Authorization header rather than a
+    # cookie, so "*" is not the credential-leak it would be for cookie auth
+    # -- but it does let any page on the internet script this API on a
+    # victim's behalf if it gets hold of a token, so a real deployment should
+    # name its own origins here.
+    cors_allow_origins: str = "*"
+
+    # Brute-force protection on the credential endpoints, counted per client
+    # IP in-process (see app/api/rate_limit.py for why that's the right
+    # trade-off at this scale and when it stops being one).
+    login_rate_limit_attempts: int = 10
+    login_rate_limit_window_seconds: int = 300
+    register_rate_limit_attempts: int = 5
+    register_rate_limit_window_seconds: int = 3600
+    chat_rate_limit_messages: int = 40
+    chat_rate_limit_window_seconds: int = 300
+
+    # --- Optional AI assistant rewriter (see app/assistant/llm.py) --------
+    # Left disabled so the assistant runs entirely locally at zero cost. The
+    # grounded pipeline produces the answer either way; this only affects
+    # phrasing.
+    assistant_llm_enabled: bool = False
+    assistant_llm_base_url: str = ""
+    assistant_llm_model: str = "llama3.2"
+    assistant_llm_api_key: str = ""
+    assistant_llm_timeout: float = 20.0
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        raw = (self.cors_allow_origins or "").strip()
+        if raw in ("", "*"):
+            return ["*"]
+        return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
+    @property
+    def secret_key_is_default(self) -> bool:
+        return self.secret_key == "dev-secret-change-me-in-production"
+
 
 @lru_cache
 def get_settings() -> Settings:

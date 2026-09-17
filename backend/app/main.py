@@ -1,18 +1,36 @@
+import logging
+
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.deps import get_current_user
 from app.api.routes_admin import router as admin_router
 from app.api.routes_auth import router as auth_router
+from app.api.routes_chat import router as chat_router
 from app.api.routes_matches import router as matches_router
 from app.api.routes_predictions import router as predictions_router
+from app.api.routes_public import router as public_router
 from app.api.routes_teams import router as teams_router
+from app.config import get_settings
 from app.db.migrate import ensure_schema
 from app.db.models import Base
 from app.db.session import engine
 
+logger = logging.getLogger(__name__)
+
 Base.metadata.create_all(bind=engine)
 ensure_schema(engine)
+
+settings = get_settings()
+
+if settings.secret_key_is_default:
+    # Session tokens are HMAC-signed with this value. Anyone who knows it can
+    # mint a token for any user id, including a superadmin -- and the default
+    # is published in this repository. Loud on purpose.
+    logger.warning(
+        "SECRET_KEY is the published development default -- session tokens can be forged by anyone "
+        "who has read this repository. Set SECRET_KEY in .env before exposing this API to a network."
+    )
 
 app = FastAPI(
     title="AI Football Prediction & Analytics System",
@@ -22,20 +40,23 @@ app = FastAPI(
         "data-quality and model-agreement scores -- probabilities are never presented "
         "as guarantees."
     ),
-    version="0.1.0",
+    version="0.2.0",
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origins_list,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# /api/auth/* (register/login) is intentionally open -- everything else
-# requires a logged-in, superadmin-approved account.
+# /api/auth/* (register/login/status) and /api/public/* (landing-page figures)
+# are intentionally open. Everything else requires a logged-in, superadmin-
+# approved account.
 app.include_router(auth_router)
+app.include_router(public_router)
 app.include_router(admin_router)
+app.include_router(chat_router)
 app.include_router(teams_router, dependencies=[Depends(get_current_user)])
 app.include_router(matches_router, dependencies=[Depends(get_current_user)])
 app.include_router(predictions_router, dependencies=[Depends(get_current_user)])
