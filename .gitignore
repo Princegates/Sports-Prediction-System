@@ -10,6 +10,7 @@ data/raw/
 node_modules/
 dist/
 .vite/
+*.tsbuildinfo
 frontend/.env
 .DS_Store
 *.log
