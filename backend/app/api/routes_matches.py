@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_match_or_404
@@ -22,6 +22,7 @@ def list_matches(
     league: str | None = None,
     date: dt.date | None = None,
     status: str | None = None,
+    team_id: int | None = None,
     db: Session = Depends(get_db),
 ) -> list[MatchOut]:
     stmt = select(Match)
@@ -33,6 +34,8 @@ def list_matches(
         start = dt.datetime.combine(date, dt.time.min)
         end = start + dt.timedelta(days=1)
         stmt = stmt.where(Match.date >= start, Match.date < end)
+    if team_id:
+        stmt = stmt.where(or_(Match.home_team_id == team_id, Match.away_team_id == team_id))
     matches = db.execute(stmt.order_by(Match.date.asc())).scalars()
     return [match_to_schema(m) for m in matches]
 
@@ -58,6 +61,20 @@ def get_match_prediction(
         prediction = build_prediction_for_match(db, match)
 
     return prediction_to_schema(prediction)
+
+
+@router.get("/{match_id}/prediction-history", response_model=list[PredictionOut])
+def get_match_prediction_history(match: Match = Depends(get_match_or_404), db: Session = Depends(get_db)) -> list[PredictionOut]:
+    """Every stored prediction snapshot for this match, oldest first (spec
+    section 37's "Prediction Timeline"). A match only has more than one entry
+    if a prediction was (re)generated more than once -- e.g. by re-running
+    the prediction scripts as the match approaches. This is real recorded
+    history, not synthesized checkpoints."""
+
+    rows = db.execute(
+        select(Prediction).where(Prediction.match_id == match.id).order_by(Prediction.created_at.asc())
+    ).scalars()
+    return [prediction_to_schema(p) for p in rows]
 
 
 @router.get("/{match_id}/statistics")

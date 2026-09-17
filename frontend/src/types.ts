@@ -58,3 +58,44 @@ export interface LivePrediction {
   global_outcome: GlobalOutcome;
   trigger_event: string;
 }
+
+export interface ModelBreakdown {
+  elo?: { home_win: number; draw: number; away_win: number; elo_diff: number };
+  poisson?: { home_win: number; draw: number; away_win: number; lambda_home: number; lambda_away: number };
+  ml?: { H: number; D: number; A: number } | null;
+}
+
+export interface TeamForm {
+  matches_played: number;
+  points_per_game: number;
+  goals_scored_avg: number;
+  goals_conceded_avg: number;
+  home_goals_scored_avg: number;
+  home_goals_conceded_avg: number;
+  away_goals_scored_avg: number;
+  away_goals_conceded_avg: number;
+  clean_sheet_rate: number;
+  rest_days: number;
+  recent_results: string[];
+}
+
+export interface MatchStatistics {
+  home_team: string;
+  away_team: string;
+  home_form: TeamForm;
+  away_form: TeamForm;
+}
+
+export interface HeadToHeadMatch {
+  date: string;
+  league: string;
+  home_team: string;
+  away_team: string;
+  home_score: number;
+  away_score: number;
+}
+
+export interface UnavailableResource {
+  status: "unavailable";
+  reason: string;
+}

@@ -8,15 +8,29 @@ from sqlalchemy.orm import Session
 from app.data.providers import football_data_co_uk as fdcu
 from app.data.providers import openfootball as ofb
 from app.data.providers import thesportsdb as sdb
+from app.data.team_matching import normalize_team_name
 from app.db.models import Match, Team
 
 
 def get_or_create_team(db: Session, name: str, league: str) -> Team:
     team = db.execute(select(Team).where(Team.name == name, Team.league == league)).scalar_one_or_none()
-    if team is None:
-        team = Team(name=name, league=league, aliases=[])
-        db.add(team)
-        db.flush()
+    if team is not None:
+        return team
+
+    # No exact match -- check whether this is just a naming variant of a
+    # team we already have for this league (see team_matching.py) before
+    # creating a duplicate that would fragment its history.
+    target_key = normalize_team_name(name)
+    for candidate in db.execute(select(Team).where(Team.league == league)).scalars():
+        if normalize_team_name(candidate.name) == target_key or name in candidate.aliases:
+            if name not in candidate.aliases:
+                candidate.aliases = [*candidate.aliases, name]
+                db.flush()
+            return candidate
+
+    team = Team(name=name, league=league, aliases=[])
+    db.add(team)
+    db.flush()
     return team
 
 

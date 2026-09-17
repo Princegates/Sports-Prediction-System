@@ -15,3 +15,5 @@ frontend/.env
 .DS_Store
 *.log
 .pytest_cache/
+backend/model_artifacts/
+*.joblib
