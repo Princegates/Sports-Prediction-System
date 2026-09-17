@@ -16,6 +16,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import requests
+
 from app.data.ingest import import_openfootball_season
 from app.data.providers.openfootball import LEAGUE_FILE_CODES
 from app.db.models import Base
@@ -32,7 +34,11 @@ def main() -> None:
     db = SessionLocal()
     try:
         for season in args.seasons:
-            result = import_openfootball_season(db, args.league, season)
+            try:
+                result = import_openfootball_season(db, args.league, season)
+            except requests.exceptions.HTTPError as exc:
+                print(f"[{args.league} {season}] not available upstream yet ({exc.response.status_code}), skipping")
+                continue
             print(f"[{args.league} {season}] inserted {result['inserted']}, updated {result['updated']}")
     finally:
         db.close()

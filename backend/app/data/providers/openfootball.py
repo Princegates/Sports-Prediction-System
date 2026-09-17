@@ -28,6 +28,12 @@ LEAGUE_FILE_CODES: dict[str, str] = {
     "French Ligue 1": "fr.1",
     "Dutch Eredivisie": "nl.1",
     "Portuguese Primeira Liga": "pt.1",
+    # Only a single completed season (2024-25) exists upstream for this one
+    # as of writing -- no current-season file yet, so there are no upcoming
+    # fixtures to pull from this source for it. Good enough for backtesting,
+    # not for "today's fixtures". See README for the TheSportsDB alternative
+    # for live Champions League / Europa League fixture lookup.
+    "UEFA Champions League": "uefa.cl",
 }
 
 
