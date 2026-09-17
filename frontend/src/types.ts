@@ -68,7 +68,14 @@ export interface User {
   name: string;
   role: UserRole;
   status: UserStatus;
+  theme: string | null;
+  accent_profile: string | null;
   created_at: string;
+}
+
+export interface MatchHistoryEntry {
+  match: MatchSummary;
+  viewed_at: string;
 }
 
 export interface AdminUser extends User {

@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import type { Prediction } from "../types";
+import { useTilt } from "../lib/useTilt";
 import { ConfidenceTag, MostLikelyOutcome } from "./MostLikelyOutcome";
 import { ProbabilityBar } from "./ProbabilityBar";
 
@@ -15,9 +16,16 @@ interface Props {
 
 export function PredictionCard({ prediction, homeTeam, awayTeam, kickoff, competition, isLive, liveScore }: Props) {
   const navigate = useNavigate();
+  const tilt = useTilt<HTMLDivElement>();
 
   return (
-    <div className="card match-card" onClick={() => navigate(`/match/${prediction.match_id}`)}>
+    <div
+      ref={tilt.ref}
+      className="card match-card tilt-card"
+      onClick={() => navigate(`/match/${prediction.match_id}`)}
+      onMouseMove={tilt.onMouseMove}
+      onMouseLeave={tilt.onMouseLeave}
+    >
       <div className="match-card-top">
         <span className="match-competition">{competition}</span>
         {isLive ? (

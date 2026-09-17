@@ -2,6 +2,7 @@ import type {
   AdminUser,
   HeadToHeadMatch,
   LivePrediction,
+  MatchHistoryEntry,
   MatchStatistics,
   MatchSummary,
   Prediction,
@@ -72,6 +73,10 @@ function post<T>(path: string, body: unknown): Promise<T> {
   return request(path, { method: "POST", body: JSON.stringify(body) });
 }
 
+function patch<T>(path: string, body: unknown): Promise<T> {
+  return request(path, { method: "PATCH", body: JSON.stringify(body) });
+}
+
 export function onAuthLogout(handler: () => void): () => void {
   window.addEventListener(AUTH_LOGOUT_EVENT, handler);
   return () => window.removeEventListener(AUTH_LOGOUT_EVENT, handler);
@@ -89,6 +94,18 @@ export function login(email: string, password: string): Promise<TokenResponse> {
 
 export function fetchMe(): Promise<User> {
   return get("/api/auth/me");
+}
+
+export function updatePreferences(payload: { theme?: string; accent_profile?: string }): Promise<User> {
+  return patch("/api/auth/preferences", payload);
+}
+
+export function recordMatchView(matchId: number): Promise<void> {
+  return request(`/api/auth/history/${matchId}`, { method: "POST" });
+}
+
+export function fetchMatchHistory(): Promise<MatchHistoryEntry[]> {
+  return get("/api/auth/history");
 }
 
 // --- Admin -------------------------------------------------------------

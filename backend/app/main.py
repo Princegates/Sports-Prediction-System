@@ -7,10 +7,12 @@ from app.api.routes_auth import router as auth_router
 from app.api.routes_matches import router as matches_router
 from app.api.routes_predictions import router as predictions_router
 from app.api.routes_teams import router as teams_router
+from app.db.migrate import ensure_schema
 from app.db.models import Base
 from app.db.session import engine
 
 Base.metadata.create_all(bind=engine)
+ensure_schema(engine)
 
 app = FastAPI(
     title="AI Football Prediction & Analytics System",

@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+import datetime as dt
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
-from app.api.schemas import LoginIn, RegisterIn, RegisterOut, TokenOut, UserOut
-from app.api.serializers import user_to_schema
+from app.api.schemas import LoginIn, MatchHistoryOut, PreferencesIn, RegisterIn, RegisterOut, TokenOut, UserOut
+from app.api.serializers import match_view_to_schema, user_to_schema
 from app.auth.passwords import hash_password, verify_password
 from app.auth.tokens import create_token
 from app.config import get_settings
-from app.db.models import User
+from app.db.models import Match, MatchView, User
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -68,3 +70,50 @@ def login(payload: LoginIn, db: Session = Depends(get_db)) -> TokenOut:
 @router.get("/me", response_model=UserOut)
 def me(user: User = Depends(get_current_user)) -> UserOut:
     return user_to_schema(user)
+
+
+@router.patch("/preferences", response_model=UserOut)
+def update_preferences(
+    payload: PreferencesIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+) -> UserOut:
+    """Persists this user's theme/color-profile choice to their own account
+    so it follows them across devices, instead of living only in one
+    browser's local storage."""
+    if payload.theme is not None:
+        user.theme = payload.theme
+    if payload.accent_profile is not None:
+        user.accent_profile = payload.accent_profile
+    db.commit()
+    db.refresh(user)
+    return user_to_schema(user)
+
+
+@router.post("/history/{match_id}", status_code=204)
+def record_match_view(match_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> None:
+    """Upserts a 'recently viewed' entry for this user so their own analysis
+    history is personal to their account, not shared across users."""
+    if db.get(Match, match_id) is None:
+        raise HTTPException(status_code=404, detail="Match not found")
+
+    view = db.execute(
+        select(MatchView).where(MatchView.user_id == user.id, MatchView.match_id == match_id)
+    ).scalar_one_or_none()
+    if view is None:
+        db.add(MatchView(user_id=user.id, match_id=match_id))
+    else:
+        view.viewed_at = dt.datetime.utcnow()
+    db.commit()
+
+
+@router.get("/history", response_model=list[MatchHistoryOut])
+def match_history(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[MatchHistoryOut]:
+    views = db.execute(
+        select(MatchView).where(MatchView.user_id == user.id).order_by(MatchView.viewed_at.desc()).limit(20)
+    ).scalars().all()
+
+    result = []
+    for view in views:
+        match = db.get(Match, view.match_id)
+        if match is not None:
+            result.append(match_view_to_schema(view, match))
+    return result

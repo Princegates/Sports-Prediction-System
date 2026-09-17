@@ -69,7 +69,19 @@ class UserOut(BaseModel):
     name: str
     role: str
     status: str
+    theme: str | None = None
+    accent_profile: str | None = None
     created_at: dt.datetime
+
+
+class PreferencesIn(BaseModel):
+    theme: str | None = None
+    accent_profile: str | None = None
+
+
+class MatchHistoryOut(BaseModel):
+    match: MatchOut
+    viewed_at: dt.datetime
 
 
 class AdminUserOut(UserOut):

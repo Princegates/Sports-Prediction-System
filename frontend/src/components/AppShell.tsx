@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { SearchCommand } from "./SearchCommand";
 import { AccentPicker } from "./AccentPicker";
@@ -41,8 +41,13 @@ function readStoredTheme(): Theme {
   }
 }
 
-function useTheme() {
+/** Every user has their own saved theme/accent -- once they actively change
+ * it here, it's pushed to their account (not just this browser) via
+ * onPersist, skipping the very first effect run so mounting doesn't
+ * immediately re-save the value it just read. */
+function useTheme(onPersist?: (theme: Theme) => void) {
   const [theme, setTheme] = useState<Theme>(readStoredTheme);
+  const firstRun = useRef(true);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -51,17 +56,28 @@ function useTheme() {
     } catch {
       // private-browsing / storage-disabled -- theme just won't persist
     }
+    if (firstRun.current) {
+      firstRun.current = false;
+      return;
+    }
+    onPersist?.(theme);
   }, [theme]);
 
   return [theme, setTheme] as const;
 }
 
-function useAccent() {
+function useAccent(onPersist?: (accent: string) => void) {
   const [accent, setAccent] = useState<string>(readStoredAccent);
+  const firstRun = useRef(true);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-accent", accent);
     storeAccent(accent);
+    if (firstRun.current) {
+      firstRun.current = false;
+      return;
+    }
+    onPersist?.(accent);
   }, [accent]);
 
   return [accent, setAccent] as const;
@@ -102,10 +118,13 @@ function UserMenu() {
 export function AppShell() {
   const [league, setLeague] = useState(LEAGUES[0]);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [theme, setTheme] = useTheme();
-  const [accent, setAccent] = useAccent();
-  const { user } = useAuth();
-  const navItems = user?.role === "superadmin" ? [...NAV_ITEMS, { to: "/admin", label: "Admin", icon: "⚙" }] : NAV_ITEMS;
+  const { user, setPreferences } = useAuth();
+  const [theme, setTheme] = useTheme((t) => setPreferences({ theme: t }).catch(() => {}));
+  const [accent, setAccent] = useAccent((a) => setPreferences({ accent_profile: a }).catch(() => {}));
+  const navItems =
+    user?.role === "superadmin"
+      ? [...NAV_ITEMS, { to: "/profile", label: "Profile", icon: "◍" }, { to: "/admin", label: "Admin", icon: "⚙" }]
+      : [...NAV_ITEMS, { to: "/profile", label: "Profile", icon: "◍" }];
 
   useEffect(() => {
     function handler(e: KeyboardEvent) {

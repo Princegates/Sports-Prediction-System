@@ -8,11 +8,13 @@ import {
   fetchPrediction,
   fetchPredictionHistory,
   fetchStatistics,
+  recordMatchView,
 } from "../api";
 import { AiExplanationPanel } from "../components/AiExplanationPanel";
 import { AskAboutMatch } from "../components/AskAboutMatch";
 import { ErrorState } from "../components/ErrorState";
 import { FormStrip } from "../components/FormStrip";
+import { GoalCelebration } from "../components/GoalCelebration";
 import { AiScanningState } from "../components/LoadingSkeleton";
 import { LiveEventControls } from "../components/LiveEventControls";
 import { ModelTransparency } from "../components/ModelTransparency";
@@ -45,6 +47,8 @@ export function MatchDetail() {
   const [homeRecent, setHomeRecent] = useState<MatchSummary[]>([]);
   const [awayRecent, setAwayRecent] = useState<MatchSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [goalTrigger, setGoalTrigger] = useState(0);
+  const [goalTeam, setGoalTeam] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -71,6 +75,9 @@ export function MatchDetail() {
           list.filter((x) => x.home_score !== null && new Date(x.date) < new Date(m.date)).sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 5);
         setHomeRecent(beforeKickoff(homeMatches));
         setAwayRecent(beforeKickoff(awayMatches));
+        recordMatchView(matchId).catch(() => {
+          // best-effort -- history is a convenience, never blocks the page
+        });
       })
       .catch((err) => !cancelled && setError(String(err)));
 
@@ -102,6 +109,7 @@ export function MatchDetail() {
 
   return (
     <div>
+      <GoalCelebration triggerKey={goalTrigger} team={goalTeam} />
       <Link className="back-link" to="/">
         ← Back to dashboard
       </Link>
@@ -272,7 +280,16 @@ export function MatchDetail() {
             currentMinute={latestLive?.minute ?? 1}
             currentHome={latestLive?.score_home ?? match.home_score ?? 0}
             currentAway={latestLive?.score_away ?? match.away_score ?? 0}
-            onEvent={(result) => setLive((prev) => [...prev, result])}
+            onEvent={(result) => {
+              if (result.trigger_event === "goal") {
+                const prevHome = latestLive?.score_home ?? match.home_score ?? 0;
+                const prevAway = latestLive?.score_away ?? match.away_score ?? 0;
+                if (result.score_home > prevHome) setGoalTeam(match.home_team.name);
+                else if (result.score_away > prevAway) setGoalTeam(match.away_team.name);
+                setGoalTrigger((k) => k + 1);
+              }
+              setLive((prev) => [...prev, result]);
+            }}
           />
           <div className="card card-pad">
             <h3 style={{ marginBottom: 4, fontSize: 15 }}>Live probability timeline</h3>

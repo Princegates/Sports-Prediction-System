@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Mascot } from "../components/Mascot";
 import { useAuth } from "../lib/AuthContext";
 
 export function Login() {
@@ -30,7 +31,8 @@ export function Login() {
   return (
     <div className="auth-shell">
       <div className="card card-pad auth-card">
-        <div className="brand" style={{ marginBottom: 24 }}>
+        <Mascot pose="idle" size={64} className="auth-mascot" />
+        <div className="brand" style={{ marginBottom: 24, justifyContent: "center" }}>
           <span className="brand-mark">AI</span>
           <span className="brand-text">
             <strong>Match Intelligence</strong>

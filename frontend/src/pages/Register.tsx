@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { registerAccount } from "../api";
+import { Mascot } from "../components/Mascot";
 
 export function Register() {
   const navigate = useNavigate();
@@ -30,7 +31,8 @@ export function Register() {
     return (
       <div className="auth-shell">
         <div className="card card-pad auth-card">
-          <h1 style={{ fontSize: 20, marginBottom: 10 }}>Account created</h1>
+          <Mascot pose="celebrating" size={72} className="auth-mascot" />
+          <h1 style={{ fontSize: 20, marginBottom: 10, textAlign: "center" }}>Account created</h1>
           <p style={{ fontSize: 13.5, color: "var(--text-secondary)" }}>{done}</p>
           <button className="btn" style={{ marginTop: 16 }} onClick={() => navigate("/login")}>
             Go to sign in

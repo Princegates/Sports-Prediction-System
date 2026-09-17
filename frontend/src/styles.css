@@ -2224,3 +2224,195 @@ table.admin-table {
     right: -8px;
   }
 }
+
+/* ==========================================================================
+   MASCOT
+   ========================================================================== */
+.mascot {
+  display: block;
+  margin: 0 auto;
+}
+
+.auth-mascot {
+  margin-bottom: 12px;
+}
+
+.mascot-idle .mascot-head {
+  animation: mascot-bob 3.2s ease-in-out infinite;
+  transform-origin: 48px 44px;
+}
+
+.mascot-thinking .mascot-head {
+  animation: mascot-tilt 2.4s ease-in-out infinite;
+  transform-origin: 48px 44px;
+}
+
+.mascot-thinking .mascot-arm.right {
+  animation: mascot-scratch 1.6s ease-in-out infinite;
+  transform-origin: 66px 48px;
+}
+
+.mascot-thinking .mascot-sparks circle {
+  animation: mascot-twinkle 1.4s ease-in-out infinite;
+}
+
+.mascot-celebrating .mascot-arm.left {
+  animation: mascot-wave-left 0.6s ease-in-out infinite;
+  transform-origin: 30px 46px;
+}
+
+.mascot-celebrating .mascot-arm.right {
+  animation: mascot-wave-right 0.6s ease-in-out infinite;
+  transform-origin: 66px 46px;
+}
+
+.mascot-celebrating .mascot-head {
+  animation: mascot-bounce 0.6s ease-in-out infinite;
+}
+
+.mascot-celebrating .mascot-sparks circle {
+  animation: mascot-twinkle 0.9s ease-in-out infinite;
+}
+
+.mascot-antenna-dot {
+  animation: mascot-twinkle 2s ease-in-out infinite;
+}
+
+@keyframes mascot-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2.5px); }
+}
+
+@keyframes mascot-tilt {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(-4deg); }
+}
+
+@keyframes mascot-scratch {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(-12deg); }
+}
+
+@keyframes mascot-wave-left {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(-18deg); }
+}
+
+@keyframes mascot-wave-right {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(18deg); }
+}
+
+@keyframes mascot-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes mascot-twinkle {
+  0%, 100% { opacity: 0.4; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+/* ==========================================================================
+   3D TILT MICRO-INTERACTION
+   ========================================================================== */
+.tilt-card {
+  transition: transform 0.12s ease-out, border-color 0.15s ease;
+  transform-style: preserve-3d;
+  will-change: transform;
+  position: relative;
+  overflow: hidden;
+}
+
+.tilt-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  background: radial-gradient(circle at var(--glare-x, 50%) var(--glare-y, 50%), rgba(255, 255, 255, 0.08), transparent 55%);
+}
+
+.tilt-card:hover::before {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tilt-card {
+    transition: none;
+  }
+}
+
+/* ==========================================================================
+   GOAL CELEBRATION
+   ========================================================================== */
+.goal-celebration {
+  position: fixed;
+  top: 90px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 80;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.goal-celebration-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-pop);
+  padding: 10px 20px 10px 10px;
+  animation: goal-card-in 0.3s ease-out;
+}
+
+.goal-celebration-card strong {
+  color: var(--good);
+  font-size: 15px;
+}
+
+.confetti-burst {
+  position: relative;
+  width: 4px;
+  height: 4px;
+}
+
+.confetti-piece {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  opacity: 0;
+  animation: confetti-fly 1.1s ease-out forwards;
+  animation-delay: var(--delay, 0s);
+  transform: rotate(var(--angle, 0deg));
+}
+
+@keyframes confetti-fly {
+  0% {
+    opacity: 1;
+    transform: rotate(var(--angle, 0deg)) translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(var(--angle, 0deg)) translateY(-70px) scale(0.4);
+  }
+}
+
+@keyframes goal-card-in {
+  0% { opacity: 0; transform: translateY(-10px) scale(0.94); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .confetti-piece {
+    display: none;
+  }
+}

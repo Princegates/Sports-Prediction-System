@@ -42,7 +42,28 @@ class User(Base):
     approved_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     approved_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
+    # Personal display preferences, carried with the account (not just the
+    # browser) so they follow the user across devices.
+    theme: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    accent_profile: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+
+class MatchView(Base):
+    """Records that a user opened a match's AI analysis, for their personal
+    'recently viewed' history. Upserted per (user, match) so re-opening a
+    match bumps it to the top instead of growing an unbounded log.
+    """
+
+    __tablename__ = "match_views"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    match_id: Mapped[int] = mapped_column(ForeignKey("matches.id"), index=True)
+    viewed_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+    __table_args__ = (UniqueConstraint("user_id", "match_id", name="uq_match_view_user_match"),)
 
 
 class Team(Base):

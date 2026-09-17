@@ -8,6 +8,7 @@ import { MatchDetail } from "./pages/MatchDetail";
 import { Predictions } from "./pages/Predictions";
 import { Register } from "./pages/Register";
 import { AdminUsers } from "./pages/AdminUsers";
+import { Profile } from "./pages/Profile";
 import { TeamPage } from "./pages/TeamPage";
 
 export default function App() {
@@ -23,6 +24,7 @@ export default function App() {
           <Route path="/predictions" element={<Predictions />} />
           <Route path="/live" element={<Live />} />
           <Route path="/teams/:id" element={<TeamPage />} />
+          <Route path="/profile" element={<Profile />} />
 
           <Route element={<RequireSuperadmin />}>
             <Route path="/admin" element={<AdminUsers />} />
