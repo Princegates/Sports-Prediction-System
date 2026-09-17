@@ -128,8 +128,8 @@ def predict_live(
         "away_win": away_win,
         "over_probabilities": over_totals,
         "btts_yes": btts_yes,
-        "global_outcome_market": global_outcome.market if global_outcome else "N/A",
-        "global_outcome_selection": global_outcome.selection if global_outcome else "N/A",
+        "global_outcome_market": global_outcome.market if global_outcome else "Insufficient Data",
+        "global_outcome_selection": global_outcome.selection if global_outcome else "Not enough match history yet",
         "global_outcome_probability": global_outcome.probability if global_outcome else 0.0,
     }
 

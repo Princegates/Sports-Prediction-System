@@ -7,23 +7,32 @@ the single **Global Most-Likely Outcome** for each match.
 
 ## Zero-cost by design
 
-Every data source and every piece of infrastructure in this build is free:
+Every data source and every piece of infrastructure in this build is free.
+There are two interchangeable historical/fixture providers -- use whichever
+one your network can actually reach (some sandboxes/corporate networks only
+allow GitHub, in which case openfootball is the one that works):
 
 | Need                     | Source                                                                 | Cost |
 |---------------------------|-------------------------------------------------------------------------|------|
-| Historical results (10+ seasons, 20+ leagues) | [football-data.co.uk](https://www.football-data.co.uk/data.php) CSV downloads — no signup, no key | Free |
-| Upcoming fixtures         | [TheSportsDB](https://www.thesportsdb.com/api.php) public test key (`3`) | Free |
+| Historical results + real fixtures, one source | [openfootball/football.json](https://github.com/openfootball/football.json) on GitHub — no signup, no key, one JSON file per league/season with both played and not-yet-played matches | Free |
+| Historical results (10+ seasons, 20+ leagues) — alternative | [football-data.co.uk](https://www.football-data.co.uk/data.php) CSV downloads — no signup, no key | Free |
+| Upcoming fixtures — alternative | [TheSportsDB](https://www.thesportsdb.com/api.php) public test key (`3`) | Free |
 | Database                  | SQLite by default (file on disk); swap in Postgres via `DATABASE_URL` if you want | Free (self-hosted) |
 | ML / stats                | scikit-learn, numpy, pandas (all open-source, run locally)              | Free |
 | Backend                   | FastAPI + Uvicorn                                                       | Free |
 | Frontend                  | React + Vite                                                             | Free |
 
-No API keys that require a credit card are used anywhere. `TheSportsDB` test
-key `3` is rate-limited but sufficient for fixture discovery; if you later
-register your own free key, drop it into `.env` and nothing else changes.
-There is no dependency on a paid odds/livescore feed — the system is
-market-independent (it never looks at bookmaker odds to form its own
-predictions), matching the spec's design goal.
+No API keys that require a credit card are used anywhere. There is no
+dependency on a paid odds/livescore feed — the system is market-independent
+(it never looks at bookmaker odds to form its own predictions), matching the
+spec's design goal.
+
+This has been run end-to-end on real data: real Premier League and La Liga
+results back to 2019, real Elo/Poisson/Gradient-Boosting training, a real
+temporal backtest, and real predictions for actual scheduled fixtures pulled
+straight from `openfootball/football.json` (including a same-day match, so
+the "today's matches" dashboard is showing a genuine fixture, not a
+placeholder).
 
 Live in-play data (second-by-second stats from a paid provider) is the one
 piece of the SRS that genuinely has no free equivalent at professional
@@ -36,9 +45,11 @@ prediction logic.
 
 ## What's implemented
 
-- **Data pipeline** (`backend/app/data`): imports historical match results
-  from football-data.co.uk into the database; pulls upcoming fixtures from
-  TheSportsDB.
+- **Data pipeline** (`backend/app/data`): three interchangeable providers --
+  `openfootball.py` (recommended: one JSON file per league/season with both
+  historical results and genuine not-yet-played fixtures), plus
+  `football_data_co_uk.py` (historical results only) and `thesportsdb.py`
+  (fixture lookup only) as alternatives.
 - **Elo model** (`prediction_models/elo.py`): full match-by-match Elo rating
   system with home advantage and a margin-of-victory multiplier, converted to
   calibrated 1X2 probabilities via a fitted logistic model on Elo difference.
@@ -97,18 +108,27 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
 
-# 1. Import a few seasons of free historical data (no key needed)
-python scripts/fetch_historical_data.py --league E0 --seasons 2122 2223 2324 2425
+# 1. Import real historical + current-season data (played AND upcoming
+#    fixtures, in one shot -- no key, works anywhere that can reach GitHub)
+python scripts/fetch_openfootball_data.py --league "English Premier League" \
+    --seasons 2019-20 2020-21 2021-22 2022-23 2023-24 2024-25 2025-26 2026-27
 
-# 2. Train the models + run a temporal backtest
-python scripts/backtest.py --league E0
+# 2. Train the models + run a temporal backtest (accuracy/log-loss/Brier/calibration)
+python scripts/backtest.py --league-name "English Premier League"
 
-# 3. Pull upcoming fixtures (free TheSportsDB test key by default) and generate predictions
-python scripts/build_predictions.py --league "English Premier League"
+# 3. Generate predictions for the real scheduled fixtures step 1 already imported
+python scripts/generate_predictions.py --league "English Premier League" --days-ahead 10
 
 # 4. Start the API
 uvicorn app.main:app --reload
 ```
+
+Prefer football-data.co.uk + TheSportsDB instead (e.g. GitHub isn't reachable
+but those are)? Use `scripts/fetch_historical_data.py` (`--league E0 --seasons
+2223 2324 2425`, football-data.co.uk's own season codes) and
+`scripts/build_predictions.py --league "English Premier League"` in place of
+steps 1 and 3, and `--league E0` instead of `--league-name "..."` in step 2 --
+everything downstream (models, API, frontend) is identical either way.
 
 ```bash
 cd frontend
@@ -120,10 +140,10 @@ npm run dev   # set VITE_API_URL if the backend isn't on localhost:8000
 
 ```bash
 docker compose up --build
-# then, one time, run the same three data/training steps inside the backend container:
-docker compose exec backend python scripts/fetch_historical_data.py --league E0 --seasons 2223 2324 2425
-docker compose exec backend python scripts/backtest.py --league E0
-docker compose exec backend python scripts/build_predictions.py --league "English Premier League"
+# then, one time, run the same data/training steps inside the backend container:
+docker compose exec backend python scripts/fetch_openfootball_data.py --league "English Premier League" --seasons 2022-23 2023-24 2024-25 2025-26 2026-27
+docker compose exec backend python scripts/backtest.py --league-name "English Premier League"
+docker compose exec backend python scripts/generate_predictions.py --league "English Premier League" --days-ahead 10
 ```
 
 Frontend on `:4173`, API on `:8000`. Both images are plain open-source

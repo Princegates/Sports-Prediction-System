@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.data.providers import football_data_co_uk as fdcu
+from app.data.providers import openfootball as ofb
 from app.data.providers import thesportsdb as sdb
 from app.db.models import Match, Team
 
@@ -101,6 +102,59 @@ def import_upcoming_fixtures(db: Session, league_name: str, api_key: str = "3") 
 
     db.commit()
     return inserted
+
+
+def import_openfootball_season(db: Session, league_name: str, season: str) -> dict[str, int]:
+    """Import one season from openfootball/football.json. Each match is
+    either FINISHED (score present) or SCHEDULED (score absent -- a genuine
+    not-yet-played fixture, not a placeholder). Re-running this is what
+    turns a previously-SCHEDULED match into FINISHED once it's actually
+    been played and the source file has been updated upstream."""
+
+    raw_matches = ofb.fetch_season(league_name, season)
+
+    inserted = updated = 0
+    for rm in raw_matches:
+        home = get_or_create_team(db, rm.home_team, league_name)
+        away = get_or_create_team(db, rm.away_team, league_name)
+
+        existing = db.execute(
+            select(Match).where(
+                Match.league == league_name,
+                Match.season == season,
+                Match.home_team_id == home.id,
+                Match.away_team_id == away.id,
+            )
+        ).scalar_one_or_none()
+
+        if existing is None:
+            db.add(
+                Match(
+                    league=league_name,
+                    season=season,
+                    date=rm.date,
+                    home_team_id=home.id,
+                    away_team_id=away.id,
+                    home_score=rm.home_score,
+                    away_score=rm.away_score,
+                    ht_home_score=rm.ht_home_score,
+                    ht_away_score=rm.ht_away_score,
+                    status="FINISHED" if rm.is_played else "SCHEDULED",
+                    source="openfootball/football.json",
+                )
+            )
+            inserted += 1
+        elif rm.is_played and existing.home_score is None:
+            existing.home_score = rm.home_score
+            existing.away_score = rm.away_score
+            existing.ht_home_score = rm.ht_home_score
+            existing.ht_away_score = rm.ht_away_score
+            existing.status = "FINISHED"
+            existing.date = rm.date
+            updated += 1
+
+    db.commit()
+    return {"inserted": inserted, "updated": updated}
 
 
 def _season_label(date: dt.datetime) -> str:

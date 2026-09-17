@@ -18,6 +18,15 @@ import joblib
 import numpy as np
 from sklearn.isotonic import IsotonicRegression
 
+# Isotonic regression can legitimately fit a hard 0 (or 1) at the extremes
+# when the validation split happens to contain zero occurrences of a rare
+# outcome down there. Football has no truly impossible or certain outcome
+# short of the match not being played, so every calibrated probability is
+# floored/capped away from the edges (spec section 62: never represent an
+# outcome as a guarantee -- that includes an implicit "impossible").
+MIN_PROB = 0.01
+MAX_PROB = 0.99
+
 
 class MarketCalibrator:
     """One isotonic regressor per outcome label, e.g. {"H": ..., "D": ..., "A": ...}
@@ -39,7 +48,8 @@ class MarketCalibrator:
         calibrated = {}
         for label, p in raw_probs.items():
             reg = self.regressors.get(label)
-            calibrated[label] = float(reg.predict([p])[0]) if reg else p
+            value = float(reg.predict([p])[0]) if reg else p
+            calibrated[label] = min(max(value, MIN_PROB), MAX_PROB)
 
         total = sum(calibrated.values())
         if total > 0:

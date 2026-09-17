@@ -67,12 +67,13 @@ def expected_calibration_error(probs: list[float], actual: list[int], n_bins: in
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--league", default="E0", choices=sorted(LEAGUE_CODES))
+    parser.add_argument("--league", default="E0", choices=sorted(LEAGUE_CODES), help="football-data.co.uk code (ignored if --league-name is given)")
+    parser.add_argument("--league-name", default=None, help='Exact league name already in the DB, e.g. "English Premier League" (use this for data imported via fetch_openfootball_data.py)')
     parser.add_argument("--train-fraction", type=float, default=0.70)
     parser.add_argument("--validation-fraction", type=float, default=0.15)
     args = parser.parse_args()
 
-    league_name = LEAGUE_CODES[args.league]
+    league_name = args.league_name or LEAGUE_CODES[args.league]
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
 

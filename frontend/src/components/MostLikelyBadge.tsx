@@ -6,6 +6,14 @@ interface Props {
 }
 
 export function MostLikelyBadge({ outcome, confidence }: Props) {
+  if (outcome.market === "Insufficient Data") {
+    return (
+      <div className="badge low">
+        <span>Not enough match history yet for a confident pick on this fixture</span>
+      </div>
+    );
+  }
+
   return (
     <div className={`badge ${confidence.toLowerCase()}`}>
       <span className="star">★</span>
