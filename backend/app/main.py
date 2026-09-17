@@ -1,6 +1,9 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.deps import get_current_user
+from app.api.routes_admin import router as admin_router
+from app.api.routes_auth import router as auth_router
 from app.api.routes_matches import router as matches_router
 from app.api.routes_predictions import router as predictions_router
 from app.api.routes_teams import router as teams_router
@@ -27,9 +30,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(teams_router)
-app.include_router(matches_router)
-app.include_router(predictions_router)
+# /api/auth/* (register/login) is intentionally open -- everything else
+# requires a logged-in, superadmin-approved account.
+app.include_router(auth_router)
+app.include_router(admin_router)
+app.include_router(teams_router, dependencies=[Depends(get_current_user)])
+app.include_router(matches_router, dependencies=[Depends(get_current_user)])
+app.include_router(predictions_router, dependencies=[Depends(get_current_user)])
 
 
 @app.get("/api/health")

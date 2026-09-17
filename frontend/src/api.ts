@@ -1,4 +1,5 @@
 import type {
+  AdminUser,
   HeadToHeadMatch,
   LivePrediction,
   MatchStatistics,
@@ -6,18 +7,113 @@ import type {
   Prediction,
   Team,
   TeamForm,
+  TokenResponse,
   UnavailableResource,
+  User,
 } from "./types";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+export const TOKEN_STORAGE_KEY = "auth_token";
 
-async function get<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`);
-  if (!response.ok) {
-    throw new Error(`${path} failed: ${response.status} ${response.statusText}`);
+export function getStoredToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
   }
+}
+
+export function storeToken(token: string): void {
+  try {
+    localStorage.setItem(TOKEN_STORAGE_KEY, token);
+  } catch {
+    // storage disabled -- session just won't persist across reloads
+  }
+}
+
+export function clearStoredToken(): void {
+  try {
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+/** Fired when a request comes back 401 so AuthContext can clear state and
+ * redirect to /login, even for calls made outside of a component. */
+const AUTH_LOGOUT_EVENT = "auth:logout";
+
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { ...(options.headers as Record<string, string>) };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (options.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
+
+  const response = await fetch(`${API_URL}${path}`, { ...options, headers });
+
+  if (response.status === 401) {
+    clearStoredToken();
+    window.dispatchEvent(new Event(AUTH_LOGOUT_EVENT));
+    throw new Error("Session expired -- please log in again.");
+  }
+  if (!response.ok) {
+    const detail = await response.json().catch(() => null);
+    throw new Error(detail?.detail ?? `${path} failed: ${response.status} ${response.statusText}`);
+  }
+  if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
+
+function get<T>(path: string): Promise<T> {
+  return request(path);
+}
+
+function post<T>(path: string, body: unknown): Promise<T> {
+  return request(path, { method: "POST", body: JSON.stringify(body) });
+}
+
+export function onAuthLogout(handler: () => void): () => void {
+  window.addEventListener(AUTH_LOGOUT_EVENT, handler);
+  return () => window.removeEventListener(AUTH_LOGOUT_EVENT, handler);
+}
+
+// --- Auth ------------------------------------------------------------
+
+export function registerAccount(payload: { email: string; name: string; password: string; payment_reference?: string }) {
+  return post<{ message: string; user: User }>("/api/auth/register", payload);
+}
+
+export function login(email: string, password: string): Promise<TokenResponse> {
+  return post("/api/auth/login", { email, password });
+}
+
+export function fetchMe(): Promise<User> {
+  return get("/api/auth/me");
+}
+
+// --- Admin -------------------------------------------------------------
+
+export function fetchAdminUsers(status?: string): Promise<AdminUser[]> {
+  return get(`/api/admin/users${status ? `?status=${status}` : ""}`);
+}
+
+export function approveUser(userId: number, paymentReference?: string): Promise<AdminUser> {
+  return post(`/api/admin/users/${userId}/approve`, { payment_reference: paymentReference });
+}
+
+export function suspendUser(userId: number): Promise<AdminUser> {
+  return post(`/api/admin/users/${userId}/suspend`, {});
+}
+
+export function promoteUser(userId: number): Promise<AdminUser> {
+  return post(`/api/admin/users/${userId}/promote`, {});
+}
+
+export function demoteUser(userId: number): Promise<AdminUser> {
+  return post(`/api/admin/users/${userId}/demote`, {});
+}
+
+// --- Predictions / matches / teams --------------------------------------
 
 export function fetchTodaysPredictions(league?: string): Promise<Prediction[]> {
   const query = league ? `?league=${encodeURIComponent(league)}` : "";
@@ -91,19 +187,11 @@ export function fetchHeadToHead(teamId: number, opponentId: number, limit = 10):
   return get(`/api/teams/${teamId}/head-to-head/${opponentId}?limit=${limit}`);
 }
 
-export async function postLiveEvent(
+export function postLiveEvent(
   matchId: number,
   payload: { minute: number; score_home: number; score_away: number; trigger_event: string },
 ): Promise<LivePrediction> {
-  const response = await fetch(`${API_URL}/api/matches/${matchId}/live-event`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!response.ok) {
-    throw new Error(`live-event failed: ${response.status} ${response.statusText}`);
-  }
-  return response.json();
+  return post(`/api/matches/${matchId}/live-event`, payload);
 }
 
 export type { TeamForm } from "./types";

@@ -59,6 +59,30 @@ export interface LivePrediction {
   trigger_event: string;
 }
 
+export type UserRole = "user" | "superadmin";
+export type UserStatus = "pending" | "active" | "suspended";
+
+export interface User {
+  id: number;
+  email: string;
+  name: string;
+  role: UserRole;
+  status: UserStatus;
+  created_at: string;
+}
+
+export interface AdminUser extends User {
+  payment_reference: string | null;
+  approved_by_user_id: number | null;
+  approved_at: string | null;
+}
+
+export interface TokenResponse {
+  access_token: string;
+  token_type: string;
+  user: User;
+}
+
 export interface ModelBreakdown {
   elo?: { home_win: number; draw: number; away_win: number; elo_diff: number };
   poisson?: { home_win: number; draw: number; away_win: number; lambda_home: number; lambda_away: number };

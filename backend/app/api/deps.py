@@ -1,10 +1,18 @@
-from fastapi import Depends, HTTPException
+from fastapi import Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
-from app.db.models import Match, Team
+from app.auth.tokens import verify_token
+from app.config import get_settings
+from app.db.models import Match, Team, User
 from app.db.session import get_db
 
-__all__ = ["get_db", "get_match_or_404", "get_team_or_404"]
+__all__ = [
+    "get_db",
+    "get_match_or_404",
+    "get_team_or_404",
+    "get_current_user",
+    "require_superadmin",
+]
 
 
 def get_match_or_404(match_id: int, db: Session = Depends(get_db)) -> Match:
@@ -19,3 +27,31 @@ def get_team_or_404(team_id: int, db: Session = Depends(get_db)) -> Team:
     if team is None:
         raise HTTPException(status_code=404, detail=f"Team {team_id} not found")
     return team
+
+
+def get_current_user(authorization: str | None = Header(default=None), db: Session = Depends(get_db)) -> User:
+    """Requires a valid ``Authorization: Bearer <token>`` header for an
+    account whose status is ``active`` -- i.e. registered, logged in, and
+    approved by a superadmin. Used as a router-level dependency so the whole
+    API (other than /api/auth/*) requires a real account."""
+
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    token = authorization.removeprefix("Bearer ").strip()
+    payload = verify_token(token, get_settings().secret_key)
+    if payload is None:
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+
+    user = db.get(User, payload.get("user_id"))
+    if user is None:
+        raise HTTPException(status_code=401, detail="Account no longer exists")
+    if user.status != "active":
+        raise HTTPException(status_code=403, detail=f"Account is {user.status}, not active")
+    return user
+
+
+def require_superadmin(user: User = Depends(get_current_user)) -> User:
+    if user.role != "superadmin":
+        raise HTTPException(status_code=403, detail="Superadmin access required")
+    return user

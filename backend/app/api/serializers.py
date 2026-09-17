@@ -1,9 +1,22 @@
-from app.api.schemas import GlobalOutcomeOut, LivePredictionOut, MatchOut, PredictionOut, TeamOut
-from app.db.models import LivePrediction, Match, Prediction, Team
+from app.api.schemas import AdminUserOut, GlobalOutcomeOut, LivePredictionOut, MatchOut, PredictionOut, TeamOut, UserOut
+from app.db.models import LivePrediction, Match, Prediction, Team, User
 
 
 def team_to_schema(team: Team) -> TeamOut:
     return TeamOut(id=team.id, name=team.name, league=team.league, country=team.country)
+
+
+def user_to_schema(user: User) -> UserOut:
+    return UserOut(id=user.id, email=user.email, name=user.name, role=user.role, status=user.status, created_at=user.created_at)
+
+
+def admin_user_to_schema(user: User) -> AdminUserOut:
+    return AdminUserOut(
+        **user_to_schema(user).model_dump(),
+        payment_reference=user.payment_reference,
+        approved_by_user_id=user.approved_by_user_id,
+        approved_at=user.approved_at,
+    )
 
 
 def match_to_schema(match: Match) -> MatchOut:

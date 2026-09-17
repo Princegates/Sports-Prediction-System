@@ -18,6 +18,33 @@ class Base(DeclarativeBase):
     pass
 
 
+class User(Base):
+    """A registered account. New accounts start in ``pending`` status and
+    can't log in until a superadmin approves them (spec: manual payment
+    confirmation via Hubtel comes later -- ``payment_reference`` is where a
+    user-submitted transaction reference lives in the meantime, and
+    ``approved_by_user_id``/``approved_at`` record who signed off and when).
+    """
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    password_hash: Mapped[str] = mapped_column(String(255))
+
+    # "user" or "superadmin"
+    role: Mapped[str] = mapped_column(String(16), default="user")
+    # "pending" (awaiting approval) / "active" / "suspended"
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+
+    payment_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    approved_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    approved_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+
 class Team(Base):
     __tablename__ = "teams"
 

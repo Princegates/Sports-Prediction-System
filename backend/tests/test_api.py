@@ -55,13 +55,23 @@ def test_health_endpoint():
     assert response.json() == {"status": "ok"}
 
 
-def test_match_prediction_endpoint(db_session):
+def test_protected_endpoint_requires_auth(db_session):
     from app.main import app
 
     _, upcoming = _seed_league(db_session)
 
     client = TestClient(app)
     response = client.get(f"/api/matches/{upcoming.id}/prediction")
+    assert response.status_code == 401
+
+
+def test_match_prediction_endpoint(db_session, auth_headers):
+    from app.main import app
+
+    _, upcoming = _seed_league(db_session)
+
+    client = TestClient(app)
+    response = client.get(f"/api/matches/{upcoming.id}/prediction", headers=auth_headers)
     assert response.status_code == 200
 
     body = response.json()
@@ -72,37 +82,37 @@ def test_match_prediction_endpoint(db_session):
     assert "negative" in body["explanation"]
 
 
-def test_list_matches_endpoint(db_session):
+def test_list_matches_endpoint(db_session, auth_headers):
     from app.main import app
 
     _seed_league(db_session)
 
     client = TestClient(app)
-    response = client.get("/api/matches", params={"league": "Test League"})
+    response = client.get("/api/matches", params={"league": "Test League"}, headers=auth_headers)
     assert response.status_code == 200
     assert len(response.json()) == 17  # 16 finished + 1 scheduled
 
 
-def test_list_matches_filters_by_team(db_session):
+def test_list_matches_filters_by_team(db_session, auth_headers):
     from app.main import app
 
     teams, _ = _seed_league(db_session)
 
     client = TestClient(app)
-    response = client.get("/api/matches", params={"league": "Test League", "team_id": teams[0].id})
+    response = client.get("/api/matches", params={"league": "Test League", "team_id": teams[0].id}, headers=auth_headers)
     assert response.status_code == 200
     body = response.json()
     assert len(body) > 0
     assert all(m["home_team"]["id"] == teams[0].id or m["away_team"]["id"] == teams[0].id for m in body)
 
 
-def test_head_to_head_endpoint(db_session):
+def test_head_to_head_endpoint(db_session, auth_headers):
     from app.main import app
 
     teams, _ = _seed_league(db_session)
 
     client = TestClient(app)
-    response = client.get(f"/api/teams/{teams[0].id}/head-to-head/{teams[1].id}")
+    response = client.get(f"/api/teams/{teams[0].id}/head-to-head/{teams[1].id}", headers=auth_headers)
     assert response.status_code == 200
     meetings = response.json()
     assert len(meetings) > 0
@@ -110,16 +120,16 @@ def test_head_to_head_endpoint(db_session):
         assert {m["home_team"], m["away_team"]} == {"Club 0", "Club 1"}
 
 
-def test_prediction_history_endpoint(db_session):
+def test_prediction_history_endpoint(db_session, auth_headers):
     from app.main import app
 
     _, upcoming = _seed_league(db_session)
 
     client = TestClient(app)
-    first = client.get(f"/api/matches/{upcoming.id}/prediction")
+    first = client.get(f"/api/matches/{upcoming.id}/prediction", headers=auth_headers)
     assert first.status_code == 200
 
-    history = client.get(f"/api/matches/{upcoming.id}/prediction-history")
+    history = client.get(f"/api/matches/{upcoming.id}/prediction-history", headers=auth_headers)
     assert history.status_code == 200
     body = history.json()
     assert len(body) == 1

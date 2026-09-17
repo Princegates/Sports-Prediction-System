@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     # ratings enough to include a prediction in "high confidence" output.
     min_matches_for_confidence: int = 10
 
+    # Signs session tokens (app/auth/tokens.py). This default is fine for
+    # local development; set your own in .env for any real deployment so
+    # sessions can't be forged by anyone who has read this file.
+    secret_key: str = "dev-secret-change-me-in-production"
+    session_ttl_seconds: int = 7 * 24 * 60 * 60
+
 
 @lru_cache
 def get_settings() -> Settings:

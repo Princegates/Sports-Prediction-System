@@ -51,6 +51,48 @@ class PredictionOut(BaseModel):
     model_breakdown: dict
 
 
+class RegisterIn(BaseModel):
+    email: str
+    name: str
+    password: str
+    payment_reference: str | None = None
+
+
+class LoginIn(BaseModel):
+    email: str
+    password: str
+
+
+class UserOut(BaseModel):
+    id: int
+    email: str
+    name: str
+    role: str
+    status: str
+    created_at: dt.datetime
+
+
+class AdminUserOut(UserOut):
+    payment_reference: str | None = None
+    approved_by_user_id: int | None = None
+    approved_at: dt.datetime | None = None
+
+
+class TokenOut(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserOut
+
+
+class RegisterOut(BaseModel):
+    message: str
+    user: UserOut
+
+
+class ApproveIn(BaseModel):
+    payment_reference: str | None = None
+
+
 class LiveEventIn(BaseModel):
     minute: int
     score_home: int
