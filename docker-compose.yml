@@ -1,0 +1,25 @@
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - backend-data:/data
+      - model-artifacts:/app/model_artifacts
+    environment:
+      DATABASE_URL: sqlite:////data/sports_prediction.db
+      THESPORTSDB_API_KEY: "3"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:8000
+    ports:
+      - "4173:4173"
+    depends_on:
+      - backend
+
+volumes:
+  backend-data:
+  model-artifacts:
