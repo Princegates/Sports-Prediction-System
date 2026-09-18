@@ -57,7 +57,7 @@ export function AdminUsers() {
   const [codeBusy, setCodeBusy] = useState(false);
   const [justCreated, setJustCreated] = useState<AccessCode | null>(null);
   const [durationDays, setDurationDays] = useState("30");
-  const [redemptionLimit, setRedemptionLimit] = useState("1");
+  const [sendByEmail, setSendByEmail] = useState(true);
   const [assignedEmail, setAssignedEmail] = useState("");
   const [codeNotes, setCodeNotes] = useState("");
 
@@ -111,9 +111,9 @@ export function AdminUsers() {
     try {
       const created = await createAccessCode({
         duration_days: Number(durationDays),
-        redemption_limit: Number(redemptionLimit) || 1,
-        assigned_user_email: assignedEmail.trim() || undefined,
+        assigned_user_email: assignedEmail.trim(),
         notes: codeNotes.trim() || undefined,
+        send_email: sendByEmail,
       });
       setJustCreated(created);
       setAssignedEmail("");
@@ -318,7 +318,23 @@ export function AdminUsers() {
           <div className="status-result-explainer" style={{ marginBottom: 16 }}>
             <h3>Code generated -- shown once</h3>
             <p style={{ fontFamily: "monospace", fontSize: 18, letterSpacing: 1 }}>{justCreated.code}</p>
-            <p style={{ margin: 0 }}>Copy it now -- every later view shows it masked.</p>
+            {justCreated.emailed ? (
+              <p style={{ margin: 0 }}>
+                Emailed to <strong>{justCreated.assigned_email}</strong>. Copy it anyway -- every later
+                view shows it masked.
+              </p>
+            ) : (
+              <>
+                <p style={{ margin: 0 }}>Copy it now -- every later view shows it masked.</p>
+                {/* The code is valid either way; a failed send must not read as a failed
+                    generation, or an admin will reissue a code that was never broken. */}
+                {justCreated.email_error && (
+                  <p style={{ margin: "8px 0 0", color: "var(--warning, #c98a00)" }}>
+                    Not emailed: {justCreated.email_error} Send it to them yourself.
+                  </p>
+                )}
+              </>
+            )}
           </div>
         )}
 
@@ -328,16 +344,27 @@ export function AdminUsers() {
             <input type="number" min={1} required value={durationDays} onChange={(e) => setDurationDays(e.target.value)} />
           </label>
           <label>
-            Redemption limit
-            <input type="number" min={1} required value={redemptionLimit} onChange={(e) => setRedemptionLimit(e.target.value)} />
-          </label>
-          <label>
-            Assign to email <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(optional)</span>
-            <input type="email" value={assignedEmail} onChange={(e) => setAssignedEmail(e.target.value)} placeholder="user@example.com" />
+            Member's email
+            <input
+              type="email"
+              required
+              value={assignedEmail}
+              onChange={(e) => setAssignedEmail(e.target.value)}
+              placeholder="user@example.com"
+            />
           </label>
           <label>
             Notes <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(optional -- e.g. payment reference)</span>
             <input value={codeNotes} onChange={(e) => setCodeNotes(e.target.value)} placeholder="MOMO-XXXXXXX" />
+          </label>
+          <label style={{ display: "flex", alignItems: "flex-end", gap: 8, fontWeight: 400 }}>
+            <input
+              type="checkbox"
+              checked={sendByEmail}
+              onChange={(e) => setSendByEmail(e.target.checked)}
+              style={{ width: "auto", margin: 0 }}
+            />
+            Email it to them
           </label>
           <div style={{ display: "flex", alignItems: "flex-end" }}>
             <button className="btn" type="submit" disabled={codeBusy}>

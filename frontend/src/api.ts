@@ -294,10 +294,12 @@ export function fetchAccessCodes(): Promise<AccessCode[]> {
 
 export function createAccessCode(payload: {
   duration_days: number;
-  redemption_limit?: number;
   code_expires_in_days?: number;
-  assigned_user_email?: string;
+  /** Must belong to an already-registered account -- the code is bound to it. */
+  assigned_user_email: string;
   notes?: string;
+  /** Email the code to that address. Delivery failure never loses the code. */
+  send_email?: boolean;
 }): Promise<AccessCode> {
   return post("/api/admin/access-codes", payload);
 }

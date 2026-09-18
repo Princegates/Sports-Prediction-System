@@ -26,6 +26,8 @@ from app.api.schemas import (
     RevokeGrantIn,
 )
 from app.api.serializers import access_code_to_schema, admin_user_to_schema
+from app.config import get_settings
+from app import mailer
 from app.db.models import AccessCode, AccessGrant, AuditLog, ChatMessage, Match, Prediction, User
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_superadmin)])
@@ -199,29 +201,60 @@ def create_code(
     admin: User = Depends(require_superadmin),
     db: Session = Depends(get_db),
 ) -> AccessCodeCreatedOut:
-    assigned_user_id = None
-    if payload.assigned_user_email:
-        target = db.execute(
-            select(User).where(User.email == payload.assigned_user_email.strip().lower())
-        ).scalar_one_or_none()
-        if target is None:
-            raise HTTPException(status_code=404, detail="No account with that email")
-        assigned_user_id = target.id
+    # The account must already exist. That is not a limitation here, it is the
+    # flow: you register, discover you have no access, pay, and are issued a
+    # code of your own. Requiring the account also turns a mistyped address
+    # into an error now rather than a code nobody can ever redeem.
+    assigned_email = payload.assigned_user_email.strip().lower()
+    target = db.execute(select(User).where(User.email == assigned_email)).scalar_one_or_none()
+    if target is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"No account is registered with {assigned_email}. They need to register "
+                "first -- anyone can, and registering alone grants no access."
+            ),
+        )
 
     try:
         code = create_access_code(
             db,
             admin,
             duration_days=payload.duration_days,
-            redemption_limit=payload.redemption_limit,
+            redemption_limit=1,
             code_expires_in_days=payload.code_expires_in_days,
-            assigned_user_id=assigned_user_id,
+            assigned_user_id=target.id,
+            assigned_email=assigned_email,
             notes=payload.notes,
         )
     except AccessCodeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    return AccessCodeCreatedOut(**access_code_to_schema(code, reveal_full=True).model_dump())
+    # Delivery is attempted only after the code is safely committed, and its
+    # failure is reported rather than raised. Turning a bounced email into a
+    # 500 would roll back the code and lose it -- the worst outcome available,
+    # since the admin then has neither a code nor a sent message.
+    emailed = False
+    email_error: str | None = None
+    if payload.send_email:
+        if not mailer.is_configured():
+            email_error = (
+                "Email is not configured on this server. Set SMTP_HOST and SMTP_FROM "
+                "to enable sending; the code below is still valid."
+            )
+        else:
+            subject, body = mailer.access_code_message(
+                code.code, code.duration_days, get_settings().public_site_url or None
+            )
+            result = mailer.send_email(assigned_email, subject, body)
+            emailed = result.sent
+            email_error = result.error
+
+    return AccessCodeCreatedOut(
+        **access_code_to_schema(code, reveal_full=True).model_dump(),
+        emailed=emailed,
+        email_error=email_error,
+    )
 
 
 @router.get("/access-codes", response_model=list[AccessCodeOut])

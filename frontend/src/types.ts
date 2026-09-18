@@ -210,11 +210,15 @@ export interface AccessCode {
   redemption_limit: number;
   redemption_count: number;
   assigned_user_id: number | null;
+  assigned_email: string | null;
   created_by_user_id: number;
   created_at: string;
   revoked_at: string | null;
   revoked_reason: string | null;
   notes: string | null;
+  /** Only on the create response: whether the code was emailed, and why not. */
+  emailed?: boolean;
+  email_error?: string | null;
 }
 
 export interface AccessGrant {

@@ -245,11 +245,25 @@ class AccountStatusOut(BaseModel):
 
 
 class AccessCodeCreateIn(BaseModel):
+    """A code is issued to one registered account and redeemable once.
+
+    ``redemption_limit`` is deliberately absent: it is fixed at 1 rather than
+    chosen. The model here is that someone registers, finds they have no
+    access, pays, and is issued a code of their own -- so a shareable code is
+    not a feature but a way to give away access by accident. The column and
+    its enforcement remain in the database, so multi-use codes are a UI
+    change away if that ever changes.
+    """
+
     duration_days: int
-    redemption_limit: int = 1
     code_expires_in_days: int | None = None
-    assigned_user_email: str | None = None
+    assigned_user_email: str
     notes: str | None = None
+
+    # Email the code to assigned_user_email. Ignored when no address is given
+    # -- there would be nowhere to send it -- and a delivery failure never
+    # prevents the code being created; see AccessCodeCreatedOut.
+    send_email: bool = False
 
 
 class AccessCodeOut(BaseModel):
@@ -261,6 +275,7 @@ class AccessCodeOut(BaseModel):
     redemption_limit: int
     redemption_count: int
     assigned_user_id: int | None = None
+    assigned_email: str | None = None
     created_by_user_id: int
     created_at: dt.datetime
     revoked_at: dt.datetime | None = None
@@ -270,7 +285,16 @@ class AccessCodeOut(BaseModel):
 
 class AccessCodeCreatedOut(AccessCodeOut):
     """Identical shape to ``AccessCodeOut``, but ``code`` here is the real
-    value rather than masked -- the one and only response where it is."""
+    value rather than masked -- the one and only response where it is.
+
+    ``emailed`` and ``email_error`` report delivery separately from creation,
+    because the two succeed and fail independently. A code that was created
+    but not delivered is still a perfectly good code; the admin just has to
+    send it by hand, and needs to be told so rather than assuming it went.
+    """
+
+    emailed: bool = False
+    email_error: str | None = None
 
 
 class AccessGrantOut(BaseModel):

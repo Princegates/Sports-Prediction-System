@@ -235,6 +235,38 @@ offsets Option B's cold starts.
 
 ---
 
+## Emailing access codes (optional)
+
+Access codes work without any of this: generate one, copy it, send it to the
+buyer however you already talk to them. Configure SMTP only if you would
+rather the system send it for you.
+
+Set these on the **backend** service (Render → Environment):
+
+| Variable | Example | Notes |
+|---|---|---|
+| `SMTP_HOST` | `smtp.gmail.com` | Required to enable sending |
+| `SMTP_PORT` | `587` | 587 = STARTTLS, 465 = implicit TLS. Picked automatically from this number. |
+| `SMTP_USER` | `you@gmail.com` | Omit only if your relay does not authenticate |
+| `SMTP_PASSWORD` | an **app password**, not your login | See below |
+| `SMTP_FROM` | `Match Intelligence <you@gmail.com>` | Required. What the recipient sees. |
+| `PUBLIC_SITE_URL` | `https://your-site.pages.dev` | Put in the email so they know where to redeem |
+
+**Gmail needs an app password, not your account password.** Turn on 2-Step
+Verification, then create one under Google Account → Security → App passwords.
+Gmail's free sending limit is around 500 messages a day, which is far more
+than issuing access codes will ever need. Any other provider works the same
+way — only the host and port change.
+
+Two deliberate behaviours worth knowing:
+
+- **A failed send never loses the code.** Delivery is attempted after the code
+  is committed, and a failure is reported back rather than raised. You get the
+  code plus a note saying it did not send, instead of an error and no code.
+- **With nothing configured, the admin page says so** rather than silently not
+  sending. Ticking "Email it to them" on an unconfigured server returns the
+  code with an explanation attached.
+
 ## Before you go live
 
 1. **Set `SECRET_KEY`.** Session tokens are HMAC-signed with it and the default

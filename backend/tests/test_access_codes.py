@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 from app.auth.passwords import hash_password
 from app.auth.tokens import create_token
 from app.config import get_settings
+from app.access import create_access_code
 from app.db.models import AccessCode, AccessGrant, AccessRedemption, AuditLog, User
 from app.main import app
 from tests.conftest import grant_active_access
@@ -46,8 +47,15 @@ def _headers(user: User) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
-def _create_code(admin: User, **overrides) -> dict:
-    payload = {"duration_days": 30, "redemption_limit": 1}
+def _create_code(admin: User, assignee: User | None = None, **overrides) -> dict:
+    """Issue a code through the real endpoint.
+
+    Every code is now bound to one registered account and redeemable once, so
+    the assignee is part of creating one rather than an option. It defaults to
+    the admin for tests that only care that a code exists.
+    """
+
+    payload = {"duration_days": 30, "assigned_user_email": (assignee or admin).email}
     payload.update(overrides)
     response = client.post("/api/admin/access-codes", json=payload, headers=_headers(admin))
     assert response.status_code == 200, response.text
@@ -103,8 +111,8 @@ def test_revoking_a_code_is_superadmin_only_and_idempotently_rejected(db_session
 # --- Redemption ----------------------------------------------------------
 
 
-def test_redeeming_a_valid_code_unlocks_access(db_session, admin, headers_no_access):
-    code = _create_code(admin)
+def test_redeeming_a_valid_code_unlocks_access(db_session, admin, user_no_access, headers_no_access):
+    code = _create_code(admin, assignee=user_no_access)
 
     assert client.get("/api/teams", headers=headers_no_access).status_code == 403
 
@@ -116,7 +124,7 @@ def test_redeeming_a_valid_code_unlocks_access(db_session, admin, headers_no_acc
 
 
 def test_redemption_creates_grant_redemption_and_audit_rows(db_session, admin, user_no_access, headers_no_access):
-    code = _create_code(admin)
+    code = _create_code(admin, assignee=user_no_access)
     client.post("/api/access/redeem", json={"code": code["code"]}, headers=headers_no_access)
 
     access_code = db_session.query(AccessCode).filter(AccessCode.id == code["id"]).one()
@@ -139,8 +147,8 @@ def test_redeeming_an_unknown_code_is_rejected(db_session, headers_no_access):
     assert response.status_code == 400
 
 
-def test_redeeming_a_revoked_code_is_rejected(db_session, admin, headers_no_access):
-    code = _create_code(admin)
+def test_redeeming_a_revoked_code_is_rejected(db_session, admin, user_no_access, headers_no_access):
+    code = _create_code(admin, assignee=user_no_access)
     client.post(f"/api/admin/access-codes/{code['id']}/revoke", json={}, headers=_headers(admin))
 
     response = client.post("/api/access/redeem", json={"code": code["code"]}, headers=headers_no_access)
@@ -148,8 +156,8 @@ def test_redeeming_a_revoked_code_is_rejected(db_session, admin, headers_no_acce
     assert "revoked" in response.json()["detail"].lower()
 
 
-def test_redeeming_an_expired_code_is_rejected(db_session, admin, headers_no_access):
-    code = _create_code(admin, code_expires_in_days=1)
+def test_redeeming_an_expired_code_is_rejected(db_session, admin, user_no_access, headers_no_access):
+    code = _create_code(admin, assignee=user_no_access, code_expires_in_days=1)
     row = db_session.query(AccessCode).filter(AccessCode.id == code["id"]).one()
     row.code_expires_at = dt.datetime.utcnow() - dt.timedelta(days=1)
     db_session.commit()
@@ -160,18 +168,24 @@ def test_redeeming_an_expired_code_is_rejected(db_session, admin, headers_no_acc
 
 
 def test_redeeming_past_the_limit_is_rejected(db_session, admin):
-    code = _create_code(admin, redemption_limit=1)
+    """The limit is no longer settable through the API -- every issued code is
+    single-use and bound to one account -- but the enforcement stays, so an
+    unassigned multi-use code created directly still stops at its limit. Built
+    through the service function rather than the endpoint for exactly that
+    reason: the endpoint can no longer produce one."""
+
     first = _make_user(db_session, "first@example.com")
     second = _make_user(db_session, "second@example.com")
+    shared = create_access_code(db_session, admin, duration_days=30, redemption_limit=1)
 
-    assert client.post("/api/access/redeem", json={"code": code["code"]}, headers=_headers(first)).status_code == 200
-    response = client.post("/api/access/redeem", json={"code": code["code"]}, headers=_headers(second))
+    assert client.post("/api/access/redeem", json={"code": shared.code}, headers=_headers(first)).status_code == 200
+    response = client.post("/api/access/redeem", json={"code": shared.code}, headers=_headers(second))
     assert response.status_code == 400
     assert "fully redeemed" in response.json()["detail"].lower()
 
 
-def test_redeeming_the_same_code_twice_is_rejected(db_session, admin, headers_no_access):
-    code = _create_code(admin, redemption_limit=5)
+def test_redeeming_the_same_code_twice_is_rejected(db_session, admin, user_no_access, headers_no_access):
+    code = _create_code(admin, assignee=user_no_access)
     client.post("/api/access/redeem", json={"code": code["code"]}, headers=headers_no_access)
 
     response = client.post("/api/access/redeem", json={"code": code["code"]}, headers=headers_no_access)
@@ -181,7 +195,7 @@ def test_redeeming_the_same_code_twice_is_rejected(db_session, admin, headers_no
 
 def test_code_assigned_to_another_account_is_rejected(db_session, admin, headers_no_access):
     other = _make_user(db_session, "assigned-target@example.com")
-    code = _create_code(admin, assigned_user_email=other.email)
+    code = _create_code(admin, assignee=other)
 
     response = client.post("/api/access/redeem", json={"code": code["code"]}, headers=headers_no_access)
     assert response.status_code == 400
@@ -193,7 +207,7 @@ def test_redeeming_while_still_active_extends_rather_than_replaces(db_session, a
     first_grant = grant_active_access(db_session, user, days=10)
     first_expiry = first_grant.expires_at
 
-    code = _create_code(admin, duration_days=10)
+    code = _create_code(admin, assignee=user, duration_days=10)
     response = client.post("/api/access/redeem", json={"code": code["code"]}, headers=_headers(user))
     assert response.status_code == 200
 

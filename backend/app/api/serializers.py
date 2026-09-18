@@ -66,6 +66,7 @@ def access_code_to_schema(code: AccessCode, *, reveal_full: bool = False) -> Acc
         redemption_limit=code.redemption_limit,
         redemption_count=code.redemption_count,
         assigned_user_id=code.assigned_user_id,
+        assigned_email=code.assigned_email,
         created_by_user_id=code.created_by_user_id,
         created_at=code.created_at,
         revoked_at=code.revoked_at,

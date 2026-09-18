@@ -62,6 +62,24 @@ class Settings(BaseSettings):
     assistant_llm_api_key: str = ""
     assistant_llm_timeout: float = 20.0
 
+    # Optional outbound email, for handing an access code to the person who
+    # paid for it. Everything works without these -- the admin just copies the
+    # code out of the UI and sends it themselves. See app/mailer.py.
+    #
+    # Port 465 means implicit TLS; 587 means STARTTLS. smtp_user/password are
+    # only needed if the provider authenticates, which almost all do.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    smtp_use_tls: bool = True
+    smtp_timeout: float = 15.0
+
+    # Put in the email so the recipient knows where to redeem. Not used for
+    # anything else.
+    public_site_url: str = ""
+
     @property
     def normalized_database_url(self) -> str:
         """``database_url`` in a form SQLAlchemy 2 actually accepts.

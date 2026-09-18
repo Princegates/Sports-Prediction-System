@@ -138,9 +138,16 @@ class AccessCode(Base):
     redemption_limit: Mapped[int] = mapped_column(Integer, default=1)
     redemption_count: Mapped[int] = mapped_column(Integer, default=0)
 
-    # Restricts the code to one specific account (e.g. renewing an existing
-    # user's access); null means any account may redeem it.
+    # Restricts the code to one specific account; null means any account may
+    # redeem it.
+    #
+    # Two columns because the account usually doesn't exist yet. The real
+    # sequence is: someone pays, they are sent a code, and only then do they
+    # register. Resolving an email to a user id at creation time therefore
+    # fails for exactly the case this is for, so the email is authoritative
+    # and the id is filled in only when the account happens to exist already.
     assigned_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    assigned_email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
 
