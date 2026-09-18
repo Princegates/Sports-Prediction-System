@@ -89,14 +89,14 @@ REGISTRY: tuple[SettingSpec, ...] = (
     SettingSpec("api_football_key", "str", "data", "API-Football key",
                 "From api-sports.io. Leave blank to use openfootball alone -- everything "
                 "already working keeps working without this.",
-                secret=True, default=""),
+                secret=True, env_attr="api_football_key"),
     SettingSpec("api_football_host", "str", "data", "API host",
                 "v3.football.api-sports.io direct, or the RapidAPI host if your key is from "
                 "there. The auth style follows from this.",
-                default="v3.football.api-sports.io"),
+                env_attr="api_football_host"),
     SettingSpec("api_football_daily_budget", "int", "data", "Daily request budget",
                 "The free plan allows 100/day. Set lower to leave headroom for manual runs.",
-                default=100, minimum=1, maximum=100000),
+                env_attr="api_football_daily_budget", minimum=1, maximum=100000),
     SettingSpec("api_football_capture_odds", "bool", "data", "Capture market odds",
                 "Store bookmaker prices so the track record can show whether the model beat "
                 "the market, not just whether it was right.",

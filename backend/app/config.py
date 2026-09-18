@@ -68,6 +68,13 @@ class Settings(BaseSettings):
     #
     # Port 465 means implicit TLS; 587 means STARTTLS. smtp_user/password are
     # only needed if the provider authenticates, which almost all do.
+    # API-Football (api-sports.io). Optional -- openfootball covers the five
+    # domestic leagues for free; this is spent on what it cannot do. Settable
+    # here or in the admin panel, which overrides this.
+    api_football_key: str = ""
+    api_football_host: str = "v3.football.api-sports.io"
+    api_football_daily_budget: int = 100
+
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_user: str = ""
