@@ -168,6 +168,64 @@ those, so every calibration point comes from a model that never saw it. The
 reported accuracy must still come from the held-out split either way —
 measuring on data the model trained on would inflate it.
 
+#### 1d. Cross-league pooling: measured, and rejected as a net loss on its own
+
+Item 6 below called pooling all leagues into one model "the single biggest
+lever left on accuracy," on the reasoning that five leagues training five
+~1,300-match models separately wastes the other four leagues' data. Measured
+directly rather than assumed:
+
+| | Mean accuracy (5 original leagues) | La Liga | EPL |
+|---|---|---|---|
+| Per-league (this corpus, hand-set weights) | 50.1% | 50.7% | 45.9% |
+| Pooled across leagues, hand-set weights | 49.7% | 48.5% (-2.2) | 42.1% (-3.8) |
+
+Pooling alone made two leagues measurably worse and one meaningfully better
+(Bundesliga +3.2), a wash-to-negative net. The likely cause: a single
+GradientBoostingClassifier with one set of tree splits has to represent five
+leagues' different scoring environments and home-advantage sizes through
+only a 9-column one-hot flag, which a shallow (max_depth=3) tree can't
+condition on cleanly -- pooling raw row count without also letting the
+model specialize per league bought little.
+
+**What actually moved accuracy, measured on the same corpus:** home/away-
+specific form features (previously computed by TeamForm and never wired
+into the model), fitting the ensemble blend weights per league instead of
+the hand-set 0.30/0.35/0.35, and importing five more seasons per league
+(2016-17 onward). Per-league models with those three changes:
+
+| League | Accuracy | vs. always-home | Fitted weights (elo/poisson/ml) |
+|---|---|---|---|
+| UEFA Champions League | 59.6% | +8.7 | 0.75 / 0.10 / 0.15 |
+| Portuguese Primeira Liga | 54.8% | +13.6 | 0.00 / 0.80 / 0.20 |
+| Italian Serie A | 54.6% | +14.5 | 0.20 / 0.45 / 0.35 |
+| Spanish La Liga | 52.9% | +5.4 | 0.20 / 0.60 / 0.20 |
+| French Ligue 1 | 52.3% | +6.8 | 0.95 / 0.05 / 0.00 |
+| Dutch Eredivisie | 51.9% | +9.9 | 0.35 / 0.40 / 0.25 |
+| German Bundesliga | 51.1% | +11.5 | 0.55 / 0.20 / 0.25 |
+| English Premier League | 49.3% | +7.5 | 0.80 / 0.00 / 0.20 |
+| English Championship | 42.0% | +0.3 | 0.40 / 0.55 / 0.05 |
+| **Mean (9 leagues)** | **52.1%** | **+9.8** | |
+
+Mean across the original 5 leagues alone: 52.0%, versus 50.1% before this
+round and 49.7% pooled. The fitted weights are also worth reading on their
+own: they vary widely by league (Ligue 1 leans almost entirely on Elo;
+Primeira Liga ignores it entirely in favor of Poisson) -- a single global
+0.30/0.35/0.35 was never going to be right for all of them, which is a
+second, independent reason a single pooled model underperforms per-league
+ones here.
+
+**Status: pooling code kept, not deployed.** `scripts/backtest.py
+--pool-leagues` and `build_pooled_training_dataset()` still exist and work
+-- pooling remains the right call for a league too new or small to train
+its own model (a true fallback, which is what item 6 actually needs, not a
+wholesale replacement) -- but the model_artifacts/ml_model_global.joblib
+this measurement produced was deleted rather than left as the file
+model_store.load_ml_model() prefers, so per-league models stay the ones
+actually serving predictions. Revisiting pooling productively would mean
+per-league leaf weights or a stacked meta-model over per-league models,
+not a single shared tree ensemble distinguishing leagues by one-hot alone.
+
 #### 2. Security gaps
 
 | Issue | Risk | Status |
@@ -337,17 +395,23 @@ rewriter, permanently, at no cost.
 
 ## If you only do five things
 
-1. **Train across leagues instead of one model per league** (Tier 0, item 6). Five
-   leagues currently produce five models of ~1,300 matches each rather than one with
-   9,033 behind it. This is the single biggest lever left on accuracy.
-2. **Add baseline comparisons to the backtest** (item 4). You cannot tell whether a change
-   helped without them.
-3. **Build result tracking** (item 10). A verifiable public track record is the single
-   most valuable feature this system could have — and it makes item 1 measurable.
+_Updated after actually measuring item 1 below (see 1d) — cross-league pooling turned
+out to be a wash-to-negative on its own, so this list no longer leads with it._
+
+1. **Done, and worth knowing what actually moved the number:** wiring in the home/away
+   form split, fitting the ensemble blend weights per league instead of hand-setting
+   them, and importing five more seasons per league moved the 5-league mean from 50.1%
+   to 52.0% — see 1d for the full per-league table. Cross-league pooling (the version of
+   this item that used to lead this list) was tried and measured worse alone; a stacked
+   meta-model or per-league leaf weights would be the way to revisit it, not a single
+   shared tree ensemble.
+2. **Add baseline comparisons to the backtest** (item 4) — done, every backtest run now
+   prints and stores always-home/draw/away, majority-class, and training-rate baselines.
+3. **Build result tracking** (item 10) — done, `/api/public/track-record` grades each
+   finished match's first stored prediction against the real result.
 4. **Set `SECRET_KEY`, and expand to 8+ leagues** (item 5, plus the security warning
-   above). Note what more leagues does and doesn't buy: with per-league models it adds
-   *coverage* (more fixtures to show), not accuracy. It becomes an accuracy gain only
-   once item 6 pools them.
+   above). Nine leagues are now imported; per-league models mean this adds *coverage*
+   (more fixtures to show) more than it adds accuracy, per 1d.
 5. **Schedule prediction regeneration** (item 11). Stale predictions are worse than none.
 
 ## What "best in the world" would actually require
