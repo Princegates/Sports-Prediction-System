@@ -544,6 +544,84 @@ h1, h2, h3, h4 {
 }
 
 /* ==========================================================================
+   DATE STRIP
+   ========================================================================== */
+.date-strip {
+  display: flex;
+  gap: var(--space-2);
+  margin: 0 0 20px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+
+.date-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 58px;
+  padding: 8px 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.12s ease;
+  flex: 0 0 auto;
+}
+
+.date-cell:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.date-cell.active {
+  background: var(--accent-soft);
+  border-color: rgba(57, 135, 229, 0.4);
+}
+
+/* Today keeps a marker even when another day is selected, so the strip
+   never loses its anchor point. */
+.date-cell.today:not(.active) .date-cell-weekday {
+  color: var(--accent-strong);
+}
+
+.date-cell.empty {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.date-cell-weekday {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.date-cell-day {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.date-cell.active .date-cell-day,
+.date-cell.active .date-cell-weekday {
+  color: var(--accent-strong);
+}
+
+.date-cell-count {
+  font-size: 10.5px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.date-cell-all .date-cell-day {
+  font-size: 15px;
+}
+
+/* ==========================================================================
    CARDS / GRID
    ========================================================================== */
 .grid {

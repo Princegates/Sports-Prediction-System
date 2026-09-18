@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { fetchMatch, fetchMostLikely } from "../api";
 import { LEAGUES } from "../components/AppShell";
+import { DateStrip, localDayKey } from "../components/DateStrip";
 import { ConfidenceTag } from "../components/MostLikelyOutcome";
 import { ErrorState } from "../components/ErrorState";
 import { EmptyState } from "../components/EmptyState";
@@ -12,15 +13,23 @@ interface Row {
   match: MatchSummary;
 }
 
-type DayRange = 1 | 3 | 7;
 type ConfidenceFilter = "ALL" | "HIGH" | "MEDIUM" | "LOW";
+
+// How far ahead to load. The refresh workflow generates predictions 10 days
+// out by default, so asking for more returns nothing extra.
+//
+// Everything in that window is fetched once and filtered in the browser.
+// Re-fetching per day range, which is what this page used to do, made
+// switching between "today" and "this week" a round trip to Frankfurt for
+// data already on the page.
+const HORIZON_DAYS = 10;
 type SortKey = "kickoff" | "probability" | "confidence";
 
 const CONFIDENCE_RANK = { HIGH: 3, MEDIUM: 2, LOW: 1 };
 
 export function Predictions() {
   const [league, setLeague] = useState<string>("ALL");
-  const [days, setDays] = useState<DayRange>(3);
+  const [day, setDay] = useState<string | null>(null);
   const [confidence, setConfidence] = useState<ConfidenceFilter>("ALL");
   const [sortKey, setSortKey] = useState<SortKey>("kickoff");
   const [sortDir, setSortDir] = useState<1 | -1>(1);
@@ -34,7 +43,7 @@ export function Predictions() {
     setError(null);
 
     const leaguesToFetch = league === "ALL" ? LEAGUES : [league];
-    Promise.all(leaguesToFetch.map((l) => fetchMostLikely(l, days, 40).catch(() => [])))
+    Promise.all(leaguesToFetch.map((l) => fetchMostLikely(l, HORIZON_DAYS, 80).catch(() => [])))
       .then(async (perLeague) => {
         if (cancelled) return;
         const predictions = perLeague.flat();
@@ -47,11 +56,18 @@ export function Predictions() {
     return () => {
       cancelled = true;
     };
-  }, [league, days]);
+  }, [league]);
+
+  // Counts on the strip reflect the league filter but not the day or
+  // confidence filters -- a day showing "3" must still show 3 once you
+  // select it, and a count that changed when you clicked it would be
+  // useless for deciding where to click next.
+  const kickoffs = useMemo(() => (rows ? rows.map((r) => new Date(r.match.date)) : []), [rows]);
 
   const visible = useMemo(() => {
     if (!rows) return null;
     let filtered = confidence === "ALL" ? rows : rows.filter((r) => r.prediction.confidence === confidence);
+    if (day) filtered = filtered.filter((r) => localDayKey(new Date(r.match.date)) === day);
     filtered = [...filtered].sort((a, b) => {
       let diff = 0;
       if (sortKey === "kickoff") diff = new Date(a.match.date).getTime() - new Date(b.match.date).getTime();
@@ -60,7 +76,7 @@ export function Predictions() {
       return diff * sortDir;
     });
     return filtered;
-  }, [rows, confidence, sortKey, sortDir]);
+  }, [rows, confidence, day, sortKey, sortDir]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
@@ -87,17 +103,14 @@ export function Predictions() {
             </option>
           ))}
         </select>
-        {[1, 3, 7].map((d) => (
-          <button key={d} className={`filter-chip${days === d ? " active" : ""}`} onClick={() => setDays(d as DayRange)}>
-            {d === 1 ? "Today" : d === 3 ? "Next 3 days" : "This week"}
-          </button>
-        ))}
         {(["ALL", "HIGH", "MEDIUM", "LOW"] as ConfidenceFilter[]).map((c) => (
           <button key={c} className={`filter-chip${confidence === c ? " active" : ""}`} onClick={() => setConfidence(c)}>
             {c === "ALL" ? "Any confidence" : `${c.charAt(0)}${c.slice(1).toLowerCase()} confidence`}
           </button>
         ))}
       </div>
+
+      <DateStrip dates={kickoffs} horizonDays={HORIZON_DAYS} value={day} onChange={setDay} />
 
       {error && <ErrorState message={error} />}
       {!error && visible === null && <p className="badge-neutral">Loading predictions…</p>}
