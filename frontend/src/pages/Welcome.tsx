@@ -485,15 +485,19 @@ export function Welcome() {
             optional, that matters more than any prediction on this site.
           </p>
           <p className="responsible-links">
-            Free, confidential help:{" "}
-            <a href="https://www.begambleaware.org" target="_blank" rel="noreferrer noopener">
-              BeGambleAware
-            </a>
-            ,{" "}
+            Free, confidential help: call Ghana's{" "}
+            <a href="https://www.moh.gov.gh/mental-health-authority/" target="_blank" rel="noreferrer noopener">
+              Mental Health Authority
+            </a>{" "}
+            on <strong>0800 678 678</strong> — toll-free from any network here, any hour. Online,{" "}
+            <a href="https://www.gamblingtherapy.org" target="_blank" rel="noreferrer noopener">
+              Gambling Therapy
+            </a>{" "}
+            and{" "}
             <a href="https://www.gamblersanonymous.org" target="_blank" rel="noreferrer noopener">
               Gamblers Anonymous
-            </a>
-            , or the National Problem Gambling Helpline on 1-800-522-4700 (US).
+            </a>{" "}
+            both run support you can reach from Ghana.
           </p>
         </div>
       </section>

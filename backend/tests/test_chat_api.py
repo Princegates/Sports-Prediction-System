@@ -292,7 +292,12 @@ def test_harmful_request_gets_the_responsible_use_answer(db_session, auth_header
     assert body["intent"] == "responsible_use"
     text = body["text"].lower()
     assert "not guarantee" in text or "no such thing as a guaranteed" in text
-    assert "begambleaware" in text
+
+    # A reachable helpline, not merely a helpline. This asserted begambleaware
+    # while the answer handed out a US 1-800 number that cannot be dialled from
+    # Ghana, where the members are -- the test passed and the help did not work.
+    assert "0800 678 678" in text, "the answer must give a number Ghanaian members can actually call"
+    assert "1-800" not in text, "US toll-free numbers do not connect from Ghana"
 
 
 # --- Persistence and history ---------------------------------------------
