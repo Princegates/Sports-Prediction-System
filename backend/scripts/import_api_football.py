@@ -68,7 +68,7 @@ def main() -> None:
         raise SystemExit(2)
 
     planned = len(args.leagues) * (2 if args.odds else 1)
-    print("Plan")
+    print("Plan", flush=True)
     print(f"  leagues      : {', '.join(args.leagues)}")
     print(f"  season       : {season}")
     print(f"  odds         : {'yes' if args.odds else 'no'}")
@@ -89,9 +89,40 @@ def main() -> None:
         values = app_settings.all_values(db)
         key = str(values.get("api_football_key") or "")
         if not key:
+            # "Not saved" and "saved in a different database" produce the same
+            # empty value, and they need opposite fixes, so say which.
+            from sqlalchemy import func, select
+
+            from app.config import get_settings
+            from app.db.models import AppSetting
+
+            overrides = db.execute(select(func.count()).select_from(AppSetting)).scalar() or 0
+            saved_keys = sorted(db.execute(select(AppSetting.key)).scalars())
+            where = get_settings().normalized_database_url.split("@")[-1]
+
             print("\nNo API-Football key found.", file=sys.stderr)
-            print("  Set it in the admin panel (Settings -> Data sources), or as", file=sys.stderr)
-            print("  API_FOOTBALL_KEY in the environment.", file=sys.stderr)
+            print(f"  database          : {where}", file=sys.stderr)
+            print(f"  settings saved    : {overrides}", file=sys.stderr)
+            if saved_keys:
+                print(f"  keys present      : {', '.join(saved_keys)}", file=sys.stderr)
+
+            if overrides == 0:
+                print(
+                    "\n  This database has no saved settings at all, so it is probably not the\n"
+                    "  one the admin panel writes to. Check that DATABASE_URL here matches the\n"
+                    "  one set on the API service.",
+                    file=sys.stderr,
+                )
+            elif "api_football_key" not in saved_keys:
+                print(
+                    "\n  Other settings are here, so this is the right database and the key\n"
+                    "  simply was not saved. In the panel, type it into Settings -> Data\n"
+                    "  sources -> API-Football key and press Save; the button must change from\n"
+                    "  'No changes' to 'Save 1 change' before it will store anything.",
+                    file=sys.stderr,
+                )
+            else:
+                print("\n  The key row exists but is empty -- re-enter it and save.", file=sys.stderr)
             raise SystemExit(1)
 
         client = ApiFootballClient(
