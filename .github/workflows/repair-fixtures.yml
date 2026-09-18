@@ -1,0 +1,60 @@
+# Deletes a competition's fixtures so they can be imported again cleanly.
+#
+# For when the importer attached ties to the wrong clubs. A match row keeps the
+# club it resolved to, not the name the provider sent, so there is nothing left
+# to re-resolve in place -- the fixtures have to come back from the API.
+#
+# Safe for European competitions specifically, because they come from one
+# source: re-running the import restores every fixture, scores included.
+#
+# Dry run unless "confirm" is set to DELETE. The default does nothing but list
+# what would go and what points at it.
+name: Repair fixtures
+
+on:
+  workflow_dispatch:
+    inputs:
+      league:
+        description: "Competition to clear"
+        required: false
+        default: "UEFA Champions League"
+        type: choice
+        options:
+          - "UEFA Champions League"
+          - "UEFA Europa League"
+      confirm:
+        description: 'Type DELETE to actually delete. Anything else is a dry run.'
+        required: false
+        default: ""
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Repair
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          LEAGUE: ${{ inputs.league }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          FLAGS=""
+          if [ "$CONFIRM" = "DELETE" ]; then
+            FLAGS="--delete"
+          else
+            echo "Dry run: 'confirm' is not DELETE, so nothing will be removed."
+          fi
+          python scripts/repair_european_fixtures.py --league "$LEAGUE" $FLAGS

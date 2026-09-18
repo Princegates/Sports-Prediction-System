@@ -348,6 +348,27 @@ def test_madrid_resolves_by_evidence_not_row_order(db_session, order):
     assert resolved is not None and resolved.name == "Atletico Madrid"
 
 
+@pytest.mark.parametrize("order", ["villa first", "villarreal first"])
+def test_villarreal_is_not_aston_villa(db_session, order):
+    """The one that actually happened, found by the audit on live data.
+
+    Abbreviations are matched by prefix -- "man" for "manchester", "wolv" for
+    "wolverhampton" -- and "villa" is a prefix of "villarreal". So Villarreal
+    scored a perfect match against Aston Villa, and the Spanish club's
+    Champions League ties were filed under an English one. The audit caught it
+    as Aston Villa playing twice on 3 November and meeting PSG twice in a
+    league phase that pairs clubs once.
+    """
+
+    rows = [("Aston Villa FC", "English Premier League"), ("Villarreal CF", "Spanish La Liga")]
+    if order == "villarreal first":
+        rows.reverse()
+    _store(db_session, *rows)
+
+    resolved = TeamIndex(db_session).resolve("Villarreal")
+    assert resolved is not None and resolved.name == "Villarreal CF"
+
+
 def test_a_name_that_fits_two_clubs_equally_is_refused(db_session):
     """"Sporting" alone is Gijón and Lisbon with equal force. Picking either
     attaches a tie to a club that did not play it, which looks entirely
