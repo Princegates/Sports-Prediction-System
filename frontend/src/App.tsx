@@ -13,6 +13,7 @@ import { Predictions } from "./pages/Predictions";
 import { Profile } from "./pages/Profile";
 import { Register } from "./pages/Register";
 import { Responsible } from "./pages/Responsible";
+import { Settings } from "./pages/Settings";
 import { TeamPage } from "./pages/TeamPage";
 import { Welcome } from "./pages/Welcome";
 
@@ -58,6 +59,7 @@ export default function App() {
 
           <Route element={<RequireSuperadmin />}>
             <Route path="admin" element={<AdminUsers />} />
+            <Route path="settings" element={<Settings />} />
           </Route>
         </Route>
       </Route>

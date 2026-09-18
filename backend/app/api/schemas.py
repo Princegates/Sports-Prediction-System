@@ -78,6 +78,15 @@ class PreferencesIn(BaseModel):
     accent_profile: str | None = None
 
 
+class UpdateProfileIn(BaseModel):
+    name: str
+
+
+class ChangePasswordIn(BaseModel):
+    current_password: str
+    new_password: str
+
+
 class MatchHistoryOut(BaseModel):
     match: MatchOut
     viewed_at: dt.datetime
@@ -290,6 +299,7 @@ class AccessRedeemIn(BaseModel):
 class AccessStatusOut(BaseModel):
     has_access: bool
     status: str  # "active" / "expired" / "none"
+    activated_at: dt.datetime | None = None
     expires_at: dt.datetime | None = None
 
 
@@ -303,6 +313,17 @@ class RevokeGrantIn(BaseModel):
 
 class ExtendGrantIn(BaseModel):
     additional_days: int
+
+
+class AdminSettingsOut(BaseModel):
+    default_duration_days: int
+    default_redemption_limit: int
+    updated_at: dt.datetime
+
+
+class AdminSettingsIn(BaseModel):
+    default_duration_days: int
+    default_redemption_limit: int
 
 
 class LiveEventIn(BaseModel):

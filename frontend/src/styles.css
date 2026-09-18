@@ -4027,9 +4027,9 @@ table.admin-table {
 }
 
 /* ==========================================================================
-   ADMIN: APPROVAL QUEUE
-   The approval gate is the only thing between "registered" and "has access",
-   so the queue count is given more visual weight than anything else here.
+   ADMIN: USER ACCESS
+   Users without a live access grant are the queue an admin acts on now that
+   registration no longer needs approval, so that count gets the most weight.
    ========================================================================== */
 .admin-header {
   display: flex;

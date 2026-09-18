@@ -5,6 +5,7 @@ import {
   extendUserAccess,
   fetchAccessCodes,
   fetchAdminOverview,
+  fetchAdminSettings,
   fetchAdminUsers,
   fetchAuditLog,
   promoteUser,
@@ -42,6 +43,23 @@ const ACCESS_TONE: Record<AdminUser["access_status"], string> = {
   none: "suspended",
 };
 
+const DURATION_PRESETS = [1, 3, 7, 14, 30, 60, 90, 180, 365];
+
+const CODE_FILTERS: { label: string; value: AccessCode["status"] | "all" }[] = [
+  { label: "All", value: "all" },
+  { label: "Active", value: "active" },
+  { label: "Exhausted", value: "exhausted" },
+  { label: "Expired", value: "expired" },
+  { label: "Revoked", value: "revoked" },
+];
+
+const CODE_TONE: Record<AccessCode["status"], string> = {
+  active: "active",
+  exhausted: "pending",
+  expired: "pending",
+  revoked: "suspended",
+};
+
 export function AdminUsers() {
   const { user: currentUser } = useAuth();
   const [filter, setFilter] = useState<UserStatus | "all">("active");
@@ -56,10 +74,32 @@ export function AdminUsers() {
   const [codeError, setCodeError] = useState<string | null>(null);
   const [codeBusy, setCodeBusy] = useState(false);
   const [justCreated, setJustCreated] = useState<AccessCode | null>(null);
+  const [durationPreset, setDurationPreset] = useState("30");
   const [durationDays, setDurationDays] = useState("30");
   const [redemptionLimit, setRedemptionLimit] = useState("1");
   const [assignedEmail, setAssignedEmail] = useState("");
   const [codeNotes, setCodeNotes] = useState("");
+  const [codeFilter, setCodeFilter] = useState<AccessCode["status"] | "all">("all");
+  const [codeSearch, setCodeSearch] = useState("");
+
+  const codeStats = {
+    active: codes?.filter((c) => c.status === "active").length ?? 0,
+    exhausted: codes?.filter((c) => c.status === "exhausted").length ?? 0,
+    expired: codes?.filter((c) => c.status === "expired").length ?? 0,
+    revoked: codes?.filter((c) => c.status === "revoked").length ?? 0,
+  };
+
+  const visibleCodes = (codes ?? []).filter((c) => {
+    if (codeFilter !== "all" && c.status !== codeFilter) return false;
+    const q = codeSearch.trim().toLowerCase();
+    if (!q) return true;
+    return c.code.toLowerCase().includes(q) || (c.notes ?? "").toLowerCase().includes(q);
+  });
+
+  function handleDurationPresetChange(value: string) {
+    setDurationPreset(value);
+    if (value !== "custom") setDurationDays(value);
+  }
 
   function load() {
     setError(null);
@@ -85,6 +125,17 @@ export function AdminUsers() {
 
   useEffect(() => {
     loadCodes();
+    // Pre-fill the generation form from the admin-configured defaults --
+    // just an initial value, not a live sync, so it never fights with
+    // whatever the admin is mid-typing.
+    fetchAdminSettings()
+      .then((s) => {
+        setRedemptionLimit(String(s.default_redemption_limit));
+        const preset = String(s.default_duration_days);
+        setDurationDays(preset);
+        setDurationPreset(DURATION_PRESETS.includes(s.default_duration_days) ? preset : "custom");
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -313,6 +364,27 @@ export function AdminUsers() {
         <span className="meta">Generate a code once payment is confirmed outside the platform</span>
       </div>
 
+      {codes && (
+        <div className="admin-overview" style={{ marginBottom: 20 }}>
+          <div className="admin-overview-tile">
+            <span className="admin-overview-value">{codeStats.active}</span>
+            <span className="admin-overview-label">Active codes</span>
+          </div>
+          <div className="admin-overview-tile">
+            <span className="admin-overview-value">{codeStats.exhausted}</span>
+            <span className="admin-overview-label">Exhausted</span>
+          </div>
+          <div className="admin-overview-tile">
+            <span className="admin-overview-value">{codeStats.expired}</span>
+            <span className="admin-overview-label">Expired</span>
+          </div>
+          <div className="admin-overview-tile">
+            <span className="admin-overview-value">{codeStats.revoked}</span>
+            <span className="admin-overview-label">Revoked</span>
+          </div>
+        </div>
+      )}
+
       <div className="card card-pad" style={{ marginBottom: 20 }}>
         {justCreated && (
           <div className="status-result-explainer" style={{ marginBottom: 16 }}>
@@ -324,9 +396,22 @@ export function AdminUsers() {
 
         <form onSubmit={handleCreateCode} className="auth-form" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
           <label>
-            Duration (days)
-            <input type="number" min={1} required value={durationDays} onChange={(e) => setDurationDays(e.target.value)} />
+            Duration
+            <select value={durationPreset} onChange={(e) => handleDurationPresetChange(e.target.value)}>
+              {DURATION_PRESETS.map((d) => (
+                <option key={d} value={d}>
+                  {d} day{d === 1 ? "" : "s"}
+                </option>
+              ))}
+              <option value="custom">Custom...</option>
+            </select>
           </label>
+          {durationPreset === "custom" && (
+            <label>
+              Custom duration (days)
+              <input type="number" min={1} required value={durationDays} onChange={(e) => setDurationDays(e.target.value)} />
+            </label>
+          )}
           <label>
             Redemption limit
             <input type="number" min={1} required value={redemptionLimit} onChange={(e) => setRedemptionLimit(e.target.value)} />
@@ -346,6 +431,29 @@ export function AdminUsers() {
           </div>
         </form>
         {codeError && <p className="auth-error" style={{ marginTop: 12 }}>{codeError}</p>}
+      </div>
+
+      <div className="admin-header" style={{ marginBottom: 12 }}>
+        <input
+          value={codeSearch}
+          onChange={(e) => setCodeSearch(e.target.value)}
+          placeholder="Search by code or notes..."
+          aria-label="Search access codes"
+          style={{ maxWidth: 260 }}
+          className="admin-ref-input"
+        />
+        <div className="admin-filters">
+          {CODE_FILTERS.map((f) => (
+            <button
+              key={f.value}
+              className={`btn ghost${codeFilter === f.value ? " active" : ""}`}
+              onClick={() => setCodeFilter(f.value)}
+              aria-pressed={codeFilter === f.value}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="card admin-table-wrapper" style={{ marginBottom: 32 }}>
@@ -368,18 +476,16 @@ export function AdminUsers() {
                 <td colSpan={8}>Loading...</td>
               </tr>
             )}
-            {codes !== null && codes.length === 0 && (
+            {codes !== null && visibleCodes.length === 0 && (
               <tr>
-                <td colSpan={8}>No access codes generated yet.</td>
+                <td colSpan={8}>{codes.length === 0 ? "No access codes generated yet." : "No codes match this filter."}</td>
               </tr>
             )}
-            {codes?.map((c) => (
+            {visibleCodes.map((c) => (
               <tr key={c.id}>
                 <td style={{ fontFamily: "monospace" }}>{c.code}</td>
                 <td>
-                  <span className={`status-tag ${c.status === "active" ? "active" : c.status === "revoked" ? "suspended" : "pending"}`}>
-                    {c.status}
-                  </span>
+                  <span className={`status-tag ${CODE_TONE[c.status]}`}>{c.status}</span>
                 </td>
                 <td>{c.duration_days}d</td>
                 <td>

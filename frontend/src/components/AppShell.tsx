@@ -132,7 +132,12 @@ export function AppShell() {
   const needsAccess = user?.role !== "superadmin" && !accessStatus?.has_access;
   const navItems =
     user?.role === "superadmin"
-      ? [...NAV_ITEMS, { to: "/app/profile", label: "Profile", icon: "◍" }, { to: "/app/admin", label: "Admin", icon: "⚙" }]
+      ? [
+          ...NAV_ITEMS,
+          { to: "/app/profile", label: "Profile", icon: "◍" },
+          { to: "/app/admin", label: "Admin", icon: "⚙" },
+          { to: "/app/settings", label: "Settings", icon: "⚒" },
+        ]
       : [
           ...NAV_ITEMS,
           { to: "/app/access", label: "Access", icon: "⚿", badge: needsAccess },

@@ -152,6 +152,72 @@ def test_preferences_persist_to_the_users_own_account(db_session, auth_headers):
     assert me_resp.json()["accent_profile"] == "fuchsia"
 
 
+def test_update_profile_changes_name(db_session, auth_headers):
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.patch("/api/auth/profile", json={"name": "New Name"}, headers=auth_headers)
+    assert response.status_code == 200
+    assert response.json()["name"] == "New Name"
+
+    me_resp = client.get("/api/auth/me", headers=auth_headers)
+    assert me_resp.json()["name"] == "New Name"
+
+
+def test_update_profile_rejects_empty_name(db_session, auth_headers):
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.patch("/api/auth/profile", json={"name": "   "}, headers=auth_headers)
+    assert response.status_code == 400
+
+
+def test_change_password_requires_correct_current_password(db_session, auth_headers):
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.patch(
+        "/api/auth/password",
+        json={"current_password": "wrong-password", "new_password": "a-new-good-password"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 401
+
+
+def test_change_password_rejects_short_new_password(db_session, auth_headers):
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.patch(
+        "/api/auth/password",
+        json={"current_password": "test-password-123", "new_password": "short"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 400
+
+
+def test_change_password_succeeds_and_old_password_stops_working(db_session, auth_headers):
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.patch(
+        "/api/auth/password",
+        json={"current_password": "test-password-123", "new_password": "a-new-good-password"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 204
+
+    old_login = client.post(
+        "/api/auth/login", json={"email": "test-user@example.com", "password": "test-password-123"}
+    )
+    assert old_login.status_code == 401
+
+    new_login = client.post(
+        "/api/auth/login", json={"email": "test-user@example.com", "password": "a-new-good-password"}
+    )
+    assert new_login.status_code == 200
+
+
 def test_match_history_is_per_user(db_session, auth_headers):
     """Viewing a match records it to the current user's own history, and a
     different user's history stays empty -- histories never leak between

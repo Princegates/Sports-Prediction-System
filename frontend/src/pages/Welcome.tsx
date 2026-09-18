@@ -98,7 +98,7 @@ const FEATURES = [
 const FAQS = [
   {
     q: "Do I get access immediately after registering?",
-    a: "No. Every new account is created in a pending state and stays locked until a Super Admin reviews and approves it. Until then you can sign in nowhere -- the whole API rejects the account. You can check your status from the sign-in page at any time.",
+    a: "You can sign in immediately -- there's no approval queue. What's locked until you redeem an access code is the prediction surface itself: teams, matches, predictions and the AI assistant. A Super Admin issues a code once you've arranged payment with them outside the platform; you enter it on the Access page and it unlocks for the code's duration.",
   },
   {
     q: "How accurate is it, honestly?",
@@ -157,16 +157,16 @@ export function Welcome() {
 
           <div className="landing-cta-row">
             <Link className="btn btn-lg" to="/register">
-              Request access
+              Explore AI predictions
             </Link>
-            <Link className="btn ghost btn-lg" to="/how-it-works">
-              How it works
+            <Link className="btn ghost btn-lg" to="/login">
+              Enter access code
             </Link>
           </div>
 
           <p className="landing-cta-note">
-            Accounts are approved by a Super Admin before they go live. Registration takes a minute;
-            approval is manual by design.
+            Sign in is instant. Predictions unlock once you redeem an access code, issued by a Super
+            Admin after payment is confirmed outside the platform -- there's no card form here.
           </p>
         </div>
 
@@ -402,47 +402,47 @@ export function Welcome() {
         </section>
       )}
 
-      {/* ---------------- Access / approval ---------------- */}
+      {/* ---------------- Access process ---------------- */}
       <section className="landing-section access-section">
         <div className="section-head">
           <h2>Getting access</h2>
-          <p>Three steps. The middle one is a human being, on purpose.</p>
+          <p>No payment form lives on this platform -- that happens between you and a Super Admin.</p>
         </div>
         <div className="access-steps">
           <div className="access-step">
             <span className="access-step-num">1</span>
-            <h3>Register</h3>
+            <h3>Arrange payment externally</h3>
             <p>
-              Name, email, password, and optionally the reference for whatever payment you've arranged
-              with the administrator. Takes a minute.
+              Pay through whatever business channel the administrator uses -- mobile money, bank
+              transfer, cash. Nothing here processes a card or takes a payment.
             </p>
           </div>
           <div className="access-step">
             <span className="access-step-num">2</span>
-            <h3>Super Admin review</h3>
+            <h3>Receive an access code</h3>
             <p>
-              Your account sits in a pending queue. A Super Admin verifies your payment reference out of
-              band and approves it. Until they do, the entire API rejects your account -- there is no
-              partial access and no trial tier.
+              Once payment is confirmed, the Super Admin generates a unique, time-limited code and sends
+              it to you. Register and sign in any time before or after -- the account itself is free and
+              instant.
             </p>
           </div>
           <div className="access-step">
             <span className="access-step-num">3</span>
-            <h3>Profile goes live</h3>
+            <h3>Redeem it</h3>
             <p>
-              Sign in to the full platform: dashboard, per-match analysis, live in-play updates, team
-              pages and the AI assistant. Your theme, colour profile and viewing history follow your
-              account across devices.
+              Enter the code on the Access page. It activates immediately for its stated duration --
+              dashboard, per-match analysis, live in-play updates, team pages and the AI assistant, all
+              unlocked. Access expires automatically; nothing renews itself without a new code.
             </p>
           </div>
         </div>
 
         <div className="access-cta">
           <Link className="btn btn-lg" to="/register">
-            Request access
+            Create an account
           </Link>
           <Link className="btn ghost btn-lg" to="/account-status">
-            Check a pending application
+            Check your access status
           </Link>
         </div>
       </section>
@@ -468,6 +468,20 @@ export function Welcome() {
               {openFaq === i && <p className="faq-answer">{f.a}</p>}
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* ---------------- Final CTA ---------------- */}
+      <section className="doc-cta">
+        <h2>Ready to see what the models say about this week's fixtures?</h2>
+        <p>Create an account, then redeem your access code the moment you have one.</p>
+        <div className="landing-cta-row">
+          <Link className="btn btn-lg" to="/register">
+            Get access
+          </Link>
+          <Link className="btn ghost btn-lg" to="/login">
+            Sign in
+          </Link>
         </div>
       </section>
 

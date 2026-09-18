@@ -11,12 +11,14 @@ from app.api.deps import get_current_user, get_db
 from app.api.rate_limit import enforce
 from app.api.schemas import (
     AccountStatusOut,
+    ChangePasswordIn,
     LoginIn,
     MatchHistoryOut,
     PreferencesIn,
     RegisterIn,
     RegisterOut,
     TokenOut,
+    UpdateProfileIn,
     UserOut,
 )
 from app.api.serializers import match_view_to_schema, user_to_schema
@@ -168,6 +170,55 @@ def update_preferences(
     db.commit()
     db.refresh(user)
     return user_to_schema(user)
+
+
+@router.patch("/profile", response_model=UserOut)
+def update_profile(
+    payload: UpdateProfileIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+) -> UserOut:
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name cannot be empty")
+    user.name = name
+    db.commit()
+    db.refresh(user)
+    return user_to_schema(user)
+
+
+@router.patch("/password", status_code=204)
+def change_password(
+    payload: ChangePasswordIn,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    """Requires the current password, so a hijacked but still-valid session
+    token can't be used to lock the real owner out permanently -- an
+    attacker who only has the token still needs the password."""
+
+    settings = get_settings()
+    enforce(
+        request,
+        "password_change",
+        settings.password_change_rate_limit_attempts,
+        settings.password_change_rate_limit_window_seconds,
+    )
+
+    if not verify_password(payload.current_password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Current password is incorrect")
+    if len(payload.new_password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+
+    user.password_hash = hash_password(payload.new_password)
+    db.add(
+        AuditLog(
+            actor_user_id=user.id,
+            actor_email=user.email,
+            action="account.password_changed",
+            target_user_id=user.id,
+        )
+    )
+    db.commit()
 
 
 @router.post("/history/{match_id}", status_code=204)

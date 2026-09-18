@@ -50,8 +50,12 @@ def redeem(
 def access_status(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> AccessStatusOut:
     grant = current_grant(db, user)
     if grant is None:
-        return AccessStatusOut(has_access=False, status="none", expires_at=None)
+        return AccessStatusOut(has_access=False, status="none")
 
-    if grant.expires_at <= dt.datetime.utcnow():
-        return AccessStatusOut(has_access=False, status="expired", expires_at=grant.expires_at)
-    return AccessStatusOut(has_access=True, status="active", expires_at=grant.expires_at)
+    has_access = grant.expires_at > dt.datetime.utcnow()
+    return AccessStatusOut(
+        has_access=has_access,
+        status="active" if has_access else "expired",
+        activated_at=grant.activated_at,
+        expires_at=grant.expires_at,
+    )

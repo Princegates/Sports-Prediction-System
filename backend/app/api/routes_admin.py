@@ -19,6 +19,8 @@ from app.api.schemas import (
     AccessCodeCreateIn,
     AccessCodeOut,
     AdminOverviewOut,
+    AdminSettingsIn,
+    AdminSettingsOut,
     AdminUserOut,
     AuditLogOut,
     ExtendGrantIn,
@@ -26,7 +28,7 @@ from app.api.schemas import (
     RevokeGrantIn,
 )
 from app.api.serializers import access_code_to_schema, admin_user_to_schema
-from app.db.models import AccessCode, AccessGrant, AuditLog, ChatMessage, Match, Prediction, User
+from app.db.models import AccessCode, AccessGrant, AdminSettings, AuditLog, ChatMessage, Match, Prediction, User
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_superadmin)])
 
@@ -275,3 +277,58 @@ def revoke_user_access(
     except AccessCodeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return admin_user_to_schema(target, db)
+
+
+# --- Platform settings -------------------------------------------------------
+
+
+def _get_or_create_settings(db: Session) -> AdminSettings:
+    settings = db.get(AdminSettings, 1)
+    if settings is None:
+        settings = AdminSettings(id=1)
+        db.add(settings)
+        db.commit()
+        db.refresh(settings)
+    return settings
+
+
+@router.get("/settings", response_model=AdminSettingsOut)
+def get_admin_settings(db: Session = Depends(get_db)) -> AdminSettingsOut:
+    settings = _get_or_create_settings(db)
+    return AdminSettingsOut(
+        default_duration_days=settings.default_duration_days,
+        default_redemption_limit=settings.default_redemption_limit,
+        updated_at=settings.updated_at,
+    )
+
+
+@router.patch("/settings", response_model=AdminSettingsOut)
+def update_admin_settings(
+    payload: AdminSettingsIn,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> AdminSettingsOut:
+    if payload.default_duration_days <= 0 or payload.default_redemption_limit <= 0:
+        raise HTTPException(status_code=400, detail="Values must be at least 1")
+
+    settings = _get_or_create_settings(db)
+    settings.default_duration_days = payload.default_duration_days
+    settings.default_redemption_limit = payload.default_redemption_limit
+    settings.updated_by_user_id = admin.id
+    settings.updated_at = dt.datetime.utcnow()
+    _record(
+        db,
+        admin,
+        "admin_settings.updated",
+        detail={
+            "default_duration_days": payload.default_duration_days,
+            "default_redemption_limit": payload.default_redemption_limit,
+        },
+    )
+    db.commit()
+    db.refresh(settings)
+    return AdminSettingsOut(
+        default_duration_days=settings.default_duration_days,
+        default_redemption_limit=settings.default_redemption_limit,
+        updated_at=settings.updated_at,
+    )

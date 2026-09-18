@@ -8,6 +8,7 @@ import {
   onAuthLogout,
   storeToken,
   updatePreferences,
+  updateProfile as apiUpdateProfile,
 } from "../api";
 import { storeAccent } from "./accentProfiles";
 import type { AccessStatus, User } from "../types";
@@ -24,6 +25,7 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   setPreferences: (prefs: { theme?: string; accent_profile?: string }) => Promise<void>;
+  updateProfile: (name: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue>({
@@ -35,6 +37,7 @@ const AuthContext = createContext<AuthContextValue>({
   login: async () => {},
   logout: () => {},
   setPreferences: async () => {},
+  updateProfile: async () => {},
 });
 
 /** A signed-in user's saved theme/accent (their own account, not the
@@ -95,7 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // A superadmin never needs a grant, so there's nothing to fetch --
         // this also keeps the admin panel from ever being gated on it.
         if (u.role === "superadmin") {
-          setAccessStatus({ has_access: true, status: "active", expires_at: null });
+          setAccessStatus({ has_access: true, status: "active", activated_at: null, expires_at: null });
           setAccessLoading(false);
           return;
         }
@@ -114,7 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       applyStoredPreferences(result.user);
       setUser(result.user);
       if (result.user.role === "superadmin") {
-        setAccessStatus({ has_access: true, status: "active", expires_at: null });
+        setAccessStatus({ has_access: true, status: "active", activated_at: null, expires_at: null });
         setAccessLoading(false);
       } else {
         await refreshAccessStatus();
@@ -128,9 +131,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(updated);
   }, []);
 
+  const updateProfile = useCallback(async (name: string) => {
+    const updated = await apiUpdateProfile(name);
+    setUser(updated);
+  }, []);
+
   const value = useMemo(
-    () => ({ user, loading, accessStatus, accessLoading, refreshAccessStatus, login, logout, setPreferences }),
-    [user, loading, accessStatus, accessLoading, refreshAccessStatus, login, logout, setPreferences],
+    () => ({
+      user,
+      loading,
+      accessStatus,
+      accessLoading,
+      refreshAccessStatus,
+      login,
+      logout,
+      setPreferences,
+      updateProfile,
+    }),
+    [user, loading, accessStatus, accessLoading, refreshAccessStatus, login, logout, setPreferences, updateProfile],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

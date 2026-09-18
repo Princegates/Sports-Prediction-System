@@ -4,6 +4,7 @@ import type {
   AccessStatus,
   AccountStatus,
   AdminOverview,
+  AdminSettings,
   AdminUser,
   AuditLogEntry,
   ChatAnswer,
@@ -240,6 +241,14 @@ export function updatePreferences(payload: { theme?: string; accent_profile?: st
   return patch("/api/auth/preferences", payload);
 }
 
+export function updateProfile(name: string): Promise<User> {
+  return patch("/api/auth/profile", { name });
+}
+
+export function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  return patch("/api/auth/password", { current_password: currentPassword, new_password: newPassword });
+}
+
 export function recordMatchView(matchId: number): Promise<void> {
   return request(`/api/auth/history/${matchId}`, { method: "POST" });
 }
@@ -312,6 +321,14 @@ export function extendUserAccess(userId: number, additionalDays: number): Promis
 
 export function revokeUserAccess(userId: number, reason?: string): Promise<AdminUser> {
   return post(`/api/admin/users/${userId}/access/revoke`, { reason });
+}
+
+export function fetchAdminSettings(): Promise<AdminSettings> {
+  return get("/api/admin/settings");
+}
+
+export function updateAdminSettings(payload: { default_duration_days: number; default_redemption_limit: number }): Promise<AdminSettings> {
+  return patch("/api/admin/settings", payload);
 }
 
 // --- Predictions / matches / teams --------------------------------------

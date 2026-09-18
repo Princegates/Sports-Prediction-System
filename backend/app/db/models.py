@@ -199,6 +199,24 @@ class AccessRedemption(Base):
     redeemed_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
 
 
+class AdminSettings(Base):
+    """Singleton row of admin-configurable defaults.
+
+    Exactly one row exists, with a fixed id, created lazily on first read --
+    there's no per-tenant need for more than one, and a fixed id avoids a
+    lookup-or-create race turning into duplicate rows the way an
+    auto-incrementing key would.
+    """
+
+    __tablename__ = "admin_settings"
+
+    id: Mapped[int] = mapped_column(primary_key=True, default=1)
+    default_duration_days: Mapped[int] = mapped_column(Integer, default=30)
+    default_redemption_limit: Mapped[int] = mapped_column(Integer, default=1)
+    updated_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+
 class Team(Base):
     __tablename__ = "teams"
 

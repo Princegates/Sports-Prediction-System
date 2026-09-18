@@ -158,8 +158,9 @@ export function PublicShell({ children }: { children: ReactNode }) {
           <div className="public-footer-col">
             <h4>Platform</h4>
             <Link to="/how-it-works">How it works</Link>
-            <Link to="/register">Request access</Link>
-            <Link to="/account-status">Check application status</Link>
+            <Link to="/register">Create an account</Link>
+            <Link to="/login">Redeem access code</Link>
+            <Link to="/account-status">Check your access status</Link>
             <Link to="/login">Sign in</Link>
           </div>
 

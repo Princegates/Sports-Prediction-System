@@ -230,7 +230,14 @@ export interface AccessGrant {
 export interface AccessStatus {
   has_access: boolean;
   status: "active" | "expired" | "none";
+  activated_at: string | null;
   expires_at: string | null;
+}
+
+export interface AdminSettings {
+  default_duration_days: number;
+  default_redemption_limit: number;
+  updated_at: string;
 }
 
 // --- Admin ---------------------------------------------------------------

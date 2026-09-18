@@ -281,3 +281,51 @@ def test_superadmin_never_needs_a_redeemed_code(db_session, admin):
     on the same code they themselves would have to generate would be circular."""
 
     assert client.get("/api/teams", headers=_headers(admin)).status_code == 200
+
+
+# --- Admin settings ----------------------------------------------------------
+
+
+def test_admin_settings_default_to_sane_values_and_are_superadmin_only(db_session, admin):
+    plain = _make_user(db_session, "settings-plain@example.com")
+    assert client.get("/api/admin/settings", headers=_headers(plain)).status_code == 403
+
+    response = client.get("/api/admin/settings", headers=_headers(admin))
+    assert response.status_code == 200
+    body = response.json()
+    assert body["default_duration_days"] == 30
+    assert body["default_redemption_limit"] == 1
+
+
+def test_admin_can_update_settings_and_it_persists(db_session, admin):
+    response = client.patch(
+        "/api/admin/settings",
+        json={"default_duration_days": 14, "default_redemption_limit": 5},
+        headers=_headers(admin),
+    )
+    assert response.status_code == 200
+    assert response.json()["default_duration_days"] == 14
+    assert response.json()["default_redemption_limit"] == 5
+
+    refetched = client.get("/api/admin/settings", headers=_headers(admin)).json()
+    assert refetched["default_duration_days"] == 14
+    assert refetched["default_redemption_limit"] == 5
+
+
+def test_admin_settings_reject_non_positive_values(db_session, admin):
+    response = client.patch(
+        "/api/admin/settings",
+        json={"default_duration_days": 0, "default_redemption_limit": 1},
+        headers=_headers(admin),
+    )
+    assert response.status_code == 400
+
+
+def test_updating_settings_is_superadmin_only(db_session, admin):
+    plain = _make_user(db_session, "settings-plain-2@example.com")
+    response = client.patch(
+        "/api/admin/settings",
+        json={"default_duration_days": 14, "default_redemption_limit": 1},
+        headers=_headers(plain),
+    )
+    assert response.status_code == 403
