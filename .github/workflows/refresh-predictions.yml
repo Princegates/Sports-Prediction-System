@@ -1,13 +1,17 @@
-# Keeps predictions current without paying for a scheduler.
+# Seeds and refreshes the database, on GitHub's runners rather than your laptop.
 #
-# GitHub Actions gives 2,000 free minutes a month; this job uses a couple of
-# minutes a day. It re-imports fixtures, retrains, and regenerates predictions
-# against whatever DATABASE_URL points at.
+# Two jobs in one file because they are the same command:
 #
-# Set DATABASE_URL under Settings -> Secrets and variables -> Actions. If you
-# deployed to a VM with its own disk (see DEPLOYMENT.md, Option A), use a cron
-# entry on the box instead -- this workflow is for hosts whose database lives
-# somewhere the runner can reach.
+#   - The nightly schedule keeps fixtures, models and predictions current.
+#   - The manual "Run workflow" button is also the best way to do the FIRST
+#     seed. A runner sits milliseconds from a cloud database, where a laptop
+#     may be a continent away; the import is thousands of round trips, so the
+#     same job that takes minutes here can take hours from home. Running it
+#     here sidesteps that entirely.
+#
+# Set DATABASE_URL under Settings -> Secrets and variables -> Actions.
+# For the first run, also set SUPERADMIN_EMAIL and SUPERADMIN_PASSWORD so the
+# admin account is created; they are ignored once it exists.
 name: Refresh predictions
 
 on:
@@ -15,10 +19,26 @@ on:
     # 06:00 UTC daily -- before most European kickoffs.
     - cron: "0 6 * * *"
   workflow_dispatch:
+    inputs:
+      leagues:
+        description: "Space-separated, quoted league names"
+        required: false
+        default: >-
+          "English Premier League" "Spanish La Liga" "Italian Serie A"
+          "German Bundesliga" "French Ligue 1"
+      days_ahead:
+        description: "How many days of upcoming fixtures to predict"
+        required: false
+        default: "10"
 
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    # Generous: a five-league first seed imports ~11,000 matches and trains a
+    # model per league. Nightly runs are far quicker, since the import is
+    # incremental and only new results change.
+    timeout-minutes: 60
+
     steps:
       - uses: actions/checkout@v4
 
@@ -35,10 +55,16 @@ jobs:
         working-directory: backend
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPERADMIN_EMAIL: ${{ secrets.SUPERADMIN_EMAIL }}
+          SUPERADMIN_PASSWORD: ${{ secrets.SUPERADMIN_PASSWORD }}
+          LEAGUES: ${{ inputs.leagues || '"English Premier League" "Spanish La Liga" "Italian Serie A" "German Bundesliga" "French Ligue 1"' }}
+          DAYS_AHEAD: ${{ inputs.days_ahead || '10' }}
         run: |
           if [ -z "$DATABASE_URL" ]; then
-            echo "DATABASE_URL secret is not set -- skipping."
+            echo "DATABASE_URL secret is not set -- nothing to refresh."
             echo "Add it under Settings > Secrets and variables > Actions."
             exit 0
           fi
-          python scripts/bootstrap.py --days-ahead 10
+          # eval so the quoted, space-separated league names survive as
+          # separate argv entries rather than becoming one long string.
+          eval "python scripts/bootstrap.py --days-ahead $DAYS_AHEAD --leagues $LEAGUES"
