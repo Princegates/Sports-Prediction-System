@@ -119,6 +119,18 @@ class ApiFootballClient:
         self.quota._minute_window = window
 
     def get(self, path: str, params: dict[str, object] | None = None) -> list[dict]:
+        rows, _ = self.get_page(path, params)
+        return rows
+
+    def get_page(self, path: str, params: dict[str, object] | None = None) -> tuple[list[dict], dict]:
+        """Rows plus the paging block.
+
+        Odds come back paged, and a fetch that spans several days of quota has
+        to know which page it stopped on. Discarding that -- which the plain
+        ``get`` does -- means restarting from the beginning every time and
+        never finishing a season.
+        """
+
         if self.quota.remaining() <= 0:
             raise QuotaExceeded(
                 f"Daily API-Football budget spent ({self.quota.used_this_run} used). "
@@ -156,7 +168,7 @@ class ApiFootballClient:
         if errors and not isinstance(errors, list):
             raise ApiFootballError(f"{path}: {errors}")
 
-        return payload.get("response") or []
+        return payload.get("response") or [], payload.get("paging") or {}
 
     # -- endpoints -------------------------------------------------------
 
