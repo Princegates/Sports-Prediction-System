@@ -78,6 +78,22 @@ jobs:
           key: model-artifacts-${{ github.run_id }}
           restore-keys: model-artifacts-
 
+      # Fails in a second with a plain-English reason, rather than 40 minutes
+      # in -- or, worse, with a SQLAlchemy traceback that says only "Could not
+      # parse SQLAlchemy URL from given URL string". It prints the shape of the
+      # value, never its contents.
+      - name: Check DATABASE_URL
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret is not set -- nothing to refresh."
+            echo "Add it under Settings > Secrets and variables > Actions."
+            exit 0
+          fi
+          python scripts/check_database_url.py
+
       - name: Refresh data, models and predictions
         working-directory: backend
         env:
