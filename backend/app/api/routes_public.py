@@ -20,7 +20,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
-from app.api.schemas import PublicAccuracyOut, PublicFixtureOut, PublicStatsOut
+from app.api.schemas import LeagueAccuracyOut, PublicAccuracyOut, PublicFixtureOut, PublicStatsOut
 from app.assistant import retrieval
 from app.db.models import Match, Prediction, User
 
@@ -87,6 +87,20 @@ def public_accuracy(db: Session = Depends(get_db)) -> PublicAccuracyOut:
         matches_evaluated=int(metrics["n"]) if "n" in metrics else (
             int(metrics["matches"]) if "matches" in metrics else None
         ),
+        # The per-league spread is worth showing: it is real, and an overall
+        # figure alone hides that some leagues are markedly harder to predict.
+        per_league=[
+            LeagueAccuracyOut(
+                league=league,
+                accuracy=values.get("accuracy"),
+                matches_evaluated=int(values["n"]) if "n" in values else None,
+            )
+            for league, values in sorted(
+                snapshot.per_league.items(),
+                key=lambda kv: kv[1].get("accuracy") or 0,
+                reverse=True,
+            )
+        ],
     )
 
 

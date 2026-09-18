@@ -180,16 +180,25 @@ class PublicStatsOut(BaseModel):
     markets_per_match: int
 
 
+class LeagueAccuracyOut(BaseModel):
+    league: str
+    accuracy: float | None = None
+    matches_evaluated: int | None = None
+
+
 class PublicAccuracyOut(BaseModel):
     has_data: bool
     model_version: str | None = None
     computed_at: dt.datetime | None = None
     split: str | None = None
     leagues: list[str] = []
+    # Match-weighted across every league in the split, not one league's
+    # figure standing in for all of them.
     accuracy: float | None = None
     log_loss: float | None = None
     brier_score: float | None = None
     matches_evaluated: int | None = None
+    per_league: list[LeagueAccuracyOut] = []
 
 
 class PublicFixtureOut(BaseModel):

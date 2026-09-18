@@ -148,3 +148,80 @@ def test_predictions_still_require_authentication(db_session, seeded):
 
     assert client.get("/api/predictions/today").status_code == 401
     assert client.get(f"/api/matches/{seeded['upcoming'].id}/prediction").status_code == 401
+
+
+def _seed_metrics(db, rows):
+    """rows: (league, metric_name, value) for the 'test' split."""
+    db.add_all([
+        ModelMetric(model_version="ensemble-v1", split="test", league=lg, metric_name=name, metric_value=val)
+        for lg, name, val in rows
+    ])
+    db.commit()
+
+
+def test_multi_league_accuracy_is_combined_not_overwritten(db_session, seeded):
+    """The bug this pins: every league writes a ('test', 'accuracy') row, so
+    keying metrics by split alone let the last league silently overwrite the
+    rest -- reporting one league's figure while naming five beside it.
+
+    Weighted by evaluated matches, 45.9% over 290 and 52.9% over 289 combine
+    to ~49.4%. Neither input value may be returned as the headline.
+    """
+
+    _seed_metrics(db_session, [
+        ("English Premier League", "accuracy", 0.459), ("English Premier League", "n", 290),
+        ("Italian Serie A", "accuracy", 0.529), ("Italian Serie A", "n", 289),
+    ])
+
+    body = client.get("/api/public/accuracy").json()
+
+    assert body["has_data"] is True
+    assert 0.459 < body["accuracy"] < 0.529, "headline is one league's figure, not a combination"
+    assert body["accuracy"] == pytest.approx(0.4939, abs=1e-3)
+    assert body["matches_evaluated"] == 579, "evaluated matches must sum across leagues"
+    assert len(body["leagues"]) == 2
+
+
+def test_accuracy_is_weighted_by_matches_not_a_plain_mean(db_session, seeded):
+    """A league evaluated on 10 matches must not swing the headline as hard
+    as one evaluated on 500."""
+
+    _seed_metrics(db_session, [
+        ("Big League", "accuracy", 0.50), ("Big League", "n", 500),
+        ("Tiny League", "accuracy", 0.90), ("Tiny League", "n", 10),
+    ])
+
+    accuracy = client.get("/api/public/accuracy").json()["accuracy"]
+
+    plain_mean = 0.70
+    weighted = (0.50 * 500 + 0.90 * 10) / 510
+    assert accuracy == pytest.approx(weighted, abs=1e-4)
+    assert abs(accuracy - plain_mean) > 0.15, "looks like an unweighted average"
+
+
+def test_per_league_breakdown_is_exposed(db_session, seeded):
+    """The spread between leagues is real and worth showing -- an overall
+    number alone hides that some leagues are much harder."""
+
+    _seed_metrics(db_session, [
+        ("English Premier League", "accuracy", 0.459), ("English Premier League", "n", 290),
+        ("Italian Serie A", "accuracy", 0.529), ("Italian Serie A", "n", 289),
+    ])
+
+    per_league = client.get("/api/public/accuracy").json()["per_league"]
+
+    assert [r["league"] for r in per_league] == ["Italian Serie A", "English Premier League"], "best first"
+    assert per_league[0]["accuracy"] == pytest.approx(0.529)
+    assert per_league[0]["matches_evaluated"] == 289
+
+
+def test_single_league_accuracy_is_unchanged(db_session, seeded):
+    """The aggregation must not disturb the one-league case."""
+
+    _seed_metrics(db_session, [
+        ("English Premier League", "accuracy", 0.459), ("English Premier League", "n", 290),
+    ])
+
+    body = client.get("/api/public/accuracy").json()
+    assert body["accuracy"] == pytest.approx(0.459)
+    assert body["matches_evaluated"] == 290

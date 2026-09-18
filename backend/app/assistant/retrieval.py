@@ -37,15 +37,30 @@ class MatchCard:
 
 @dataclass
 class AccuracySnapshot:
-    """Backtest metrics as recorded by ``scripts/backtest.py``. ``splits``
-    is keyed by split name ("test", "validation", ...) then metric name, so
-    the responder can quote the held-out test split specifically rather than
-    an average across splits that would flatter the model."""
+    """Backtest metrics as recorded by ``scripts/backtest.py``.
+
+    ``splits`` is keyed by split name ("test", "validation", ...) then metric
+    name, so the responder can quote the held-out test split specifically
+    rather than an average across splits that would flatter the model.
+
+    With more than one league those metrics need combining, and the obvious
+    way is wrong twice over. Overwriting -- which this did until a five-league
+    deployment surfaced it -- reports one arbitrary league's accuracy while
+    naming every league beside it. A plain mean is also wrong, because leagues
+    contribute different numbers of evaluated matches. Both are match-weighted
+    here, which is what makes the headline figure mean "across everything we
+    tested on".
+
+    ``per_league`` keeps the unaggregated figures, because the spread between
+    leagues is real and interesting -- the Premier League scores several
+    points below the others.
+    """
 
     model_version: str | None = None
     computed_at: dt.datetime | None = None
     leagues: list[str] = field(default_factory=list)
     splits: dict[str, dict[str, float]] = field(default_factory=dict)
+    per_league: dict[str, dict[str, float]] = field(default_factory=dict)
 
     @property
     def has_data(self) -> bool:
@@ -232,18 +247,62 @@ def accuracy_snapshot(db: Session) -> AccuracySnapshot:
         db.execute(select(ModelMetric).where(ModelMetric.model_version == newest.model_version)).scalars()
     )
 
-    splits: dict[str, dict[str, float]] = {}
+    # (split, league) -> {metric: value}, so leagues can be combined rather
+    # than silently overwriting one another.
+    by_split_league: dict[str, dict[str, dict[str, float]]] = {}
     leagues: set[str] = set()
     for row in rows:
-        splits.setdefault(row.split, {})[row.metric_name] = row.metric_value
+        by_split_league.setdefault(row.split, {}).setdefault(row.league, {})[row.metric_name] = row.metric_value
         leagues.add(row.league)
+
+    splits: dict[str, dict[str, float]] = {}
+    for split, league_metrics in by_split_league.items():
+        splits[split] = _weighted_metrics(league_metrics)
+
+    preferred = "test" if "test" in by_split_league else next(iter(by_split_league), None)
 
     return AccuracySnapshot(
         model_version=newest.model_version,
         computed_at=newest.computed_at,
         leagues=sorted(leagues),
         splits=splits,
+        per_league=by_split_league.get(preferred, {}) if preferred else {},
     )
+
+
+def _weighted_metrics(league_metrics: dict[str, dict[str, float]]) -> dict[str, float]:
+    """Combine one split's per-league metrics into overall figures.
+
+    Accuracy, log loss, Brier score and calibration error are all means over
+    matches, so the correct combination is a mean weighted by each league's
+    evaluated-match count -- not a plain average, which would let a small
+    league swing the headline as hard as a large one. ``n`` itself sums.
+
+    A league missing ``n`` (an older run, before the count was recorded)
+    falls back to weight 1 rather than being dropped, so a partial history
+    still produces a usable figure.
+    """
+
+    if not league_metrics:
+        return {}
+
+    weights = {lg: m.get("n", 1.0) or 1.0 for lg, m in league_metrics.items()}
+    total_weight = sum(weights.values())
+
+    metric_names = {name for m in league_metrics.values() for name in m}
+    combined: dict[str, float] = {}
+
+    for name in metric_names:
+        if name == "n":
+            combined["n"] = sum(m.get("n", 0.0) for m in league_metrics.values())
+            continue
+        contributing = [(weights[lg], m[name]) for lg, m in league_metrics.items() if name in m]
+        if not contributing:
+            continue
+        w_sum = sum(w for w, _ in contributing)
+        combined[name] = sum(w * v for w, v in contributing) / w_sum if w_sum else 0.0
+
+    return combined
 
 
 def coverage_counts(db: Session) -> dict[str, int]:
