@@ -298,6 +298,45 @@ URL from step 2.
    `postgres://user:pass@ep-xxx.neon.tech/neondb?sslmode=require`.
    Keep it somewhere for steps 2 and 4.
 
+#### Using Supabase instead
+
+Supabase's free Postgres works the same way, and nothing in the app is
+Neon-specific — but it offers *three* connection strings and the choice
+matters more than the dashboard suggests.
+
+**Take the pooler string, not the direct one.** Supabase's direct connection
+(`db.<ref>.supabase.co`) resolves to IPv6 only unless you pay for the IPv4
+add-on, and free hosts commonly have no IPv6 egress — which surfaces as a
+connection timeout that looks like a firewall problem. The pooler hosts
+(`aws-0-<region>.pooler.supabase.com`) are reachable over IPv4. Check this
+against Supabase's current docs before spending time on it; it is the kind
+of detail that changes.
+
+**Either pooler port works, and the app adapts to both:**
+
+| Port | Mode | Notes |
+|---|---|---|
+| 5432 | Session | Behaves like an ordinary connection. Fine. |
+| 6543 | Transaction | Better under many clients, but no prepared statements. |
+
+Transaction mode hands each transaction whichever backend is free, so a
+statement prepared on one is missing on the next. psycopg prepares
+automatically once a query has run five times, so this fails *late* and
+looks random: the app works, then the queries it runs most often start
+raising `prepared statement "_pg3_0" already exists` while rarer ones keep
+working. `app/db/session.py` detects port 6543 (and pgbouncer's 6432) and
+disables automatic preparation, so you don't have to think about it — but
+that is why the port is worth noticing if you ever see that error.
+
+**The egress budget is the same problem, not a smaller one.** Supabase's
+free tier allows 5 GB of transfer a month, as Neon's does. The 153x egress
+reduction in this repo is what makes either fit; without it, five leagues
+retrained nightly spends the month's allowance in two nights on either
+provider.
+
+**Region still matters**, for the same reason as above: match it to the
+Render region in `render.yaml`.
+
 ### 2. Backend — Render (5 min)
 
 1. Sign up at [render.com](https://render.com) with GitHub.
