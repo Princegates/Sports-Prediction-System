@@ -1,0 +1,71 @@
+# Manual only, on purpose.
+#
+# Every run of this spends from a hundred-request daily budget. A schedule
+# would spend it whether or not anything changed, and the first thing you want
+# from a new data source is to look at what it brought back before trusting it
+# on a timer.
+#
+# The API key is read from the admin settings panel (Settings -> Data sources),
+# so this job needs no secret of its own beyond DATABASE_URL -- the key lives
+# in the database, and rotating it there takes effect here immediately.
+name: Import API-Football
+
+on:
+  workflow_dispatch:
+    inputs:
+      leagues:
+        description: "Space-separated, quoted league names"
+        required: false
+        default: '"UEFA Champions League"'
+      odds:
+        description: "Also capture market odds"
+        required: false
+        default: "no"
+        type: choice
+        options: ["no", "yes"]
+      max_requests:
+        description: "Hard ceiling for this run (daily budget is 100)"
+        required: false
+        default: "20"
+      dry_run:
+        description: "Print the plan and spend nothing"
+        required: false
+        default: "no"
+        type: choice
+        options: ["no", "yes"]
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Check DATABASE_URL
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python scripts/check_database_url.py
+
+      - name: Import
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          LEAGUES: ${{ inputs.leagues }}
+          MAX_REQUESTS: ${{ inputs.max_requests }}
+        run: |
+          FLAGS=""
+          [ "${{ inputs.odds }}" = "yes" ] && FLAGS="$FLAGS --odds"
+          [ "${{ inputs.dry_run }}" = "yes" ] && FLAGS="$FLAGS --dry-run"
+
+          eval "python scripts/import_api_football.py --max-requests $MAX_REQUESTS $FLAGS --leagues $LEAGUES"
