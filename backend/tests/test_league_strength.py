@@ -226,3 +226,107 @@ def test_the_interval_excludes_zero_for_a_real_gap():
     bounds = bootstrap_offsets(_synthetic(gap=150.0, count=400), draws=80)
     low, _ = bounds[STRONG]
     assert low > 0, bounds
+
+
+# --- reaching predictions ---------------------------------------------
+
+
+@pytest.fixture()
+def two_clubs(db_session):
+    home = Team(name="Arsenal FC", league="English Premier League", aliases=[])
+    away = Team(name="Lille OSC", league="French Ligue 1", aliases=[])
+    db_session.add_all([home, away])
+    db_session.commit()
+    return home, away
+
+
+def _calibrate(db, home, away, competition, strength):
+    from app.prediction_models.league_strength import calibrate
+
+    return calibrate(
+        db, strength,
+        competition=competition,
+        home_team_id=home.id, away_team_id=away.id,
+        home_elo=1500.0, away_elo=1500.0,
+        default_home_advantage=60.0,
+    )
+
+
+def test_a_cross_league_tie_is_calibrated(db_session, two_clubs):
+    home, away = two_clubs
+    strength = LeagueStrength(
+        offsets={"English Premier League": 104.0, "French Ligue 1": -37.0},
+        home_advantage=85.0,
+        matches=419,
+    )
+
+    result = _calibrate(db_session, home, away, "UEFA Champions League", strength)
+
+    assert result.applied
+    assert result.home == 1604.0
+    assert result.away == 1463.0
+    assert result.home_advantage == 85.0          # fitted on these ties, not the domestic default
+    assert "419" in result.note
+
+
+def test_a_domestic_fixture_is_left_exactly_alone(db_session, two_clubs):
+    """Both clubs would carry the same offset, so it cancels -- and the club
+    lookup is skipped entirely, keeping the nightly path unchanged."""
+
+    home, away = two_clubs
+    strength = LeagueStrength(offsets={"English Premier League": 104.0}, home_advantage=85.0)
+
+    result = _calibrate(db_session, home, away, "English Premier League", strength)
+
+    assert not result.applied
+    assert (result.home, result.away) == (1500.0, 1500.0)
+    assert result.home_advantage == 60.0
+
+
+def test_two_clubs_from_one_league_meeting_in_europe_are_left_alone(db_session):
+    """An all-Spanish quarter-final needs no calibration: the offsets are
+    identical and cancel."""
+
+    a = Team(name="Real Madrid CF", league="Spanish La Liga", aliases=[])
+    b = Team(name="FC Barcelona", league="Spanish La Liga", aliases=[])
+    db_session.add_all([a, b])
+    db_session.commit()
+
+    strength = LeagueStrength(offsets={"Spanish La Liga": -25.0}, home_advantage=85.0)
+    result = _calibrate(db_session, a, b, "UEFA Champions League", strength)
+
+    assert not result.applied
+    assert (result.home, result.away) == (1500.0, 1500.0)
+
+
+def test_no_stored_calibration_changes_nothing(db_session, two_clubs):
+    home, away = two_clubs
+    result = _calibrate(db_session, home, away, "UEFA Champions League", LeagueStrength())
+
+    assert not result.applied
+    assert (result.home, result.away) == (1500.0, 1500.0)
+
+
+def test_the_calibration_moves_the_published_probability(db_session, two_clubs):
+    """End to end: the same two clubs, the same ratings, and a different
+    number reaches the page -- which is the whole point."""
+
+    from app.prediction_models.ensemble import generate_prediction
+
+    home, away = two_clubs
+    as_of = dt.datetime(2026, 10, 21, 19, 0)
+    uncalibrated = generate_prediction(
+        db_session, home.id, away.id, "UEFA Champions League", as_of,
+        strength=LeagueStrength(),
+    )
+    calibrated = generate_prediction(
+        db_session, home.id, away.id, "UEFA Champions League", as_of,
+        strength=LeagueStrength(
+            offsets={"English Premier League": 104.0, "French Ligue 1": -37.0},
+            home_advantage=85.0, matches=419,
+        ),
+    )
+
+    assert calibrated.home_win > uncalibrated.home_win + 0.02, (
+        uncalibrated.home_win, calibrated.home_win
+    )

@@ -148,6 +148,73 @@ class LeagueStrength:
         db.commit()
 
 
+@dataclass
+class CalibratedRatings:
+    """Two ratings on a common scale, and whether anything was changed."""
+
+    home: float
+    away: float
+    home_advantage: float
+    applied: bool = False
+    note: str = ""
+
+
+def calibrate(
+    db: Session,
+    strength: LeagueStrength,
+    *,
+    competition: str,
+    home_team_id: int,
+    away_team_id: int,
+    home_elo: float,
+    away_elo: float,
+    default_home_advantage: float,
+) -> CalibratedRatings:
+    """Put two clubs' ratings on the same scale, if they are not already.
+
+    Returns the inputs untouched for a domestic fixture. Not merely as an
+    optimisation, though it is one -- the club-league lookup is skipped
+    entirely on the path that runs thousands of times a night -- but because
+    the offsets provably cancel when both clubs share a league, so there is no
+    behaviour to change and no risk to take.
+
+    The home advantage comes from the calibration for European ties, where it
+    was fitted on those matches, and from configuration for domestic ones. A
+    cross-league tie is a longer trip to a more hostile ground, and the fit
+    says so.
+    """
+
+    if competition not in EUROPEAN_COMPETITIONS or not strength.offsets:
+        return CalibratedRatings(home=home_elo, away=away_elo, home_advantage=default_home_advantage)
+
+    leagues = dict(
+        db.execute(
+            select(Team.id, Team.league).where(Team.id.in_([home_team_id, away_team_id]))
+        ).all()
+    )
+    home_league = leagues.get(home_team_id, "")
+    away_league = leagues.get(away_team_id, "")
+
+    if home_league == away_league:
+        return CalibratedRatings(home=home_elo, away=away_elo, home_advantage=default_home_advantage)
+
+    home_shift = strength.offsets.get(home_league, 0.0)
+    away_shift = strength.offsets.get(away_league, 0.0)
+    if not home_shift and not away_shift:
+        return CalibratedRatings(home=home_elo, away=away_elo, home_advantage=default_home_advantage)
+
+    return CalibratedRatings(
+        home=home_elo + home_shift,
+        away=away_elo + away_shift,
+        home_advantage=strength.home_advantage,
+        applied=True,
+        note=(
+            f"{home_league} {home_shift:+.0f} vs {away_league} {away_shift:+.0f} "
+            f"(fitted on {strength.matches} cross-league matches)"
+        ),
+    )
+
+
 def collect_bridges(
     db: Session,
     *,
