@@ -349,3 +349,77 @@ class LivePredictionOut(BaseModel):
     btts_yes: float
     global_outcome: GlobalOutcomeOut
     trigger_event: str
+
+
+# --- Superadmin settings ---------------------------------------------------
+
+
+class SettingSpecOut(BaseModel):
+    """Describes one setting so the panel can render it without hardcoding a
+    form. The registry in app/app_settings.py is the source; this is its wire
+    shape."""
+
+    key: str
+    kind: str
+    group: str
+    label: str
+    help: str = ""
+    secret: bool = False
+    choices: list[str] = []
+    minimum: float | None = None
+    maximum: float | None = None
+
+
+class SettingsOut(BaseModel):
+    values: dict[str, object]
+    # Secrets are never in `values`. This says whether one exists, which is
+    # all the panel needs to show "set" vs "not set".
+    secrets_set: dict[str, bool] = {}
+    # Keys with a database override, i.e. not just the environment default.
+    overridden: list[str] = []
+    groups: dict[str, str] = {}
+    specs: list[SettingSpecOut] = []
+
+
+class SettingsUpdateIn(BaseModel):
+    values: dict[str, object] | None = None
+    # Keys to clear, falling back to the environment. Distinct from setting
+    # them to "" -- that overrides with an empty value.
+    reset: list[str] | None = None
+
+
+class TestEmailIn(BaseModel):
+    to: str | None = None
+
+
+class TestEmailOut(BaseModel):
+    sent: bool
+    detail: str
+
+
+class SystemStatusOut(BaseModel):
+    database_reachable: bool
+    matches: int
+    predictions: int
+    upcoming_fixtures: int
+    leagues: list[str]
+    users: int
+    active_grants: int
+    unredeemed_codes: int
+    latest_match_date: dt.datetime | None = None
+    latest_prediction_at: dt.datetime | None = None
+    model_files: list[str] = []
+    calibrator_files: int = 0
+    models_built_at: dt.datetime | None = None
+    email_configured: bool = False
+    settings_overridden: int = 0
+
+
+class BrandingOut(BaseModel):
+    """Public site identity and default look, needed before anyone logs in."""
+
+    site_name: str
+    site_tagline: str
+    default_theme: str
+    default_accent: str
+    registration_open: bool

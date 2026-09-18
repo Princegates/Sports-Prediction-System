@@ -244,9 +244,9 @@ def create_code(
             )
         else:
             subject, body = mailer.access_code_message(
-                code.code, code.duration_days, get_settings().public_site_url or None
+                code.code, code.duration_days, mailer.resolve_config(db).site_url or None
             )
-            result = mailer.send_email(assigned_email, subject, body)
+            result = mailer.send_email(assigned_email, subject, body, db=db)
             emailed = result.sent
             email_error = result.error
 

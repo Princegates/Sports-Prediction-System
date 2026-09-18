@@ -364,3 +364,26 @@ class ModelMetric(Base):
     league: Mapped[str] = mapped_column(String(64))
     metric_name: Mapped[str] = mapped_column(String(32))
     metric_value: Mapped[float] = mapped_column(Float)
+
+
+class AppSetting(Base):
+    """A superadmin-editable override for one configuration value.
+
+    Configuration lives in the environment, which is right for anything that
+    must be set before the process starts -- the database URL, the secret key.
+    It is wrong for anything an operator wants to change while running, because
+    every change becomes a redeploy. Turning on email that way is a five-minute
+    round trip to discover you typed the SMTP host wrong.
+
+    So: environment is the default, a row here is an override, and the store in
+    app/app_settings.py resolves the two. Values are stored as text and coerced
+    on read against a declared type, so a hand-edited row can't smuggle a
+    string into a float.
+    """
+
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, onupdate=dt.datetime.utcnow)
+    updated_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)

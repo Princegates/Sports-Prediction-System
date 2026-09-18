@@ -108,8 +108,26 @@ class EnsembleWeights:
     ml: float
 
     @classmethod
-    def from_settings(cls) -> "EnsembleWeights":
+    def from_settings(cls, db: Session | None = None) -> "EnsembleWeights":
+        """The fallback blend, used for a league with no fitted weights yet.
+
+        Reads the superadmin override when a session is available, otherwise
+        the environment. Note this is only ever a fallback: once a league has
+        been backtested, ``model_store.load_ensemble_weights`` returns weights
+        fitted against its own validation data, and those win. Editing these
+        by hand moves the starting point, not the trained result.
+        """
+
         settings = get_settings()
+        if db is not None:
+            from app import app_settings
+
+            values = app_settings.all_values(db)
+            return cls(
+                elo=float(values["ensemble_weight_elo"]),
+                poisson=float(values["ensemble_weight_poisson"]),
+                ml=float(values["ensemble_weight_ml"]),
+            )
         return cls(elo=settings.ensemble_weight_elo, poisson=settings.ensemble_weight_poisson, ml=settings.ensemble_weight_ml)
 
 

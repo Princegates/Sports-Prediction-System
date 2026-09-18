@@ -1,4 +1,8 @@
 import type {
+  Branding,
+  SettingsPayload,
+  SystemStatus,
+  TestEmailResult,
   AccessCode,
   AccessGrant,
   AccessStatus,
@@ -398,3 +402,28 @@ export function postLiveEvent(
 }
 
 export type { TeamForm } from "./types";
+
+// --- Super Admin settings --------------------------------------------------
+
+export function fetchSettings(): Promise<SettingsPayload> {
+  return get("/api/admin/settings");
+}
+
+export function saveSettings(payload: {
+  values?: Record<string, string | number | boolean>;
+  reset?: string[];
+}): Promise<SettingsPayload> {
+  return patch("/api/admin/settings", payload);
+}
+
+export function sendTestEmail(to?: string): Promise<TestEmailResult> {
+  return post("/api/admin/settings/test-email", { to });
+}
+
+export function fetchSystemStatus(): Promise<SystemStatus> {
+  return get("/api/admin/system-status");
+}
+
+export function fetchBranding(): Promise<Branding> {
+  return get("/api/public/branding");
+}

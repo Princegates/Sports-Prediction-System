@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
 import { RequireAccess, RequireAuth, RequireSuperadmin } from "./components/RequireAuth";
+import { Settings } from "./pages/Settings";
 import { Access } from "./pages/Access";
 import { AccountStatus } from "./pages/AccountStatus";
 import { AdminUsers } from "./pages/AdminUsers";
@@ -58,6 +59,7 @@ export default function App() {
 
           <Route element={<RequireSuperadmin />}>
             <Route path="admin" element={<AdminUsers />} />
+            <Route path="admin/settings" element={<Settings />} />
           </Route>
         </Route>
       </Route>

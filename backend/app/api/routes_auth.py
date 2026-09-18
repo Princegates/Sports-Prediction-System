@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.access import current_grant
+from app import app_settings
 from app.api.deps import get_current_user, get_db
 from app.api.rate_limit import enforce
 from app.api.schemas import (
@@ -42,6 +43,14 @@ def register(payload: RegisterIn, request: Request, db: Session = Depends(get_db
         settings.register_rate_limit_attempts,
         settings.register_rate_limit_window_seconds,
     )
+
+    # Checked after the rate limit so hammering a closed form is still
+    # throttled, and before anything is written.
+    if not app_settings.get_value(db, "registration_open"):
+        raise HTTPException(
+            status_code=403,
+            detail="New registrations are closed at the moment. Please check back later.",
+        )
 
     email = payload.email.strip().lower()
     if not email or "@" not in email:

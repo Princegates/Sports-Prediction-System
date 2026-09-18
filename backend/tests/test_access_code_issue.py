@@ -135,7 +135,7 @@ def test_only_the_assigned_account_can_redeem(db_session, admin):
 
 def test_code_survives_an_unconfigured_mail_server(db_session, admin, monkeypatch):
     _user(db_session, "buyer@example.com")
-    monkeypatch.setattr(mailer, "is_configured", lambda: False)
+    monkeypatch.setattr(mailer, "is_configured", lambda *a, **k: False)
 
     response = client.post(
         "/api/admin/access-codes",
@@ -154,7 +154,7 @@ def test_code_survives_an_unconfigured_mail_server(db_session, admin, monkeypatc
 
 def test_code_survives_a_failed_send(db_session, admin, monkeypatch):
     _user(db_session, "buyer@example.com")
-    monkeypatch.setattr(mailer, "is_configured", lambda: True)
+    monkeypatch.setattr(mailer, "is_configured", lambda *a, **k: True)
     monkeypatch.setattr(
         mailer, "send_email", lambda *a, **k: mailer.SendResult(sent=False, error="SMTPAuthenticationError: bad password")
     )
@@ -175,10 +175,10 @@ def test_code_survives_a_failed_send(db_session, admin, monkeypatch):
 def test_successful_send_is_reported_and_goes_to_the_assigned_address(db_session, admin, monkeypatch):
     _user(db_session, "buyer@example.com")
     sent: list[tuple] = []
-    monkeypatch.setattr(mailer, "is_configured", lambda: True)
+    monkeypatch.setattr(mailer, "is_configured", lambda *a, **k: True)
     monkeypatch.setattr(
         mailer, "send_email",
-        lambda to, subject, body: (sent.append((to, subject, body)), mailer.SendResult(sent=True))[1],
+        lambda to, subject, body, **kwargs: (sent.append((to, subject, body)), mailer.SendResult(sent=True))[1],
     )
 
     response = client.post(
@@ -201,7 +201,7 @@ def test_successful_send_is_reported_and_goes_to_the_assigned_address(db_session
 
 def test_nothing_is_sent_unless_asked(db_session, admin, monkeypatch):
     _user(db_session, "buyer@example.com")
-    monkeypatch.setattr(mailer, "is_configured", lambda: True)
+    monkeypatch.setattr(mailer, "is_configured", lambda *a, **k: True)
     monkeypatch.setattr(mailer, "send_email", lambda *a, **k: pytest.fail("sent without send_email"))
 
     response = client.post(

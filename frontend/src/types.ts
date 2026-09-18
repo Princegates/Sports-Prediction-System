@@ -260,3 +260,58 @@ export interface AuditLogEntry {
   detail: Record<string, unknown> | null;
   created_at: string;
 }
+
+// --- Super Admin settings --------------------------------------------------
+
+export interface SettingSpec {
+  key: string;
+  kind: "str" | "int" | "float" | "bool" | "choice";
+  group: string;
+  label: string;
+  help: string;
+  secret: boolean;
+  choices: string[];
+  minimum: number | null;
+  maximum: number | null;
+}
+
+export interface SettingsPayload {
+  values: Record<string, string | number | boolean>;
+  /** Secrets are never in `values` -- this only says whether one exists. */
+  secrets_set: Record<string, boolean>;
+  /** Keys with a saved override, as opposed to the deployment default. */
+  overridden: string[];
+  groups: Record<string, string>;
+  specs: SettingSpec[];
+}
+
+export interface TestEmailResult {
+  sent: boolean;
+  detail: string;
+}
+
+export interface SystemStatus {
+  database_reachable: boolean;
+  matches: number;
+  predictions: number;
+  upcoming_fixtures: number;
+  leagues: string[];
+  users: number;
+  active_grants: number;
+  unredeemed_codes: number;
+  latest_match_date: string | null;
+  latest_prediction_at: string | null;
+  model_files: string[];
+  calibrator_files: number;
+  models_built_at: string | null;
+  email_configured: boolean;
+  settings_overridden: number;
+}
+
+export interface Branding {
+  site_name: string;
+  site_tagline: string;
+  default_theme: string;
+  default_accent: string;
+  registration_open: boolean;
+}

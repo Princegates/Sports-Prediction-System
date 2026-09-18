@@ -15,6 +15,7 @@ from app.api.routes_chat import router as chat_router
 from app.api.routes_matches import router as matches_router
 from app.api.routes_predictions import router as predictions_router
 from app.api.routes_public import router as public_router
+from app.api.routes_settings import router as settings_router
 from app.api.routes_teams import router as teams_router
 from app.config import get_settings
 from app.db.migrate import init_db
@@ -111,6 +112,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(public_router)
 app.include_router(admin_router)
+app.include_router(settings_router)
 app.include_router(access_router)
 app.include_router(chat_router, dependencies=[Depends(require_active_access)])
 app.include_router(teams_router, dependencies=[Depends(require_active_access)])

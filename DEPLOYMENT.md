@@ -241,6 +241,15 @@ Access codes work without any of this: generate one, copy it, send it to the
 buyer however you already talk to them. Configure SMTP only if you would
 rather the system send it for you.
 
+**The easier way is the settings panel.** Sign in as a superadmin and open
+**Settings → Email**: the same values, editable in the browser, with a "send
+test email to myself" button that tells you immediately whether they work. No
+redeploy, and no five-minute wait to discover you typed the host wrong.
+
+The environment variables below still work and are what the panel falls back
+to when nothing is saved. Use them if you prefer configuration in one place,
+or to set a default before the first admin account exists.
+
 Set these on the **backend** service (Render → Environment):
 
 | Variable | Example | Notes |

@@ -20,6 +20,8 @@ import ssl
 from dataclasses import dataclass
 from email.message import EmailMessage
 
+from sqlalchemy.orm import Session
+
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -35,29 +37,70 @@ class SendResult:
     error: str | None = None
 
 
-def is_configured() -> bool:
+@dataclass
+class MailConfig:
+    host: str
+    port: int
+    user: str
+    password: str
+    sender: str
+    use_tls: bool
+    timeout: float
+    site_url: str
+
+
+def resolve_config(db: Session | None = None) -> MailConfig:
+    """Database overrides first, environment underneath.
+
+    ``db`` is optional so this module stays usable from a script or a context
+    with no session; without one it reads the environment alone.
+    """
+
     settings = get_settings()
-    return bool(settings.smtp_host and settings.smtp_from)
+    values: dict = {}
+    if db is not None:
+        from app import app_settings
+
+        values = app_settings.all_values(db)
+
+    def pick(key: str, fallback):
+        return values.get(key, fallback) if values else fallback
+
+    return MailConfig(
+        host=str(pick("smtp_host", settings.smtp_host) or ""),
+        port=int(pick("smtp_port", settings.smtp_port) or 587),
+        user=str(pick("smtp_user", settings.smtp_user) or ""),
+        password=str(pick("smtp_password", settings.smtp_password) or ""),
+        sender=str(pick("smtp_from", settings.smtp_from) or ""),
+        use_tls=bool(pick("smtp_use_tls", settings.smtp_use_tls)),
+        timeout=settings.smtp_timeout,
+        site_url=str(pick("public_site_url", settings.public_site_url) or ""),
+    )
 
 
-def _connect(settings) -> smtplib.SMTP | smtplib.SMTP_SSL:
+def is_configured(db: Session | None = None) -> bool:
+    config = resolve_config(db)
+    return bool(config.host and config.sender)
+
+
+def _connect(config: MailConfig) -> smtplib.SMTP | smtplib.SMTP_SSL:
     # Port 465 is implicit TLS (SMTP_SSL); 587 is plaintext upgraded with
     # STARTTLS. Picking the wrong one hangs rather than erroring, which is a
     # miserable thing to debug, so it is derived from the port rather than
     # left as another setting to get wrong.
-    if settings.smtp_port == 465:
-        return smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, timeout=settings.smtp_timeout,
+    if config.port == 465:
+        return smtplib.SMTP_SSL(config.host, config.port, timeout=config.timeout,
                                 context=ssl.create_default_context())
 
-    client = smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=settings.smtp_timeout)
+    client = smtplib.SMTP(config.host, config.port, timeout=config.timeout)
     client.ehlo()
-    if settings.smtp_use_tls:
+    if config.use_tls:
         client.starttls(context=ssl.create_default_context())
         client.ehlo()
     return client
 
 
-def send_email(to: str, subject: str, body: str) -> SendResult:
+def send_email(to: str, subject: str, body: str, db: Session | None = None) -> SendResult:
     """Deliver one plain-text message.
 
     Returns a result rather than raising on delivery failure. Every caller so
@@ -68,24 +111,24 @@ def send_email(to: str, subject: str, body: str) -> SendResult:
     hand.
     """
 
-    settings = get_settings()
-    if not is_configured():
+    config = resolve_config(db)
+    if not (config.host and config.sender):
         raise EmailNotConfigured(
             "SMTP is not configured. Set SMTP_HOST and SMTP_FROM (plus SMTP_USER "
             "and SMTP_PASSWORD if your provider requires authentication)."
         )
 
     message = EmailMessage()
-    message["From"] = settings.smtp_from
+    message["From"] = config.sender
     message["To"] = to
     message["Subject"] = subject
     message.set_content(body)
 
     try:
-        client = _connect(settings)
+        client = _connect(config)
         try:
-            if settings.smtp_user:
-                client.login(settings.smtp_user, settings.smtp_password)
+            if config.user:
+                client.login(config.user, config.password)
             client.send_message(message)
         finally:
             try:
