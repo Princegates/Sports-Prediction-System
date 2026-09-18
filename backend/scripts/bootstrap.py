@@ -79,7 +79,7 @@ def main() -> None:
     # here rather than a traceback from inside a subprocess.
     from app.config import get_settings
     from app.db.migrate import init_db
-        from app.db.session import engine
+    from app.db.session import engine
 
     settings = get_settings()
     shown = settings.normalized_database_url.split("@")[-1]  # never print credentials
