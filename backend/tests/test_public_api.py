@@ -79,7 +79,7 @@ def test_stats_counts_only_active_members(db_session, seeded):
     db_session.add_all(
         [
             User(email="a@x.com", name="A", password_hash=hash_password("x" * 10), status="active"),
-            User(email="b@x.com", name="B", password_hash=hash_password("x" * 10), status="pending"),
+            User(email="b@x.com", name="B", password_hash=hash_password("x" * 10), status="suspended"),
         ]
     )
     db_session.commit()

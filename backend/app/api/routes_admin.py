@@ -6,10 +6,27 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.access import (
+    AccessCodeError,
+    create_access_code,
+    extend_grant,
+    revoke_access_code,
+    revoke_current_grant,
+)
 from app.api.deps import get_db, require_superadmin
-from app.api.schemas import AdminOverviewOut, AdminUserOut, ApproveIn, AuditLogOut
-from app.api.serializers import admin_user_to_schema
-from app.db.models import AuditLog, ChatMessage, Match, Prediction, User
+from app.api.schemas import (
+    AccessCodeCreatedOut,
+    AccessCodeCreateIn,
+    AccessCodeOut,
+    AdminOverviewOut,
+    AdminUserOut,
+    AuditLogOut,
+    ExtendGrantIn,
+    RevokeCodeIn,
+    RevokeGrantIn,
+)
+from app.api.serializers import access_code_to_schema, admin_user_to_schema
+from app.db.models import AccessCode, AccessGrant, AuditLog, ChatMessage, Match, Prediction, User
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_superadmin)])
 
@@ -38,9 +55,9 @@ def _record(
 
 @router.get("/overview", response_model=AdminOverviewOut)
 def overview(db: Session = Depends(get_db)) -> AdminOverviewOut:
-    """Headline counts for the admin dashboard -- above all how many accounts
-    are sitting in the approval queue, since nobody can use the system until
-    someone acts on those."""
+    """Headline counts for the admin dashboard -- above all how many active
+    accounts have no live access grant, since that's the new attention queue
+    now that every account can log in immediately after registering."""
 
     def count_users(**filters) -> int:
         stmt = select(func.count()).select_from(User)
@@ -49,12 +66,19 @@ def overview(db: Session = Depends(get_db)) -> AdminOverviewOut:
         return db.execute(stmt).scalar() or 0
 
     now = dt.datetime.utcnow()
+    active_users = count_users(status="active")
+    active_grants = db.execute(
+        select(func.count(func.distinct(AccessGrant.user_id))).where(
+            AccessGrant.status == "active", AccessGrant.expires_at > now
+        )
+    ).scalar() or 0
     return AdminOverviewOut(
-        pending_users=count_users(status="pending"),
-        active_users=count_users(status="active"),
+        active_users=active_users,
         suspended_users=count_users(status="suspended"),
         superadmins=count_users(role="superadmin"),
         total_users=count_users(),
+        users_without_access=max(active_users - active_grants, 0),
+        active_access_grants=active_grants,
         matches_analyzed=db.execute(
             select(func.count()).select_from(Match).where(Match.home_score.is_not(None))
         ).scalar() or 0,
@@ -72,7 +96,7 @@ def list_users(status: str | None = None, db: Session = Depends(get_db)) -> list
     if status:
         stmt = stmt.where(User.status == status)
     users = db.execute(stmt.order_by(User.created_at.desc())).scalars()
-    return [admin_user_to_schema(u) for u in users]
+    return [admin_user_to_schema(u, db) for u in users]
 
 
 @router.get("/audit-log", response_model=list[AuditLogOut])
@@ -99,41 +123,6 @@ def _get_target_user(user_id: int, db: Session) -> User:
     return user
 
 
-@router.post("/users/{user_id}/approve", response_model=AdminUserOut)
-def approve_user(
-    user_id: int,
-    payload: ApproveIn,
-    admin: User = Depends(require_superadmin),
-    db: Session = Depends(get_db),
-) -> AdminUserOut:
-    """Manual payment confirmation + account approval (spec: Hubtel
-    integration comes later -- for now a superadmin reviews the user's
-    submitted ``payment_reference`` out of band and confirms it here).
-
-    TODO(hubtel): once configured, this is where an automatic call to
-    Hubtel's Transaction Status API would verify ``payment_reference``
-    before allowing approval, instead of trusting the admin's manual check.
-    """
-
-    target = _get_target_user(user_id, db)
-    previous_status = target.status
-    if payload.payment_reference:
-        target.payment_reference = payload.payment_reference
-    target.status = "active"
-    target.approved_by_user_id = admin.id
-    target.approved_at = dt.datetime.utcnow()
-    _record(
-        db,
-        admin,
-        "user.approved",
-        target,
-        {"from_status": previous_status, "payment_reference": target.payment_reference},
-    )
-    db.commit()
-    db.refresh(target)
-    return admin_user_to_schema(target)
-
-
 @router.post("/users/{user_id}/suspend", response_model=AdminUserOut)
 def suspend_user(user_id: int, admin: User = Depends(require_superadmin), db: Session = Depends(get_db)) -> AdminUserOut:
     if user_id == admin.id:
@@ -144,7 +133,7 @@ def suspend_user(user_id: int, admin: User = Depends(require_superadmin), db: Se
     _record(db, admin, "user.suspended", target, {"from_status": previous_status})
     db.commit()
     db.refresh(target)
-    return admin_user_to_schema(target)
+    return admin_user_to_schema(target, db)
 
 
 @router.post("/users/{user_id}/reinstate", response_model=AdminUserOut)
@@ -157,12 +146,10 @@ def reinstate_user(user_id: int, admin: User = Depends(require_superadmin), db: 
         raise HTTPException(status_code=400, detail="That account is already active")
     previous_status = target.status
     target.status = "active"
-    target.approved_by_user_id = admin.id
-    target.approved_at = dt.datetime.utcnow()
     _record(db, admin, "user.reinstated", target, {"from_status": previous_status})
     db.commit()
     db.refresh(target)
-    return admin_user_to_schema(target)
+    return admin_user_to_schema(target, db)
 
 
 @router.post("/users/{user_id}/promote", response_model=AdminUserOut)
@@ -172,7 +159,7 @@ def promote_user(user_id: int, admin: User = Depends(require_superadmin), db: Se
     _record(db, admin, "user.promoted", target, {"to_role": "superadmin"})
     db.commit()
     db.refresh(target)
-    return admin_user_to_schema(target)
+    return admin_user_to_schema(target, db)
 
 
 @router.post("/users/{user_id}/demote", response_model=AdminUserOut)
@@ -200,4 +187,91 @@ def demote_user(user_id: int, admin: User = Depends(require_superadmin), db: Ses
     _record(db, admin, "user.demoted", target, {"to_role": "user"})
     db.commit()
     db.refresh(target)
-    return admin_user_to_schema(target)
+    return admin_user_to_schema(target, db)
+
+
+# --- Access codes -----------------------------------------------------------
+
+
+@router.post("/access-codes", response_model=AccessCodeCreatedOut)
+def create_code(
+    payload: AccessCodeCreateIn,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> AccessCodeCreatedOut:
+    assigned_user_id = None
+    if payload.assigned_user_email:
+        target = db.execute(
+            select(User).where(User.email == payload.assigned_user_email.strip().lower())
+        ).scalar_one_or_none()
+        if target is None:
+            raise HTTPException(status_code=404, detail="No account with that email")
+        assigned_user_id = target.id
+
+    try:
+        code = create_access_code(
+            db,
+            admin,
+            duration_days=payload.duration_days,
+            redemption_limit=payload.redemption_limit,
+            code_expires_in_days=payload.code_expires_in_days,
+            assigned_user_id=assigned_user_id,
+            notes=payload.notes,
+        )
+    except AccessCodeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return AccessCodeCreatedOut(**access_code_to_schema(code, reveal_full=True).model_dump())
+
+
+@router.get("/access-codes", response_model=list[AccessCodeOut])
+def list_access_codes(db: Session = Depends(get_db)) -> list[AccessCodeOut]:
+    codes = db.execute(select(AccessCode).order_by(AccessCode.created_at.desc())).scalars()
+    return [access_code_to_schema(c) for c in codes]
+
+
+@router.post("/access-codes/{code_id}/revoke", response_model=AccessCodeOut)
+def revoke_code(
+    code_id: int,
+    payload: RevokeCodeIn,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> AccessCodeOut:
+    code = db.get(AccessCode, code_id)
+    if code is None:
+        raise HTTPException(status_code=404, detail=f"Access code {code_id} not found")
+    try:
+        code = revoke_access_code(db, admin, code, payload.reason)
+    except AccessCodeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return access_code_to_schema(code)
+
+
+@router.post("/users/{user_id}/access/extend", response_model=AdminUserOut)
+def extend_user_access(
+    user_id: int,
+    payload: ExtendGrantIn,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> AdminUserOut:
+    target = _get_target_user(user_id, db)
+    try:
+        extend_grant(db, admin, target, payload.additional_days)
+    except AccessCodeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return admin_user_to_schema(target, db)
+
+
+@router.post("/users/{user_id}/access/revoke", response_model=AdminUserOut)
+def revoke_user_access(
+    user_id: int,
+    payload: RevokeGrantIn,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> AdminUserOut:
+    target = _get_target_user(user_id, db)
+    try:
+        revoke_current_grant(db, admin, target, payload.reason)
+    except AccessCodeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return admin_user_to_schema(target, db)

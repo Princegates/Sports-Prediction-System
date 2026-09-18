@@ -6,18 +6,18 @@ import { PublicShell } from "../components/PublicShell";
 import type { AccountStatus as Status } from "../types";
 
 /**
- * "Where is my application?" page.
+ * "Why can't I see predictions?" page.
  *
- * Without this, a user who registers and waits has no way to distinguish
- * "still queued" from "rejected" from "I mistyped my email" -- their only
- * signal is a login that keeps failing. Requires the password, so it tells a
- * stranger nothing, and the backend returns an identical pending response for
+ * Registering and logging in always work now -- what varies is whether the
+ * account has a live access grant. This lets someone check that without
+ * having to log in first. Requires the password, so it tells a stranger
+ * nothing, and the backend returns an identical no-access response for
  * unknown emails so it can't be used to discover which addresses registered.
  */
 
 const STATUS_COPY: Record<Status["status"], { title: string; pose: "idle" | "thinking" | "celebrating" | "sad"; tone: string }> = {
-  pending: { title: "Awaiting Super Admin approval", pose: "thinking", tone: "pending" },
-  active: { title: "Approved — you're in", pose: "celebrating", tone: "active" },
+  no_access: { title: "No active access yet", pose: "thinking", tone: "pending" },
+  active: { title: "Your access is active", pose: "celebrating", tone: "active" },
   suspended: { title: "This account is suspended", pose: "sad", tone: "suspended" },
 };
 
@@ -57,19 +57,18 @@ export function AccountStatus() {
               </p>
             )}
 
-            {status.status === "pending" && (
+            {status.status === "no_access" && (
               <div className="status-result-explainer">
                 <h3>What happens next</h3>
                 <p>
-                  A Super Admin reviews each application by hand, confirming any payment reference you
-                  submitted out of band. There's no automatic approval and no trial tier — until someone
-                  signs off, the whole API rejects the account. Nothing is required from you in the
-                  meantime.
+                  You can already sign in -- there's no approval queue. Predictions, teams and matches stay
+                  locked until you redeem an access code, which a Super Admin issues once payment is
+                  confirmed outside the platform.
                 </p>
               </div>
             )}
 
-            {status.status === "active" && (
+            {status.status !== "suspended" && (
               <Link className="btn btn-lg" to="/login">
                 Sign in
               </Link>

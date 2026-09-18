@@ -1,4 +1,7 @@
 import type {
+  AccessCode,
+  AccessGrant,
+  AccessStatus,
   AccountStatus,
   AdminOverview,
   AdminUser,
@@ -96,7 +99,7 @@ export function onAuthLogout(handler: () => void): () => void {
 
 // --- Auth ------------------------------------------------------------
 
-export function registerAccount(payload: { email: string; name: string; password: string; payment_reference?: string }) {
+export function registerAccount(payload: { email: string; name: string; password: string }) {
   return post<{ message: string; user: User }>("/api/auth/register", payload);
 }
 
@@ -263,10 +266,6 @@ export function reinstateUser(userId: number): Promise<AdminUser> {
   return post(`/api/admin/users/${userId}/reinstate`, {});
 }
 
-export function approveUser(userId: number, paymentReference?: string): Promise<AdminUser> {
-  return post(`/api/admin/users/${userId}/approve`, { payment_reference: paymentReference });
-}
-
 export function suspendUser(userId: number): Promise<AdminUser> {
   return post(`/api/admin/users/${userId}/suspend`, {});
 }
@@ -277,6 +276,42 @@ export function promoteUser(userId: number): Promise<AdminUser> {
 
 export function demoteUser(userId: number): Promise<AdminUser> {
   return post(`/api/admin/users/${userId}/demote`, {});
+}
+
+// --- Access codes --------------------------------------------------------
+
+export function fetchAccessStatus(): Promise<AccessStatus> {
+  return get("/api/access/status");
+}
+
+export function redeemAccessCode(code: string): Promise<AccessGrant> {
+  return post("/api/access/redeem", { code });
+}
+
+export function fetchAccessCodes(): Promise<AccessCode[]> {
+  return get("/api/admin/access-codes");
+}
+
+export function createAccessCode(payload: {
+  duration_days: number;
+  redemption_limit?: number;
+  code_expires_in_days?: number;
+  assigned_user_email?: string;
+  notes?: string;
+}): Promise<AccessCode> {
+  return post("/api/admin/access-codes", payload);
+}
+
+export function revokeAccessCode(codeId: number, reason?: string): Promise<AccessCode> {
+  return post(`/api/admin/access-codes/${codeId}/revoke`, { reason });
+}
+
+export function extendUserAccess(userId: number, additionalDays: number): Promise<AdminUser> {
+  return post(`/api/admin/users/${userId}/access/extend`, { additional_days: additionalDays });
+}
+
+export function revokeUserAccess(userId: number, reason?: string): Promise<AdminUser> {
+  return post(`/api/admin/users/${userId}/access/revoke`, { reason });
 }
 
 // --- Predictions / matches / teams --------------------------------------

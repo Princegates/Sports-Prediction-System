@@ -1,8 +1,8 @@
-"""Tests for the admin-side safeguards added around the approval gate.
+"""Tests for the admin-side safeguards around account status and access.
 
-The approval flow is the only thing standing between "registered" and "has
-access", so the failure modes worth testing are the ones that would either
-break the gate open or lock it shut permanently.
+Account status (active/suspended) and feature access (a redeemed
+AccessGrant) are two separate gates now, so the failure modes worth testing
+are the ones that would break either gate open or lock it shut permanently.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ from app.auth.tokens import create_token
 from app.config import get_settings
 from app.db.models import AuditLog, User
 from app.main import app
+from tests.conftest import grant_active_access
 
 client = TestClient(app)
 
@@ -48,17 +49,20 @@ def admin(db_session):
 # --- Overview -------------------------------------------------------------
 
 
-def test_overview_surfaces_the_pending_queue(db_session, admin):
-    _make_user(db_session, "p1@example.com", status="pending")
-    _make_user(db_session, "p2@example.com", status="pending")
+def test_overview_surfaces_users_without_access(db_session, admin):
+    granted = _make_user(db_session, "granted@example.com")
+    grant_active_access(db_session, granted)
+    _make_user(db_session, "no-access-1@example.com")
+    _make_user(db_session, "no-access-2@example.com")
     _make_user(db_session, "s1@example.com", status="suspended")
 
     body = client.get("/api/admin/overview", headers=_headers(admin)).json()
-    assert body["pending_users"] == 2
     assert body["suspended_users"] == 1
-    assert body["active_users"] == 1  # the admin
+    assert body["active_users"] == 4  # admin, granted, and the two without access
     assert body["superadmins"] == 1
-    assert body["total_users"] == 4
+    assert body["total_users"] == 5
+    assert body["active_access_grants"] == 1
+    assert body["users_without_access"] == 3  # admin + the two without access
 
 
 def test_overview_requires_superadmin(db_session, admin):
@@ -70,36 +74,15 @@ def test_overview_requires_superadmin(db_session, admin):
 # --- Audit log ------------------------------------------------------------
 
 
-def test_approval_is_recorded_in_the_audit_log(db_session, admin):
-    target = _make_user(db_session, "pending@example.com", status="pending")
-
-    response = client.post(
-        f"/api/admin/users/{target.id}/approve",
-        json={"payment_reference": "MOMO-123"},
-        headers=_headers(admin),
-    )
-    assert response.status_code == 200
-
-    entry = (
-        db_session.query(AuditLog)
-        .filter(AuditLog.action == "user.approved", AuditLog.target_user_id == target.id)
-        .one()
-    )
-    assert entry.actor_user_id == admin.id
-    # Denormalized so the entry stays readable if the admin account changes.
-    assert entry.actor_email == "admin@example.com"
-    assert entry.detail["from_status"] == "pending"
-    assert entry.detail["payment_reference"] == "MOMO-123"
-
-
 def test_audit_log_keeps_the_full_sequence_not_just_the_latest_state(db_session, admin):
-    """``User.approved_by_user_id`` is overwritten by each status change. The
-    audit log is what makes the history recoverable afterwards."""
+    """Each status change is recorded on its own -- there's no single column
+    that only holds the latest state, so the audit log is what makes the
+    full sequence recoverable afterwards."""
 
-    target = _make_user(db_session, "churn@example.com", status="pending")
+    target = _make_user(db_session, "churn@example.com", status="suspended")
     headers = _headers(admin)
 
-    client.post(f"/api/admin/users/{target.id}/approve", json={}, headers=headers)
+    client.post(f"/api/admin/users/{target.id}/reinstate", headers=headers)
     client.post(f"/api/admin/users/{target.id}/suspend", headers=headers)
     client.post(f"/api/admin/users/{target.id}/reinstate", headers=headers)
 
@@ -109,7 +92,7 @@ def test_audit_log_keeps_the_full_sequence_not_just_the_latest_state(db_session,
         .filter(AuditLog.target_user_id == target.id)
         .order_by(AuditLog.id.asc())
     ]
-    assert actions == ["user.approved", "user.suspended", "user.reinstated"]
+    assert actions == ["user.reinstated", "user.suspended", "user.reinstated"]
 
 
 def test_registration_is_audited(db_session):
@@ -200,7 +183,7 @@ def test_cannot_suspend_or_demote_yourself(db_session, admin):
 # --- Account status endpoint ---------------------------------------------
 
 
-def test_account_status_reports_pending_without_letting_the_user_in(db_session):
+def test_account_status_reports_no_access_before_redeeming_a_code(db_session):
     rate_limit.reset()
     client.post(
         "/api/auth/register",
@@ -211,17 +194,18 @@ def test_account_status_reports_pending_without_letting_the_user_in(db_session):
         "/api/auth/status", json={"email": "waiting@example.com", "password": "a-good-password"}
     )
     assert response.status_code == 200
-    assert response.json()["status"] == "pending"
+    assert response.json()["status"] == "no_access"
 
-    # Still cannot actually log in.
+    # Login itself works right away -- it's the prediction surface that's
+    # locked until a code is redeemed, not the account.
     assert client.post(
         "/api/auth/login", json={"email": "waiting@example.com", "password": "a-good-password"}
-    ).status_code == 403
+    ).status_code == 200
 
 
 def test_account_status_does_not_enumerate_accounts(db_session, admin):
     """An unknown email and a wrong password must both return the same
-    ``pending`` shape, or this endpoint becomes a way to discover which
+    ``no_access`` shape, or this endpoint becomes a way to discover which
     addresses are registered."""
 
     rate_limit.reset()
@@ -232,8 +216,8 @@ def test_account_status_does_not_enumerate_accounts(db_session, admin):
         "/api/auth/status", json={"email": "admin@example.com", "password": "wrong-password-123"}
     ).json()
 
-    assert unknown["status"] == "pending"
-    assert wrong_password["status"] == "pending"
+    assert unknown["status"] == "no_access"
+    assert wrong_password["status"] == "no_access"
     assert unknown["message"] == wrong_password["message"]
     assert unknown["submitted_at"] is None and wrong_password["submitted_at"] is None
 

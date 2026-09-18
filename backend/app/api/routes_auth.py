@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.access import current_grant
 from app.api.deps import get_current_user, get_db
 from app.api.rate_limit import enforce
 from app.api.schemas import (
@@ -26,9 +27,9 @@ from app.db.models import AuditLog, Match, MatchView, User
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-PENDING_MESSAGE = (
-    "Your account is registered and waiting for a superadmin to review it. You'll be able to sign in "
-    "as soon as it's approved."
+NO_ACCESS_MESSAGE = (
+    "Sign in and redeem an access code to unlock the platform. Codes are issued by a Super Admin once "
+    "payment is confirmed outside the platform."
 )
 
 
@@ -57,8 +58,7 @@ def register(payload: RegisterIn, request: Request, db: Session = Depends(get_db
         name=payload.name.strip() or email,
         password_hash=hash_password(payload.password),
         role="user",
-        status="pending",
-        payment_reference=payload.payment_reference,
+        status="active",
     )
     db.add(user)
     db.commit()
@@ -70,15 +70,14 @@ def register(payload: RegisterIn, request: Request, db: Session = Depends(get_db
             actor_email=user.email,
             action="account.registered",
             target_user_id=user.id,
-            detail={"payment_reference": user.payment_reference},
         )
     )
     db.commit()
 
     return RegisterOut(
         message=(
-            "Account created. A superadmin needs to confirm your payment and approve the account "
-            "before you can log in."
+            "Account created. Sign in, then redeem your access code to unlock predictions -- if you "
+            "haven't arranged payment yet, do that with a Super Admin first."
         ),
         user=user_to_schema(user),
     )
@@ -99,10 +98,8 @@ def login(payload: LoginIn, request: Request, db: Session = Depends(get_db)) -> 
 
     if user is None or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Incorrect email or password")
-
-    if user.status != "active":
-        detail = PENDING_MESSAGE if user.status == "pending" else "Your account has been suspended."
-        raise HTTPException(status_code=403, detail=detail)
+    if user.status == "suspended":
+        raise HTTPException(status_code=403, detail="Your account has been suspended.")
 
     token = create_token({"user_id": user.id, "role": user.role}, settings.secret_key, settings.session_ttl_seconds)
     return TokenOut(access_token=token, user=user_to_schema(user))
@@ -110,13 +107,14 @@ def login(payload: LoginIn, request: Request, db: Session = Depends(get_db)) -> 
 
 @router.post("/status", response_model=AccountStatusOut)
 def account_status(payload: LoginIn, request: Request, db: Session = Depends(get_db)) -> AccountStatusOut:
-    """Where a registration stands, for the "waiting for approval" screen.
+    """Where an account stands re: platform access, for the "why can't I see
+    predictions" screen.
 
     Requires the password, so it reveals nothing to someone who only knows an
-    email address, and an unknown email gets the same ``pending`` shape as a
-    real one -- otherwise this endpoint would be a way to discover which
-    addresses have accounts. Rate-limited on the login bucket for the same
-    reason login is.
+    email address, and an unknown email or wrong password gets the same
+    ``no_access`` shape as a real account with no grant -- otherwise this
+    endpoint would be a way to discover which addresses have accounts.
+    Rate-limited on the login bucket for the same reason login is.
     """
 
     settings = get_settings()
@@ -131,21 +129,24 @@ def account_status(payload: LoginIn, request: Request, db: Session = Depends(get
     user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
 
     if user is None or not verify_password(payload.password, user.password_hash):
-        return AccountStatusOut(status="pending", message=PENDING_MESSAGE)
+        return AccountStatusOut(status="no_access", message=NO_ACCESS_MESSAGE)
 
-    if user.status == "active":
-        return AccountStatusOut(
-            status="active",
-            message="Your account is approved and active. You can sign in.",
-            submitted_at=user.created_at,
-        )
     if user.status == "suspended":
         return AccountStatusOut(
             status="suspended",
             message="This account has been suspended. Contact the administrator for details.",
             submitted_at=user.created_at,
         )
-    return AccountStatusOut(status="pending", message=PENDING_MESSAGE, submitted_at=user.created_at)
+
+    grant = current_grant(db, user)
+    if grant is not None and grant.expires_at > dt.datetime.utcnow():
+        return AccountStatusOut(
+            status="active",
+            message=f"Your access is active until {grant.expires_at:%Y-%m-%d}.",
+            submitted_at=user.created_at,
+        )
+
+    return AccountStatusOut(status="no_access", message=NO_ACCESS_MESSAGE, submitted_at=user.created_at)
 
 
 @router.get("/me", response_model=UserOut)

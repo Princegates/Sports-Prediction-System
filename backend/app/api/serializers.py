@@ -1,4 +1,13 @@
+from __future__ import annotations
+
+import datetime as dt
+
+from sqlalchemy.orm import Session
+
+from app.access import access_code_effective_status, access_grant_effective_status, current_grant, mask_code
 from app.api.schemas import (
+    AccessCodeOut,
+    AccessGrantOut,
     AdminUserOut,
     GlobalOutcomeOut,
     LivePredictionOut,
@@ -8,7 +17,7 @@ from app.api.schemas import (
     TeamOut,
     UserOut,
 )
-from app.db.models import LivePrediction, Match, MatchView, Prediction, Team, User
+from app.db.models import AccessCode, AccessGrant, LivePrediction, Match, MatchView, Prediction, Team, User
 
 
 def team_to_schema(team: Team) -> TeamOut:
@@ -32,12 +41,48 @@ def match_view_to_schema(view: MatchView, match: Match) -> MatchHistoryOut:
     return MatchHistoryOut(match=match_to_schema(match), viewed_at=view.viewed_at)
 
 
-def admin_user_to_schema(user: User) -> AdminUserOut:
+def admin_user_to_schema(user: User, db: Session) -> AdminUserOut:
+    grant = current_grant(db, user)
+    access_status = "none"
+    access_expires_at = None
+    if grant is not None:
+        access_expires_at = grant.expires_at
+        access_status = "active" if grant.expires_at > dt.datetime.utcnow() else "expired"
+
     return AdminUserOut(
         **user_to_schema(user).model_dump(),
-        payment_reference=user.payment_reference,
-        approved_by_user_id=user.approved_by_user_id,
-        approved_at=user.approved_at,
+        access_status=access_status,
+        access_expires_at=access_expires_at,
+    )
+
+
+def access_code_to_schema(code: AccessCode, *, reveal_full: bool = False) -> AccessCodeOut:
+    return AccessCodeOut(
+        id=code.id,
+        code=code.code if reveal_full else mask_code(code.code),
+        status=access_code_effective_status(code),
+        duration_days=code.duration_days,
+        code_expires_at=code.code_expires_at,
+        redemption_limit=code.redemption_limit,
+        redemption_count=code.redemption_count,
+        assigned_user_id=code.assigned_user_id,
+        created_by_user_id=code.created_by_user_id,
+        created_at=code.created_at,
+        revoked_at=code.revoked_at,
+        revoked_reason=code.revoked_reason,
+        notes=code.notes,
+    )
+
+
+def access_grant_to_schema(grant: AccessGrant) -> AccessGrantOut:
+    return AccessGrantOut(
+        id=grant.id,
+        access_code_id=grant.access_code_id,
+        status=access_grant_effective_status(grant),
+        activated_at=grant.activated_at,
+        expires_at=grant.expires_at,
+        revoked_at=grant.revoked_at,
+        revoked_reason=grant.revoked_reason,
     )
 
 

@@ -15,10 +15,9 @@ export function Login() {
 
   const from = (location.state as { from?: string } | null)?.from ?? "/app";
 
-  // A 403 means the credentials were right but the account isn't approved
-  // yet, which is a different situation from a wrong password and deserves a
-  // different next step.
-  const awaitingApproval = error != null && /approv|pending|suspend/i.test(error);
+  // A 403 here only ever means suspended -- login itself has no other gate
+  // any more, so this is a different situation from a wrong password.
+  const isSuspended = error != null && /suspend/i.test(error);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -49,7 +48,7 @@ export function Login() {
 
         <h1 style={{ fontSize: 20, marginBottom: 6 }}>Sign in</h1>
         <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 0, marginBottom: 20 }}>
-          Access requires an approved account.
+          Predictions unlock once you redeem an access code -- signing in doesn't need one.
         </p>
 
         <form onSubmit={handleSubmit} className="auth-form">
@@ -64,10 +63,9 @@ export function Login() {
 
           {error && <p className="auth-error">{error}</p>}
 
-          {awaitingApproval && (
+          {isSuspended && (
             <p className="auth-hint">
-              Your credentials are correct — the account just isn't live yet.{" "}
-              <Link to="/account-status">Check your application status</Link>.
+              Your credentials are correct — this account has been suspended. Contact your Super Admin.
             </p>
           )}
 
@@ -77,9 +75,9 @@ export function Login() {
         </form>
 
         <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 20, textAlign: "center" }}>
-          No account yet? <Link to="/register">Request access</Link>
+          No account yet? <Link to="/register">Create one</Link>
           <br />
-          Waiting on approval? <Link to="/account-status">Check your status</Link>
+          Not sure if you have access? <Link to="/account-status">Check your status</Link>
         </p>
       </div>
       </div>

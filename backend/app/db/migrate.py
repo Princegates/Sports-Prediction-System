@@ -65,13 +65,30 @@ def ensure_schema(engine: Engine) -> None:
                 conn.execute(text(statement))
 
 
-def init_db(engine: Engine) -> None:
-    """Bring a database up to date: create missing tables, then add columns
-    that existing tables are missing.
+def _migrate_pending_users_to_active(engine: Engine) -> None:
+    """One-time flip for accounts stuck in the old ``pending`` status.
 
-    The two halves must always run together, and keeping them separate meant
-    six scripts called ``create_all`` alone and would crash against any
-    database created before the newest column -- including, in one case, the
+    The pending/superadmin-approve gate was replaced by the access-code
+    system: there is nothing left to approve a pending account *into*, since
+    every account -- new or old -- now needs to redeem a code to unlock
+    features. Idempotent: once no row is ``pending`` this UPDATE matches
+    nothing.
+    """
+
+    inspector = inspect(engine)
+    if "users" not in inspector.get_table_names():
+        return
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE users SET status = 'active' WHERE status = 'pending'"))
+
+
+def init_db(engine: Engine) -> None:
+    """Bring a database up to date: create missing tables, add columns that
+    existing tables are missing, and run one-time data migrations.
+
+    These must always run together, and keeping them separate meant six
+    scripts called ``create_all`` alone and would crash against any database
+    created before the newest column -- including, in one case, the
     production database a nightly job runs against. One call is harder to
     get half right.
     """
@@ -82,3 +99,4 @@ def init_db(engine: Engine) -> None:
 
     Base.metadata.create_all(bind=engine)
     ensure_schema(engine)
+    _migrate_pending_users_to_active(engine)

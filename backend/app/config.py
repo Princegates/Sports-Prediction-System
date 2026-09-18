@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     register_rate_limit_window_seconds: int = 3600
     chat_rate_limit_messages: int = 40
     chat_rate_limit_window_seconds: int = 300
+    access_redeem_rate_limit_attempts: int = 10
+    access_redeem_rate_limit_window_seconds: int = 300
 
     # --- Optional AI assistant rewriter (see app/assistant/llm.py) --------
     # Left disabled so the assistant runs entirely locally at zero cost. The

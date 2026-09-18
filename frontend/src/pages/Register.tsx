@@ -9,7 +9,6 @@ export function Register() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [paymentReference, setPaymentReference] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
@@ -19,7 +18,7 @@ export function Register() {
     setError(null);
     setBusy(true);
     try {
-      const result = await registerAccount({ email, name, password, payment_reference: paymentReference || undefined });
+      const result = await registerAccount({ email, name, password });
       setDone(result.message);
     } catch (err) {
       setError(String(err instanceof Error ? err.message : err));
@@ -40,22 +39,18 @@ export function Register() {
             <div className="register-next-steps">
               <h3>What happens now</h3>
               <ol>
-                <li>Your account sits in the Super Admin's approval queue.</li>
+                <li>Sign in right away -- there's no approval queue to wait on.</li>
                 <li>
-                  They verify your payment reference out of band and approve it. There's no automatic
-                  approval — until they sign off, signing in will be refused.
+                  Arrange payment with a Super Admin outside the platform. Once confirmed, they'll hand you
+                  an access code.
                 </li>
-                <li>Once approved, sign in and the full platform opens up.</li>
+                <li>Redeem the code from the Access page and the full platform unlocks.</li>
               </ol>
-              <p>Nothing further is needed from you in the meantime.</p>
             </div>
 
             <button className="btn" style={{ marginTop: 16 }} onClick={() => navigate("/login")}>
               Go to sign in
             </button>
-            <Link className="btn ghost" style={{ marginTop: 8 }} to="/account-status">
-              Check application status
-            </Link>
           </div>
         </div>
       </PublicShell>
@@ -76,7 +71,8 @@ export function Register() {
 
         <h1 style={{ fontSize: 20, marginBottom: 6 }}>Create an account</h1>
         <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 0, marginBottom: 20 }}>
-          New accounts are reviewed and approved by an admin after payment confirmation before you can sign in.
+          Sign in right after creating your account. Predictions unlock once you redeem an access code, which
+          a Super Admin issues after confirming payment outside the platform.
         </p>
 
         <form onSubmit={handleSubmit} className="auth-form">
@@ -91,10 +87,6 @@ export function Register() {
           <label>
             Password
             <input type="password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
-          </label>
-          <label>
-            Payment reference <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(optional -- e.g. mobile money transaction ID)</span>
-            <input value={paymentReference} onChange={(e) => setPaymentReference(e.target.value)} placeholder="MOMO-XXXXXXX" />
           </label>
 
           {error && <p className="auth-error">{error}</p>}

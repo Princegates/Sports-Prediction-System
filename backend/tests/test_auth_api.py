@@ -13,17 +13,17 @@ def _make_superadmin(db_session) -> User:
     return admin
 
 
-def test_register_creates_pending_user(db_session):
+def test_register_creates_active_user(db_session):
     from app.main import app
 
     client = TestClient(app)
     response = client.post(
         "/api/auth/register",
-        json={"email": "New.User@Example.com", "name": "New User", "password": "a-good-password", "payment_reference": "MOMO-123"},
+        json={"email": "New.User@Example.com", "name": "New User", "password": "a-good-password"},
     )
     assert response.status_code == 200
     body = response.json()
-    assert body["user"]["status"] == "pending"
+    assert body["user"]["status"] == "active"
     assert body["user"]["email"] == "new.user@example.com"  # normalized to lowercase
 
 
@@ -44,12 +44,34 @@ def test_register_rejects_duplicate_email(db_session):
     assert client.post("/api/auth/register", json=payload).status_code == 409
 
 
-def test_login_rejects_pending_user(db_session):
+def test_login_succeeds_immediately_after_register(db_session):
+    """There is no approval gate to clear any more -- a freshly registered
+    account can log in right away. Whether it can reach predictions is a
+    separate, access-grant question (see test_access_codes.py)."""
     from app.main import app
 
     client = TestClient(app)
-    payload = {"email": "pending@example.com", "name": "Pending", "password": "a-good-password"}
+    payload = {"email": "newcomer@example.com", "name": "Newcomer", "password": "a-good-password"}
     client.post("/api/auth/register", json=payload)
+
+    response = client.post("/api/auth/login", json={"email": payload["email"], "password": payload["password"]})
+    assert response.status_code == 200
+
+
+def test_login_rejects_suspended_user(db_session):
+    from app.main import app
+
+    admin = _make_superadmin(db_session)
+    client = TestClient(app)
+    payload = {"email": "suspended@example.com", "name": "Suspended", "password": "a-good-password"}
+    client.post("/api/auth/register", json=payload)
+
+    admin_login = client.post("/api/auth/login", json={"email": admin.email, "password": "admin-password-1"})
+    admin_headers = {"Authorization": f"Bearer {admin_login.json()['access_token']}"}
+
+    users = client.get("/api/admin/users", headers=admin_headers).json()
+    user_id = next(row["id"] for row in users if row["email"] == payload["email"])
+    client.post(f"/api/admin/users/{user_id}/suspend", headers=admin_headers)
 
     response = client.post("/api/auth/login", json={"email": payload["email"], "password": payload["password"]})
     assert response.status_code == 403
@@ -66,32 +88,22 @@ def test_login_rejects_wrong_password(db_session):
     assert response.status_code == 401
 
 
-def test_full_register_approve_login_flow(db_session):
+def test_full_register_login_locked_until_redeemed_flow(db_session):
+    """Registering and logging in no longer needs a superadmin in the loop --
+    but the prediction surface stays locked until the account redeems a code.
+    The redemption itself is covered end-to-end in test_access_codes.py; this
+    just checks the boundary between the two."""
     from app.main import app
 
-    admin = _make_superadmin(db_session)
     client = TestClient(app)
 
     register_resp = client.post(
         "/api/auth/register",
-        json={"email": "flow@example.com", "name": "Flow User", "password": "a-good-password", "payment_reference": "MOMO-999"},
+        json={"email": "flow@example.com", "name": "Flow User", "password": "a-good-password"},
     )
-    user_id = register_resp.json()["user"]["id"]
+    assert register_resp.json()["user"]["status"] == "active"
 
-    # Can't log in yet.
-    assert client.post("/api/auth/login", json={"email": "flow@example.com", "password": "a-good-password"}).status_code == 403
-
-    # Superadmin logs in and approves.
-    admin_login = client.post("/api/auth/login", json={"email": admin.email, "password": "admin-password-1"})
-    assert admin_login.status_code == 200
-    admin_headers = {"Authorization": f"Bearer {admin_login.json()['access_token']}"}
-
-    approve_resp = client.post(f"/api/admin/users/{user_id}/approve", json={}, headers=admin_headers)
-    assert approve_resp.status_code == 200
-    assert approve_resp.json()["status"] == "active"
-    assert approve_resp.json()["approved_by_user_id"] == admin.id
-
-    # Now the user can log in and access a protected endpoint.
+    # Logs in immediately -- no approval step to wait on.
     login_resp = client.post("/api/auth/login", json={"email": "flow@example.com", "password": "a-good-password"})
     assert login_resp.status_code == 200
     user_headers = {"Authorization": f"Bearer {login_resp.json()['access_token']}"}
@@ -99,6 +111,9 @@ def test_full_register_approve_login_flow(db_session):
     me_resp = client.get("/api/auth/me", headers=user_headers)
     assert me_resp.status_code == 200
     assert me_resp.json()["status"] == "active"
+
+    # But the prediction surface is locked -- there's no access grant yet.
+    assert client.get("/api/teams", headers=user_headers).status_code == 403
 
 
 def test_non_superadmin_cannot_access_admin_routes(db_session, auth_headers):

@@ -60,7 +60,7 @@ export interface LivePrediction {
 }
 
 export type UserRole = "user" | "superadmin";
-export type UserStatus = "pending" | "active" | "suspended";
+export type UserStatus = "active" | "suspended";
 
 export interface User {
   id: number;
@@ -79,9 +79,8 @@ export interface MatchHistoryEntry {
 }
 
 export interface AdminUser extends User {
-  payment_reference: string | null;
-  approved_by_user_id: number | null;
-  approved_at: string | null;
+  access_status: "active" | "expired" | "none";
+  access_expires_at: string | null;
 }
 
 export interface TokenResponse {
@@ -195,19 +194,54 @@ export interface PublicFixture {
 }
 
 export interface AccountStatus {
-  status: UserStatus;
+  status: "no_access" | "active" | "suspended";
   message: string;
   submitted_at: string | null;
+}
+
+// --- Access codes ----------------------------------------------------------
+
+export interface AccessCode {
+  id: number;
+  code: string;
+  status: "active" | "revoked" | "exhausted" | "expired";
+  duration_days: number;
+  code_expires_at: string | null;
+  redemption_limit: number;
+  redemption_count: number;
+  assigned_user_id: number | null;
+  created_by_user_id: number;
+  created_at: string;
+  revoked_at: string | null;
+  revoked_reason: string | null;
+  notes: string | null;
+}
+
+export interface AccessGrant {
+  id: number;
+  access_code_id: number;
+  status: "active" | "revoked" | "expired";
+  activated_at: string;
+  expires_at: string;
+  revoked_at: string | null;
+  revoked_reason: string | null;
+}
+
+export interface AccessStatus {
+  has_access: boolean;
+  status: "active" | "expired" | "none";
+  expires_at: string | null;
 }
 
 // --- Admin ---------------------------------------------------------------
 
 export interface AdminOverview {
-  pending_users: number;
   active_users: number;
   suspended_users: number;
   superadmins: number;
   total_users: number;
+  users_without_access: number;
+  active_access_grants: number;
   matches_analyzed: number;
   predictions_generated: number;
   upcoming_fixtures: number;

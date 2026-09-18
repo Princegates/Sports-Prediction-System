@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Create (or promote) the first superadmin account.
 
-Registration always starts a user in "pending" status awaiting approval by
-an existing superadmin -- which is a chicken-and-egg problem for the very
-first admin. This script bypasses that by talking to the database directly,
-the same way Django's ``createsuperuser`` does. Run it once after setting up
-a fresh database.
+A superadmin account can only be made by promoting an existing one over the
+API -- which is a chicken-and-egg problem for the very first admin. This
+script bypasses that by talking to the database directly, the same way
+Django's ``createsuperuser`` does. Run it once after setting up a fresh
+database.
 
 Interactive by default. On a hosted box there is often no TTY to type a
 password into, so ``SUPERADMIN_PASSWORD`` in the environment is accepted as

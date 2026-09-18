@@ -20,6 +20,7 @@ from app.auth.tokens import create_token
 from app.config import get_settings
 from app.db.models import ChatMessage, Match, ModelMetric, Prediction, Team, User
 from app.main import app
+from tests.conftest import grant_active_access
 
 client = TestClient(app)
 
@@ -123,24 +124,13 @@ def test_chat_requires_authentication(db_session):
     assert client.get("/api/chat/history").status_code == 401
 
 
-def test_pending_user_cannot_chat(db_session):
-    """The whole point of the approval gate is that an unapproved account has
-    no access -- including to the assistant."""
+def test_user_without_access_cannot_chat(db_session, headers_no_access):
+    """The assistant answers from prediction data, so it's gated the same as
+    predictions themselves -- a logged-in account with no live access grant
+    still can't reach it."""
 
-    user = User(
-        email="pending-chat@example.com",
-        name="Pending",
-        password_hash=hash_password("a-good-password"),
-        status="pending",
-    )
-    db_session.add(user)
-    db_session.commit()
-    db_session.refresh(user)
-
-    settings = get_settings()
-    token = create_token({"user_id": user.id, "role": "user"}, settings.secret_key, settings.session_ttl_seconds)
     response = client.post(
-        "/api/chat/message", json={"message": "hello"}, headers={"Authorization": f"Bearer {token}"}
+        "/api/chat/message", json={"message": "hello"}, headers=headers_no_access
     )
     assert response.status_code == 403
 
@@ -159,6 +149,7 @@ def test_chat_history_is_scoped_to_its_own_user(db_session, auth_headers):
     db_session.add(other)
     db_session.commit()
     db_session.refresh(other)
+    grant_active_access(db_session, other)
     settings = get_settings()
     other_token = create_token(
         {"user_id": other.id, "role": "user"}, settings.secret_key, settings.session_ttl_seconds

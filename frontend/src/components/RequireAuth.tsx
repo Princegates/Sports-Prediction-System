@@ -31,3 +31,16 @@ export function RequireSuperadmin() {
 
   return <Outlet />;
 }
+
+/** Gates the prediction-serving pages on a live access grant -- separate
+ * from RequireAuth's login check, since a logged-in account without one
+ * still needs to reach /app/access to redeem a code, not be bounced to
+ * /login. Mirrors the backend's require_active_access split. */
+export function RequireAccess() {
+  const { accessStatus, accessLoading } = useAuth();
+
+  if (accessLoading) return <AuthLoading />;
+  if (!accessStatus?.has_access) return <Navigate to="/app/access" replace />;
+
+  return <Outlet />;
+}

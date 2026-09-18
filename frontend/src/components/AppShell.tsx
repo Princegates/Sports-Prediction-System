@@ -26,7 +26,14 @@ interface LeagueContextValue {
 const LeagueContext = createContext<LeagueContextValue>({ league: LEAGUES[0], setLeague: () => {} });
 export const useLeague = () => useContext(LeagueContext);
 
-const NAV_ITEMS = [
+interface NavItem {
+  to: string;
+  label: string;
+  icon: string;
+  badge?: boolean;
+}
+
+const NAV_ITEMS: NavItem[] = [
   { to: "/app", label: "Dashboard", icon: "◆" },
   { to: "/app/predictions", label: "Predictions", icon: "▤" },
   { to: "/app/live", label: "Live", icon: "●" },
@@ -119,13 +126,18 @@ function UserMenu() {
 export function AppShell() {
   const [league, setLeague] = useState(LEAGUES[0]);
   const [searchOpen, setSearchOpen] = useState(false);
-  const { user, setPreferences } = useAuth();
+  const { user, setPreferences, accessStatus } = useAuth();
   const [theme, setTheme] = useTheme((t) => setPreferences({ theme: t }).catch(() => {}));
   const [accent, setAccent] = useAccent((a) => setPreferences({ accent_profile: a }).catch(() => {}));
+  const needsAccess = user?.role !== "superadmin" && !accessStatus?.has_access;
   const navItems =
     user?.role === "superadmin"
       ? [...NAV_ITEMS, { to: "/app/profile", label: "Profile", icon: "◍" }, { to: "/app/admin", label: "Admin", icon: "⚙" }]
-      : [...NAV_ITEMS, { to: "/app/profile", label: "Profile", icon: "◍" }];
+      : [
+          ...NAV_ITEMS,
+          { to: "/app/access", label: "Access", icon: "⚿", badge: needsAccess },
+          { to: "/app/profile", label: "Profile", icon: "◍" },
+        ];
 
   useEffect(() => {
     function handler(e: KeyboardEvent) {
@@ -156,6 +168,7 @@ export function AppShell() {
               <NavLink key={item.to} to={item.to} end={item.to === "/app"} className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
                 <span className="nav-icon">{item.icon}</span>
                 {item.label}
+                {item.badge && <span className="queue-badge">!</span>}
               </NavLink>
             ))}
           </nav>
@@ -219,6 +232,7 @@ export function AppShell() {
             <NavLink key={item.to} to={item.to} end={item.to === "/app"} className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
               <span className="nav-icon">{item.icon}</span>
               {item.label}
+              {item.badge && <span className="queue-badge">!</span>}
             </NavLink>
           ))}
         </nav>

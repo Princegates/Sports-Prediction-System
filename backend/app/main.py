@@ -7,7 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api.deps import get_current_user
+from app.api.deps import require_active_access
+from app.api.routes_access import router as access_router
 from app.api.routes_admin import router as admin_router
 from app.api.routes_auth import router as auth_router
 from app.api.routes_chat import router as chat_router
@@ -103,15 +104,18 @@ app.add_middleware(
 )
 
 # /api/auth/* (register/login/status) and /api/public/* (landing-page figures)
-# are intentionally open. Everything else requires a logged-in, superadmin-
-# approved account.
+# are intentionally open. /api/access/* needs only a logged-in account (an
+# expired user must still be able to redeem a new code). Teams, matches,
+# predictions and chat -- the whole prediction-serving surface, including the
+# live endpoints under matches -- additionally require a live access grant.
 app.include_router(auth_router)
 app.include_router(public_router)
 app.include_router(admin_router)
-app.include_router(chat_router)
-app.include_router(teams_router, dependencies=[Depends(get_current_user)])
-app.include_router(matches_router, dependencies=[Depends(get_current_user)])
-app.include_router(predictions_router, dependencies=[Depends(get_current_user)])
+app.include_router(access_router)
+app.include_router(chat_router, dependencies=[Depends(require_active_access)])
+app.include_router(teams_router, dependencies=[Depends(require_active_access)])
+app.include_router(matches_router, dependencies=[Depends(require_active_access)])
+app.include_router(predictions_router, dependencies=[Depends(require_active_access)])
 
 
 @app.exception_handler(SQLAlchemyError)
@@ -162,8 +166,8 @@ def root() -> dict:
         "health": "/api/health",
         "public_data": ["/api/public/stats", "/api/public/accuracy", "/api/public/fixtures"],
         "note": (
-            "Predictions, teams, matches and the AI assistant require an account approved "
-            "by a superadmin. This is the API only -- the web app is deployed separately."
+            "Predictions, teams and matches require a logged-in account with a live access "
+            "code redemption. This is the API only -- the web app is deployed separately."
         ),
     }
 

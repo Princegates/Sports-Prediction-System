@@ -1,11 +1,26 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { clearStoredToken, fetchMe, getStoredToken, login as apiLogin, onAuthLogout, storeToken, updatePreferences } from "../api";
+import {
+  clearStoredToken,
+  fetchAccessStatus,
+  fetchMe,
+  getStoredToken,
+  login as apiLogin,
+  onAuthLogout,
+  storeToken,
+  updatePreferences,
+} from "../api";
 import { storeAccent } from "./accentProfiles";
-import type { User } from "../types";
+import type { AccessStatus, User } from "../types";
 
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
+  // Whether the account has a live access grant -- separate from `user`
+  // being set, since login no longer implies feature access. `null` while
+  // still loading or for a superadmin (who never needs a grant).
+  accessStatus: AccessStatus | null;
+  accessLoading: boolean;
+  refreshAccessStatus: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   setPreferences: (prefs: { theme?: string; accent_profile?: string }) => Promise<void>;
@@ -14,6 +29,9 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue>({
   user: null,
   loading: true,
+  accessStatus: null,
+  accessLoading: true,
+  refreshAccessStatus: async () => {},
   login: async () => {},
   logout: () => {},
   setPreferences: async () => {},
@@ -43,42 +61,77 @@ export function useAuth() {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [accessStatus, setAccessStatus] = useState<AccessStatus | null>(null);
+  const [accessLoading, setAccessLoading] = useState(true);
 
   const logout = useCallback(() => {
     clearStoredToken();
     setUser(null);
+    setAccessStatus(null);
+  }, []);
+
+  const refreshAccessStatus = useCallback(async () => {
+    setAccessLoading(true);
+    try {
+      setAccessStatus(await fetchAccessStatus());
+    } catch {
+      setAccessStatus(null);
+    } finally {
+      setAccessLoading(false);
+    }
   }, []);
 
   useEffect(() => {
     const token = getStoredToken();
     if (!token) {
       setLoading(false);
+      setAccessLoading(false);
       return;
     }
     fetchMe()
       .then((u) => {
         applyStoredPreferences(u);
         setUser(u);
+        // A superadmin never needs a grant, so there's nothing to fetch --
+        // this also keeps the admin panel from ever being gated on it.
+        if (u.role === "superadmin") {
+          setAccessStatus({ has_access: true, status: "active", expires_at: null });
+          setAccessLoading(false);
+          return;
+        }
+        refreshAccessStatus();
       })
       .catch(() => clearStoredToken())
       .finally(() => setLoading(false));
-  }, []);
+  }, [refreshAccessStatus]);
 
   useEffect(() => onAuthLogout(() => setUser(null)), []);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const result = await apiLogin(email, password);
-    storeToken(result.access_token);
-    applyStoredPreferences(result.user);
-    setUser(result.user);
-  }, []);
+  const login = useCallback(
+    async (email: string, password: string) => {
+      const result = await apiLogin(email, password);
+      storeToken(result.access_token);
+      applyStoredPreferences(result.user);
+      setUser(result.user);
+      if (result.user.role === "superadmin") {
+        setAccessStatus({ has_access: true, status: "active", expires_at: null });
+        setAccessLoading(false);
+      } else {
+        await refreshAccessStatus();
+      }
+    },
+    [refreshAccessStatus],
+  );
 
   const setPreferences = useCallback(async (prefs: { theme?: string; accent_profile?: string }) => {
     const updated = await updatePreferences(prefs);
     setUser(updated);
   }, []);
 
-  const value = useMemo(() => ({ user, loading, login, logout, setPreferences }), [user, loading, login, logout, setPreferences]);
+  const value = useMemo(
+    () => ({ user, loading, accessStatus, accessLoading, refreshAccessStatus, login, logout, setPreferences }),
+    [user, loading, accessStatus, accessLoading, refreshAccessStatus, login, logout, setPreferences],
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

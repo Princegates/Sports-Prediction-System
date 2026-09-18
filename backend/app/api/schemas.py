@@ -55,7 +55,6 @@ class RegisterIn(BaseModel):
     email: str
     name: str
     password: str
-    payment_reference: str | None = None
 
 
 class LoginIn(BaseModel):
@@ -85,9 +84,12 @@ class MatchHistoryOut(BaseModel):
 
 
 class AdminUserOut(UserOut):
-    payment_reference: str | None = None
-    approved_by_user_id: int | None = None
-    approved_at: dt.datetime | None = None
+    # "active" / "expired" / "none" -- whether this user currently holds a
+    # live access grant, and until when if so. Replaces the old
+    # payment_reference/approved_by column pair now that access is a
+    # redeemed-code grant rather than a one-time superadmin approval.
+    access_status: str
+    access_expires_at: dt.datetime | None = None
 
 
 class TokenOut(BaseModel):
@@ -101,10 +103,6 @@ class RegisterOut(BaseModel):
     user: UserOut
 
 
-class ApproveIn(BaseModel):
-    payment_reference: str | None = None
-
-
 class AuditLogOut(BaseModel):
     id: int
     actor_email: str | None = None
@@ -115,14 +113,17 @@ class AuditLogOut(BaseModel):
 
 
 class AdminOverviewOut(BaseModel):
-    """Counts the admin dashboard leads with, so the pending-approval queue
-    is visible without having to filter the user table by hand."""
+    """Counts the admin dashboard leads with. ``users_without_access`` is the
+    new attention queue -- active accounts that registered but haven't
+    redeemed a code yet -- replacing the old pending-approval count now that
+    every account can log in immediately."""
 
-    pending_users: int
     active_users: int
     suspended_users: int
     superadmins: int
     total_users: int
+    users_without_access: int
+    active_access_grants: int
     matches_analyzed: int
     predictions_generated: int
     upcoming_fixtures: int
@@ -230,13 +231,78 @@ class TrackRecordOut(BaseModel):
 
 
 class AccountStatusOut(BaseModel):
-    """Lets a registered-but-unapproved user see where they stand without
-    being able to log in. Returns the same shape for an unknown email as for
-    a real one, so this can't be used to enumerate registered accounts."""
+    """Where an account stands re: platform access -- "no_access" (active
+    account, no live grant), "active", or "suspended". Returns the same
+    ``no_access`` shape for an unknown email or wrong password as for a real
+    account with no grant, so this can't be used to enumerate accounts."""
 
     status: str
     message: str
     submitted_at: dt.datetime | None = None
+
+
+# --- Access codes ---------------------------------------------------------
+
+
+class AccessCodeCreateIn(BaseModel):
+    duration_days: int
+    redemption_limit: int = 1
+    code_expires_in_days: int | None = None
+    assigned_user_email: str | None = None
+    notes: str | None = None
+
+
+class AccessCodeOut(BaseModel):
+    id: int
+    code: str
+    status: str
+    duration_days: int
+    code_expires_at: dt.datetime | None = None
+    redemption_limit: int
+    redemption_count: int
+    assigned_user_id: int | None = None
+    created_by_user_id: int
+    created_at: dt.datetime
+    revoked_at: dt.datetime | None = None
+    revoked_reason: str | None = None
+    notes: str | None = None
+
+
+class AccessCodeCreatedOut(AccessCodeOut):
+    """Identical shape to ``AccessCodeOut``, but ``code`` here is the real
+    value rather than masked -- the one and only response where it is."""
+
+
+class AccessGrantOut(BaseModel):
+    id: int
+    access_code_id: int
+    status: str
+    activated_at: dt.datetime
+    expires_at: dt.datetime
+    revoked_at: dt.datetime | None = None
+    revoked_reason: str | None = None
+
+
+class AccessRedeemIn(BaseModel):
+    code: str
+
+
+class AccessStatusOut(BaseModel):
+    has_access: bool
+    status: str  # "active" / "expired" / "none"
+    expires_at: dt.datetime | None = None
+
+
+class RevokeCodeIn(BaseModel):
+    reason: str | None = None
+
+
+class RevokeGrantIn(BaseModel):
+    reason: str | None = None
+
+
+class ExtendGrantIn(BaseModel):
+    additional_days: int
 
 
 class LiveEventIn(BaseModel):

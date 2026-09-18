@@ -12,9 +12,11 @@ Three ways to talk to the assistant:
 ``GET /api/chat/history`` / ``DELETE /api/chat/history``
     The user's own conversation, scoped to their account.
 
-Every route requires an active (admin-approved) account. Chat history is
-filtered by ``user_id`` at the query level, so one user's conversation is not
-reachable from another's session.
+Every route requires a live access grant (app.main gates this whole router on
+``require_active_access``) -- the assistant answers from prediction data, so
+it's part of the same paywalled surface as the predictions themselves. Chat
+history is filtered by ``user_id`` at the query level, so one user's
+conversation is not reachable from another's session.
 """
 
 from __future__ import annotations
