@@ -128,6 +128,23 @@ def import_historical_season(db: Session, league_code: str, season: str) -> int:
             ht_away_score=rm.ht_away_score,
             status="FINISHED",
             source="football-data.co.uk",
+            # football-data.co.uk carries these on the same row it gives us
+            # the score from -- capturing them here means a season imported
+            # straight from this source never needs the separate
+            # enrich_match_stats.py reconciliation pass.
+            referee=rm.referee,
+            home_shots=rm.home_shots,
+            away_shots=rm.away_shots,
+            home_shots_on_target=rm.home_shots_on_target,
+            away_shots_on_target=rm.away_shots_on_target,
+            home_corners=rm.home_corners,
+            away_corners=rm.away_corners,
+            home_fouls=rm.home_fouls,
+            away_fouls=rm.away_fouls,
+            home_yellows=rm.home_yellows,
+            away_yellows=rm.away_yellows,
+            home_reds=rm.home_reds,
+            away_reds=rm.away_reds,
         )
         db.add(match)
         existing_matches[(home.id, away.id, rm.date)] = match

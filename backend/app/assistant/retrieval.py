@@ -305,6 +305,90 @@ def _weighted_metrics(league_metrics: dict[str, dict[str, float]]) -> dict[str, 
     return combined
 
 
+@dataclass
+class ConfidenceBandRecord:
+    confidence: str
+    graded: int
+    hits: int
+
+    @property
+    def hit_rate(self) -> float:
+        return self.hits / self.graded if self.graded else 0.0
+
+
+@dataclass
+class TrackRecord:
+    """How the system's own pre-match calls have actually done, as opposed
+    to the offline backtest in AccuracySnapshot -- this is a verifiable
+    record of predictions that were genuinely made before kickoff, scored
+    against what genuinely happened.
+    """
+
+    graded_predictions: int = 0
+    hits: int = 0
+    by_confidence: list[ConfidenceBandRecord] = field(default_factory=list)
+    earliest_graded_at: dt.datetime | None = None
+
+    @property
+    def has_data(self) -> bool:
+        return self.graded_predictions > 0
+
+    @property
+    def hit_rate(self) -> float:
+        return self.hits / self.graded_predictions if self.graded_predictions else 0.0
+
+
+def track_record(db: Session) -> TrackRecord:
+    """Grades each finished match's *first* stored prediction (the one made
+    furthest from kickoff, before any later refresh could have seen more
+    form data) against what actually happened.
+
+    Using the first prediction per match rather than every stored one is
+    what keeps this honest: a match whose prediction was regenerated five
+    times would otherwise count five times as much as one predicted once.
+    """
+
+    earliest = (
+        select(Prediction.match_id, func.min(Prediction.created_at).label("first_created_at"))
+        .group_by(Prediction.match_id)
+        .subquery()
+    )
+
+    rows = db.execute(
+        select(Prediction, Match)
+        .join(Match, Match.id == Prediction.match_id)
+        .join(
+            earliest,
+            (earliest.c.match_id == Prediction.match_id) & (earliest.c.first_created_at == Prediction.created_at),
+        )
+        .where(Match.home_score.is_not(None), Match.away_score.is_not(None))
+    ).all()
+
+    band_totals: dict[str, list[int]] = {}  # confidence -> [graded, hits]
+    total_hits = 0
+    earliest_at: dt.datetime | None = None
+
+    for prediction, match in rows:
+        actual = "H" if match.home_score > match.away_score else ("D" if match.home_score == match.away_score else "A")
+        predicted = max({"H": prediction.home_win, "D": prediction.draw, "A": prediction.away_win}, key=lambda k: {"H": prediction.home_win, "D": prediction.draw, "A": prediction.away_win}[k])
+        hit = 1 if predicted == actual else 0
+        total_hits += hit
+
+        band = band_totals.setdefault(prediction.confidence, [0, 0])
+        band[0] += 1
+        band[1] += hit
+
+        if earliest_at is None or prediction.created_at < earliest_at:
+            earliest_at = prediction.created_at
+
+    return TrackRecord(
+        graded_predictions=len(rows),
+        hits=total_hits,
+        by_confidence=[ConfidenceBandRecord(confidence=c, graded=g, hits=h) for c, (g, h) in sorted(band_totals.items())],
+        earliest_graded_at=earliest_at,
+    )
+
+
 def coverage_counts(db: Session) -> dict[str, int]:
     """Corpus size figures, used by both the assistant and the public
     landing page so the two can never quote different totals."""

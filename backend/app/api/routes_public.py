@@ -20,7 +20,14 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
-from app.api.schemas import LeagueAccuracyOut, PublicAccuracyOut, PublicFixtureOut, PublicStatsOut
+from app.api.schemas import (
+    ConfidenceBandRecordOut,
+    LeagueAccuracyOut,
+    PublicAccuracyOut,
+    PublicFixtureOut,
+    PublicStatsOut,
+    TrackRecordOut,
+)
 from app.assistant import retrieval
 from app.db.models import Match, Prediction, User
 
@@ -101,6 +108,29 @@ def public_accuracy(db: Session = Depends(get_db)) -> PublicAccuracyOut:
                 reverse=True,
             )
         ],
+    )
+
+
+@router.get("/track-record", response_model=TrackRecordOut)
+def public_track_record(db: Session = Depends(get_db)) -> TrackRecordOut:
+    """How the system's own real pre-match calls have actually done, graded
+    against real final scores -- not the offline backtest in /accuracy, a
+    live verifiable record. Answers "how did your calls actually do?" with
+    something other than "trust us"."""
+
+    record = retrieval.track_record(db)
+    if not record.has_data:
+        return TrackRecordOut(has_data=False)
+
+    return TrackRecordOut(
+        has_data=True,
+        graded_predictions=record.graded_predictions,
+        hit_rate=record.hit_rate,
+        by_confidence=[
+            ConfidenceBandRecordOut(confidence=b.confidence, graded=b.graded, hit_rate=b.hit_rate)
+            for b in record.by_confidence
+        ],
+        since=record.earliest_graded_at,
     )
 
 

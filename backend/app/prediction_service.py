@@ -11,7 +11,7 @@ from app.config import get_settings
 from app.db.models import Match, Prediction
 from app.explain import generate_explanation
 from app.features.team_stats import compute_team_form, matches_played_before
-from app.model_store import load_calibrators, load_ml_model
+from app.model_store import load_calibrators, load_ensemble_weights, load_ml_model
 from app.outcomes.engine import select_global_most_likely
 from app.outcomes.registry import build_outcome_registry
 from app.prediction_models import elo
@@ -27,6 +27,7 @@ def build_prediction_for_match(db: Session, match: Match) -> Prediction:
 
     ml_model = load_ml_model(match.league)
     calibrators = load_calibrators(match.league)
+    weights = load_ensemble_weights(match.league)
 
     result = generate_prediction(
         db,
@@ -36,6 +37,7 @@ def build_prediction_for_match(db: Session, match: Match) -> Prediction:
         as_of,
         ml_model=ml_model,
         calibrators=calibrators,
+        weights=weights,
     )
 
     matches_home = matches_played_before(db, match.home_team_id, as_of, match.league)

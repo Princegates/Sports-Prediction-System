@@ -210,6 +210,25 @@ class PublicFixtureOut(BaseModel):
     confidence: str | None = None
 
 
+class ConfidenceBandRecordOut(BaseModel):
+    confidence: str
+    graded: int
+    hit_rate: float
+
+
+class TrackRecordOut(BaseModel):
+    """A verifiable record of what the system's own pre-match calls have
+    actually done -- distinct from PublicAccuracyOut, which is the offline
+    backtest's held-out figure. This grades real stored Prediction rows
+    against real final scores once matches finish."""
+
+    has_data: bool
+    graded_predictions: int = 0
+    hit_rate: float | None = None
+    by_confidence: list[ConfidenceBandRecordOut] = []
+    since: dt.datetime | None = None
+
+
 class AccountStatusOut(BaseModel):
     """Lets a registered-but-unapproved user see where they stand without
     being able to log in. Returns the same shape for an unknown email as for

@@ -225,3 +225,51 @@ def test_single_league_accuracy_is_unchanged(db_session, seeded):
     body = client.get("/api/public/accuracy").json()
     assert body["accuracy"] == pytest.approx(0.459)
     assert body["matches_evaluated"] == 290
+
+
+def test_track_record_reports_no_data_before_any_match_finishes(db_session):
+    """A fresh deployment (no graded predictions yet) gets an explicit
+    'no data' rather than a fabricated hit rate."""
+
+    body = client.get("/api/public/track-record").json()
+    assert body == {"has_data": False, "graded_predictions": 0, "hit_rate": None, "by_confidence": [], "since": None}
+
+
+def test_track_record_grades_the_first_prediction_per_match(db_session, seeded):
+    """A correct pre-match call on a since-finished match counts as a hit;
+    only the *first* prediction stored for that match is graded, even if it
+    was later regenerated."""
+
+    played = db_session.query(Match).filter(Match.status == "FINISHED").one()  # home 2 - away 1 -> "H"
+
+    def make_prediction(home_win, created_at):
+        return Prediction(
+            match_id=played.id, model_version="ensemble-v1", created_at=created_at,
+            home_win=home_win, draw=0.25, away_win=1 - home_win - 0.25,
+            over_probabilities={"2.5": 0.5}, btts_yes=0.5, btts_no=0.5,
+            correct_score_probabilities={"2-1": 0.1}, most_likely_score="2-1", most_likely_score_probability=0.1,
+            global_outcome_market="Match Result", global_outcome_selection="Home Win", global_outcome_probability=home_win,
+            confidence="HIGH", data_quality_score=0.9, model_agreement_score=0.88,
+            explanation={"positive": [], "negative": []}, model_breakdown={},
+        )
+
+    now = dt.datetime.utcnow()
+    # First (earliest) prediction correctly picks the home win that happened.
+    db_session.add(make_prediction(0.60, now - dt.timedelta(days=9)))
+    # A later regeneration wrongly favors away -- must NOT be the one graded.
+    db_session.add(make_prediction(0.10, now - dt.timedelta(days=1)))
+    db_session.commit()
+
+    body = client.get("/api/public/track-record").json()
+    assert body["has_data"] is True
+    assert body["graded_predictions"] == 1
+    assert body["hit_rate"] == pytest.approx(1.0)
+    assert body["by_confidence"] == [{"confidence": "HIGH", "graded": 1, "hit_rate": 1.0}]
+
+
+def test_track_record_never_grades_a_prediction_for_an_unplayed_match(db_session, seeded):
+    """The seeded prediction belongs to the SCHEDULED (not yet played)
+    fixture -- it must not be graded as a hit or a miss."""
+
+    body = client.get("/api/public/track-record").json()
+    assert body["has_data"] is False

@@ -10,6 +10,7 @@ section 34) measures.
 from __future__ import annotations
 
 import datetime as dt
+import re
 from bisect import bisect_left
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,6 +26,36 @@ from app.db.models import EloHistory, Match
 from app.features.team_stats import compute_team_form, form_from_matches
 from app.prediction_models.elo import get_rating_before
 
+# Leagues the pooled/global model is trained across (see
+# build_pooled_training_dataset below). A league outside this list still
+# works -- it just gets an all-zero one-hot, the same "unknown" fallback
+# stats_available uses -- so adding a new league to the DB never breaks
+# prediction, it just doesn't get its own identity feature until it's added
+# here and the model is retrained.
+KNOWN_LEAGUES = [
+    "English Premier League",
+    "English Championship",
+    "Spanish La Liga",
+    "German Bundesliga",
+    "Italian Serie A",
+    "French Ligue 1",
+    "Dutch Eredivisie",
+    "Portuguese Primeira Liga",
+    "UEFA Champions League",
+]
+
+
+def _league_column(league: str) -> str:
+    return "league_" + re.sub(r"[^a-z0-9]+", "_", league.lower()).strip("_")
+
+
+LEAGUE_FEATURE_COLUMNS = [_league_column(lg) for lg in KNOWN_LEAGUES]
+
+
+def _league_one_hot(league: str | None) -> dict[str, float]:
+    return {col: (1.0 if league is not None and col == _league_column(league) else 0.0) for col in LEAGUE_FEATURE_COLUMNS}
+
+
 FEATURE_COLUMNS = [
     "elo_diff",
     "home_ppg",
@@ -36,6 +67,14 @@ FEATURE_COLUMNS = [
     "home_rest_days",
     "away_rest_days",
     "form_diff",
+    # Home team's scoring/conceding specifically in its home matches, and
+    # away team's specifically in its away matches -- e.g. a team that's
+    # mediocre overall but strong at home should read as strong here, which
+    # the blended (venue-agnostic) averages above cannot express.
+    "home_team_home_gs_avg",
+    "home_team_home_gc_avg",
+    "away_team_away_gs_avg",
+    "away_team_away_gc_avg",
     # --- Shot-based features -------------------------------------------
     # A scoreline is a small sample of a match; shot counts describe how it
     # was actually played. A side that consistently out-shoots opponents
@@ -53,7 +92,7 @@ FEATURE_COLUMNS = [
     # learn to disregard the four features above rather than reading their
     # zeroes as real values.
     "stats_available",
-]
+] + LEAGUE_FEATURE_COLUMNS
 
 # Matches to average shot statistics over. Shorter than the form window --
 # shot rates are less noisy than results, so a shorter window tracks a
@@ -79,7 +118,7 @@ def build_feature_row(
     # LeagueFeatureCache directly and pay that cost once.
     shot_stats = LeagueFeatureCache(db, league).shot_stats(home_team_id, away_team_id, as_of)
 
-    return _assemble_features(home_elo, away_elo, home_form, away_form, home_advantage, shot_stats)
+    return _assemble_features(home_elo, away_elo, home_form, away_form, home_advantage, shot_stats, league)
 
 
 def _empty_shot_stats() -> dict[str, float]:
@@ -103,12 +142,14 @@ def _assemble_features(
     away_form,
     home_advantage: float,
     shot_stats: dict[str, float] | None = None,
+    league: str | None = None,
 ) -> dict[str, float]:
     """The feature dict itself, shared by the per-query and cached paths so a
     change to one can't silently skew the other."""
 
     return {
         **(shot_stats or _empty_shot_stats()),
+        **_league_one_hot(league),
         "elo_diff": (home_elo + home_advantage) - away_elo,
         "home_ppg": home_form.points_per_game,
         "away_ppg": away_form.points_per_game,
@@ -119,6 +160,10 @@ def _assemble_features(
         "home_rest_days": home_form.rest_days,
         "away_rest_days": away_form.rest_days,
         "form_diff": home_form.points_per_game - away_form.points_per_game,
+        "home_team_home_gs_avg": home_form.home_goals_scored_avg,
+        "home_team_home_gc_avg": home_form.home_goals_conceded_avg,
+        "away_team_away_gs_avg": away_form.away_goals_scored_avg,
+        "away_team_away_gc_avg": away_form.away_goals_conceded_avg,
     }
 
 
@@ -138,6 +183,7 @@ class LeagueFeatureCache:
     """
 
     def __init__(self, db: Session, league: str, window: int = 10) -> None:
+        self.league = league
         self.window = window
 
         played = list(
@@ -269,6 +315,7 @@ class LeagueFeatureCache:
             away_form,
             home_advantage,
             self.shot_stats(home_team_id, away_team_id, as_of),
+            self.league,
         )
 
 
@@ -310,6 +357,23 @@ def build_training_dataset(
         rows.append(features)
 
     return pd.DataFrame(rows)
+
+
+def build_pooled_training_dataset(db: Session, league_end_dates: dict[str, dt.datetime]) -> pd.DataFrame:
+    """The cross-league training set: each league's own matches up to its own
+    train/validation boundary, concatenated into one frame with a league
+    one-hot identity feature.
+
+    Built per-league (each with its own ``LeagueFeatureCache``) rather than
+    querying across leagues at once -- a match's rolling form/Elo/shot
+    features must only ever be computed from that same league's history, so
+    pooling happens after feature computation, not before it. This is what
+    keeps a global model leakage-free in exactly the same way a per-league
+    one is.
+    """
+
+    frames = [build_training_dataset(db, league, end_date=end_date) for league, end_date in league_end_dates.items()]
+    return pd.concat(frames, ignore_index=True)
 
 
 @dataclass

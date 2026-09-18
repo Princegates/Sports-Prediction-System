@@ -105,13 +105,23 @@ def main() -> None:
             )
 
     if not args.skip_training:
-        for league in args.leagues:
+        if len(args.leagues) > 1:
+            # One cross-league model trained on all of them together beats N
+            # models of N leagues each trained alone -- see ROADMAP.md item 6.
             trained = run(
-                f"Training + backtesting {league}",
-                ["scripts/backtest.py", "--league-name", league],
+                "Training + backtesting (cross-league)",
+                ["scripts/backtest.py", "--pool-leagues", "--leagues", *args.leagues],
                 required=False,
             )
-            if trained:
+        else:
+            trained = run(
+                f"Training + backtesting {args.leagues[0]}",
+                ["scripts/backtest.py", "--league-name", args.leagues[0]],
+                required=False,
+            )
+
+        if trained:
+            for league in args.leagues:
                 run(
                     f"Generating predictions for {league}",
                     [

@@ -9,6 +9,7 @@ import datetime as dt
 import statistics
 from dataclasses import dataclass, field
 
+import numpy as np
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -45,8 +46,115 @@ def _renormalize(probs: dict[str, float]) -> dict[str, float]:
 def _weighted_blend(components: list[tuple[dict[str, float], float]]) -> dict[str, float]:
     keys = components[0][0].keys()
     total_weight = sum(w for _, w in components)
+    if total_weight <= 0:
+        # Every component present for this match got zero weight -- e.g. the
+        # ensemble-weight grid search tried "all weight on the ML model" for
+        # a match where the ML model had no prediction. Falling back to an
+        # equal blend among what IS available keeps the match scorable
+        # instead of raising, rather than silently favoring whichever
+        # component happens to iterate first.
+        n = len(components)
+        blended = {k: sum(probs[k] for probs, _ in components) / n for k in keys}
+        return _renormalize(blended)
     blended = {k: sum(probs[k] * w for probs, w in components) / total_weight for k in keys}
     return _renormalize(blended)
+
+
+def blend_1x2(
+    elo_probs: dict[str, float],
+    poisson_probs: dict[str, float],
+    ml_probs: dict[str, float] | None,
+    weights: "EnsembleWeights",
+) -> dict[str, float]:
+    """The same blend ``generate_prediction`` does internally, exposed so a
+    calibrator can be refit against a different weight choice without
+    recomputing Elo/Poisson/the GBM from scratch -- used by
+    ``scripts/backtest.py`` when fitting per-league weights.
+
+    Expects H/D/A-keyed dicts -- the same shape ``elo_probs``/``poisson_probs``/
+    ``ml_probs`` have inside this module. ``model_breakdown`` stores the same
+    numbers under display-friendly keys (``home_win``/``draw``/``away_win``)
+    instead; convert with ``breakdown_to_hda`` first if that's what you have.
+    """
+
+    components = [(elo_probs, weights.elo), (poisson_probs, weights.poisson)]
+    if ml_probs is not None:
+        components.append((ml_probs, weights.ml))
+    return _weighted_blend(components)
+
+
+def breakdown_to_hda(component: dict[str, float]) -> dict[str, float]:
+    """Converts one ``model_breakdown["elo"|"poisson"|"ml"]`` entry (keyed
+    ``home_win``/``draw``/``away_win``, plus whatever extra diagnostic fields
+    that component carries) to the H/D/A keys ``blend_1x2`` expects."""
+
+    return {"H": component["home_win"], "D": component["draw"], "A": component["away_win"]}
+
+
+@dataclass
+class EnsembleWeights:
+    elo: float
+    poisson: float
+    ml: float
+
+    @classmethod
+    def from_settings(cls) -> "EnsembleWeights":
+        settings = get_settings()
+        return cls(elo=settings.ensemble_weight_elo, poisson=settings.ensemble_weight_poisson, ml=settings.ensemble_weight_ml)
+
+
+def fit_ensemble_weights(
+    breakdowns: list[dict], actual: list[str], step: float = 0.05
+) -> EnsembleWeights:
+    """Grid-searches (w_elo, w_poisson, w_ml), summing to 1, for the
+    combination that minimizes log loss on already-computed validation
+    predictions -- replacing the hand-set 0.30/0.35/0.35 default with
+    whatever the validation data actually supports for this league.
+
+    ``breakdowns`` is a list of ``{"elo": {...}, "poisson": {...}, "ml":
+    {...} | None}`` dicts -- exactly ``EnsembleResult.model_breakdown`` --
+    one per validation match, gathered without needing to know the weights
+    in advance since the three component models don't depend on them.
+    """
+
+    from sklearn.metrics import log_loss
+
+    labels_sorted = sorted({"H", "D", "A"})
+    steps = np.arange(0.0, 1.0 + 1e-9, step)
+
+    # Converted once here rather than inside the grid search below -- the
+    # conversion doesn't depend on the weights being tried, so redoing it on
+    # every one of the ~400 grid points would be pure waste.
+    converted = [
+        (breakdown_to_hda(b["elo"]), breakdown_to_hda(b["poisson"]), breakdown_to_hda(b["ml"]) if b.get("ml") else None)
+        for b in breakdowns
+    ]
+
+    best_weights = EnsembleWeights.from_settings()
+    best_ll = float("inf")
+
+    for w_elo in steps:
+        for w_poisson in steps:
+            w_ml = 1.0 - w_elo - w_poisson
+            if w_ml < -1e-9 or w_ml > 1.0 + 1e-9:
+                continue
+            w_ml = max(0.0, w_ml)
+            weights = EnsembleWeights(elo=float(w_elo), poisson=float(w_poisson), ml=float(w_ml))
+
+            probs_matrix = []
+            for elo_hda, poisson_hda, ml_hda in converted:
+                blended = blend_1x2(elo_hda, poisson_hda, ml_hda, weights)
+                probs_matrix.append([blended[label] for label in labels_sorted])
+
+            try:
+                ll = log_loss(actual, probs_matrix, labels=labels_sorted)
+            except ValueError:
+                continue
+            if ll < best_ll:
+                best_ll = ll
+                best_weights = weights
+
+    return best_weights
 
 
 def _agreement(values: list[float]) -> float:
@@ -64,9 +172,11 @@ def generate_prediction(
     as_of: dt.datetime,
     ml_model: MLModel | None = None,
     calibrators: dict[str, MarketCalibrator] | None = None,
+    weights: "EnsembleWeights | None" = None,
 ) -> EnsembleResult:
     settings = get_settings()
     calibrators = calibrators or {}
+    weights = weights or EnsembleWeights.from_settings()
 
     # --- Model 1: Elo ---------------------------------------------------
     home_elo = elo.get_rating_before(db, home_team_id, as_of, settings.elo_start_rating)
@@ -92,14 +202,7 @@ def generate_prediction(
         except RuntimeError:
             ml_probs = None
 
-    components: list[tuple[dict[str, float], float]] = [
-        (elo_probs, settings.ensemble_weight_elo),
-        (poisson_probs, settings.ensemble_weight_poisson),
-    ]
-    if ml_probs is not None:
-        components.append((ml_probs, settings.ensemble_weight_ml))
-
-    blended_1x2 = _weighted_blend(components)
+    blended_1x2 = blend_1x2(elo_probs, poisson_probs, ml_probs, weights)
 
     if "1x2" in calibrators:
         blended_1x2 = calibrators["1x2"].calibrate(blended_1x2)
