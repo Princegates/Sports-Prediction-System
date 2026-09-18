@@ -125,6 +125,49 @@ improving its aggregate calibration metric. Plateaus look fine to a reliability 
 and destroy per-fixture discrimination. Any future calibration change should be checked
 against both a calibration metric *and* a ranking metric (AUC or simple output variance).
 
+#### 1c. Deployed models train on 70% of the data — deliberately, for now
+
+Measured on the five-league database. The backtest splits 70/15/15 by date,
+and the model that actually serves predictions is the one trained on that
+first 70% — so training stops well short of the present:
+
+| League | Training data ends | Stale by | Matches never used |
+|---|---|---|---|
+| English Premier League | 2025-01-18 | ~20 months | 579 |
+| Spanish La Liga | 2025-02-01 | ~20 months | 580 |
+| Italian Serie A | 2025-01-19 | ~20 months | 576 |
+| French Ligue 1 | 2024-12-13 | ~21 months | 512 |
+| German Bundesliga | 2025-01-25 | ~20 months | 465 |
+
+About 2,700 matches — 30%, and the most recent ones — never reach the
+deployed model. Elo and Poisson are unaffected, since both are recomputed
+from all matches at prediction time; it is the gradient-boosting model and
+the calibrators that are frozen on older data.
+
+**Status: deliberately left as-is** (decided September 2026). Recorded here
+because the finding is real and the reasoning for the fix is non-obvious,
+not because it is outstanding work.
+
+**If it is revisited, the naive fix is wrong.** Refitting the model on 100%
+of the data is safe in itself — features are computed as-of each match's
+kickoff, so training on all *past* matches to predict a future one is not
+leakage, and two tests pin that (`test_future_matches_are_not_read`,
+`test_the_match_itself_is_not_read`).
+
+The trap is the calibrators. They are currently fitted on the validation
+slice, which the model has never seen — that is what makes the calibration
+honest. Train the model on 100% and that slice becomes training data, where
+the model is over-confident; calibrating against those predictions would
+teach it that it is better than it is, and the calibration step would start
+making probabilities worse while appearing to work. That is the same failure
+shape as the isotonic collapse in 1b.
+
+Doing it properly means **out-of-fold calibration**: train K models on K-1
+folds, collect predictions on each held-out fold, and fit the calibrators on
+those, so every calibration point comes from a model that never saw it. The
+reported accuracy must still come from the held-out split either way —
+measuring on data the model trained on would inflate it.
+
 #### 2. Security gaps
 
 | Issue | Risk | Status |
