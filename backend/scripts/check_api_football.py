@@ -101,57 +101,46 @@ def main() -> None:
         print(f"  per-minute cap: {per_minute}")
 
     season = dt.date.today().year if dt.date.today().month >= 7 else dt.date.today().year - 1
-    print(f"\n=== Season access (current season would be {season}) ===")
-    print("  Asking which seasons each league is readable for, rather than asking")
-    print("  about one season -- that distinguishes a plan restriction from a bad query.\n")
+    print(f"\n=== What the plan will actually serve (current season is {season}) ===")
+    print("  Asking for one fixture per season, not for the catalogue. /leagues lists")
+    print("  every season a competition has ever had, which is not the same as the")
+    print("  seasons this key may read -- trusting it once already gave a wrong answer.\n")
 
-    any_current = False
-    for league_id, name in WANTED.items():
+    probe_league = 39  # Premier League: if any season is readable, it is readable here.
+    readable: list[int] = []
+    refused: dict[int, str] = {}
+
+    for year in range(season, season - 6, -1):
         try:
-            # No season parameter: returns every season the plan can see.
-            body, _ = call("leagues", f"id={league_id}")
+            body, _ = call("fixtures", f"league={probe_league}&season={year}")
         except Exception as exc:  # noqa: BLE001
-            print(f"  {name:<26} lookup failed ({type(exc).__name__})")
+            refused[year] = f"{type(exc).__name__}"
             continue
 
-        if body.get("errors"):
-            print(f"  {name:<26} error: {body['errors']}")
-            continue
+        errors = body.get("errors")
+        if isinstance(errors, dict) and errors:
+            refused[year] = "; ".join(str(v) for v in errors.values())
+        elif body.get("response"):
+            readable.append(year)
+        else:
+            refused[year] = "no fixtures returned"
 
-        found = body.get("response") or []
-        if not found:
-            print(f"  {name:<26} league id not visible at all")
-            continue
-
-        years = sorted({s.get("year") for s in (found[0].get("seasons") or []) if s.get("year")})
-        if not years:
-            print(f"  {name:<26} no seasons listed")
-            continue
-
-        has_current = season in years
-        any_current = any_current or has_current
-        span = f"{years[0]}-{years[-1]}" if len(years) > 1 else str(years[0])
-        mark = "includes current" if has_current else f"CURRENT ({season}) MISSING"
-        print(f"  {name:<26} seasons {span}  ({len(years)} total) — {mark}")
-
-        if has_current:
-            this = next(s for s in found[0]["seasons"] if s.get("year") == season)
-            cov = this.get("coverage", {})
-            fx = cov.get("fixtures", {})
-            bits = [k for k, v in
-                    (("events", fx.get("events")), ("lineups", fx.get("lineups")),
-                     ("match stats", fx.get("statistics_fixtures")),
-                     ("injuries", cov.get("injuries")), ("odds", cov.get("odds")))
-                    if v]
-            print(f"  {'':<26}   covers: {', '.join(bits) if bits else 'fixtures only'}")
+    for year in range(season, season - 6, -1):
+        if year in readable:
+            print(f"  {year}  readable")
+        else:
+            print(f"  {year}  refused — {refused.get(year, 'unknown')}")
 
     print()
-    if any_current:
-        print("  At least one competition covers the current season -- the integration is viable.")
+    if season in readable:
+        print("  The current season is readable. Live fixtures, odds and lineups are usable.")
+    elif readable:
+        print(f"  Only older seasons are readable ({min(readable)}-{max(readable)}).")
+        print("  That rules out live fixtures, current odds and lineups. Historical odds")
+        print("  are still useful -- they can measure whether the model beats the market")
+        print("  over seasons that have already been played.")
     else:
-        print("  No competition covers the current season on this key.")
-        print("  That is a plan restriction, not a bug: the endpoints are all listed as")
-        print("  available, but only for seasons the free tier includes.")
+        print("  No season was readable. Check the key, or the plan's status.")
 
     print("\nPaste this output (it contains no key) and I'll build to whatever it says.")
 
