@@ -22,6 +22,10 @@ on:
         default: "no"
         type: choice
         options: ["no", "yes"]
+      seasons:
+        description: "Seasons, space-separated. Blank = current season only."
+        required: false
+        default: ""
       max_requests:
         description: "Hard ceiling for this run (Pro allows 7,500/day)"
         required: false
@@ -61,11 +65,13 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           LEAGUES: ${{ inputs.leagues }}
+          SEASONS: ${{ inputs.seasons }}
           MAX_REQUESTS: ${{ inputs.max_requests }}
         run: |
           FLAGS=""
           [ "${{ inputs.odds }}" = "yes" ] && FLAGS="$FLAGS --odds"
           [ "${{ inputs.dry_run }}" = "yes" ] && FLAGS="$FLAGS --dry-run"
+          [ -n "$SEASONS" ] && FLAGS="$FLAGS --seasons $SEASONS"
 
           eval "python scripts/import_api_football.py --max-requests $MAX_REQUESTS $FLAGS --leagues $LEAGUES"
 

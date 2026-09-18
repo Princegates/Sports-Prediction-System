@@ -108,6 +108,9 @@ def main() -> None:
     parser.add_argument("--leagues", nargs="+", default=DEFAULT_LEAGUES,
                         help=f"Known: {', '.join(sorted(LEAGUE_IDS))}")
     parser.add_argument("--season", type=int, default=None, help="Defaults to the current season")
+    parser.add_argument("--seasons", nargs="+", type=int, default=None,
+                        help="Several seasons in one run, e.g. --seasons 2021 2022 2023. "
+                             "One request each, and history is what cross-league calibration needs.")
     parser.add_argument("--odds", action="store_true", help="Also capture three-way market prices")
     parser.add_argument("--days-ahead", type=int, default=14, help="Fixture window for odds capture")
     parser.add_argument("--max-requests", type=int, default=200,
@@ -119,7 +122,7 @@ def main() -> None:
     # not: without this the plan appears *below* the failure it came before.
     sys.stdout.reconfigure(line_buffering=True)
 
-    season = args.season or current_season()
+    seasons = args.seasons or [args.season or current_season()]
 
     unknown = [lg for lg in args.leagues if lg not in LEAGUE_IDS]
     if unknown:
@@ -127,10 +130,10 @@ def main() -> None:
         print(f"Known: {', '.join(sorted(LEAGUE_IDS))}", file=sys.stderr)
         raise SystemExit(2)
 
-    planned = len(args.leagues) * (2 if args.odds else 1)
+    planned = len(args.leagues) * len(seasons) * (2 if args.odds else 1)
     print("Plan")
     print(f"  leagues      : {', '.join(args.leagues)}")
-    print(f"  season       : {season}")
+    print(f"  seasons      : {', '.join(str(s) for s in seasons)}")
     print(f"  odds         : {'yes' if args.odds else 'no'}")
     print(f"  requests     : about {planned} (ceiling {args.max_requests})")
 
@@ -201,9 +204,10 @@ def main() -> None:
         failed: list[str] = []
         stopped_early = False
 
-        for league in args.leagues:
+        for league, season in [(lg, s) for lg in args.leagues for s in seasons]:
             league_id = LEAGUE_IDS[league]
-            print(f"\n=== {league} ===")
+            label = f"{league} {season}"
+            print(f"\n=== {label} ===")
 
             try:
                 report = import_fixtures(db, client, league_id=league_id, season=season)
@@ -213,7 +217,7 @@ def main() -> None:
                 break
             except ApiFootballError as exc:
                 print(f"  failed: {exc}", file=sys.stderr)
-                failed.append(league)
+                failed.append(label)
                 continue
 
             total_inserted += report.inserted
@@ -239,7 +243,7 @@ def main() -> None:
                     break
                 except ApiFootballError as exc:
                     print(f"  odds failed: {exc}", file=sys.stderr)
-                    failed.append(f"{league} (odds)")
+                    failed.append(f"{label} (odds)")
 
         print(f"\n{'=' * 60}")
         print(f"{total_inserted} fixtures added, {total_updated} updated.")
