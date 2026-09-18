@@ -1,0 +1,48 @@
+# Render Blueprint — deploys the backend without filling in a settings form.
+#
+# Use it: push this file, then go to https://dashboard.render.com/blueprints,
+# click "New Blueprint Instance", pick this repo. Render reads this file and
+# creates the service pre-configured. You are asked for exactly two values
+# (DATABASE_URL and CORS_ALLOW_ORIGINS); everything else is set here.
+#
+# The frontend is NOT in this blueprint on purpose. Render's free static
+# hosting is fine, but Cloudflare Pages is faster, has unlimited bandwidth and
+# never sleeps — see DEPLOYMENT.md.
+#
+# Free-tier reality check: this service sleeps after ~15 minutes of inactivity
+# and takes 50+ seconds to wake. That is the price of $0 here; Option A in
+# DEPLOYMENT.md (Oracle Always Free) has no such limit.
+
+services:
+  - type: web
+    name: sports-prediction-api
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: oregon
+
+    # Render probes this to decide the deploy succeeded. Without it a slow
+    # first boot can be misread as a failed deploy and rolled back.
+    healthCheckPath: /api/health
+
+    envVars:
+      # Render generates a strong random value and keeps it stable across
+      # deploys. This is what stops the published default signing key from
+      # reaching production — the single most important setting here.
+      - key: SECRET_KEY
+        generateValue: true
+
+      # sync: false means "ask me at deploy time" rather than committing a
+      # value. Paste your Neon/Supabase connection string; `postgres://` is
+      # normalized automatically (see backend/app/config.py).
+      - key: DATABASE_URL
+        sync: false
+
+      # Your frontend's origin, e.g. https://your-site.pages.dev
+      # Leaving this as "*" would let any page on the internet script this API.
+      - key: CORS_ALLOW_ORIGINS
+        sync: false
+
+      - key: PYTHON_VERSION
+        value: "3.11"
