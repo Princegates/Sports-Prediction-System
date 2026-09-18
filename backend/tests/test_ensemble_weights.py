@@ -1,11 +1,14 @@
 """Tests for the fitted-ensemble-weights path (app.prediction_models.ensemble).
 
-The bug this guards against: model_breakdown stores each component's
-probabilities under display-friendly keys (home_win/draw/away_win), while
-blend_1x2 operates on the short H/D/A keys used internally. Mixing the two up
-raises a KeyError the moment a real (non-trivial) breakdown is fitted against
--- which only shows up once scripts/backtest.py runs for real, not in an
-import-only smoke test.
+model_breakdown is asymmetric by design, matching frontend/src/types.ts's
+ModelBreakdown: elo/poisson are stored under display-friendly keys
+(home_win/draw/away_win, plus extra diagnostic fields), while ml is
+ml_probs verbatim -- already H/D/A-keyed. blend_1x2 needs H/D/A throughout,
+so elo/poisson must be converted with breakdown_to_hda and ml must NOT be
+(it's already the right shape). Both directions of getting this wrong raise
+a KeyError that only shows up once scripts/backtest.py runs against a real
+database, not in an import-only smoke test -- these tests fit real-shaped
+breakdowns to catch it here instead.
 """
 
 from __future__ import annotations
@@ -13,12 +16,18 @@ from __future__ import annotations
 from app.prediction_models.ensemble import EnsembleWeights, blend_1x2, breakdown_to_hda, fit_ensemble_weights
 
 
-def _breakdown(home_win: float, draw: float, away_win: float) -> dict[str, float]:
+def _display_keyed(home_win: float, draw: float, away_win: float) -> dict[str, float]:
+    """Shape of model_breakdown["elo"] / ["poisson"]."""
     return {"home_win": home_win, "draw": draw, "away_win": away_win}
 
 
+def _hda_keyed(home_win: float, draw: float, away_win: float) -> dict[str, float]:
+    """Shape of model_breakdown["ml"] -- ml_probs verbatim."""
+    return {"H": home_win, "D": draw, "A": away_win}
+
+
 def test_breakdown_to_hda_converts_display_keys_to_short_labels():
-    assert breakdown_to_hda(_breakdown(0.5, 0.3, 0.2)) == {"H": 0.5, "D": 0.3, "A": 0.2}
+    assert breakdown_to_hda(_display_keyed(0.5, 0.3, 0.2)) == {"H": 0.5, "D": 0.3, "A": 0.2}
 
 
 def test_blend_1x2_weights_components_correctly():
@@ -33,13 +42,14 @@ def test_blend_1x2_weights_components_correctly():
 
 
 def test_fit_ensemble_weights_runs_on_real_shaped_breakdowns_without_crashing():
-    """The exact shape scripts/backtest.py passes: model_breakdown dicts with
-    display keys, an 'ml' component sometimes absent (None)."""
+    """The exact shape scripts/backtest.py passes: elo/poisson under display
+    keys, ml already H/D/A-keyed (or absent) -- the same asymmetry
+    generate_prediction's model_breakdown always has."""
 
     breakdowns = [
-        {"elo": _breakdown(0.5, 0.3, 0.2), "poisson": _breakdown(0.4, 0.3, 0.3), "ml": _breakdown(0.6, 0.2, 0.2)},
-        {"elo": _breakdown(0.2, 0.3, 0.5), "poisson": _breakdown(0.3, 0.3, 0.4), "ml": None},
-        {"elo": _breakdown(0.6, 0.2, 0.2), "poisson": _breakdown(0.5, 0.2, 0.3), "ml": _breakdown(0.55, 0.25, 0.2)},
+        {"elo": _display_keyed(0.5, 0.3, 0.2), "poisson": _display_keyed(0.4, 0.3, 0.3), "ml": _hda_keyed(0.6, 0.2, 0.2)},
+        {"elo": _display_keyed(0.2, 0.3, 0.5), "poisson": _display_keyed(0.3, 0.3, 0.4), "ml": None},
+        {"elo": _display_keyed(0.6, 0.2, 0.2), "poisson": _display_keyed(0.5, 0.2, 0.3), "ml": _hda_keyed(0.55, 0.25, 0.2)},
     ]
     actual = ["H", "A", "H"]
 
@@ -55,10 +65,11 @@ def test_fit_ensemble_weights_prefers_the_component_that_matches_reality():
     """When one component is always right and the others are always wrong,
     the fit should push weight toward the accurate one."""
 
-    always_right = _breakdown(0.9, 0.05, 0.05)
-    always_wrong = _breakdown(0.05, 0.05, 0.9)
+    always_right = _display_keyed(0.9, 0.05, 0.05)
+    always_wrong_poisson = _display_keyed(0.05, 0.05, 0.9)
+    always_wrong_ml = _hda_keyed(0.05, 0.05, 0.9)
 
-    breakdowns = [{"elo": always_right, "poisson": always_wrong, "ml": always_wrong}] * 20
+    breakdowns = [{"elo": always_right, "poisson": always_wrong_poisson, "ml": always_wrong_ml}] * 20
     actual = ["H"] * 20
 
     weights = fit_ensemble_weights(breakdowns, actual, step=0.1)

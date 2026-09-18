@@ -125,8 +125,15 @@ def fit_ensemble_weights(
     # Converted once here rather than inside the grid search below -- the
     # conversion doesn't depend on the weights being tried, so redoing it on
     # every one of the ~400 grid points would be pure waste.
+    #
+    # Note "ml" is NOT converted: unlike elo/poisson (stored under display
+    # keys home_win/draw/away_win), model_breakdown["ml"] is ml_probs
+    # verbatim, already H/D/A-keyed -- the same asymmetry the frontend's
+    # ModelBreakdown type already encodes (elo/poisson get the long keys,
+    # ml doesn't). Converting it here would look for a "home_win" key it
+    # doesn't have.
     converted = [
-        (breakdown_to_hda(b["elo"]), breakdown_to_hda(b["poisson"]), breakdown_to_hda(b["ml"]) if b.get("ml") else None)
+        (breakdown_to_hda(b["elo"]), breakdown_to_hda(b["poisson"]), b.get("ml"))
         for b in breakdowns
     ]
 
