@@ -44,7 +44,13 @@ from app.model_store import GLOBAL_MODEL_KEY, calibrator_path, ml_model_path, sa
 from app.prediction_models import elo
 from app.prediction_models.calibration import MarketCalibrator
 from app.prediction_models.ensemble import blend_1x2, breakdown_to_hda, fit_ensemble_weights, generate_prediction
-from app.prediction_models.ml_model import KNOWN_LEAGUES, MLModel, build_pooled_training_dataset, build_training_dataset
+from app.prediction_models.ml_model import (
+    KNOWN_LEAGUES,
+    LeagueFeatureCache,
+    MLModel,
+    build_pooled_training_dataset,
+    build_training_dataset,
+)
 
 RESULT_LABELS = ["H", "D", "A"]
 # sklearn's log_loss assumes probability columns follow the lexicographic
@@ -121,6 +127,12 @@ def evaluate_league(
     validation_matches = [m for m in matches if train_end_date <= m.date < val_end_date]
     test_matches = [m for m in matches if m.date >= val_end_date]
 
+    # Built once here, after main() has rebuilt this league's Elo history,
+    # and shared by both passes below. Without it each generate_prediction()
+    # call reloads the league's entire match and Elo history to produce one
+    # feature row.
+    feature_cache = LeagueFeatureCache(db, league_name)
+
     print(f"\n--- {league_name} ---")
     print(f"Train: < {train_end_date.date()}  |  Validation: {train_end_date.date()} -> {val_end_date.date()}  |  Test: >= {val_end_date.date()}")
     print(f"Fitting calibrators on {len(validation_matches)} validation matches ...")
@@ -135,7 +147,9 @@ def evaluate_league(
         # component's raw, unblended probabilities regardless of how
         # generate_prediction() would have combined them, which is exactly
         # what fitting this league's own weights needs below.
-        result = generate_prediction(db, m.home_team_id, m.away_team_id, league_name, m.date, ml_model=ml_model)
+        result = generate_prediction(
+            db, m.home_team_id, m.away_team_id, league_name, m.date, ml_model=ml_model, feature_cache=feature_cache
+        )
         actual_result = "H" if m.home_score > m.away_score else ("D" if m.home_score == m.away_score else "A")
         val_1x2_actual_labels.append(actual_result)
         val_breakdowns.append(result.model_breakdown)
@@ -153,7 +167,8 @@ def evaluate_league(
     val_1x2_probs: dict[str, list[float]] = {"H": [], "D": [], "A": []}
     val_1x2_actual: dict[str, list[int]] = {"H": [], "D": [], "A": []}
     for breakdown, actual_result in zip(val_breakdowns, val_1x2_actual_labels):
-        ml_hda = breakdown_to_hda(breakdown["ml"]) if breakdown.get("ml") else None
+        # Already H/D/A-keyed, unlike the elo and poisson entries below.
+        ml_hda = breakdown.get("ml") or None
         blended = blend_1x2(breakdown_to_hda(breakdown["elo"]), breakdown_to_hda(breakdown["poisson"]), ml_hda, fitted_weights)
         for label in RESULT_LABELS:
             val_1x2_probs[label].append(blended[label])
@@ -185,7 +200,17 @@ def evaluate_league(
     test_btts_probs, test_btts_actual = [], []
 
     for m in test_matches:
-        result = generate_prediction(db, m.home_team_id, m.away_team_id, league_name, m.date, ml_model=ml_model, calibrators=calibrators, weights=fitted_weights)
+        result = generate_prediction(
+            db,
+            m.home_team_id,
+            m.away_team_id,
+            league_name,
+            m.date,
+            ml_model=ml_model,
+            calibrators=calibrators,
+            weights=fitted_weights,
+            feature_cache=feature_cache,
+        )
         actual_result = "H" if m.home_score > m.away_score else ("D" if m.home_score == m.away_score else "A")
         test_probs.append({"H": result.home_win, "D": result.draw, "A": result.away_win})
         test_actual.append(actual_result)

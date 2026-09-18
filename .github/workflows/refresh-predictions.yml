@@ -1,13 +1,23 @@
-# Seeds and refreshes the database, on GitHub's runners rather than your laptop.
+# Keeps the deployed system current, on GitHub's runners rather than a laptop.
 #
-# Two jobs in one file because they are the same command:
+# Two schedules, because the two halves of the job cost wildly different
+# amounts:
 #
-#   - The nightly schedule keeps fixtures, models and predictions current.
-#   - The manual "Run workflow" button is also the best way to do the FIRST
-#     seed. A runner sits milliseconds from a cloud database, where a laptop
-#     may be a continent away; the import is thousands of round trips, so the
-#     same job that takes minutes here can take hours from home. Running it
-#     here sidesteps that entirely.
+#   - DAILY refresh: pull new results, regenerate predictions. Reads the
+#     matches that changed. Cheap.
+#   - WEEKLY retrain: rebuild Elo, refit the models and calibrators, backtest.
+#     Reads every match in every league.
+#
+# Running the retrain nightly is what emptied a 5 GB monthly database-transfer
+# allowance in two days. Model quality does not move meaningfully overnight --
+# a week of new results does change it -- so the expensive half runs weekly and
+# the cheap half runs daily.
+#
+# Trained models live on the runner's disk, which is destroyed with the runner,
+# so they are carried between runs in the Actions cache. Without that, the
+# daily job would find no model and quietly generate predictions with the
+# gradient-boosting component missing from the blend -- the same numbers, just
+# worse, with nothing in the log to say so.
 #
 # Set DATABASE_URL under Settings -> Secrets and variables -> Actions.
 # For the first run, also set SUPERADMIN_EMAIL and SUPERADMIN_PASSWORD so the
@@ -18,8 +28,16 @@ on:
   schedule:
     # 06:00 UTC daily -- before most European kickoffs.
     - cron: "0 6 * * *"
+    # 03:00 UTC Monday -- after the weekend's results are in.
+    - cron: "0 3 * * 1"
   workflow_dispatch:
     inputs:
+      mode:
+        description: "refresh = results + predictions | retrain = also rebuild the models | seed = first full import"
+        required: false
+        default: refresh
+        type: choice
+        options: [refresh, retrain, seed]
       leagues:
         description: "Space-separated, quoted league names"
         required: false
@@ -34,9 +52,8 @@ on:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    # Generous: a five-league first seed imports ~11,000 matches and trains a
-    # model per league. Nightly runs are far quicker, since the import is
-    # incremental and only new results change.
+    # A retrain imports ~11,000 matches and fits a model per league; a daily
+    # refresh is minutes. This is the ceiling for the slow case.
     timeout-minutes: 120
 
     steps:
@@ -51,6 +68,16 @@ jobs:
       - name: Install dependencies
         run: pip install -r backend/requirements.txt
 
+      # restore/save rather than the combined action: a fixed key is never
+      # updated once it exists, so each run saves under its own key and
+      # restores from the most recent prefix match.
+      - name: Restore trained models
+        uses: actions/cache/restore@v4
+        with:
+          path: backend/model_artifacts
+          key: model-artifacts-${{ github.run_id }}
+          restore-keys: model-artifacts-
+
       - name: Refresh data, models and predictions
         working-directory: backend
         env:
@@ -59,12 +86,39 @@ jobs:
           SUPERADMIN_PASSWORD: ${{ secrets.SUPERADMIN_PASSWORD }}
           LEAGUES: ${{ inputs.leagues || '"English Premier League" "Spanish La Liga" "Italian Serie A" "German Bundesliga" "French Ligue 1"' }}
           DAYS_AHEAD: ${{ inputs.days_ahead || '10' }}
+          # The weekly cron retrains; the daily one doesn't. A manual run says
+          # so explicitly.
+          MODE: ${{ inputs.mode || (github.event.schedule == '0 3 * * 1' && 'retrain') || 'refresh' }}
         run: |
           if [ -z "$DATABASE_URL" ]; then
             echo "DATABASE_URL secret is not set -- nothing to refresh."
             echo "Add it under Settings > Secrets and variables > Actions."
             exit 0
           fi
+
+          case "$MODE" in
+            retrain|seed) FLAGS="" ;;
+            refresh)      FLAGS="--skip-training" ;;
+            *)            echo "Unknown mode: $MODE" >&2; exit 1 ;;
+          esac
+
+          echo "Mode: $MODE"
+          if [ -d model_artifacts ] && [ -n "$(ls -A model_artifacts 2>/dev/null)" ]; then
+            echo "Restored models: $(ls model_artifacts | wc -l) file(s)"
+          elif [ "$MODE" = "refresh" ]; then
+            echo "::warning::No cached models found. Predictions this run will omit the"
+            echo "::warning::gradient-boosting component. Run this workflow with mode=retrain."
+          fi
+
           # eval so the quoted, space-separated league names survive as
           # separate argv entries rather than becoming one long string.
-          eval "python scripts/bootstrap.py --days-ahead $DAYS_AHEAD --leagues $LEAGUES"
+          eval "python scripts/bootstrap.py --days-ahead $DAYS_AHEAD $FLAGS --leagues $LEAGUES"
+
+      # Saved even on failure: a run that trained some leagues and then died
+      # shouldn't throw away the models it did produce.
+      - name: Save trained models
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: backend/model_artifacts
+          key: model-artifacts-${{ github.run_id }}

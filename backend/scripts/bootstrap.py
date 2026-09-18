@@ -13,7 +13,13 @@ predictions with the gradient-boosting model missing from the blend.
 
     python scripts/bootstrap.py                      # defaults below
     python scripts/bootstrap.py --leagues "English Premier League" "Spanish La Liga"
-    python scripts/bootstrap.py --skip-training      # data only, much faster
+    python scripts/bootstrap.py --skip-training      # results + predictions, no retrain
+
+Training and prediction generation are separate steps, so a cheap daily
+refresh (--skip-training) can reuse models an occasional retrain produced.
+That split is not cosmetic: retraining reads every match in every league,
+which a managed database bills as egress, and doing it nightly is what
+exhausted a 5 GB monthly allowance in two days.
 
 On a host, set SUPERADMIN_EMAIL and SUPERADMIN_PASSWORD in the environment and
 the admin account is created non-interactively.
@@ -69,6 +75,7 @@ def main() -> None:
     parser.add_argument("--days-ahead", type=int, default=14)
     parser.add_argument("--skip-training", action="store_true", help="Import data but don't train or backtest")
     parser.add_argument("--skip-data", action="store_true", help="Train on data already imported")
+    parser.add_argument("--skip-predictions", action="store_true", help="Import and train but don't generate predictions")
     args = parser.parse_args()
 
     print("Bootstrapping AI Football Prediction & Analytics System")
@@ -104,6 +111,11 @@ def main() -> None:
                 required=False,
             )
 
+    # None when training didn't run this time (a daily refresh reusing models
+    # a weekly retrain produced); True/False when it did. Predicting with a
+    # model whose training just failed buries the failure behind numbers that
+    # look perfectly plausible, so that case is skipped loudly.
+    trained: bool | None = None
     if not args.skip_training:
         if len(args.leagues) > 1:
             # One cross-league model trained on all of them together beats N
@@ -120,19 +132,28 @@ def main() -> None:
                 required=False,
             )
 
-        if trained:
-            for league in args.leagues:
-                run(
-                    f"Generating predictions for {league}",
-                    [
-                        "scripts/generate_predictions.py",
-                        "--league",
-                        league,
-                        "--days-ahead",
-                        str(args.days_ahead),
-                    ],
-                    required=False,
-                )
+    if args.skip_predictions:
+        pass
+    elif trained is False:
+        print(
+            "\n!! Skipping prediction generation: training failed, so the models on disk are "
+            "missing or stale.",
+            file=sys.stderr,
+            flush=True,
+        )
+    else:
+        for league in args.leagues:
+            run(
+                f"Generating predictions for {league}",
+                [
+                    "scripts/generate_predictions.py",
+                    "--league",
+                    league,
+                    "--days-ahead",
+                    str(args.days_ahead),
+                ],
+                required=False,
+            )
 
     admin_email = os.environ.get("SUPERADMIN_EMAIL")
     if admin_email:

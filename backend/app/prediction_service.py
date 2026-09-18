@@ -16,12 +16,19 @@ from app.outcomes.engine import select_global_most_likely
 from app.outcomes.registry import build_outcome_registry
 from app.prediction_models import elo
 from app.prediction_models.ensemble import generate_prediction
+from app.prediction_models.ml_model import LeagueFeatureCache
 from app.quality import confidence_label, data_quality_score
 
 MODEL_VERSION = "ensemble-v1"
 
 
-def build_prediction_for_match(db: Session, match: Match) -> Prediction:
+def build_prediction_for_match(
+    db: Session, match: Match, feature_cache: "LeagueFeatureCache | None" = None
+) -> Prediction:
+    """Pass ``feature_cache`` when building predictions for several matches
+    in one league -- see ``FeatureCachePool``. Omitted, each call reloads
+    that league's history."""
+
     settings = get_settings()
     as_of = match.date
 
@@ -38,6 +45,7 @@ def build_prediction_for_match(db: Session, match: Match) -> Prediction:
         ml_model=ml_model,
         calibrators=calibrators,
         weights=weights,
+        feature_cache=feature_cache,
     )
 
     matches_home = matches_played_before(db, match.home_team_id, as_of, match.league)

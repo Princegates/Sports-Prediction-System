@@ -107,15 +107,30 @@ def build_feature_row(
     league: str,
     as_of: dt.datetime,
     home_advantage: float = 60.0,
+    cache: "LeagueFeatureCache | None" = None,
 ) -> dict[str, float]:
+    """One feature row. Pass ``cache`` when building more than one.
+
+    Shot rates need the league's history, which is two queries whether one
+    row is wanted or a thousand. Without a cache this function pays that cost
+    per call and throws the result away -- and callers that build rows in a
+    loop (the backtester, the prediction scripts, the endpoints that fill in
+    a day's fixtures) then reload the entire league once per match. That is
+    not a theoretical cost: it read 1.1 million rows in a single-league
+    backtest, on a database holding 29,000.
+
+    An advisory comment used to say as much and leave it to the caller. It
+    did not survive contact with the callers, so the cache is a parameter
+    now.
+    """
+
+    if cache is not None:
+        return cache.feature_row(home_team_id, away_team_id, as_of, home_advantage)
+
     home_elo = get_rating_before(db, home_team_id, as_of)
     away_elo = get_rating_before(db, away_team_id, as_of)
     home_form = compute_team_form(db, home_team_id, as_of, league)
     away_form = compute_team_form(db, away_team_id, as_of, league)
-
-    # Shot rates need the league's history, which is two queries whether one
-    # row is wanted or a thousand. Callers building many rows should use
-    # LeagueFeatureCache directly and pay that cost once.
     shot_stats = LeagueFeatureCache(db, league).shot_stats(home_team_id, away_team_id, as_of)
 
     return _assemble_features(home_elo, away_elo, home_form, away_form, home_advantage, shot_stats, league)
@@ -317,6 +332,33 @@ class LeagueFeatureCache:
             self.shot_stats(home_team_id, away_team_id, as_of),
             self.league,
         )
+
+
+class FeatureCachePool:
+    """One :class:`LeagueFeatureCache` per league, built on first use.
+
+    Batch callers often span several leagues -- a day's fixtures, a
+    multi-league backtest -- and want each league's history loaded once
+    across the whole batch rather than once per match.
+
+    A cache snapshots the league when it is built, so build the pool *after*
+    anything that rewrites history (``elo.rebuild_elo_history``) and keep one
+    no longer than the batch it serves. Predictions written during a batch
+    don't affect it: it reads matches and Elo history, neither of which a
+    prediction touches.
+    """
+
+    def __init__(self, db: Session, window: int = 10) -> None:
+        self._db = db
+        self._window = window
+        self._caches: dict[str, LeagueFeatureCache] = {}
+
+    def for_league(self, league: str) -> LeagueFeatureCache:
+        cache = self._caches.get(league)
+        if cache is None:
+            cache = LeagueFeatureCache(self._db, league, window=self._window)
+            self._caches[league] = cache
+        return cache
 
 
 def build_training_dataset(

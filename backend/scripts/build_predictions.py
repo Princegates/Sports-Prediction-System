@@ -19,6 +19,7 @@ from app.data.ingest import import_upcoming_fixtures
 from app.db.models import Match
 from app.db.migrate import init_db
 from app.db.session import SessionLocal, engine
+from app.prediction_models.ml_model import LeagueFeatureCache
 from app.prediction_service import build_prediction_for_match
 from sqlalchemy import select
 
@@ -42,8 +43,13 @@ def main() -> None:
             ).scalars()
         )
         print(f"Generating predictions for {len(scheduled)} scheduled matches ...")
+
+        # One cache for the run -- see FeatureCachePool. Per match, this
+        # reloads the league's whole history for every fixture.
+        feature_cache = LeagueFeatureCache(db, args.league) if scheduled else None
+
         for match in scheduled:
-            prediction = build_prediction_for_match(db, match)
+            prediction = build_prediction_for_match(db, match, feature_cache=feature_cache)
             print(
                 f"  {match.home_team.name} vs {match.away_team.name} ({match.date:%Y-%m-%d %H:%M}) "
                 f"-> {prediction.global_outcome_selection} {prediction.global_outcome_probability:.1%} "
