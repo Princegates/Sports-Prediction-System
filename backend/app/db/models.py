@@ -387,3 +387,41 @@ class AppSetting(Base):
     value: Mapped[str] = mapped_column(Text)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, onupdate=dt.datetime.utcnow)
     updated_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+
+
+class MatchOdds(Base):
+    """Bookmaker prices for one match, as they stood when captured.
+
+    Stored rather than fetched on demand for two reasons. Odds move, so a
+    comparison against today's price tells you nothing about a call made last
+    Tuesday -- the honest test is model-versus-price-at-the-time. And the API
+    budget is a hundred requests a day, which does not survive re-fetching on
+    every page view.
+
+    ``decimal_odds`` is kept raw, exactly as the bookmaker published it. The
+    margin is removed at read time by app/odds.py rather than on the way in:
+    storing a derived number means storing a decision, and a better way to
+    strip the overround later could not be applied to history.
+    """
+
+    __tablename__ = "match_odds"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    match_id: Mapped[int] = mapped_column(ForeignKey("matches.id"), index=True)
+    captured_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
+
+    bookmaker: Mapped[str] = mapped_column(String(64))
+    market: Mapped[str] = mapped_column(String(64))
+    selection: Mapped[str] = mapped_column(String(32))
+    decimal_odds: Mapped[float] = mapped_column(Float)
+
+    # Which provider fixture this came from, so a re-fetch can be matched to
+    # what is already stored instead of duplicating it.
+    source_fixture_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "match_id", "bookmaker", "market", "selection", "captured_at",
+            name="uq_match_odds_snapshot",
+        ),
+    )

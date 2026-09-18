@@ -85,6 +85,23 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 "Included in the email so the recipient knows where to redeem.",
                 env_attr="public_site_url"),
 
+    # --- Data sources ----------------------------------------------------
+    SettingSpec("api_football_key", "str", "data", "API-Football key",
+                "From api-sports.io. Leave blank to use openfootball alone -- everything "
+                "already working keeps working without this.",
+                secret=True, default=""),
+    SettingSpec("api_football_host", "str", "data", "API host",
+                "v3.football.api-sports.io direct, or the RapidAPI host if your key is from "
+                "there. The auth style follows from this.",
+                default="v3.football.api-sports.io"),
+    SettingSpec("api_football_daily_budget", "int", "data", "Daily request budget",
+                "The free plan allows 100/day. Set lower to leave headroom for manual runs.",
+                default=100, minimum=1, maximum=100000),
+    SettingSpec("api_football_capture_odds", "bool", "data", "Capture market odds",
+                "Store bookmaker prices so the track record can show whether the model beat "
+                "the market, not just whether it was right.",
+                default=True),
+
     # --- Access ----------------------------------------------------------
     SettingSpec("default_code_duration_days", "int", "access", "Default code duration (days)",
                 "Pre-filled when issuing a code. You can still change it per code.",
@@ -122,6 +139,7 @@ REGISTRY: tuple[SettingSpec, ...] = (
 BY_KEY: dict[str, SettingSpec] = {spec.key: spec for spec in REGISTRY}
 
 GROUP_LABELS = {
+    "data": "Data sources",
     "email": "Email",
     "access": "Access & registration",
     "appearance": "Appearance",

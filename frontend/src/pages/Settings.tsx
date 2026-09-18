@@ -8,9 +8,11 @@ type Draft = Record<string, string | number | boolean>;
 
 /** Groups in the order an operator actually needs them: turn email on, set
  *  how access works, make it look right, and only then touch the model. */
-const GROUP_ORDER = ["email", "access", "appearance", "model"];
+const GROUP_ORDER = ["data", "email", "access", "appearance", "model"];
 
 const GROUP_NOTES: Record<string, string> = {
+  data:
+    "Optional. openfootball supplies the history for free and without limits; a key here is spent only on what it cannot do — European competitions, lineups, injuries and market odds.",
   email:
     "Leave the host blank to keep email off — access codes still work, you just send them yourself.",
   access: "Defaults for issuing codes, and whether new people can sign up at all.",

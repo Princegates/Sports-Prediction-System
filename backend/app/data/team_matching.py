@@ -113,6 +113,23 @@ EXPLICIT_ALIASES: dict[str, str] = {
     # Italy
     "inter": "internazionale",
     "verona": "hellas verona",
+    # Exonyms. API-Football uses the English name for several European clubs
+    # while the domestic feeds use the local one, and no amount of token
+    # matching gets from "Munich" to "Munchen" -- they are different words for
+    # the same city, not different spellings.
+    "bayern munich": "bayern munchen",
+    "borussia monchengladbach": "borussia monchengladbach",
+    "cologne": "fc koln",
+    "fc cologne": "fc koln",
+    "eintracht frankfurt": "eintracht frankfurt",
+    "inter milan": "internazionale",
+    "ac milan": "milan",
+    "sporting cp": "sporting lisbon",
+    "fc porto": "porto",
+    "sl benfica": "benfica",
+    "psv eindhoven": "psv",
+    "red bull salzburg": "salzburg",
+    "olympiakos piraeus": "olympiakos",
     # France
     "paris sg": "paris saint germain",
     "st etienne": "saint etienne",
