@@ -37,7 +37,7 @@ jobs:
     # Generous: a five-league first seed imports ~11,000 matches and trains a
     # model per league. Nightly runs are far quicker, since the import is
     # incremental and only new results change.
-    timeout-minutes: 60
+    timeout-minutes: 120
 
     steps:
       - uses: actions/checkout@v4

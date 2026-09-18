@@ -10,6 +10,7 @@ section 34) measures.
 from __future__ import annotations
 
 import datetime as dt
+from bisect import bisect_left
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,9 +21,9 @@ from sklearn.ensemble import GradientBoostingClassifier
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.features.team_stats import compute_team_form
+from app.db.models import EloHistory, Match
+from app.features.team_stats import compute_team_form, form_from_matches
 from app.prediction_models.elo import get_rating_before
-from app.db.models import Match
 
 FEATURE_COLUMNS = [
     "elo_diff",
@@ -51,6 +52,13 @@ def build_feature_row(
     home_form = compute_team_form(db, home_team_id, as_of, league)
     away_form = compute_team_form(db, away_team_id, as_of, league)
 
+    return _assemble_features(home_elo, away_elo, home_form, away_form, home_advantage)
+
+
+def _assemble_features(home_elo, away_elo, home_form, away_form, home_advantage: float) -> dict[str, float]:
+    """The feature dict itself, shared by the per-query and cached paths so a
+    change to one can't silently skew the other."""
+
     return {
         "elo_diff": (home_elo + home_advantage) - away_elo,
         "home_ppg": home_form.points_per_game,
@@ -63,6 +71,92 @@ def build_feature_row(
         "away_rest_days": away_form.rest_days,
         "form_diff": home_form.points_per_game - away_form.points_per_game,
     }
+
+
+class LeagueFeatureCache:
+    """A league's match and Elo history, loaded once, for building many
+    feature rows without a query per row.
+
+    ``build_feature_row`` issues four queries per match: an Elo lookup and a
+    form lookup for each side. Fine for one prediction; for a training set of
+    ~1,350 matches it is ~5,400 sequential queries. Against a local database
+    that is a couple of seconds. Against a managed database on another
+    continent, at ~180ms each, it is twenty minutes per league -- which is
+    how a five-league training run overran a 60-minute CI timeout.
+
+    Two queries up front replace all of them. A league's history is a few
+    thousand rows, so holding it in memory costs nothing.
+    """
+
+    def __init__(self, db: Session, league: str, window: int = 10) -> None:
+        self.window = window
+
+        played = list(
+            db.execute(
+                select(Match)
+                .where(Match.league == league, Match.home_score.is_not(None))
+                .order_by(Match.date.asc())
+            ).scalars()
+        )
+
+        # team_id -> that team's played matches, oldest first. A match
+        # appears under both teams.
+        self._matches: dict[int, list[Match]] = {}
+        for m in played:
+            self._matches.setdefault(m.home_team_id, []).append(m)
+            self._matches.setdefault(m.away_team_id, []).append(m)
+
+        # team_id -> (date, rating_after) pairs, oldest first.
+        self._elo: dict[int, list[tuple[dt.datetime, float]]] = {}
+        team_ids = list(self._matches)
+        if team_ids:
+            rows = db.execute(
+                select(EloHistory.team_id, EloHistory.date, EloHistory.rating_after)
+                .where(EloHistory.team_id.in_(team_ids))
+                .order_by(EloHistory.date.asc())
+            ).all()
+            for team_id, date, rating_after in rows:
+                self._elo.setdefault(team_id, []).append((date, rating_after))
+
+    def elo(self, team_id: int, as_of: dt.datetime, start_rating: float = 1500.0) -> float:
+        """Latest rating strictly before ``as_of`` -- same contract as
+        ``elo.get_rating_before``, resolved by binary search."""
+
+        history = self._elo.get(team_id)
+        if not history:
+            return start_rating
+        idx = bisect_left(history, (as_of,)) - 1
+        return history[idx][1] if idx >= 0 else start_rating
+
+    def form(self, team_id: int, as_of: dt.datetime):
+        """The team's last ``window`` played matches before ``as_of``, newest
+        first -- the slice ``_played_matches`` would have returned."""
+
+        matches = self._matches.get(team_id)
+        if not matches:
+            return form_from_matches([], team_id, as_of)
+
+        cutoff = bisect_left(matches, as_of, key=lambda m: m.date)
+        recent = matches[max(0, cutoff - self.window) : cutoff]
+        recent.reverse()  # form_from_matches expects newest first
+        return form_from_matches(recent, team_id, as_of)
+
+    def feature_row(
+        self,
+        home_team_id: int,
+        away_team_id: int,
+        as_of: dt.datetime,
+        home_advantage: float = 60.0,
+    ) -> dict[str, float]:
+        home_form = self.form(home_team_id, as_of)
+        away_form = self.form(away_team_id, as_of)
+        return _assemble_features(
+            self.elo(home_team_id, as_of),
+            self.elo(away_team_id, as_of),
+            home_form,
+            away_form,
+            home_advantage,
+        )
 
 
 def build_training_dataset(
@@ -79,9 +173,12 @@ def build_training_dataset(
 
     matches = list(db.execute(select(Match).where(*conditions).order_by(Match.date.asc())).scalars())
 
+    # Loaded once for the whole dataset rather than queried per row.
+    cache = LeagueFeatureCache(db, league)
+
     rows: list[dict] = []
     for m in matches:
-        features = build_feature_row(db, m.home_team_id, m.away_team_id, league, m.date)
+        features = cache.feature_row(m.home_team_id, m.away_team_id, m.date)
         if m.home_score > m.away_score:
             result = "H"
         elif m.home_score == m.away_score:

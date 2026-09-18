@@ -54,7 +54,28 @@ def compute_team_form(
     league: str | None = None,
     window: int = 10,
 ) -> TeamForm:
+    """One team's form as of a date, reading the database.
+
+    For a single prediction this is the right shape. For building a training
+    set it is not: called per team per match it issues thousands of queries,
+    which is invisible against a local database and dominates the runtime
+    against a remote one. ``form_from_matches`` is the same computation over
+    an already-loaded list, which is what the bulk paths use.
+    """
+
     matches = _played_matches(db, team_id, as_of, league, limit=window)
+    return form_from_matches(matches, team_id, as_of)
+
+
+def form_from_matches(matches: list[Match], team_id: int, as_of: dt.datetime) -> TeamForm:
+    """Form computed from matches already in memory.
+
+    ``matches`` must be this team's most recent played matches strictly
+    before ``as_of``, ordered newest first -- the same slice
+    ``_played_matches`` returns. Keeping the arithmetic here rather than
+    duplicating it in the bulk path is what stops the two from drifting.
+    """
+
     if not matches:
         return TeamForm()
 
