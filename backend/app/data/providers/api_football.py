@@ -1,9 +1,11 @@
-"""API-Football (api-sports.io) client, built around a 100-request day.
+"""API-Football (api-sports.io) client, built around a request budget.
 
-The free plan allows 100 requests a day and 10 a minute. Those are small
-enough that the budget has to be part of the design rather than a note in the
-README: one careless loop over a week of fixtures spends the day's allowance
-before lunch and the site silently stops updating.
+The plan sets the ceiling -- 100 a day on the free tier, 7,500 on Pro -- and
+the defaults here match Pro, with both limits overridable from the settings
+panel. Whatever the number, it is finite and shared with every other job using
+the key, so the budget is part of the design rather than a note in the README:
+one careless loop over a week of fixtures spends the allowance before lunch
+and the site silently stops updating.
 
 So the limits live here, in code. ``QuotaExceeded`` is raised before a request
 that would breach the daily budget rather than after the API refuses it, and

@@ -20,11 +20,13 @@ normal while being worthless.
 from __future__ import annotations
 
 import datetime as dt
+import sys
+from pathlib import Path
 
 import pytest
 
-from app.data.api_football_ingest import TeamIndex, import_fixtures, import_odds
-from app.data.providers.api_football import ApiFootballClient, QuotaExceeded
+from app.data.api_football_ingest import ImportReport, TeamIndex, import_fixtures, import_odds
+from app.data.providers.api_football import ApiFootballClient, ApiFootballError, QuotaExceeded
 from app.db.models import Match, MatchOdds, Team
 from app.odds import MarketPrice, assess, fair_probabilities, overround
 
@@ -250,3 +252,64 @@ def test_odds_for_an_unknown_match_are_dropped(db_session, clubs):
     report = import_odds(db_session, client, league_id=2, season=2026)
     assert report.inserted == 0
     assert db_session.query(MatchOdds).count() == 0
+
+
+# --- the run's exit code ----------------------------------------------
+
+
+@pytest.fixture()
+def import_script():
+    """Loads scripts/import_api_football.py as a module.
+
+    It is a script, not a package member, so there is no import path to it --
+    the same spec-loading the compile guard uses."""
+
+    import importlib.util
+
+    path = Path(__file__).resolve().parents[1] / "scripts" / "import_api_football.py"
+    spec = importlib.util.spec_from_file_location("import_api_football_under_test", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _run(module, monkeypatch, db_session, *, fixtures):
+    """Runs the script's main() against a stubbed importer.
+
+    Everything the run needs from outside is replaced: the settings lookup
+    supplies the key, and ``fixtures`` stands in for the network call.
+    """
+
+    monkeypatch.setattr(sys, "argv", ["import_api_football.py", "--leagues", "UEFA Champions League"])
+    monkeypatch.setattr(module.app_settings, "all_values", lambda db: {"api_football_key": "test-key"})
+    monkeypatch.setattr(module, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(module, "init_db", lambda engine: None)
+    monkeypatch.setattr(db_session, "close", lambda: None)
+    monkeypatch.setattr(module, "import_fixtures", fixtures)
+    return module.main()
+
+
+def test_a_run_that_imported_nothing_fails(import_script, monkeypatch, db_session, capsys):
+    """The failure this was written for: every request refused, every error
+    caught, and the job still reported success. A green tick over an empty
+    import is worse than a red one -- it is believed."""
+
+    def refuse(db, client, *, league_id, season):
+        raise ApiFootballError({"plan": "Free plans do not have access to this season."})
+
+    with pytest.raises(SystemExit) as exit_info:
+        _run(import_script, monkeypatch, db_session, fixtures=refuse)
+
+    assert exit_info.value.code == 1
+    err = capsys.readouterr().err
+    assert "Did not import: UEFA Champions League" in err
+
+
+def test_a_run_that_imported_something_succeeds(import_script, monkeypatch, db_session, capsys):
+    def succeed(db, client, *, league_id, season):
+        return ImportReport(considered=4, inserted=4, updated=0, skipped_unresolved=[])
+
+    _run(import_script, monkeypatch, db_session, fixtures=succeed)
+
+    out = capsys.readouterr().out
+    assert "4 fixtures added" in out

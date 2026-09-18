@@ -9,10 +9,14 @@ needs only DATABASE_URL and can run from CI with no secret of its own.
     python scripts/import_api_football.py --leagues "UEFA Champions League"
     python scripts/import_api_football.py --leagues "UEFA Champions League" --odds
 
-The budget is a hundred requests a day, so this refuses to start without
+The daily budget is finite and shared, so this refuses to start without
 knowing what it will cost. ``--dry-run`` prints the plan and spends nothing;
 ``--max-requests`` is a hard ceiling that stops the run rather than the API
 stopping it.
+
+A run that asked for leagues it could not import exits non-zero. Importing
+nothing is a failure even when every error was caught, and a green tick over
+an empty import is worse than a red one.
 
 Fixtures resolve to clubs already in the database. A tie whose clubs cannot be
 matched is skipped and listed, never attached to a guess -- one wrong club
@@ -55,9 +59,13 @@ def main() -> None:
     parser.add_argument("--odds", action="store_true", help="Also capture three-way market prices")
     parser.add_argument("--days-ahead", type=int, default=14, help="Fixture window for odds capture")
     parser.add_argument("--max-requests", type=int, default=200,
-                        help="Hard ceiling for this run. The daily budget is 100.")
+                        help="Hard ceiling for this run, under the plan's daily budget.")
     parser.add_argument("--dry-run", action="store_true", help="Print the plan and spend nothing")
     args = parser.parse_args()
+
+    # stdout is a pipe under CI and therefore block-buffered, while stderr is
+    # not: without this the plan appears *below* the failure it came before.
+    sys.stdout.reconfigure(line_buffering=True)
 
     season = args.season or current_season()
 
@@ -68,11 +76,11 @@ def main() -> None:
         raise SystemExit(2)
 
     planned = len(args.leagues) * (2 if args.odds else 1)
-    print("Plan", flush=True)
+    print("Plan")
     print(f"  leagues      : {', '.join(args.leagues)}")
     print(f"  season       : {season}")
     print(f"  odds         : {'yes' if args.odds else 'no'}")
-    print(f"  requests     : about {planned} (ceiling {args.max_requests}, daily budget 100)")
+    print(f"  requests     : about {planned} (ceiling {args.max_requests})")
 
     if planned > args.max_requests:
         print(f"\nThat exceeds --max-requests={args.max_requests}. Raise it deliberately or narrow the run.",
@@ -125,15 +133,20 @@ def main() -> None:
                 print("\n  The key row exists but is empty -- re-enter it and save.", file=sys.stderr)
             raise SystemExit(1)
 
+        daily_budget = int(values.get("api_football_daily_budget") or 7500)
         client = ApiFootballClient(
             key,
             host=str(values.get("api_football_host") or "v3.football.api-sports.io"),
-            daily_budget=min(int(values.get("api_football_daily_budget") or 7500), args.max_requests),
+            daily_budget=min(daily_budget, args.max_requests),
             per_minute=int(values.get("api_football_per_minute") or 300),
         )
+        print(f"  budget       : {daily_budget}/day, "
+              f"{int(values.get('api_football_per_minute') or 300)}/minute (from settings)")
 
         total_inserted = total_updated = 0
         unresolved: list[str] = []
+        failed: list[str] = []
+        stopped_early = False
 
         for league in args.leagues:
             league_id = LEAGUE_IDS[league]
@@ -143,9 +156,11 @@ def main() -> None:
                 report = import_fixtures(db, client, league_id=league_id, season=season)
             except QuotaExceeded as exc:
                 print(f"  stopped: {exc}", file=sys.stderr)
+                stopped_early = True
                 break
             except ApiFootballError as exc:
                 print(f"  failed: {exc}", file=sys.stderr)
+                failed.append(league)
                 continue
 
             total_inserted += report.inserted
@@ -161,9 +176,11 @@ def main() -> None:
                     print(f"  odds    : {odds_report.inserted} prices stored")
                 except QuotaExceeded as exc:
                     print(f"  odds stopped: {exc}", file=sys.stderr)
+                    stopped_early = True
                     break
                 except ApiFootballError as exc:
                     print(f"  odds failed: {exc}", file=sys.stderr)
+                    failed.append(f"{league} (odds)")
 
         print(f"\n{'=' * 60}")
         print(f"{total_inserted} fixtures added, {total_updated} updated.")
@@ -184,6 +201,17 @@ def main() -> None:
         if total_inserted:
             print("\nGenerate predictions for the new fixtures:")
             print(f'     python scripts/generate_predictions.py --league "{args.leagues[0]}"')
+
+        # A run that imported nothing because every request was refused is a
+        # failed run. Catching the error kept the other leagues going; it must
+        # not also turn the job green.
+        if failed:
+            print(f"\nDid not import: {', '.join(failed)} -- see the errors above.", file=sys.stderr)
+            raise SystemExit(1)
+        if stopped_early:
+            print("\nStopped at the request ceiling before finishing. Raise --max-requests "
+                  "or re-run to continue.", file=sys.stderr)
+            raise SystemExit(1)
     finally:
         db.close()
 
