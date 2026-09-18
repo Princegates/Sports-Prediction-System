@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.prediction_models import elo, poisson_model
 from app.prediction_models.calibration import MarketCalibrator
-from app.prediction_models.ml_model import MLModel, build_feature_row
+from app.prediction_models.ml_model import LeagueFeatureCache, MLModel, build_feature_row
 
 MAX_STD_FOR_THREE_PROBS = 0.471  # std of [1, 0, 0] -- theoretical max disagreement
 
@@ -84,9 +84,19 @@ def blend_1x2(
 
 
 def breakdown_to_hda(component: dict[str, float]) -> dict[str, float]:
-    """Converts one ``model_breakdown["elo"|"poisson"|"ml"]`` entry (keyed
+    """Converts one ``model_breakdown["elo"|"poisson"]`` entry (keyed
     ``home_win``/``draw``/``away_win``, plus whatever extra diagnostic fields
-    that component carries) to the H/D/A keys ``blend_1x2`` expects."""
+    that component carries) to the H/D/A keys ``blend_1x2`` expects.
+
+    **Not for the ``"ml"`` entry.** ``model_breakdown`` is not uniform: the
+    elo and poisson entries carry display keys, but ``"ml"`` stores the raw
+    H/D/A probabilities the model produced (see ``generate_prediction``
+    below), and downstream consumers read it that way -- the assistant's
+    responder does ``ml.get("H")``. Passing it here raises ``KeyError:
+    'home_win'``, which is exactly how this was found: every real backtest
+    crashed the moment a trained ML model existed, while the unit tests
+    passed because they hand-built the "ml" entry in the wrong shape.
+    """
 
     return {"H": component["home_win"], "D": component["draw"], "A": component["away_win"]}
 
@@ -126,7 +136,8 @@ def fit_ensemble_weights(
     # conversion doesn't depend on the weights being tried, so redoing it on
     # every one of the ~400 grid points would be pure waste.
     converted = [
-        (breakdown_to_hda(b["elo"]), breakdown_to_hda(b["poisson"]), breakdown_to_hda(b["ml"]) if b.get("ml") else None)
+        # "ml" is already H/D/A-keyed; only elo and poisson need converting.
+        (breakdown_to_hda(b["elo"]), breakdown_to_hda(b["poisson"]), b.get("ml") or None)
         for b in breakdowns
     ]
 
@@ -173,7 +184,12 @@ def generate_prediction(
     ml_model: MLModel | None = None,
     calibrators: dict[str, MarketCalibrator] | None = None,
     weights: "EnsembleWeights | None" = None,
+    feature_cache: LeagueFeatureCache | None = None,
 ) -> EnsembleResult:
+    """``feature_cache`` is an optimization for callers predicting many
+    matches in one league: without it every call reloads that league's whole
+    history to build one feature row."""
+
     settings = get_settings()
     calibrators = calibrators or {}
     weights = weights or EnsembleWeights.from_settings()
@@ -194,7 +210,9 @@ def generate_prediction(
     ml_over25 = ml_btts = None
     if ml_model is not None:
         try:
-            feature_row = build_feature_row(db, home_team_id, away_team_id, league, as_of, settings.home_advantage_elo)
+            feature_row = build_feature_row(
+                db, home_team_id, away_team_id, league, as_of, settings.home_advantage_elo, cache=feature_cache
+            )
             ml_pred = ml_model.predict(feature_row)
             ml_probs = {"H": ml_pred.home_win, "D": ml_pred.draw, "A": ml_pred.away_win}
             ml_over25 = ml_pred.over_2_5
