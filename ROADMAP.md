@@ -3,8 +3,9 @@
 Where this system stands today, what's genuinely missing, and what it would take to
 make it world-class — with the cost of each item stated honestly.
 
-Written after a full read of the codebase and a live run against real Premier League
-data (1,930 completed matches, 2021-22 through 2026-27, with a real temporal backtest).
+Written after a full read of the codebase and live runs against real data — five
+European leagues, 9,033 completed matches across 2021-22 to 2026-27, with real
+temporal backtests per league.
 
 ---
 
@@ -32,31 +33,46 @@ prediction system:
 
 Ordered by how much they matter.
 
-#### 1. Accuracy is well below the bookmaker baseline
+#### 1. Accuracy: better than first measured, still short of the market
 
-The live backtest on 290 held-out Premier League matches returned **43.1% 1X2 accuracy,
-log loss 1.10, Brier 0.65**.
+Measured across five leagues, ~1,300 training matches each, evaluated on each
+league's own held-out date-split:
 
-For scale, measured on the same held-out window (320 matches):
+| League | Model | Always-home baseline | Edge |
+|---|---|---|---|
+| Italian Serie A | **52.9%** | 40.1% | **+12.8** |
+| German Bundesliga | 51.1% | 44.2% | +6.9 |
+| Spanish La Liga | 50.7% | 49.3% | +1.4 |
+| French Ligue 1 | 50.0% | 42.2% | +7.8 |
+| English Premier League | 45.9% | 38.6% | +7.2 |
+| **Mean** | **50.1%** | — | **+7.2** |
 
-| Reference | Accuracy |
-|---|---|
-| Always predict home win | 40.3% |
-| **This system** | **43.1%** |
-| Professional bookmakers | 53-55% |
+An earlier revision of this document called the model "the headline problem"
+on the strength of the Premier League number alone. That was wrong, and wrong
+in an instructive way: **the EPL is the hardest of the five to predict** — the
+most competitive, with the lowest home-win rate — so judging the system by it
+understated the model by about four points.
 
-So the model does beat the trivial heuristic — by 2.8 points — but sits roughly 10 points
-below the market. Closing that gap is the most valuable work available. Causes, in the
-order worth attacking:
+The defensible summary: a **mean of 50.1%, beating always-pick-home by a
+consistent +7.2 points in every league tested**, with Serie A at 52.9%
+essentially matching the 53-55% bookmaker range. Below the market overall, but
+a real and reproducible edge rather than noise.
 
-- **Calibration was destroying signal — now fixed.** See the finding below; this was a
-  real defect, not a tuning knob.
-- **Ensemble weights are hand-set** (0.30/0.35/0.35) rather than fitted. They should be
-  optimised on the validation split against log loss.
-- **A fixed weighted mean is weaker than stacking.** A meta-model over the three models'
-  outputs usually beats any fixed blend.
-- **Only one league, thin history.** 1,330 training matches is small for a GBM with this
-  feature count. This is the cheapest available gain.
+Two caveats worth keeping in view. La Liga's +1.4 edge is thin — its baseline
+happened to be unusually high (49.3% home wins in that window), so the model
+barely clears it there. And ~1,300 training matches per league is small; the
+per-league variance above is partly genuine difficulty and partly sample size.
+
+Where the remaining gains are, in order:
+
+- **Cross-league training (item 6 below) is now the biggest single lever.**
+  Each league currently trains its own model on its own ~1,300 matches, so
+  importing five leagues produced five data-starved models rather than one
+  model with 9,033 matches behind it. Pooling them with league indicators —
+  or a global model with per-league fallback — is where the next real jump is.
+- **Ensemble weights are hand-set** (0.30/0.35/0.35) rather than fitted.
+- **A fixed weighted mean is weaker than stacking** a meta-model over the
+  three model outputs.
 
 #### 1b. Calibration collapse on small validation sets — diagnosed and fixed
 
@@ -278,14 +294,17 @@ rewriter, permanently, at no cost.
 
 ## If you only do five things
 
-1. **Chase the constant-prediction lead and fit the ensemble weights** (Tier 0, items 1-3).
-   The model is currently no better than always-picking-home. Nothing else matters as much.
+1. **Train across leagues instead of one model per league** (Tier 0, item 6). Five
+   leagues currently produce five models of ~1,300 matches each rather than one with
+   9,033 behind it. This is the single biggest lever left on accuracy.
 2. **Add baseline comparisons to the backtest** (item 4). You cannot tell whether a change
    helped without them.
 3. **Build result tracking** (item 10). A verifiable public track record is the single
    most valuable feature this system could have — and it makes item 1 measurable.
-4. **Set `SECRET_KEY`, and expand to 8+ leagues** (items 5, plus the security warning
-   above). One is a one-line deployment fix; the other is the cheapest accuracy gain available.
+4. **Set `SECRET_KEY`, and expand to 8+ leagues** (item 5, plus the security warning
+   above). Note what more leagues does and doesn't buy: with per-league models it adds
+   *coverage* (more fixtures to show), not accuracy. It becomes an accuracy gain only
+   once item 6 pools them.
 5. **Schedule prediction regeneration** (item 11). Stale predictions are worse than none.
 
 ## What "best in the world" would actually require
