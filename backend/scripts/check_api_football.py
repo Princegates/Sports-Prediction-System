@@ -101,36 +101,57 @@ def main() -> None:
         print(f"  per-minute cap: {per_minute}")
 
     season = dt.date.today().year if dt.date.today().month >= 7 else dt.date.today().year - 1
-    print(f"\n=== Coverage for season {season} ===")
+    print(f"\n=== Season access (current season would be {season}) ===")
+    print("  Asking which seasons each league is readable for, rather than asking")
+    print("  about one season -- that distinguishes a plan restriction from a bad query.\n")
 
+    any_current = False
     for league_id, name in WANTED.items():
         try:
-            body, _ = call("leagues", f"id={league_id}&season={season}")
+            # No season parameter: returns every season the plan can see.
+            body, _ = call("leagues", f"id={league_id}")
         except Exception as exc:  # noqa: BLE001
             print(f"  {name:<26} lookup failed ({type(exc).__name__})")
             continue
 
-        found = body.get("response") or []
-        if not found:
-            print(f"  {name:<26} NOT available on this plan/season")
+        if body.get("errors"):
+            print(f"  {name:<26} error: {body['errors']}")
             continue
 
-        seasons = found[0].get("seasons") or []
-        this_season = next((s for s in seasons if s.get("year") == season), None)
-        coverage = (this_season or {}).get("coverage", {})
-        fixtures = coverage.get("fixtures", {})
-        bits = []
-        if fixtures.get("events"):
-            bits.append("events")
-        if fixtures.get("lineups"):
-            bits.append("lineups")
-        if fixtures.get("statistics_fixtures"):
-            bits.append("match stats")
-        if coverage.get("injuries"):
-            bits.append("injuries")
-        if coverage.get("odds"):
-            bits.append("odds")
-        print(f"  {name:<26} available — {', '.join(bits) if bits else 'fixtures only'}")
+        found = body.get("response") or []
+        if not found:
+            print(f"  {name:<26} league id not visible at all")
+            continue
+
+        years = sorted({s.get("year") for s in (found[0].get("seasons") or []) if s.get("year")})
+        if not years:
+            print(f"  {name:<26} no seasons listed")
+            continue
+
+        has_current = season in years
+        any_current = any_current or has_current
+        span = f"{years[0]}-{years[-1]}" if len(years) > 1 else str(years[0])
+        mark = "includes current" if has_current else f"CURRENT ({season}) MISSING"
+        print(f"  {name:<26} seasons {span}  ({len(years)} total) — {mark}")
+
+        if has_current:
+            this = next(s for s in found[0]["seasons"] if s.get("year") == season)
+            cov = this.get("coverage", {})
+            fx = cov.get("fixtures", {})
+            bits = [k for k, v in
+                    (("events", fx.get("events")), ("lineups", fx.get("lineups")),
+                     ("match stats", fx.get("statistics_fixtures")),
+                     ("injuries", cov.get("injuries")), ("odds", cov.get("odds")))
+                    if v]
+            print(f"  {'':<26}   covers: {', '.join(bits) if bits else 'fixtures only'}")
+
+    print()
+    if any_current:
+        print("  At least one competition covers the current season -- the integration is viable.")
+    else:
+        print("  No competition covers the current season on this key.")
+        print("  That is a plan restriction, not a bug: the endpoints are all listed as")
+        print("  available, but only for seasons the free tier includes.")
 
     print("\nPaste this output (it contains no key) and I'll build to whatever it says.")
 
