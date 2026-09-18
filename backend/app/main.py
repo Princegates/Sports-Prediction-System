@@ -62,6 +62,32 @@ app.include_router(matches_router, dependencies=[Depends(get_current_user)])
 app.include_router(predictions_router, dependencies=[Depends(get_current_user)])
 
 
+@app.get("/")
+def root() -> dict:
+    """A signpost at the base URL.
+
+    Without this, anyone opening the service's root -- which is exactly what
+    you do after a deploy, to check it worked -- gets FastAPI's bare
+    ``{"detail":"Not Found"}``. That reads as a broken deployment when the
+    API is in fact running perfectly, just with no route mounted at ``/``.
+    Pointing at the docs and the health check costs nothing and answers the
+    question the visitor actually had.
+    """
+
+    return {
+        "service": "AI Football Prediction & Analytics System",
+        "status": "ok",
+        "version": app.version,
+        "docs": "/docs",
+        "health": "/api/health",
+        "public_data": ["/api/public/stats", "/api/public/accuracy", "/api/public/fixtures"],
+        "note": (
+            "Predictions, teams, matches and the AI assistant require an account approved "
+            "by a superadmin. This is the API only -- the web app is deployed separately."
+        ),
+    }
+
+
 @app.get("/api/health")
 def health() -> dict:
     return {"status": "ok"}

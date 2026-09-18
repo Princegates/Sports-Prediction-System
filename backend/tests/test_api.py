@@ -134,3 +134,33 @@ def test_prediction_history_endpoint(db_session, auth_headers):
     body = history.json()
     assert len(body) == 1
     assert body[0]["match_id"] == upcoming.id
+
+
+def test_root_is_a_signpost_not_a_404(db_session):
+    """Opening the service's base URL is the first thing anyone does after a
+    deploy. FastAPI's bare {"detail":"Not Found"} there reads as a broken
+    deployment when the API is running fine, so / answers with what the
+    service is and where to go next."""
+
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.get("/")
+    assert response.status_code == 200
+
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["docs"] == "/docs"
+    assert body["health"] == "/api/health"
+    assert "/api/public/stats" in body["public_data"]
+
+
+def test_root_needs_no_authentication(db_session):
+    """It must work before anyone has an account -- that's the situation it
+    exists for."""
+
+    from app.main import app
+
+    client = TestClient(app)
+    assert "Authorization" not in client.headers
+    assert client.get("/").status_code == 200

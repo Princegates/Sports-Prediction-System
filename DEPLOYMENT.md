@@ -332,6 +332,50 @@ SUPERADMIN_PASSWORD='pick-something-strong' \
 Imports six seasons, trains, backtests, generates predictions and creates your
 Super Admin account. Takes about a minute.
 
+### 3b. Running the seed on Windows
+
+The commands above are Unix shell. PowerShell differs in three ways that each
+produce a confusing error rather than an obvious one:
+
+| Unix | PowerShell |
+|---|---|
+| `python3` | `python` (or `py -3`) |
+| `cmd1 && cmd2` | Run them as separate lines — `&&` is a parse error in PowerShell 5 |
+| `source .venv/bin/activate` | `.\.venv\Scripts\Activate.ps1` |
+| `VAR=value python ...` | `$env:VAR = 'value'` on its own line, first |
+| `\` line continuation | Put the whole command on one line |
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+
+$env:DATABASE_URL = 'postgresql://...your neon string...'
+$env:SUPERADMIN_EMAIL = 'you@example.com'
+$env:SUPERADMIN_PASSWORD = 'pick-something-strong'
+
+python scripts/bootstrap.py --leagues "English Premier League" "Spanish La Liga" "Italian Serie A" "German Bundesliga" "French Ligue 1"
+```
+
+Three things that bite specifically on Windows:
+
+- **`Activate.ps1` may be blocked** by execution policy ("running scripts is
+  disabled on this system"). `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`
+  unblocks it for that window only.
+- **Use single quotes for the connection string.** In double quotes PowerShell
+  expands `$`, so a password containing one is silently mangled and you get an
+  authentication failure that looks like wrong credentials.
+- **Environment variables are per-window.** Open a new tab and they're gone.
+
+Confirm the database is reachable *before* the ~9-minute run, rather than
+finding out at the end:
+
+```powershell
+python -c "from app.config import get_settings; from sqlalchemy import create_engine, text; s=get_settings(); e=create_engine(s.normalized_database_url); print('OK:', e.connect().execute(text('select version()')).scalar()[:60])"
+```
+
+`OK: PostgreSQL 17...` means you're connected.
+
 ### 4. Frontend — Cloudflare Pages (5 min)
 
 1. Sign up at [dash.cloudflare.com](https://dash.cloudflare.com).
