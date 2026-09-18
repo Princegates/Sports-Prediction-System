@@ -47,12 +47,19 @@ def _seed_league(db_session) -> tuple[Team, Team]:
 
 
 def test_health_endpoint():
+    """Liveness is separate from database reachability, and the endpoint
+    reports both -- see tests/test_startup_resilience.py for the case where
+    they differ."""
+
     from app.main import app
 
     client = TestClient(app)
     response = client.get("/api/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["database"] == "ready"
 
 
 def test_protected_endpoint_requires_auth(db_session):
