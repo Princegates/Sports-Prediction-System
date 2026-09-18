@@ -1,0 +1,52 @@
+# Asks the API what it will actually serve for a competition, before anything
+# is built on top of it.
+#
+# The catalogue and the entitlement are different questions: /leagues lists
+# every season a competition has ever had, including ones the plan refuses to
+# return. This prints both, and asks for real fixtures at the end -- only that
+# part is evidence.
+#
+# Costs about two requests per competition. The key comes from the settings
+# panel, so this needs no secret beyond DATABASE_URL.
+name: Check league access
+
+on:
+  workflow_dispatch:
+    inputs:
+      search:
+        description: 'Competition names, space-separated and quoted: "Europa League" "Super Lig"'
+        required: false
+        default: '"Europa League"'
+      country:
+        description: 'Countries whose competitions to list: Turkey Ghana'
+        required: false
+        default: ""
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Check
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SEARCH: ${{ inputs.search }}
+          COUNTRY: ${{ inputs.country }}
+        run: |
+          FLAGS=""
+          [ -n "$SEARCH" ] && FLAGS="$FLAGS --search $SEARCH"
+          [ -n "$COUNTRY" ] && FLAGS="$FLAGS --country $COUNTRY"
+          eval "python scripts/check_league_access.py $FLAGS"
