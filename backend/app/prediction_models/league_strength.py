@@ -315,6 +315,66 @@ def fit(
     )
 
 
+def bootstrap_draws(bridges: list[Bridge], *, draws: int = 200, seed: int = 0) -> list[dict[str, float]]:
+    """Refit on ``draws`` resamples of the matches, returning every fit.
+
+    The draws are returned rather than summarised because the interesting
+    quantity is not always a single offset. A prediction uses the *gap*
+    between two leagues, and the interval on a difference cannot be recovered
+    from two separate intervals -- the two offsets move together across
+    resamples, so treating them as independent overstates the uncertainty.
+    """
+
+    import random as _random
+
+    if not bridges:
+        return []
+
+    rng = _random.Random(seed)
+    size = len(bridges)
+    results = []
+    for _ in range(draws):
+        sample = [bridges[rng.randrange(size)] for _ in range(size)]
+        try:
+            results.append(fit(sample).offsets)
+        except (ValueError, FloatingPointError):
+            continue
+    return results
+
+
+def _percentile_range(values: list[float], interval: float) -> tuple[float, float]:
+    if not values:
+        return float("nan"), float("nan")
+    values = sorted(values)
+    lower_q = (1.0 - interval) / 2.0
+    last = len(values) - 1
+    return (
+        values[min(last, int(lower_q * len(values)))],
+        values[min(last, int((1.0 - lower_q) * len(values)))],
+    )
+
+
+def pairwise_intervals(
+    draws: list[dict[str, float]], *, interval: float = 0.90
+) -> dict[tuple[str, str], tuple[float, float]]:
+    """Intervals on the gap between each pair of leagues.
+
+    This is the quantity that moves a prediction: a Champions League tie is
+    scored on the difference between two offsets, never on either alone. A
+    league whose own offset is indistinguishable from average can still sit a
+    measurable distance from a specific other league.
+    """
+
+    leagues = sorted({league for drawn in draws for league in drawn})
+    out: dict[tuple[str, str], tuple[float, float]] = {}
+    for i, a in enumerate(leagues):
+        for b in leagues[i + 1:]:
+            gaps = [d[a] - d[b] for d in draws if a in d and b in d]
+            if gaps:
+                out[(a, b)] = _percentile_range(gaps, interval)
+    return out
+
+
 def bootstrap_offsets(
     bridges: list[Bridge],
     *,
@@ -336,35 +396,11 @@ def bootstrap_offsets(
     others yet.
     """
 
-    import random as _random
-
-    if not bridges:
-        return {}
-
-    rng = _random.Random(seed)
-    size = len(bridges)
     collected: dict[str, list[float]] = {}
-
-    for _ in range(draws):
-        sample = [bridges[rng.randrange(size)] for _ in range(size)]
-        try:
-            drawn = fit(sample)
-        except (ValueError, FloatingPointError):
-            continue
-        for league, value in drawn.offsets.items():
+    for drawn in bootstrap_draws(bridges, draws=draws, seed=seed):
+        for league, value in drawn.items():
             collected.setdefault(league, []).append(value)
-
-    lower_q = (1.0 - interval) / 2.0
-    upper_q = 1.0 - lower_q
-    bounds: dict[str, tuple[float, float]] = {}
-    for league, values in collected.items():
-        values.sort()
-        if not values:
-            continue
-        low = values[min(len(values) - 1, int(lower_q * len(values)))]
-        high = values[min(len(values) - 1, int(upper_q * len(values)))]
-        bounds[league] = (low, high)
-    return bounds
+    return {league: _percentile_range(values, interval) for league, values in collected.items()}
 
 
 def fit_home_advantage_only(bridges: list[Bridge], *, default: float = DEFAULT_HOME_ADVANTAGE) -> float:

@@ -29,15 +29,24 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.db.session import SessionLocal
 from app.prediction_models.league_strength import (
-    bootstrap_offsets,
+    bootstrap_draws,
     collect_bridges,
     fit,
     fit_and_validate,
+    pairwise_intervals,
 )
 
 # Below this, the fit is arithmetic rather than evidence. Four free offsets
 # from fifty matches would produce four confident numbers about nothing.
 MIN_BRIDGES = 60
+
+
+def _percentile(values: list[float], interval: float = 0.90) -> tuple[float, float]:
+    if not values:
+        return float("nan"), float("nan")
+    lower = (1.0 - interval) / 2.0
+    last = len(values) - 1
+    return values[min(last, int(lower * len(values)))], values[min(last, int((1.0 - lower) * len(values)))]
 
 
 def main() -> None:
@@ -110,7 +119,11 @@ def main() -> None:
         print(f"\n=== Offsets fitted on all {len(bridges)} matches ===")
         print(f"  Elo points, centred on zero. Only differences matter.\n")
 
-        bounds = bootstrap_offsets(bridges, draws=args.draws)
+        draws = bootstrap_draws(bridges, draws=args.draws)
+        bounds = {
+            league: _percentile(sorted(d[league] for d in draws if league in d))
+            for league in full.offsets
+        }
         for league, value in sorted(full.offsets.items(), key=lambda kv: -kv[1]):
             low, high = bounds.get(league, (float("nan"), float("nan")))
             straddles = low < 0 < high
@@ -118,6 +131,22 @@ def main() -> None:
             print(f"  {league:<26} {value:+7.1f}   90% interval [{low:+7.1f}, {high:+7.1f}]{flag}")
 
         print(f"\n  home advantage in these ties: {full.home_advantage:.1f} Elo points")
+
+        print("\n=== The gaps a prediction actually uses ===\n")
+        print("  A tie is scored on the difference between two offsets, never on either")
+        print("  alone, and the two move together across resamples -- so a league that")
+        print("  cannot be told from average can still sit a measured distance from a")
+        print("  specific other league.\n")
+
+        gaps = pairwise_intervals(draws)
+        ranked_gaps = sorted(
+            gaps.items(),
+            key=lambda kv: -abs(full.offsets.get(kv[0][0], 0.0) - full.offsets.get(kv[0][1], 0.0)),
+        )
+        for (a, b), (low, high) in ranked_gaps:
+            point = full.offsets.get(a, 0.0) - full.offsets.get(b, 0.0)
+            verdict = "undetermined" if low < 0 < high else "measured"
+            print(f"  {a:<24} - {b:<24} {point:+7.1f}   [{low:+7.1f}, {high:+7.1f}]  {verdict}")
 
         undetermined = [lg for lg, (lo, hi) in bounds.items() if lo < 0 < hi]
         if undetermined:
