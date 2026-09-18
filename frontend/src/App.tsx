@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
 import { RequireAccess, RequireAuth, RequireSuperadmin } from "./components/RequireAuth";
+import { Markets } from "./pages/Markets";
 import { Settings } from "./pages/Settings";
 import { Access } from "./pages/Access";
 import { AccountStatus } from "./pages/AccountStatus";
@@ -53,6 +54,7 @@ export default function App() {
             <Route index element={<Dashboard />} />
             <Route path="match/:id" element={<MatchDetail />} />
             <Route path="predictions" element={<Predictions />} />
+            <Route path="markets" element={<Markets />} />
             <Route path="live" element={<Live />} />
             <Route path="teams/:id" element={<TeamPage />} />
           </Route>

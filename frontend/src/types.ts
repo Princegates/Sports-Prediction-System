@@ -315,3 +315,43 @@ export interface Branding {
   default_accent: string;
   registration_open: boolean;
 }
+
+// --- Outcome browser -------------------------------------------------------
+
+export interface BettingOutcome {
+  match_id: number;
+  league: string;
+  home_team: string;
+  away_team: string;
+  kickoff: string;
+  market: string;
+  selection: string;
+  probability: number;
+  confidence: "HIGH" | "MEDIUM" | "LOW";
+  data_quality_score: number;
+  /** Selections sharing a group are mutually exclusive and sum to ~1. */
+  group: string;
+  definition: string;
+}
+
+export interface MarketSummary {
+  market: string;
+  group: string;
+  selections: string[];
+  outcomes: number;
+  mutually_exclusive: boolean;
+}
+
+export interface LeagueOutcomes {
+  league: string;
+  matches: number;
+  outcomes: BettingOutcome[];
+}
+
+export interface OutcomesResponse {
+  markets: MarketSummary[];
+  leagues: LeagueOutcomes[];
+  total_outcomes: number;
+  total_matches: number;
+  days_ahead: number;
+}

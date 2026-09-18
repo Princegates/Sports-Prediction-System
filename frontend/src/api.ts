@@ -1,4 +1,5 @@
 import type {
+  OutcomesResponse,
   Branding,
   SettingsPayload,
   SystemStatus,
@@ -426,4 +427,18 @@ export function fetchSystemStatus(): Promise<SystemStatus> {
 
 export function fetchBranding(): Promise<Branding> {
   return get("/api/public/branding");
+}
+
+export function fetchOutcomes(params: {
+  market?: string;
+  league?: string;
+  days_ahead?: number;
+  min_probability?: number;
+  confidence?: string;
+}): Promise<OutcomesResponse> {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== "" && v !== null) query.set(k, String(v));
+  });
+  return get(`/api/predictions/outcomes?${query.toString()}`);
 }

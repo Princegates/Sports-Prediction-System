@@ -63,3 +63,32 @@ def build_outcome_registry(
         )
 
     return [o for o in outcomes if matches_available >= o.min_data_requirement]
+
+
+def outcomes_from_prediction(prediction) -> list[Outcome]:
+    """Rebuild the full registry from a stored ``Prediction`` row.
+
+    Only the blended probabilities are persisted, not the outcome list they
+    expand into -- storing both would let them disagree. Rebuilding is pure
+    arithmetic over columns already loaded, so a page showing every market for
+    fifty matches costs no extra queries.
+
+    ``matches_available`` is recovered from ``data_quality_score``, which is
+    ``min(home_matches, away_matches) / 10`` clamped to 1. That inverts exactly
+    over the range the registry cares about, since the largest
+    ``min_data_requirement`` is 10 -- so a score of 1.0 means "at least ten",
+    which satisfies every outcome, and anything lower reconstructs the real
+    count. Correct-score outcomes stay hidden for thin data exactly as they
+    were when the prediction was generated.
+    """
+
+    return build_outcome_registry(
+        prediction.home_win,
+        prediction.draw,
+        prediction.away_win,
+        prediction.over_probabilities or {},
+        prediction.btts_yes,
+        prediction.btts_no,
+        prediction.correct_score_probabilities or {},
+        matches_available=round((prediction.data_quality_score or 0.0) * 10),
+    )

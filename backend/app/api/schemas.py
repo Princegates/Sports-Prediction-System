@@ -423,3 +423,52 @@ class BrandingOut(BaseModel):
     default_theme: str
     default_accent: str
     registration_open: bool
+
+
+# --- Outcome browser -------------------------------------------------------
+
+
+class OutcomeOut(BaseModel):
+    match_id: int
+    league: str
+    home_team: str
+    away_team: str
+    kickoff: dt.datetime
+    market: str
+    selection: str
+    probability: float
+    confidence: str
+    data_quality_score: float
+    # Selections sharing a group are mutually exclusive and sum to ~1. Ones
+    # that don't can all happen in the same match, so stacking them is not a
+    # sure thing however good each looks alone.
+    group: str
+    definition: str
+
+
+class MarketOut(BaseModel):
+    market: str
+    group: str
+    selections: list[str]
+    outcomes: int
+    mutually_exclusive: bool
+
+
+class LeagueOutcomesOut(BaseModel):
+    league: str
+    matches: int
+    outcomes: list[OutcomeOut]
+
+
+class OutcomesOut(BaseModel):
+    """Every available betting outcome in one window, grouped by league.
+
+    ``markets`` is derived from what is actually present rather than a fixed
+    list, so the picker can never offer a market with nothing behind it.
+    """
+
+    markets: list[MarketOut]
+    leagues: list[LeagueOutcomesOut]
+    total_outcomes: int
+    total_matches: int
+    days_ahead: int
