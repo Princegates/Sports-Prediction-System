@@ -20,7 +20,17 @@ services:
     rootDir: backend
     dockerfilePath: ./Dockerfile
     plan: free
-    region: oregon
+
+    # Must match the region your Postgres lives in. The backend issues several
+    # queries per request, so a cross-continent hop between the two multiplies
+    # into every page load -- far more costly than the one-off hop between a
+    # visitor and the API. Frankfurt is the closest option to West Africa that
+    # both Render and Neon offer on their free tiers.
+    #
+    # Changing this? Change the database's region to match, and remember Neon
+    # fixes a project's region at creation -- moving means a new project and a
+    # re-run of scripts/bootstrap.py.
+    region: frankfurt
 
     # Render probes this to decide the deploy succeeded. Without it a slow
     # first boot can be misread as a failed deploy and rolled back.

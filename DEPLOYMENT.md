@@ -282,7 +282,18 @@ URL from step 2.
 ### 1. Database — Neon (3 min)
 
 1. Sign up at [neon.tech](https://neon.tech) with GitHub.
-2. Create a project. Any region; pick one near your users.
+2. Create a project. On the creation screen:
+   - **Postgres database: on.** Leave *Object storage*, *Functions*,
+     *AI gateway* and **Neon Auth** off. Neon Auth in particular would
+     duplicate this app's own auth and tempt a half-migration that breaks the
+     Super Admin approval gate.
+   - **Region: this is the one choice you cannot undo.** Neon fixes a
+     project's region at creation, and it must match the region you deploy the
+     backend to — the API issues several queries per request, so a
+     cross-continent hop between them lands in every page load. `render.yaml`
+     is set to `frankfurt`; if you pick something else here, change it there
+     too. (Both platforms offer Frankfurt, Ohio, Virginia, Oregon and
+     Singapore on their free tiers.)
 3. Copy the connection string from the dashboard. It looks like
    `postgres://user:pass@ep-xxx.neon.tech/neondb?sslmode=require`.
    Keep it somewhere for steps 2 and 4.
