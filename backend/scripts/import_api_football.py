@@ -54,7 +54,7 @@ def main() -> None:
     parser.add_argument("--season", type=int, default=None, help="Defaults to the current season")
     parser.add_argument("--odds", action="store_true", help="Also capture three-way market prices")
     parser.add_argument("--days-ahead", type=int, default=14, help="Fixture window for odds capture")
-    parser.add_argument("--max-requests", type=int, default=20,
+    parser.add_argument("--max-requests", type=int, default=200,
                         help="Hard ceiling for this run. The daily budget is 100.")
     parser.add_argument("--dry-run", action="store_true", help="Print the plan and spend nothing")
     args = parser.parse_args()
@@ -128,7 +128,8 @@ def main() -> None:
         client = ApiFootballClient(
             key,
             host=str(values.get("api_football_host") or "v3.football.api-sports.io"),
-            daily_budget=min(int(values.get("api_football_daily_budget") or 100), args.max_requests),
+            daily_budget=min(int(values.get("api_football_daily_budget") or 7500), args.max_requests),
+            per_minute=int(values.get("api_football_per_minute") or 300),
         )
 
         total_inserted = total_updated = 0

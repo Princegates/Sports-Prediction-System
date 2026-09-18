@@ -73,7 +73,11 @@ class Settings(BaseSettings):
     # here or in the admin panel, which overrides this.
     api_football_key: str = ""
     api_football_host: str = "v3.football.api-sports.io"
-    api_football_daily_budget: int = 100
+    # Pro allows 7,500/day and 300/minute; Free is 100 and 10. Defaults match
+    # Pro, and both are settable in the admin panel -- a plan change is a
+    # setting, not a redeploy.
+    api_football_daily_budget: int = 7500
+    api_football_per_minute: int = 300
 
     smtp_host: str = ""
     smtp_port: int = 587

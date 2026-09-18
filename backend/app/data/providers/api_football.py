@@ -66,8 +66,8 @@ class Quota:
     key -- so the lower of the two governs.
     """
 
-    limit_per_day: int = 100
-    limit_per_minute: int = 10
+    limit_per_day: int = 7500
+    limit_per_minute: int = 300
     used_this_run: int = 0
     remaining_reported: int | None = None
     _minute_window: list[float] = field(default_factory=list)
@@ -85,8 +85,8 @@ class ApiFootballClient:
         api_key: str,
         *,
         host: str = DIRECT_HOST,
-        daily_budget: int = 100,
-        per_minute: int = 10,
+        daily_budget: int = 7500,
+        per_minute: int = 300,
         timeout: float = 30.0,
     ) -> None:
         if not api_key:

@@ -95,8 +95,11 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 "there. The auth style follows from this.",
                 env_attr="api_football_host"),
     SettingSpec("api_football_daily_budget", "int", "data", "Daily request budget",
-                "The free plan allows 100/day. Set lower to leave headroom for manual runs.",
-                env_attr="api_football_daily_budget", minimum=1, maximum=100000),
+                "Pro allows 7,500/day, Free 100. Set lower to leave headroom for manual runs.",
+                env_attr="api_football_daily_budget", minimum=1, maximum=1000000),
+    SettingSpec("api_football_per_minute", "int", "data", "Requests per minute",
+                "Pro allows 300, Free 10. Calls are spaced to stay under this.",
+                env_attr="api_football_per_minute", minimum=1, maximum=1000),
     SettingSpec("api_football_capture_odds", "bool", "data", "Capture market odds",
                 "Store bookmaker prices so the track record can show whether the model beat "
                 "the market, not just whether it was right.",

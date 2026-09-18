@@ -85,7 +85,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--leagues", nargs="+", default=DEFAULT_LEAGUES)
     parser.add_argument("--seasons", nargs="+", type=int, default=DEFAULT_SEASONS)
-    parser.add_argument("--max-requests", type=int, default=80,
+    parser.add_argument("--max-requests", type=int, default=2000,
                         help="Ceiling for this run. Leave headroom under the 100/day budget.")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--progress", action="store_true", help="Show what has been fetched and stop")
@@ -141,7 +141,8 @@ def main() -> None:
         client = ApiFootballClient(
             key,
             host=str(values.get("api_football_host") or "v3.football.api-sports.io"),
-            daily_budget=args.max_requests,
+            daily_budget=min(int(values.get("api_football_daily_budget") or 7500), args.max_requests),
+            per_minute=int(values.get("api_football_per_minute") or 300),
         )
 
         index = TeamIndex(db)
