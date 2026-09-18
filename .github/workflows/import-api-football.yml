@@ -1,9 +1,8 @@
 # Manual only, on purpose.
 #
-# Every run of this spends from a hundred-request daily budget. A schedule
-# would spend it whether or not anything changed, and the first thing you want
-# from a new data source is to look at what it brought back before trusting it
-# on a timer.
+# Every run spends from the daily request budget. A schedule would spend it
+# whether or not anything changed, and the first thing you want from a new data
+# source is to look at what it brought back before trusting it on a timer.
 #
 # The API key is read from the admin settings panel (Settings -> Data sources),
 # so this job needs no secret of its own beyond DATABASE_URL -- the key lives
@@ -24,9 +23,9 @@ on:
         type: choice
         options: ["no", "yes"]
       max_requests:
-        description: "Hard ceiling for this run (daily budget is 100)"
+        description: "Hard ceiling for this run (Pro allows 7,500/day)"
         required: false
-        default: "20"
+        default: "200"
       dry_run:
         description: "Print the plan and spend nothing"
         required: false
