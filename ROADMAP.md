@@ -215,16 +215,29 @@ Primeira Liga ignores it entirely in favor of Poisson) -- a single global
 second, independent reason a single pooled model underperforms per-league
 ones here.
 
-**Status: pooling code kept, not deployed.** `scripts/backtest.py
---pool-leagues` and `build_pooled_training_dataset()` still exist and work
--- pooling remains the right call for a league too new or small to train
-its own model (a true fallback, which is what item 6 actually needs, not a
-wholesale replacement) -- but the model_artifacts/ml_model_global.joblib
-this measurement produced was deleted rather than left as the file
-model_store.load_ml_model() prefers, so per-league models stay the ones
-actually serving predictions. Revisiting pooling productively would mean
-per-league leaf weights or a stacked meta-model over per-league models,
-not a single shared tree ensemble distinguishing leagues by one-hot alone.
+**Status: pooling code kept, demoted to a fallback.** `scripts/backtest.py
+--pool-leagues` and `build_pooled_training_dataset()` still exist and work --
+pooling remains the right call for a league too new or small to train its own
+model, which is what item 6 actually needs, not a wholesale replacement.
+
+An earlier version of this paragraph claimed the decision was already in
+effect because the `ml_model_global.joblib` this measurement produced had
+been deleted. That was wrong, and worth recording as its own small lesson:
+deleting an artifact is not a decision, it is a cleanup. `bootstrap.py` still
+ran `--pool-leagues` for any multi-league invocation, which the refresh
+workflow always is, and `load_ml_model()` still *preferred* the pooled file
+over every per-league one. So the weekly retrain regenerated the file and
+silently redeployed the worse model, a week after it was documented as not
+deployed, with nothing failing and nothing in the API to show it.
+
+Both halves are now fixed: `bootstrap.py` trains per league, and
+`load_ml_model()` prefers a league's own model and falls back to the pooled
+one only where there is nothing else — the order pinned by
+`tests/test_model_selection.py`, which fails against the old behaviour.
+
+Revisiting pooling productively would mean per-league leaf weights or a
+stacked meta-model over per-league models, not a single shared tree ensemble
+distinguishing leagues by one-hot alone.
 
 #### 2. Security gaps
 

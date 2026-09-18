@@ -60,20 +60,30 @@ def load_ensemble_weights(league: str) -> EnsembleWeights:
 
 
 def load_ml_model(league: str) -> MLModel | None:
-    """Prefers the pooled cross-league model when one has been trained
-    (``scripts/backtest.py --pool-leagues``); falls back to a per-league
-    model for a league that predates that, or if the global file is ever
-    removed. This is what lets the global model roll out just by being
-    saved, with no call-site changes."""
+    """This league's own model, falling back to the pooled cross-league one
+    when it has none.
+
+    The order matters and used to be the other way round. Pooling was
+    measured worse than per-league training -- 49.7% mean against 50.1%,
+    losing 3.8 points on the Premier League (ROADMAP.md 1d) -- so preferring
+    the pooled file meant one ``--pool-leagues`` run silently demoted every
+    league to the worse model, with nothing in the API to show it had
+    happened.
+
+    Pooling is still the right answer for a league with too little history to
+    train on, which is what a fallback is for: it only applies where the
+    alternative is no ML component at all.
+    """
+
+    path = ml_model_path(league)
+    if path.exists():
+        return MLModel.load(path)
 
     global_path = ml_model_path(GLOBAL_MODEL_KEY)
     if global_path.exists():
         return MLModel.load(global_path)
 
-    path = ml_model_path(league)
-    if not path.exists():
-        return None
-    return MLModel.load(path)
+    return None
 
 
 def load_calibrators(league: str) -> dict[str, MarketCalibrator]:

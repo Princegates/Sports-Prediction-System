@@ -117,20 +117,29 @@ def main() -> None:
     # look perfectly plausible, so that case is skipped loudly.
     trained: bool | None = None
     if not args.skip_training:
-        if len(args.leagues) > 1:
-            # One cross-league model trained on all of them together beats N
-            # models of N leagues each trained alone -- see ROADMAP.md item 6.
-            trained = run(
-                "Training + backtesting (cross-league)",
-                ["scripts/backtest.py", "--pool-leagues", "--leagues", *args.leagues],
+        # Per league, not pooled. An earlier version of this ran
+        # `backtest.py --pool-leagues` for the multi-league case, on the
+        # reasoning in ROADMAP.md item 6 that one model with every league's
+        # data behind it beats N data-starved ones. Measured, that was wrong:
+        # pooling came out at 49.7% mean against 50.1% per-league, losing 3.8
+        # points on the Premier League and 2.2 on La Liga. ROADMAP.md 1d has
+        # the table and why.
+        #
+        # This is also the only place that produced ml_model_global.joblib,
+        # which load_ml_model() used to prefer over every per-league model --
+        # so leaving it here meant the weekly retrain quietly redeployed the
+        # worse model, whatever the roadmap said.
+        results = [
+            run(
+                f"Training + backtesting {league}",
+                ["scripts/backtest.py", "--league-name", league],
                 required=False,
             )
-        else:
-            trained = run(
-                f"Training + backtesting {args.leagues[0]}",
-                ["scripts/backtest.py", "--league-name", args.leagues[0]],
-                required=False,
-            )
+            for league in args.leagues
+        ]
+        # False only if every league failed. One league missing its data
+        # upstream shouldn't stop the others' predictions being generated.
+        trained = any(results)
 
     if args.skip_predictions:
         pass
