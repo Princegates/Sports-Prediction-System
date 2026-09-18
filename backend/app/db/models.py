@@ -138,9 +138,16 @@ class AccessCode(Base):
     redemption_limit: Mapped[int] = mapped_column(Integer, default=1)
     redemption_count: Mapped[int] = mapped_column(Integer, default=0)
 
-    # Restricts the code to one specific account (e.g. renewing an existing
-    # user's access); null means any account may redeem it.
+    # Restricts the code to one specific account; null means any account may
+    # redeem it.
+    #
+    # Two columns because the account usually doesn't exist yet. The real
+    # sequence is: someone pays, they are sent a code, and only then do they
+    # register. Resolving an email to a user id at creation time therefore
+    # fails for exactly the case this is for, so the email is authoritative
+    # and the id is filled in only when the account happens to exist already.
     assigned_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    assigned_email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
 
@@ -197,24 +204,6 @@ class AccessRedemption(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     grant_id: Mapped[int] = mapped_column(ForeignKey("access_grants.id"))
     redeemed_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
-
-
-class AdminSettings(Base):
-    """Singleton row of admin-configurable defaults.
-
-    Exactly one row exists, with a fixed id, created lazily on first read --
-    there's no per-tenant need for more than one, and a fixed id avoids a
-    lookup-or-create race turning into duplicate rows the way an
-    auto-incrementing key would.
-    """
-
-    __tablename__ = "admin_settings"
-
-    id: Mapped[int] = mapped_column(primary_key=True, default=1)
-    default_duration_days: Mapped[int] = mapped_column(Integer, default=30)
-    default_redemption_limit: Mapped[int] = mapped_column(Integer, default=1)
-    updated_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
-    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
 
 
 class Team(Base):
@@ -375,3 +364,64 @@ class ModelMetric(Base):
     league: Mapped[str] = mapped_column(String(64))
     metric_name: Mapped[str] = mapped_column(String(32))
     metric_value: Mapped[float] = mapped_column(Float)
+
+
+class AppSetting(Base):
+    """A superadmin-editable override for one configuration value.
+
+    Configuration lives in the environment, which is right for anything that
+    must be set before the process starts -- the database URL, the secret key.
+    It is wrong for anything an operator wants to change while running, because
+    every change becomes a redeploy. Turning on email that way is a five-minute
+    round trip to discover you typed the SMTP host wrong.
+
+    So: environment is the default, a row here is an override, and the store in
+    app/app_settings.py resolves the two. Values are stored as text and coerced
+    on read against a declared type, so a hand-edited row can't smuggle a
+    string into a float.
+    """
+
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, onupdate=dt.datetime.utcnow)
+    updated_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+
+
+class MatchOdds(Base):
+    """Bookmaker prices for one match, as they stood when captured.
+
+    Stored rather than fetched on demand for two reasons. Odds move, so a
+    comparison against today's price tells you nothing about a call made last
+    Tuesday -- the honest test is model-versus-price-at-the-time. And the API
+    budget is a hundred requests a day, which does not survive re-fetching on
+    every page view.
+
+    ``decimal_odds`` is kept raw, exactly as the bookmaker published it. The
+    margin is removed at read time by app/odds.py rather than on the way in:
+    storing a derived number means storing a decision, and a better way to
+    strip the overround later could not be applied to history.
+    """
+
+    __tablename__ = "match_odds"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    match_id: Mapped[int] = mapped_column(ForeignKey("matches.id"), index=True)
+    captured_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
+
+    bookmaker: Mapped[str] = mapped_column(String(64))
+    market: Mapped[str] = mapped_column(String(64))
+    selection: Mapped[str] = mapped_column(String(32))
+    decimal_odds: Mapped[float] = mapped_column(Float)
+
+    # Which provider fixture this came from, so a re-fetch can be matched to
+    # what is already stored instead of duplicating it.
+    source_fixture_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "match_id", "bookmaker", "market", "selection", "captured_at",
+            name="uq_match_odds_snapshot",
+        ),
+    )

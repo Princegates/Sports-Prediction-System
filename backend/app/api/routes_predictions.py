@@ -4,12 +4,19 @@ import datetime as dt
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import get_db
-from app.api.schemas import PredictionOut
+from app.api.schemas import (
+    LeagueOutcomesOut,
+    MarketOut,
+    OutcomeOut,
+    OutcomesOut,
+    PredictionOut,
+)
 from app.api.serializers import prediction_to_schema
 from app.db.models import Match, Prediction
+from app.outcomes.registry import outcomes_from_prediction
 from app.prediction_models.ml_model import FeatureCachePool
 from app.prediction_service import build_prediction_for_match
 from app.quality import is_high_confidence
@@ -99,3 +106,125 @@ def predictions_most_likely(
     predictions = _build_all(db, matches)
     predictions.sort(key=lambda p: p.global_outcome_probability, reverse=True)
     return [prediction_to_schema(p) for p in predictions[:limit]]
+
+
+@router.get("/outcomes", response_model=OutcomesOut)
+def browse_outcomes(
+    market: str | None = Query(None, description="Exact market name, e.g. 'Match Result' or 'Total Goals 2.5'"),
+    league: str | None = None,
+    days_ahead: int = Query(7, ge=0, le=21),
+    min_probability: float = Query(0.0, ge=0.0, le=1.0),
+    confidence: str | None = Query(None, description="HIGH, MEDIUM or LOW"),
+    limit_per_league: int = Query(60, ge=1, le=500),
+    db: Session = Depends(get_db),
+) -> OutcomesOut:
+    """Every available betting outcome across upcoming matches, grouped by league.
+
+    The per-match endpoints answer "what about this match". This answers the
+    other question: "where is the best Over 2.5 this week", or "show me every
+    correct-score call in La Liga" -- which needs outcomes compared across
+    matches rather than within one.
+
+    Two deliberate choices:
+
+    **It reads, it does not generate.** Missing predictions are skipped rather
+    than built on demand. Building one is a model evaluation; doing that for
+    every fixture in a week because someone opened a page is how a browse
+    screen turns into an outage.
+
+    **Everything is loaded in three queries, whatever the result size.**
+    Matches with their teams, then predictions for those matches, then the
+    outcomes expand in memory. The obvious implementation -- a query per match
+    -- is what this codebase has already been bitten by.
+    """
+
+    now = dt.datetime.utcnow()
+    cutoff = now + dt.timedelta(days=days_ahead)
+
+    match_query = (
+        select(Match)
+        .where(Match.date >= now, Match.date < cutoff)
+        .options(selectinload(Match.home_team), selectinload(Match.away_team))
+        .order_by(Match.date.asc())
+    )
+    if league:
+        match_query = match_query.where(Match.league == league)
+    matches = list(db.execute(match_query).scalars())
+    if not matches:
+        return OutcomesOut(markets=[], leagues=[], total_outcomes=0, total_matches=0, days_ahead=days_ahead)
+
+    by_id = {m.id: m for m in matches}
+
+    # One query for every prediction, newest last so the dict keeps the latest.
+    predictions = db.execute(
+        select(Prediction)
+        .where(Prediction.match_id.in_(list(by_id)))
+        .order_by(Prediction.created_at.asc())
+    ).scalars()
+    latest: dict[int, Prediction] = {p.match_id: p for p in predictions}
+
+    wanted_confidence = confidence.upper() if confidence else None
+
+    per_league: dict[str, list[OutcomeOut]] = {}
+    matches_with_outcomes: dict[str, set[int]] = {}
+    market_selections: dict[str, set[str]] = {}
+    market_groups: dict[str, str] = {}
+
+    for match_id, prediction in latest.items():
+        match = by_id[match_id]
+        if wanted_confidence and prediction.confidence != wanted_confidence:
+            continue
+
+        for outcome in outcomes_from_prediction(prediction):
+            if market and outcome.market != market:
+                continue
+            if outcome.probability < min_probability:
+                continue
+
+            market_selections.setdefault(outcome.market, set()).add(outcome.selection)
+            market_groups[outcome.market] = outcome.mutually_exclusive_group
+
+            per_league.setdefault(match.league, []).append(
+                OutcomeOut(
+                    match_id=match.id,
+                    league=match.league,
+                    home_team=match.home_team.name,
+                    away_team=match.away_team.name,
+                    kickoff=match.date,
+                    market=outcome.market,
+                    selection=outcome.selection,
+                    probability=outcome.probability,
+                    confidence=prediction.confidence,
+                    data_quality_score=prediction.data_quality_score,
+                    group=outcome.mutually_exclusive_group,
+                    definition=outcome.definition,
+                )
+            )
+            matches_with_outcomes.setdefault(match.league, set()).add(match.id)
+
+    leagues = []
+    for name in sorted(per_league):
+        rows = sorted(per_league[name], key=lambda o: (-o.probability, o.kickoff))[:limit_per_league]
+        leagues.append(LeagueOutcomesOut(league=name, matches=len(matches_with_outcomes[name]), outcomes=rows))
+
+    # A group appearing on more than one market name -- "Total Goals 2.5" and
+    # "Total Goals 3.5" are different markets -- is still mutually exclusive
+    # within each. Correct Score is the one group whose members are many.
+    markets = [
+        MarketOut(
+            market=name,
+            group=market_groups[name],
+            selections=sorted(market_selections[name]),
+            outcomes=sum(1 for rows in per_league.values() for o in rows if o.market == name),
+            mutually_exclusive=market_groups[name] != "correct_score",
+        )
+        for name in sorted(market_selections)
+    ]
+
+    return OutcomesOut(
+        markets=markets,
+        leagues=leagues,
+        total_outcomes=sum(len(lg.outcomes) for lg in leagues),
+        total_matches=sum(lg.matches for lg in leagues),
+        days_ahead=days_ahead,
+    )

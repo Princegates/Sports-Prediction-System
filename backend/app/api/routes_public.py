@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
 from app.api.schemas import (
+    BrandingOut,
     ConfidenceBandRecordOut,
     LeagueAccuracyOut,
     PublicAccuracyOut,
@@ -28,6 +29,7 @@ from app.api.schemas import (
     PublicStatsOut,
     TrackRecordOut,
 )
+from app import app_settings
 from app.assistant import retrieval
 from app.db.models import Match, Prediction, User
 
@@ -131,6 +133,27 @@ def public_track_record(db: Session = Depends(get_db)) -> TrackRecordOut:
             for b in record.by_confidence
         ],
         since=record.earliest_graded_at,
+    )
+
+
+@router.get("/branding", response_model=BrandingOut)
+def public_branding(db: Session = Depends(get_db)) -> BrandingOut:
+    """Site name and default look, readable before anyone logs in.
+
+    Public because the landing page needs it: a visitor with no account still
+    has to see the right name and the right theme, and waiting for an
+    authenticated call would mean a flash of the wrong one.
+
+    Nothing here is sensitive -- it is what every visitor sees anyway.
+    """
+
+    values = app_settings.all_values(db)
+    return BrandingOut(
+        site_name=str(values["site_name"]),
+        site_tagline=str(values["site_tagline"]),
+        default_theme=str(values["default_theme"]),
+        default_accent=str(values["default_accent"]),
+        registration_open=bool(values["registration_open"]),
     )
 
 

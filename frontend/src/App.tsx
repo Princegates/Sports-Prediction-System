@@ -8,6 +8,7 @@ import { Dashboard } from "./pages/Dashboard";
 import { HowItWorks } from "./pages/HowItWorks";
 import { Live } from "./pages/Live";
 import { Login } from "./pages/Login";
+import { Markets } from "./pages/Markets";
 import { MatchDetail } from "./pages/MatchDetail";
 import { Predictions } from "./pages/Predictions";
 import { Profile } from "./pages/Profile";
@@ -53,13 +54,14 @@ export default function App() {
             <Route index element={<Dashboard />} />
             <Route path="match/:id" element={<MatchDetail />} />
             <Route path="predictions" element={<Predictions />} />
+            <Route path="markets" element={<Markets />} />
             <Route path="live" element={<Live />} />
             <Route path="teams/:id" element={<TeamPage />} />
           </Route>
 
           <Route element={<RequireSuperadmin />}>
             <Route path="admin" element={<AdminUsers />} />
-            <Route path="settings" element={<Settings />} />
+            <Route path="admin/settings" element={<Settings />} />
           </Route>
         </Route>
       </Route>

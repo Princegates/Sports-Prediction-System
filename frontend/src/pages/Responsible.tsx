@@ -11,29 +11,39 @@ import { PublicShell } from "../components/PublicShell";
  */
 
 const HELPLINES = [
+  // Ghana first, because that is where this platform's members are. The
+  // ordering is not politeness -- a helpline you cannot dial is worse than no
+  // helpline, and every toll-free number below is only free from its own
+  // country. A US 1-800 line does not connect from Accra at all.
   {
-    region: "United Kingdom",
-    name: "BeGambleAware",
-    detail: "0808 8020 133 — free, confidential, 24/7",
-    href: "https://www.begambleaware.org",
+    region: "Ghana",
+    name: "Mental Health Authority",
+    detail: "0800 678 678 — toll-free from Ghana, 24/7 psychosocial support",
+    href: "https://www.moh.gov.gh/mental-health-authority/",
   },
   {
-    region: "United States",
-    name: "National Problem Gambling Helpline",
-    detail: "1-800-522-4700 — call or text, 24/7",
-    href: "https://www.ncpgambling.org/help-treatment/",
+    region: "Ghana",
+    name: "Gaming Commission of Ghana",
+    detail: "The regulator. Handles self-exclusion requests and complaints against operators.",
+    href: "https://www.gamingcommission.gov.gh",
   },
   {
-    region: "International",
+    region: "Online, anywhere",
+    name: "Gambling Therapy",
+    detail: "Free one-to-one and group support by text — no phone call, no cost",
+    href: "https://www.gamblingtherapy.org",
+  },
+  {
+    region: "Online, anywhere",
     name: "Gamblers Anonymous",
-    detail: "Local meeting finder, in person and online",
+    detail: "Peer meetings, including online ones you can join from Ghana",
     href: "https://www.gamblersanonymous.org",
   },
   {
-    region: "Australia",
-    name: "Gambling Help Online",
-    detail: "1800 858 858 — free, 24/7",
-    href: "https://www.gamblinghelponline.org.au",
+    region: "United Kingdom",
+    name: "BeGambleAware",
+    detail: "0808 8020 133 — free within the UK. The site's advice is worth reading from anywhere.",
+    href: "https://www.begambleaware.org",
   },
 ];
 

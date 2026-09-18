@@ -64,6 +64,35 @@ class Settings(BaseSettings):
     assistant_llm_api_key: str = ""
     assistant_llm_timeout: float = 20.0
 
+    # Optional outbound email, for handing an access code to the person who
+    # paid for it. Everything works without these -- the admin just copies the
+    # code out of the UI and sends it themselves. See app/mailer.py.
+    #
+    # Port 465 means implicit TLS; 587 means STARTTLS. smtp_user/password are
+    # only needed if the provider authenticates, which almost all do.
+    # API-Football (api-sports.io). Optional -- openfootball covers the five
+    # domestic leagues for free; this is spent on what it cannot do. Settable
+    # here or in the admin panel, which overrides this.
+    api_football_key: str = ""
+    api_football_host: str = "v3.football.api-sports.io"
+    # Pro allows 7,500/day and 300/minute; Free is 100 and 10. Defaults match
+    # Pro, and both are settable in the admin panel -- a plan change is a
+    # setting, not a redeploy.
+    api_football_daily_budget: int = 7500
+    api_football_per_minute: int = 300
+
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    smtp_use_tls: bool = True
+    smtp_timeout: float = 15.0
+
+    # Put in the email so the recipient knows where to redeem. Not used for
+    # anything else.
+    public_site_url: str = ""
+
     @property
     def normalized_database_url(self) -> str:
         """``database_url`` in a form SQLAlchemy 2 actually accepts.

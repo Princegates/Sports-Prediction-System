@@ -14,7 +14,7 @@ from app.features.team_stats import compute_team_form, matches_played_before
 from app.model_store import load_calibrators, load_ensemble_weights, load_ml_model
 from app.outcomes.engine import select_global_most_likely
 from app.outcomes.registry import build_outcome_registry
-from app.prediction_models import elo
+from app.prediction_models import elo, league_strength
 from app.prediction_models.ensemble import generate_prediction
 from app.prediction_models.ml_model import LeagueFeatureCache
 from app.quality import confidence_label, data_quality_score
@@ -23,11 +23,18 @@ MODEL_VERSION = "ensemble-v1"
 
 
 def build_prediction_for_match(
-    db: Session, match: Match, feature_cache: "LeagueFeatureCache | None" = None
+    db: Session,
+    match: Match,
+    feature_cache: "LeagueFeatureCache | None" = None,
+    strength: "league_strength.LeagueStrength | None" = None,
 ) -> Prediction:
     """Pass ``feature_cache`` when building predictions for several matches
     in one league -- see ``FeatureCachePool``. Omitted, each call reloads
-    that league's history."""
+    that league's history.
+
+    ``strength`` is the cross-league calibration, consulted only for European
+    competitions. Pass it when predicting several matches; omitted, it is
+    loaded per match."""
 
     settings = get_settings()
     as_of = match.date
@@ -46,6 +53,7 @@ def build_prediction_for_match(
         calibrators=calibrators,
         weights=weights,
         feature_cache=feature_cache,
+        strength=strength,
     )
 
     matches_home = matches_played_before(db, match.home_team_id, as_of, match.league)
@@ -70,7 +78,20 @@ def build_prediction_for_match(
     away_form = compute_team_form(db, match.away_team_id, as_of, match.league)
     home_elo = elo.get_rating_before(db, match.home_team_id, as_of, settings.elo_start_rating)
     away_elo = elo.get_rating_before(db, match.away_team_id, as_of, settings.elo_start_rating)
-    elo_diff = (home_elo + settings.home_advantage_elo) - away_elo
+
+    # The same calibration the ensemble used, or the explanation would justify
+    # a probability with ratings that did not produce it.
+    calibrated = league_strength.calibrate(
+        db,
+        strength if strength is not None else league_strength.LeagueStrength.load(db),
+        competition=match.league,
+        home_team_id=match.home_team_id,
+        away_team_id=match.away_team_id,
+        home_elo=home_elo,
+        away_elo=away_elo,
+        default_home_advantage=settings.home_advantage_elo,
+    )
+    elo_diff = (calibrated.home + calibrated.home_advantage) - calibrated.away
 
     explanation = generate_explanation(
         match.home_team.name,
@@ -78,8 +99,10 @@ def build_prediction_for_match(
         home_form,
         away_form,
         elo_diff,
-        settings.home_advantage_elo,
+        calibrated.home_advantage,
     )
+    if calibrated.applied:
+        explanation = f"{explanation} Ratings are calibrated across leagues: {calibrated.note}."
 
     prediction = Prediction(
         match_id=match.id,

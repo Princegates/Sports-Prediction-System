@@ -113,6 +113,23 @@ EXPLICIT_ALIASES: dict[str, str] = {
     # Italy
     "inter": "internazionale",
     "verona": "hellas verona",
+    # Exonyms. API-Football uses the English name for several European clubs
+    # while the domestic feeds use the local one, and no amount of token
+    # matching gets from "Munich" to "Munchen" -- they are different words for
+    # the same city, not different spellings.
+    "bayern munich": "bayern munchen",
+    "borussia monchengladbach": "borussia monchengladbach",
+    "cologne": "fc koln",
+    "fc cologne": "fc koln",
+    "eintracht frankfurt": "eintracht frankfurt",
+    "inter milan": "internazionale",
+    "ac milan": "milan",
+    "sporting cp": "sporting lisbon",
+    "fc porto": "porto",
+    "sl benfica": "benfica",
+    "psv eindhoven": "psv",
+    "red bull salzburg": "salzburg",
+    "olympiakos piraeus": "olympiakos",
     # France
     "paris sg": "paris saint germain",
     "st etienne": "saint etienne",
@@ -132,18 +149,26 @@ def canonical_alias(name: str) -> str:
     return EXPLICIT_ALIASES.get(key, name)
 
 
-def name_similarity(a: str, b: str) -> float:
-    """0..1 similarity between two spellings of a club name.
+def name_match_score(a: str, b: str) -> tuple[float, float]:
+    """How much of each name the other accounts for, shorter name first.
 
-    1.0 means every token of the less specific name is accounted for in the
-    other, which is what a correct abbreviation looks like. Callers should
-    require a high score -- these names are short, so a partial match is
-    usually a different club rather than a sloppy spelling of the same one.
+    Two numbers rather than one, because the first cannot tell two clubs
+    apart on its own. "Real Madrid CF" reduces to the single token "madrid"
+    -- "Real" and "CF" are both stripped as club-name furniture -- so
+    "Atletico Madrid" accounts for all of it and scores a perfect 1.0
+    against the wrong club. It scores 1.0 against the right one too, and a
+    caller with one number has no way to prefer it.
+
+    The second number is the share of the *longer* name that was matched,
+    and it separates them: 1.0 for Atletico Madrid, 0.5 for Real Madrid,
+    whose "atletico" is left over. It is a tie-break, not a threshold --
+    "Leeds" leaves "united" over in "Leeds United" and is still Leeds -- so
+    it ranks candidates rather than rejecting them.
     """
 
     ta, tb = _tokens(canonical_alias(a)), _tokens(canonical_alias(b))
     if not ta or not tb:
-        return 0.0
+        return 0.0, 0.0
 
     shorter, longer = (ta, tb) if len(ta) <= len(tb) else (tb, ta)
     remaining = list(longer)
@@ -155,4 +180,18 @@ def name_similarity(a: str, b: str) -> float:
                 remaining.pop(i)
                 break
 
-    return matched / len(shorter)
+    return matched / len(shorter), matched / len(longer)
+
+
+def name_similarity(a: str, b: str) -> float:
+    """0..1 similarity between two spellings of a club name.
+
+    1.0 means every token of the less specific name is accounted for in the
+    other, which is what a correct abbreviation looks like. Callers should
+    require a high score -- these names are short, so a partial match is
+    usually a different club rather than a sloppy spelling of the same one --
+    and should rank equal scores with ``name_match_score``, since this number
+    alone cannot distinguish two clubs that share their only surviving token.
+    """
+
+    return name_match_score(a, b)[0]

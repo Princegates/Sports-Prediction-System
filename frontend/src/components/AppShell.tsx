@@ -36,6 +36,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { to: "/app", label: "Dashboard", icon: "◆" },
   { to: "/app/predictions", label: "Predictions", icon: "▤" },
+  { to: "/app/markets", label: "Markets", icon: "◈" },
   { to: "/app/live", label: "Live", icon: "●" },
 ];
 
@@ -136,7 +137,7 @@ export function AppShell() {
           ...NAV_ITEMS,
           { to: "/app/profile", label: "Profile", icon: "◍" },
           { to: "/app/admin", label: "Admin", icon: "⚙" },
-          { to: "/app/settings", label: "Settings", icon: "⚒" },
+          { to: "/app/admin/settings", label: "Settings", icon: "⚒" },
         ]
       : [
           ...NAV_ITEMS,

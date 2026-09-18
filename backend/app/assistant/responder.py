@@ -614,10 +614,15 @@ def _responsible_use(q: ParsedQuery) -> Answer:
             "expenses. Never increase a stake to recover a loss; that's the single most reliable way "
             "people turn a bad week into a serious problem. And if the honest answer to \"can I stop?\" "
             "is no, that's worth taking seriously on its own terms.\n\n"
-            "Free, confidential help exists and works: **BeGambleAware** (begambleaware.org), "
-            "**Gamblers Anonymous** (gamblersanonymous.org), or the **National Problem Gambling Helpline** "
-            "on 1-800-522-4700 in the US. Outside those, searching for your country's gambling helpline "
-            "will find a local equivalent.\n\n"
+            # Ghana's own number, because this platform's members are in Ghana and a
+            # US 1-800 line -- which this used to give -- cannot be dialled from here.
+            # Someone reaching for help would have got a dead line.
+            "Free, confidential help exists and works. In Ghana, the **Mental Health Authority** "
+            "runs a toll-free line on **0800 678 678**, any hour, from any network. The "
+            "**Gaming Commission of Ghana** (gamingcommission.gov.gh) handles self-exclusion if you "
+            "want to be blocked from betting sites. Online and free from anywhere: **Gambling Therapy** "
+            "(gamblingtherapy.org) for one-to-one support by text, and **Gamblers Anonymous** "
+            "(gamblersanonymous.org) for peer meetings.\n\n"
             "I'm happy to keep talking about what the model thinks and why -- I just won't dress a "
             "probability up as a certainty."
         ),

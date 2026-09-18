@@ -254,11 +254,25 @@ class AccountStatusOut(BaseModel):
 
 
 class AccessCodeCreateIn(BaseModel):
+    """A code is issued to one registered account and redeemable once.
+
+    ``redemption_limit`` is deliberately absent: it is fixed at 1 rather than
+    chosen. The model here is that someone registers, finds they have no
+    access, pays, and is issued a code of their own -- so a shareable code is
+    not a feature but a way to give away access by accident. The column and
+    its enforcement remain in the database, so multi-use codes are a UI
+    change away if that ever changes.
+    """
+
     duration_days: int
-    redemption_limit: int = 1
     code_expires_in_days: int | None = None
-    assigned_user_email: str | None = None
+    assigned_user_email: str
     notes: str | None = None
+
+    # Email the code to assigned_user_email. Ignored when no address is given
+    # -- there would be nowhere to send it -- and a delivery failure never
+    # prevents the code being created; see AccessCodeCreatedOut.
+    send_email: bool = False
 
 
 class AccessCodeOut(BaseModel):
@@ -270,6 +284,7 @@ class AccessCodeOut(BaseModel):
     redemption_limit: int
     redemption_count: int
     assigned_user_id: int | None = None
+    assigned_email: str | None = None
     created_by_user_id: int
     created_at: dt.datetime
     revoked_at: dt.datetime | None = None
@@ -279,7 +294,16 @@ class AccessCodeOut(BaseModel):
 
 class AccessCodeCreatedOut(AccessCodeOut):
     """Identical shape to ``AccessCodeOut``, but ``code`` here is the real
-    value rather than masked -- the one and only response where it is."""
+    value rather than masked -- the one and only response where it is.
+
+    ``emailed`` and ``email_error`` report delivery separately from creation,
+    because the two succeed and fail independently. A code that was created
+    but not delivered is still a perfectly good code; the admin just has to
+    send it by hand, and needs to be told so rather than assuming it went.
+    """
+
+    emailed: bool = False
+    email_error: str | None = None
 
 
 class AccessGrantOut(BaseModel):
@@ -315,17 +339,6 @@ class ExtendGrantIn(BaseModel):
     additional_days: int
 
 
-class AdminSettingsOut(BaseModel):
-    default_duration_days: int
-    default_redemption_limit: int
-    updated_at: dt.datetime
-
-
-class AdminSettingsIn(BaseModel):
-    default_duration_days: int
-    default_redemption_limit: int
-
-
 class LiveEventIn(BaseModel):
     minute: int
     score_home: int
@@ -346,3 +359,126 @@ class LivePredictionOut(BaseModel):
     btts_yes: float
     global_outcome: GlobalOutcomeOut
     trigger_event: str
+
+
+# --- Superadmin settings ---------------------------------------------------
+
+
+class SettingSpecOut(BaseModel):
+    """Describes one setting so the panel can render it without hardcoding a
+    form. The registry in app/app_settings.py is the source; this is its wire
+    shape."""
+
+    key: str
+    kind: str
+    group: str
+    label: str
+    help: str = ""
+    secret: bool = False
+    choices: list[str] = []
+    minimum: float | None = None
+    maximum: float | None = None
+
+
+class SettingsOut(BaseModel):
+    values: dict[str, object]
+    # Secrets are never in `values`. This says whether one exists, which is
+    # all the panel needs to show "set" vs "not set".
+    secrets_set: dict[str, bool] = {}
+    # Keys with a database override, i.e. not just the environment default.
+    overridden: list[str] = []
+    groups: dict[str, str] = {}
+    specs: list[SettingSpecOut] = []
+
+
+class SettingsUpdateIn(BaseModel):
+    values: dict[str, object] | None = None
+    # Keys to clear, falling back to the environment. Distinct from setting
+    # them to "" -- that overrides with an empty value.
+    reset: list[str] | None = None
+
+
+class TestEmailIn(BaseModel):
+    to: str | None = None
+
+
+class TestEmailOut(BaseModel):
+    sent: bool
+    detail: str
+
+
+class SystemStatusOut(BaseModel):
+    database_reachable: bool
+    matches: int
+    predictions: int
+    upcoming_fixtures: int
+    leagues: list[str]
+    users: int
+    active_grants: int
+    unredeemed_codes: int
+    latest_match_date: dt.datetime | None = None
+    latest_prediction_at: dt.datetime | None = None
+    model_files: list[str] = []
+    calibrator_files: int = 0
+    models_built_at: dt.datetime | None = None
+    email_configured: bool = False
+    settings_overridden: int = 0
+
+
+class BrandingOut(BaseModel):
+    """Public site identity and default look, needed before anyone logs in."""
+
+    site_name: str
+    site_tagline: str
+    default_theme: str
+    default_accent: str
+    registration_open: bool
+
+
+# --- Outcome browser -------------------------------------------------------
+
+
+class OutcomeOut(BaseModel):
+    match_id: int
+    league: str
+    home_team: str
+    away_team: str
+    kickoff: dt.datetime
+    market: str
+    selection: str
+    probability: float
+    confidence: str
+    data_quality_score: float
+    # Selections sharing a group are mutually exclusive and sum to ~1. Ones
+    # that don't can all happen in the same match, so stacking them is not a
+    # sure thing however good each looks alone.
+    group: str
+    definition: str
+
+
+class MarketOut(BaseModel):
+    market: str
+    group: str
+    selections: list[str]
+    outcomes: int
+    mutually_exclusive: bool
+
+
+class LeagueOutcomesOut(BaseModel):
+    league: str
+    matches: int
+    outcomes: list[OutcomeOut]
+
+
+class OutcomesOut(BaseModel):
+    """Every available betting outcome in one window, grouped by league.
+
+    ``markets`` is derived from what is actually present rather than a fixed
+    list, so the picker can never offer a market with nothing behind it.
+    """
+
+    markets: list[MarketOut]
+    leagues: list[LeagueOutcomesOut]
+    total_outcomes: int
+    total_matches: int
+    days_ahead: int

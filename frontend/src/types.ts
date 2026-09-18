@@ -210,11 +210,15 @@ export interface AccessCode {
   redemption_limit: number;
   redemption_count: number;
   assigned_user_id: number | null;
+  assigned_email: string | null;
   created_by_user_id: number;
   created_at: string;
   revoked_at: string | null;
   revoked_reason: string | null;
   notes: string | null;
+  /** Only on the create response: whether the code was emailed, and why not. */
+  emailed?: boolean;
+  email_error?: string | null;
 }
 
 export interface AccessGrant {
@@ -232,12 +236,6 @@ export interface AccessStatus {
   status: "active" | "expired" | "none";
   activated_at: string | null;
   expires_at: string | null;
-}
-
-export interface AdminSettings {
-  default_duration_days: number;
-  default_redemption_limit: number;
-  updated_at: string;
 }
 
 // --- Admin ---------------------------------------------------------------
@@ -262,4 +260,99 @@ export interface AuditLogEntry {
   target_user_id: number | null;
   detail: Record<string, unknown> | null;
   created_at: string;
+}
+
+// --- Super Admin settings --------------------------------------------------
+
+export interface SettingSpec {
+  key: string;
+  kind: "str" | "int" | "float" | "bool" | "choice";
+  group: string;
+  label: string;
+  help: string;
+  secret: boolean;
+  choices: string[];
+  minimum: number | null;
+  maximum: number | null;
+}
+
+export interface SettingsPayload {
+  values: Record<string, string | number | boolean>;
+  /** Secrets are never in `values` -- this only says whether one exists. */
+  secrets_set: Record<string, boolean>;
+  /** Keys with a saved override, as opposed to the deployment default. */
+  overridden: string[];
+  groups: Record<string, string>;
+  specs: SettingSpec[];
+}
+
+export interface TestEmailResult {
+  sent: boolean;
+  detail: string;
+}
+
+export interface SystemStatus {
+  database_reachable: boolean;
+  matches: number;
+  predictions: number;
+  upcoming_fixtures: number;
+  leagues: string[];
+  users: number;
+  active_grants: number;
+  unredeemed_codes: number;
+  latest_match_date: string | null;
+  latest_prediction_at: string | null;
+  model_files: string[];
+  calibrator_files: number;
+  models_built_at: string | null;
+  email_configured: boolean;
+  settings_overridden: number;
+}
+
+export interface Branding {
+  site_name: string;
+  site_tagline: string;
+  default_theme: string;
+  default_accent: string;
+  registration_open: boolean;
+}
+
+// --- Outcome browser -------------------------------------------------------
+
+export interface BettingOutcome {
+  match_id: number;
+  league: string;
+  home_team: string;
+  away_team: string;
+  kickoff: string;
+  market: string;
+  selection: string;
+  probability: number;
+  confidence: "HIGH" | "MEDIUM" | "LOW";
+  data_quality_score: number;
+  /** Selections sharing a group are mutually exclusive and sum to ~1. */
+  group: string;
+  definition: string;
+}
+
+export interface MarketSummary {
+  market: string;
+  group: string;
+  selections: string[];
+  outcomes: number;
+  mutually_exclusive: boolean;
+}
+
+export interface LeagueOutcomes {
+  league: string;
+  matches: number;
+  outcomes: BettingOutcome[];
+}
+
+export interface OutcomesResponse {
+  markets: MarketSummary[];
+  leagues: LeagueOutcomes[];
+  total_outcomes: number;
+  total_matches: number;
+  days_ahead: number;
 }

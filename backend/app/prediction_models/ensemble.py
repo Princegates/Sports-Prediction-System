@@ -13,8 +13,9 @@ import numpy as np
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.prediction_models import elo, poisson_model
+from app.prediction_models import elo, league_strength, poisson_model
 from app.prediction_models.calibration import MarketCalibrator
+from app.prediction_models.league_strength import LeagueStrength
 from app.prediction_models.ml_model import LeagueFeatureCache, MLModel, build_feature_row
 
 MAX_STD_FOR_THREE_PROBS = 0.471  # std of [1, 0, 0] -- theoretical max disagreement
@@ -108,8 +109,26 @@ class EnsembleWeights:
     ml: float
 
     @classmethod
-    def from_settings(cls) -> "EnsembleWeights":
+    def from_settings(cls, db: Session | None = None) -> "EnsembleWeights":
+        """The fallback blend, used for a league with no fitted weights yet.
+
+        Reads the superadmin override when a session is available, otherwise
+        the environment. Note this is only ever a fallback: once a league has
+        been backtested, ``model_store.load_ensemble_weights`` returns weights
+        fitted against its own validation data, and those win. Editing these
+        by hand moves the starting point, not the trained result.
+        """
+
         settings = get_settings()
+        if db is not None:
+            from app import app_settings
+
+            values = app_settings.all_values(db)
+            return cls(
+                elo=float(values["ensemble_weight_elo"]),
+                poisson=float(values["ensemble_weight_poisson"]),
+                ml=float(values["ensemble_weight_ml"]),
+            )
         return cls(elo=settings.ensemble_weight_elo, poisson=settings.ensemble_weight_poisson, ml=settings.ensemble_weight_ml)
 
 
@@ -191,10 +210,15 @@ def generate_prediction(
     calibrators: dict[str, MarketCalibrator] | None = None,
     weights: "EnsembleWeights | None" = None,
     feature_cache: LeagueFeatureCache | None = None,
+    strength: "LeagueStrength | None" = None,
 ) -> EnsembleResult:
     """``feature_cache`` is an optimization for callers predicting many
     matches in one league: without it every call reloads that league's whole
-    history to build one feature row."""
+    history to build one feature row.
+
+    ``strength`` calibrates ratings across leagues and is only consulted for
+    European competitions, where the two clubs come from different ones.
+    Passing it saves a lookup per match; leaving it out loads it per call."""
 
     settings = get_settings()
     calibrators = calibrators or {}
@@ -203,7 +227,25 @@ def generate_prediction(
     # --- Model 1: Elo ---------------------------------------------------
     home_elo = elo.get_rating_before(db, home_team_id, as_of, settings.elo_start_rating)
     away_elo = elo.get_rating_before(db, away_team_id, as_of, settings.elo_start_rating)
-    elo_diff = (home_elo + settings.home_advantage_elo) - away_elo
+
+    # Ratings are built per league and Elo is zero-sum, so every league
+    # averages the same number whatever its real strength. Comparing two of
+    # them directly is only valid once they are on a common scale.
+    if league in elo.EUROPEAN_COMPETITIONS:
+        strength = strength if strength is not None else league_strength.LeagueStrength.load(db)
+        calibrated = league_strength.calibrate(
+            db, strength,
+            competition=league,
+            home_team_id=home_team_id, away_team_id=away_team_id,
+            home_elo=home_elo, away_elo=away_elo,
+            default_home_advantage=settings.home_advantage_elo,
+        )
+        home_elo, away_elo = calibrated.home, calibrated.away
+        home_advantage = calibrated.home_advantage
+    else:
+        home_advantage = settings.home_advantage_elo
+
+    elo_diff = (home_elo + home_advantage) - away_elo
     elo_1x2 = elo.elo_diff_to_1x2(elo_diff)
     elo_probs = {"H": elo_1x2.home_win, "D": elo_1x2.draw, "A": elo_1x2.away_win}
 

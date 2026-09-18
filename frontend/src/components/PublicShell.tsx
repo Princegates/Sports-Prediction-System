@@ -182,13 +182,15 @@ export function PublicShell({ children }: { children: ReactNode }) {
 
           <div className="public-footer-col">
             <h4>Get help</h4>
-            <a href="https://www.begambleaware.org" target="_blank" rel="noreferrer noopener">
-              BeGambleAware
+            {/* Ghana's own line, not a US 1-800 number -- that cannot be
+                dialled from here at all, so it read as help while being none. */}
+            <a href="https://www.gamblingtherapy.org" target="_blank" rel="noreferrer noopener">
+              Gambling Therapy
             </a>
             <a href="https://www.gamblersanonymous.org" target="_blank" rel="noreferrer noopener">
               Gamblers Anonymous
             </a>
-            <span className="public-footer-note">Helpline (US): 1-800-522-4700</span>
+            <span className="public-footer-note">Mental Health Authority: 0800 678 678 (toll-free in Ghana)</span>
           </div>
         </div>
 

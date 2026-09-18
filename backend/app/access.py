@@ -100,6 +100,7 @@ def create_access_code(
     redemption_limit: int = 1,
     code_expires_in_days: int | None = None,
     assigned_user_id: int | None = None,
+    assigned_email: str | None = None,
     notes: str | None = None,
 ) -> AccessCode:
     if duration_days <= 0:
@@ -127,6 +128,7 @@ def create_access_code(
         redemption_limit=redemption_limit,
         code_expires_at=code_expires_at,
         assigned_user_id=assigned_user_id,
+        assigned_email=(assigned_email.strip().lower() or None) if assigned_email else None,
         created_by_user_id=admin.id,
         notes=notes,
     )
@@ -143,6 +145,7 @@ def create_access_code(
                 "duration_days": duration_days,
                 "redemption_limit": redemption_limit,
                 "assigned_user_id": assigned_user_id,
+                "assigned_email": assigned_email,
             },
         )
     )

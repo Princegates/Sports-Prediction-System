@@ -1,10 +1,14 @@
 import type {
+  OutcomesResponse,
+  Branding,
+  SettingsPayload,
+  SystemStatus,
+  TestEmailResult,
   AccessCode,
   AccessGrant,
   AccessStatus,
   AccountStatus,
   AdminOverview,
-  AdminSettings,
   AdminUser,
   AuditLogEntry,
   ChatAnswer,
@@ -303,10 +307,12 @@ export function fetchAccessCodes(): Promise<AccessCode[]> {
 
 export function createAccessCode(payload: {
   duration_days: number;
-  redemption_limit?: number;
   code_expires_in_days?: number;
-  assigned_user_email?: string;
+  /** Must belong to an already-registered account -- the code is bound to it. */
+  assigned_user_email: string;
   notes?: string;
+  /** Email the code to that address. Delivery failure never loses the code. */
+  send_email?: boolean;
 }): Promise<AccessCode> {
   return post("/api/admin/access-codes", payload);
 }
@@ -321,14 +327,6 @@ export function extendUserAccess(userId: number, additionalDays: number): Promis
 
 export function revokeUserAccess(userId: number, reason?: string): Promise<AdminUser> {
   return post(`/api/admin/users/${userId}/access/revoke`, { reason });
-}
-
-export function fetchAdminSettings(): Promise<AdminSettings> {
-  return get("/api/admin/settings");
-}
-
-export function updateAdminSettings(payload: { default_duration_days: number; default_redemption_limit: number }): Promise<AdminSettings> {
-  return patch("/api/admin/settings", payload);
 }
 
 // --- Predictions / matches / teams --------------------------------------
@@ -413,3 +411,42 @@ export function postLiveEvent(
 }
 
 export type { TeamForm } from "./types";
+
+// --- Super Admin settings --------------------------------------------------
+
+export function fetchSettings(): Promise<SettingsPayload> {
+  return get("/api/admin/settings");
+}
+
+export function saveSettings(payload: {
+  values?: Record<string, string | number | boolean>;
+  reset?: string[];
+}): Promise<SettingsPayload> {
+  return patch("/api/admin/settings", payload);
+}
+
+export function sendTestEmail(to?: string): Promise<TestEmailResult> {
+  return post("/api/admin/settings/test-email", { to });
+}
+
+export function fetchSystemStatus(): Promise<SystemStatus> {
+  return get("/api/admin/system-status");
+}
+
+export function fetchBranding(): Promise<Branding> {
+  return get("/api/public/branding");
+}
+
+export function fetchOutcomes(params: {
+  market?: string;
+  league?: string;
+  days_ahead?: number;
+  min_probability?: number;
+  confidence?: string;
+}): Promise<OutcomesResponse> {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== "" && v !== null) query.set(k, String(v));
+  });
+  return get(`/api/predictions/outcomes?${query.toString()}`);
+}

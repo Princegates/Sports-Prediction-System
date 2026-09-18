@@ -1,0 +1,58 @@
+# Fits how the five domestic leagues compare, from European results.
+#
+# Elo is built one league at a time and is zero-sum, so every league averages
+# the same rating however strong it really is. A Champions League prediction
+# between clubs from two leagues therefore compares two numbers that were never
+# on the same scale. This measures the gap and, with save=yes, stores it.
+#
+# Spends no API requests -- it reads matches already imported.
+name: Fit league strength
+
+on:
+  workflow_dispatch:
+    inputs:
+      save:
+        description: "Store the calibration if it improves held-out predictions"
+        required: false
+        default: "no"
+        type: choice
+        options: ["no", "yes"]
+      force:
+        description: "Store even if it does not improve them (not recommended)"
+        required: false
+        default: "no"
+        type: choice
+        options: ["no", "yes"]
+      holdout_from:
+        description: "ISO date; matches from here on are held out. Blank = last 20%."
+        required: false
+        default: ""
+
+jobs:
+  fit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Fit
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          HOLDOUT_FROM: ${{ inputs.holdout_from }}
+        run: |
+          FLAGS=""
+          [ "${{ inputs.save }}" = "yes" ] && FLAGS="$FLAGS --save"
+          [ "${{ inputs.force }}" = "yes" ] && FLAGS="$FLAGS --force"
+          [ -n "$HOLDOUT_FROM" ] && FLAGS="$FLAGS --holdout-from $HOLDOUT_FROM"
+          python scripts/fit_league_strength.py $FLAGS

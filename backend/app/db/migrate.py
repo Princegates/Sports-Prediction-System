@@ -16,6 +16,8 @@ from sqlalchemy.engine import Engine
 # accepted by both SQLite and Postgres, which is all this needs to cover.
 _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     ("users", "theme", "VARCHAR(16)"),
+    # Lets a code be bound to someone who hasn't registered yet.
+    ("access_codes", "assigned_email", "VARCHAR(255)"),
     ("users", "accent_profile", "VARCHAR(32)"),
     # Match statistics, backfilled from football-data.co.uk. Nullable, so
     # adding them to a populated table is safe and instant -- existing rows
