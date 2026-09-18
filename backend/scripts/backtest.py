@@ -167,9 +167,9 @@ def evaluate_league(
     val_1x2_probs: dict[str, list[float]] = {"H": [], "D": [], "A": []}
     val_1x2_actual: dict[str, list[int]] = {"H": [], "D": [], "A": []}
     for breakdown, actual_result in zip(val_breakdowns, val_1x2_actual_labels):
-        # Already H/D/A-keyed, unlike the elo and poisson entries below.
-        ml_hda = breakdown.get("ml") or None
-        blended = blend_1x2(breakdown_to_hda(breakdown["elo"]), breakdown_to_hda(breakdown["poisson"]), ml_hda, fitted_weights)
+        # "ml" is already H/D/A-keyed (see the note in fit_ensemble_weights) --
+        # only elo/poisson need converting from their display keys.
+        blended = blend_1x2(breakdown_to_hda(breakdown["elo"]), breakdown_to_hda(breakdown["poisson"]), breakdown.get("ml"), fitted_weights)
         for label in RESULT_LABELS:
             val_1x2_probs[label].append(blended[label])
             val_1x2_actual[label].append(1 if label == actual_result else 0)

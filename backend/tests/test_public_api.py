@@ -273,3 +273,24 @@ def test_track_record_never_grades_a_prediction_for_an_unplayed_match(db_session
 
     body = client.get("/api/public/track-record").json()
     assert body["has_data"] is False
+
+
+def test_accuracy_never_reports_a_baseline_as_the_models_own(db_session, seeded):
+    """scripts/backtest.py stores baseline-* rows alongside the real model's
+    with the SAME computed_at timestamp. A tie-break on computed_at alone
+    could land on a baseline and quote its accuracy as if it were the
+    model's -- this pins that it never does, even when the baseline row is
+    inserted after the real one."""
+
+    now = dt.datetime.utcnow()
+    db_session.add_all([
+        ModelMetric(model_version="ensemble-v1", split="test", league="English Premier League", metric_name="accuracy", metric_value=0.459, computed_at=now),
+        ModelMetric(model_version="ensemble-v1", split="test", league="English Premier League", metric_name="n", metric_value=290, computed_at=now),
+        # Inserted after, same timestamp -- must not become "the newest".
+        ModelMetric(model_version="baseline-majority_class", split="test", league="English Premier League", metric_name="accuracy", metric_value=0.386, computed_at=now),
+    ])
+    db_session.commit()
+
+    body = client.get("/api/public/accuracy").json()
+    assert body["model_version"] == "ensemble-v1"
+    assert body["accuracy"] == pytest.approx(0.459)
