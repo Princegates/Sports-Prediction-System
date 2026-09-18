@@ -16,7 +16,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.config import get_settings
 from app.data.ingest import import_upcoming_fixtures
-from app.db.models import Base, Match
+from app.db.models import Match
+from app.db.migrate import init_db
 from app.db.session import SessionLocal, engine
 from app.prediction_service import build_prediction_for_match
 from sqlalchemy import select
@@ -28,7 +29,7 @@ def main() -> None:
     args = parser.parse_args()
 
     settings = get_settings()
-    Base.metadata.create_all(bind=engine)
+    init_db(engine)
     db = SessionLocal()
 
     try:

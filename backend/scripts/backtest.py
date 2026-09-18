@@ -23,7 +23,8 @@ import numpy as np
 from sklearn.metrics import accuracy_score, log_loss
 
 from app.data.providers.football_data_co_uk import LEAGUE_CODES
-from app.db.models import Base, Match, ModelMetric
+from app.db.models import Match, ModelMetric
+from app.db.migrate import init_db
 from app.db.session import SessionLocal, engine
 from app.model_store import calibrator_path, ml_model_path
 from app.prediction_models import elo
@@ -74,7 +75,7 @@ def main() -> None:
     args = parser.parse_args()
 
     league_name = args.league_name or LEAGUE_CODES[args.league]
-    Base.metadata.create_all(bind=engine)
+    init_db(engine)
     db = SessionLocal()
 
     try:

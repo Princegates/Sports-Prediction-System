@@ -11,19 +11,74 @@ from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 
 
-def ensure_schema(engine: Engine) -> None:
-    inspector = inspect(engine)
-    if "users" not in inspector.get_table_names():
-        return
+# Columns added to existing tables after they were first created, as
+# (table, column, type). ALTER TABLE ... ADD COLUMN with these types is
+# accepted by both SQLite and Postgres, which is all this needs to cover.
+_ADDED_COLUMNS: list[tuple[str, str, str]] = [
+    ("users", "theme", "VARCHAR(16)"),
+    ("users", "accent_profile", "VARCHAR(32)"),
+    # Match statistics, backfilled from football-data.co.uk. Nullable, so
+    # adding them to a populated table is safe and instant -- existing rows
+    # simply have no stats until the enrichment script runs.
+    ("matches", "referee", "VARCHAR(64)"),
+    ("matches", "home_shots", "INTEGER"),
+    ("matches", "away_shots", "INTEGER"),
+    ("matches", "home_shots_on_target", "INTEGER"),
+    ("matches", "away_shots_on_target", "INTEGER"),
+    ("matches", "home_corners", "INTEGER"),
+    ("matches", "away_corners", "INTEGER"),
+    ("matches", "home_fouls", "INTEGER"),
+    ("matches", "away_fouls", "INTEGER"),
+    ("matches", "home_yellows", "INTEGER"),
+    ("matches", "away_yellows", "INTEGER"),
+    ("matches", "home_reds", "INTEGER"),
+    ("matches", "away_reds", "INTEGER"),
+]
 
-    existing_columns = {col["name"] for col in inspector.get_columns("users")}
-    statements = []
-    if "theme" not in existing_columns:
-        statements.append("ALTER TABLE users ADD COLUMN theme VARCHAR(16)")
-    if "accent_profile" not in existing_columns:
-        statements.append("ALTER TABLE users ADD COLUMN accent_profile VARCHAR(32)")
+
+def ensure_schema(engine: Engine) -> None:
+    """Add columns that model definitions gained after a table already
+    existed on disk.
+
+    ``Base.metadata.create_all`` creates missing tables but never alters an
+    existing one, so a database created before a column was added needs this
+    to catch up. Every column here is nullable, which is what makes applying
+    it to a live, populated database safe.
+    """
+
+    inspector = inspect(engine)
+    table_names = set(inspector.get_table_names())
+
+    statements: list[str] = []
+    for table, column, column_type in _ADDED_COLUMNS:
+        if table not in table_names:
+            # A table that doesn't exist yet will be created complete by
+            # create_all -- nothing to patch.
+            continue
+        if column in {col["name"] for col in inspector.get_columns(table)}:
+            continue
+        statements.append(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}")
 
     if statements:
         with engine.begin() as conn:
             for statement in statements:
                 conn.execute(text(statement))
+
+
+def init_db(engine: Engine) -> None:
+    """Bring a database up to date: create missing tables, then add columns
+    that existing tables are missing.
+
+    The two halves must always run together, and keeping them separate meant
+    six scripts called ``create_all`` alone and would crash against any
+    database created before the newest column -- including, in one case, the
+    production database a nightly job runs against. One call is harder to
+    get half right.
+    """
+
+    # Imported here rather than at module scope: models imports this module's
+    # sibling, and a top-level import would be circular.
+    from app.db.models import Base
+
+    Base.metadata.create_all(bind=engine)
+    ensure_schema(engine)

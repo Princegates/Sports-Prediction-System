@@ -36,7 +36,29 @@ FEATURE_COLUMNS = [
     "home_rest_days",
     "away_rest_days",
     "form_diff",
+    # --- Shot-based features -------------------------------------------
+    # A scoreline is a small sample of a match; shot counts describe how it
+    # was actually played. A side that consistently out-shoots opponents
+    # while losing is usually about to stop losing, and goals alone cannot
+    # express that.
+    #
+    # Expressed as home-minus-away differences rather than four separate
+    # averages: the model only ever cares about the relative figure, and
+    # halving the feature count matters on ~1,300 training rows.
+    "shots_for_diff",
+    "shots_against_diff",
+    "sot_for_diff",
+    "sot_against_diff",
+    # Zero when neither side has any statistics yet, which lets the model
+    # learn to disregard the four features above rather than reading their
+    # zeroes as real values.
+    "stats_available",
 ]
+
+# Matches to average shot statistics over. Shorter than the form window --
+# shot rates are less noisy than results, so a shorter window tracks a
+# team's current level more closely.
+STATS_WINDOW = 8
 
 
 def build_feature_row(
@@ -52,14 +74,41 @@ def build_feature_row(
     home_form = compute_team_form(db, home_team_id, as_of, league)
     away_form = compute_team_form(db, away_team_id, as_of, league)
 
-    return _assemble_features(home_elo, away_elo, home_form, away_form, home_advantage)
+    # Shot rates need the league's history, which is two queries whether one
+    # row is wanted or a thousand. Callers building many rows should use
+    # LeagueFeatureCache directly and pay that cost once.
+    shot_stats = LeagueFeatureCache(db, league).shot_stats(home_team_id, away_team_id, as_of)
+
+    return _assemble_features(home_elo, away_elo, home_form, away_form, home_advantage, shot_stats)
 
 
-def _assemble_features(home_elo, away_elo, home_form, away_form, home_advantage: float) -> dict[str, float]:
+def _empty_shot_stats() -> dict[str, float]:
+    """Used when no statistics are available -- every match before the
+    enrichment script has run, and any league football-data.co.uk doesn't
+    cover. All zeros with the availability flag down."""
+
+    return {
+        "shots_for_diff": 0.0,
+        "shots_against_diff": 0.0,
+        "sot_for_diff": 0.0,
+        "sot_against_diff": 0.0,
+        "stats_available": 0.0,
+    }
+
+
+def _assemble_features(
+    home_elo,
+    away_elo,
+    home_form,
+    away_form,
+    home_advantage: float,
+    shot_stats: dict[str, float] | None = None,
+) -> dict[str, float]:
     """The feature dict itself, shared by the per-query and cached paths so a
     change to one can't silently skew the other."""
 
     return {
+        **(shot_stats or _empty_shot_stats()),
         "elo_diff": (home_elo + home_advantage) - away_elo,
         "home_ppg": home_form.points_per_game,
         "away_ppg": away_form.points_per_game,
@@ -141,6 +190,69 @@ class LeagueFeatureCache:
         recent.reverse()  # form_from_matches expects newest first
         return form_from_matches(recent, team_id, as_of)
 
+    def shot_rates(self, team_id: int, as_of: dt.datetime) -> tuple[float, float, float, float] | None:
+        """(shots for, shots against, on-target for, on-target against) per
+        match, averaged over this team's recent matches that carry statistics.
+
+        Only matches strictly before ``as_of`` are read, so this stays
+        leakage-free in the same way form does. Returns ``None`` when the
+        team has no statistics at all yet, which is the normal state until
+        the enrichment script has run.
+        """
+
+        matches = self._matches.get(team_id)
+        if not matches:
+            return None
+
+        cutoff = bisect_left(matches, as_of, key=lambda m: m.date)
+        sf = sa = stf = sta = 0.0
+        counted = 0
+
+        # Walk backwards from the cutoff, taking the most recent matches that
+        # actually have statistics -- older seasons may lack them entirely.
+        for m in reversed(matches[:cutoff]):
+            if m.home_shots is None or m.away_shots is None:
+                continue
+            is_home = m.home_team_id == team_id
+            sf += m.home_shots if is_home else m.away_shots
+            sa += m.away_shots if is_home else m.home_shots
+            # Shots on target are missing more often than total shots; fall
+            # back to zero rather than dropping the match entirely.
+            hst = m.home_shots_on_target or 0
+            ast = m.away_shots_on_target or 0
+            stf += hst if is_home else ast
+            sta += ast if is_home else hst
+            counted += 1
+            if counted >= STATS_WINDOW:
+                break
+
+        if counted == 0:
+            return None
+        return sf / counted, sa / counted, stf / counted, sta / counted
+
+    def shot_stats(self, home_team_id: int, away_team_id: int, as_of: dt.datetime) -> dict[str, float]:
+        """Shot features as home-minus-away differences.
+
+        Both sides must have statistics for the comparison to mean anything;
+        if either is missing, the flag goes down and the differences stay at
+        zero rather than comparing a real average against an assumed one.
+        """
+
+        home = self.shot_rates(home_team_id, as_of)
+        away = self.shot_rates(away_team_id, as_of)
+        if home is None or away is None:
+            return _empty_shot_stats()
+
+        h_for, h_against, h_sot_for, h_sot_against = home
+        a_for, a_against, a_sot_for, a_sot_against = away
+        return {
+            "shots_for_diff": h_for - a_for,
+            "shots_against_diff": h_against - a_against,
+            "sot_for_diff": h_sot_for - a_sot_for,
+            "sot_against_diff": h_sot_against - a_sot_against,
+            "stats_available": 1.0,
+        }
+
     def feature_row(
         self,
         home_team_id: int,
@@ -156,6 +268,7 @@ class LeagueFeatureCache:
             home_form,
             away_form,
             home_advantage,
+            self.shot_stats(home_team_id, away_team_id, as_of),
         )
 
 

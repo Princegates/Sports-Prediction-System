@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from dataclasses import dataclass, field
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -8,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.data.providers import football_data_co_uk as fdcu
 from app.data.providers import openfootball as ofb
 from app.data.providers import thesportsdb as sdb
-from app.data.team_matching import normalize_team_name
+from app.data.team_matching import name_similarity, normalize_team_name
 from app.db.models import Match, Team
 
 
@@ -230,3 +231,115 @@ def _season_label(date: dt.datetime) -> str:
     # European season convention: Aug-Jul, labeled by the starting year pair.
     start_year = date.year if date.month >= 7 else date.year - 1
     return f"{start_year % 100:02d}{(start_year + 1) % 100:02d}"
+
+
+# --- Enrichment: attaching match statistics to existing rows --------------
+
+# How far apart two sources may place the same fixture and still be the same
+# fixture. Providers disagree by a day because of kickoff times either side
+# of midnight UTC, or a postponement recorded at different moments.
+_DATE_TOLERANCE = dt.timedelta(days=1)
+
+# Both team names must match completely. Anything less lets "Man United"
+# match "Manchester City" -- see team_matching.EXPLICIT_ALIASES for why this
+# is strict rather than fuzzy. A missed match costs one row of statistics; a
+# wrong one silently teaches the model from another club's performance.
+_NAME_THRESHOLD = 1.0
+
+STAT_FIELDS = (
+    "referee",
+    "home_shots", "away_shots",
+    "home_shots_on_target", "away_shots_on_target",
+    "home_corners", "away_corners",
+    "home_fouls", "away_fouls",
+    "home_yellows", "away_yellows",
+    "home_reds", "away_reds",
+)
+
+
+@dataclass
+class EnrichmentReport:
+    """Outcome of a stats import.
+
+    ``unmatched`` carries the actual team names that failed to resolve, so an
+    unrecognised club shows up as something to add to EXPLICIT_ALIASES rather
+    than as a silently lower match rate.
+    """
+
+    league: str
+    season: str
+    csv_rows: int = 0
+    matched: int = 0
+    updated: int = 0
+    unmatched: list[str] = field(default_factory=list)
+
+    @property
+    def match_rate(self) -> float:
+        return self.matched / self.csv_rows if self.csv_rows else 0.0
+
+
+def enrich_match_stats(db: Session, league_code: str, season: str) -> EnrichmentReport:
+    """Attach shots, cards and referee to matches already in the database.
+
+    The two sources are imported separately -- openfootball for fixtures and
+    scores, football-data.co.uk for what happened during the match -- so this
+    reconciles them by date and team name rather than inserting anything. No
+    match is created here; a CSV row with no counterpart is reported and
+    skipped.
+    """
+
+    league_name = fdcu.LEAGUE_CODES.get(league_code, league_code)
+    raw_matches = fdcu.fetch_season(league_code, season)
+    report = EnrichmentReport(league=league_name, season=season, csv_rows=len(raw_matches))
+    if not raw_matches:
+        return report
+
+    # Candidate matches are indexed by date so each CSV row only compares
+    # against the handful of fixtures played around that day.
+    dates = [rm.date for rm in raw_matches]
+    window_start, window_end = min(dates) - _DATE_TOLERANCE, max(dates) + _DATE_TOLERANCE
+    candidates = list(
+        db.execute(
+            select(Match).where(
+                Match.league == league_name,
+                Match.date >= window_start,
+                Match.date <= window_end + dt.timedelta(days=1),
+            )
+        ).scalars()
+    )
+
+    by_day: dict[dt.date, list[Match]] = {}
+    for m in candidates:
+        by_day.setdefault(m.date.date(), []).append(m)
+
+    for rm in raw_matches:
+        nearby: list[Match] = []
+        for offset in (0, -1, 1):
+            nearby.extend(by_day.get((rm.date + dt.timedelta(days=offset)).date(), []))
+
+        best: Match | None = None
+        for candidate in nearby:
+            home_score = name_similarity(rm.home_team, candidate.home_team.name)
+            if home_score < _NAME_THRESHOLD:
+                continue
+            if name_similarity(rm.away_team, candidate.away_team.name) < _NAME_THRESHOLD:
+                continue
+            best = candidate
+            break
+
+        if best is None:
+            report.unmatched.append(f"{rm.home_team} vs {rm.away_team} ({rm.date.date()})")
+            continue
+
+        report.matched += 1
+        changed = False
+        for field_name in STAT_FIELDS:
+            value = getattr(rm, field_name, None)
+            if value is not None and getattr(best, field_name) != value:
+                setattr(best, field_name, value)
+                changed = True
+        if changed:
+            report.updated += 1
+
+    db.commit()
+    return report

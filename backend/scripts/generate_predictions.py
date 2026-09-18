@@ -19,7 +19,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from sqlalchemy import select
 
-from app.db.models import Base, Match
+from app.db.models import Match
+from app.db.migrate import init_db
 from app.db.session import SessionLocal, engine
 from app.prediction_service import build_prediction_for_match
 
@@ -30,7 +31,7 @@ def main() -> None:
     parser.add_argument("--days-ahead", type=int, default=14)
     args = parser.parse_args()
 
-    Base.metadata.create_all(bind=engine)
+    init_db(engine)
     db = SessionLocal()
     try:
         now = dt.datetime.utcnow()

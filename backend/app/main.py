@@ -12,14 +12,12 @@ from app.api.routes_predictions import router as predictions_router
 from app.api.routes_public import router as public_router
 from app.api.routes_teams import router as teams_router
 from app.config import get_settings
-from app.db.migrate import ensure_schema
-from app.db.models import Base
+from app.db.migrate import init_db
 from app.db.session import engine
 
 logger = logging.getLogger(__name__)
 
-Base.metadata.create_all(bind=engine)
-ensure_schema(engine)
+init_db(engine)
 
 settings = get_settings()
 

@@ -78,9 +78,8 @@ def main() -> None:
     # Import the app late so a missing dependency surfaces as a clear error
     # here rather than a traceback from inside a subprocess.
     from app.config import get_settings
-    from app.db.migrate import ensure_schema
-    from app.db.models import Base
-    from app.db.session import engine
+    from app.db.migrate import init_db
+        from app.db.session import engine
 
     settings = get_settings()
     shown = settings.normalized_database_url.split("@")[-1]  # never print credentials
@@ -94,8 +93,7 @@ def main() -> None:
         )
 
     print("\n>> Creating schema")
-    Base.metadata.create_all(bind=engine)
-    ensure_schema(engine)
+    init_db(engine)
     print("-- schema ready")
 
     if not args.skip_data:

@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.data.ingest import import_historical_season
 from app.data.providers.football_data_co_uk import LEAGUE_CODES
-from app.db.models import Base
+from app.db.migrate import init_db
 from app.db.session import SessionLocal, engine
 
 
@@ -25,7 +25,7 @@ def main() -> None:
     parser.add_argument("--seasons", nargs="+", required=True, help="e.g. 2223 2324 2425")
     args = parser.parse_args()
 
-    Base.metadata.create_all(bind=engine)
+    init_db(engine)
 
     db = SessionLocal()
     try:

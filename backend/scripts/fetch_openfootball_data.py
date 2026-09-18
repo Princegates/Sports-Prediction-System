@@ -20,7 +20,7 @@ import requests
 
 from app.data.ingest import import_openfootball_season
 from app.data.providers.openfootball import LEAGUE_FILE_CODES
-from app.db.models import Base
+from app.db.migrate import init_db
 from app.db.session import SessionLocal, engine
 
 
@@ -30,7 +30,7 @@ def main() -> None:
     parser.add_argument("--seasons", nargs="+", required=True, help='openfootball season folders, e.g. 2024-25 2025-26 2026-27')
     args = parser.parse_args()
 
-    Base.metadata.create_all(bind=engine)
+    init_db(engine)
     db = SessionLocal()
     try:
         for season in args.seasons:

@@ -149,6 +149,35 @@ class Match(Base):
     status: Mapped[str] = mapped_column(String(16), default="SCHEDULED")
     source: Mapped[str] = mapped_column(String(32), default="football-data.co.uk")
 
+    # --- In-match statistics -------------------------------------------
+    # Nullable throughout: openfootball supplies fixtures and scores but no
+    # match stats, so most rows start without these and are enriched later
+    # from football-data.co.uk. Every consumer must treat absence as normal
+    # rather than as an error.
+    #
+    # These matter because a scoreline is a small, noisy sample of a match.
+    # Shot counts describe how it was actually played, and predict future
+    # results better than past goals do -- a side that consistently
+    # out-shoots opponents while losing is usually about to stop losing.
+    referee: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+
+    home_shots: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    away_shots: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    home_shots_on_target: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    away_shots_on_target: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    home_corners: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    away_corners: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    home_fouls: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    away_fouls: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    home_yellows: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    away_yellows: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    home_reds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    away_reds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    @property
+    def has_match_stats(self) -> bool:
+        return self.home_shots is not None
+
     home_team: Mapped[Team] = relationship(foreign_keys=[home_team_id])
     away_team: Mapped[Team] = relationship(foreign_keys=[away_team_id])
 
