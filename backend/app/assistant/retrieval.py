@@ -234,12 +234,21 @@ def live_matches(db: Session, limit: int = 8) -> list[MatchCard]:
 def accuracy_snapshot(db: Session) -> AccuracySnapshot:
     """The most recent backtest run's metrics, grouped by split.
 
-    "Most recent" is resolved by ``computed_at`` of the newest row and then
-    filtered to that model version, so a stale run from an older version
-    can't leak into the numbers quoted to a user.
+    "Most recent" is resolved by ``computed_at`` of the newest *model* row
+    (excluding the ``baseline-*`` rows scripts/backtest.py stores alongside
+    it for comparison) and then filtered to that model version, so a stale
+    run from an older version can't leak into the numbers quoted to a user.
+    Every baseline row shares the real model's computed_at exactly, so
+    without excluding them here, a tie could land on "baseline-majority_class"
+    and quote a naive baseline's accuracy as if it were the model's.
     """
 
-    newest = db.execute(select(ModelMetric).order_by(ModelMetric.computed_at.desc()).limit(1)).scalars().first()
+    newest = db.execute(
+        select(ModelMetric)
+        .where(~ModelMetric.model_version.like("baseline-%"))
+        .order_by(ModelMetric.computed_at.desc())
+        .limit(1)
+    ).scalars().first()
     if newest is None:
         return AccuracySnapshot()
 
