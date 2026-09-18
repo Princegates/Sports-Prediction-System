@@ -68,3 +68,18 @@ jobs:
           [ "${{ inputs.dry_run }}" = "yes" ] && FLAGS="$FLAGS --dry-run"
 
           eval "python scripts/import_api_football.py --max-requests $MAX_REQUESTS $FLAGS --leagues $LEAGUES"
+
+      # Every import checks its own work. Attaching a tie to the wrong club is
+      # invisible in the data -- the fixture looks entirely normal -- so it has
+      # to be looked for deliberately, and the moment to look is now.
+      - name: Audit what was written
+        if: always()
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          LEAGUES: ${{ inputs.leagues }}
+        run: |
+          eval "set -- $LEAGUES"
+          for league in "$@"; do
+            python scripts/audit_european_fixtures.py --league "$league"
+          done

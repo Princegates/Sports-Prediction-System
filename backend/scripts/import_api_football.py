@@ -33,7 +33,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app import app_settings
-from app.data.api_football_ingest import import_fixtures, import_odds
+from app.data.api_football_ingest import UnresolvedClub, import_fixtures, import_odds
 from app.data.providers.api_football import (
     LEAGUE_IDS,
     ApiFootballClient,
@@ -49,6 +49,58 @@ DEFAULT_LEAGUES = ["UEFA Champions League"]
 def current_season(today: dt.date | None = None) -> int:
     today = today or dt.date.today()
     return today.year if today.month >= 7 else today.year - 1
+
+
+# Above this, a rejected candidate is close enough that the two names are
+# probably the same club spelled differently. Below it, the club plays in a
+# league this project does not hold and no alias will ever help.
+LIKELY_SPELLING = 0.60
+
+
+def report_unresolved(clubs: dict[str, UnresolvedClub], fixtures: int) -> None:
+    """Print the skipped clubs, separating the two reasons for skipping.
+
+    The count alone is useless -- 186 skipped fixtures in a Champions League
+    season is either completely normal (qualifying rounds full of clubs from
+    leagues this project does not hold) or a spelling bug hiding half the
+    league phase, and the number is identical either way. So the nearest
+    stored club and its score are printed, and the plausible spellings are
+    listed first and never truncated: those are the only ones a human can act
+    on.
+    """
+
+    ranked = sorted(clubs.values(), key=lambda c: (-c.score, -c.fixtures, c.name))
+    spellings = [c for c in ranked if c.score >= LIKELY_SPELLING]
+    absent = [c for c in ranked if c.score < LIKELY_SPELLING]
+
+    def line(club: UnresolvedClub) -> str:
+        nearest = f"closest: {club.nearest} ({club.score:.2f})" if club.nearest else "no clubs stored"
+        plural = "fixture" if club.fixtures == 1 else "fixtures"
+        return f"    {club.name:<34} {club.fixtures:>3} {plural:<8}  {nearest}"
+
+    print(f"\n{fixtures} fixture(s) skipped: {len(clubs)} club(s) could not be matched.")
+
+    if spellings:
+        print(f"\n  Close to a club already stored -- probably the same club, spelled")
+        print(f"  differently, and worth an alias:")
+        for club in spellings:
+            print(line(club))
+        print("\n  Add the provider's spelling to EXPLICIT_ALIASES in")
+        print("  app/data/team_matching.py and re-run.")
+
+    if absent:
+        print(f"\n  Nothing close in the database -- these play in leagues this project")
+        print(f"  does not hold, so skipping them is correct:")
+        for club in absent[:10]:
+            print(line(club))
+        if len(absent) > 10:
+            print(f"    ... and {len(absent) - 10} more")
+
+    if not spellings:
+        print("\n  No plausible spelling matches, so nothing here needs an alias.")
+
+    print("\nSkipping is deliberate: a tie attached to the wrong club would corrupt")
+    print("that club's Elo history while looking perfectly normal.")
 
 
 def main() -> None:
@@ -144,7 +196,8 @@ def main() -> None:
               f"{int(values.get('api_football_per_minute') or 300)}/minute (from settings)")
 
         total_inserted = total_updated = 0
-        unresolved: list[str] = []
+        unresolved: dict[str, UnresolvedClub] = {}
+        skipped_fixtures = 0
         failed: list[str] = []
         stopped_early = False
 
@@ -165,7 +218,13 @@ def main() -> None:
 
             total_inserted += report.inserted
             total_updated += report.updated
-            unresolved.extend(report.skipped_unresolved)
+            skipped_fixtures += len(report.skipped_unresolved)
+            for name, club in report.unresolved_clubs.items():
+                seen = unresolved.get(name)
+                if seen is None:
+                    unresolved[name] = club
+                else:
+                    seen.fixtures += club.fixtures
             print(f"  fixtures: {report.considered} seen, {report.inserted} new, {report.updated} updated")
             if report.skipped_unresolved:
                 print(f"            {len(report.skipped_unresolved)} skipped (clubs not recognised)")
@@ -189,14 +248,7 @@ def main() -> None:
             print(f"The API reports {client.quota.remaining_reported} left today.")
 
         if unresolved:
-            print(f"\n{len(unresolved)} fixture(s) skipped because a club could not be matched:")
-            for line in unresolved[:15]:
-                print(f"  {line}")
-            if len(unresolved) > 15:
-                print(f"  ... and {len(unresolved) - 15} more")
-            print("\nAdd the club's provider spelling to EXPLICIT_ALIASES in")
-            print("app/data/team_matching.py and re-run -- skipping is deliberate, since")
-            print("attaching a tie to the wrong club would corrupt its Elo history.")
+            report_unresolved(unresolved, skipped_fixtures)
 
         if total_inserted:
             print("\nGenerate predictions for the new fixtures:")

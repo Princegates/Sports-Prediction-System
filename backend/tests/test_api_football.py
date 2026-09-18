@@ -313,3 +313,64 @@ def test_a_run_that_imported_something_succeeds(import_script, monkeypatch, db_s
 
     out = capsys.readouterr().out
     assert "4 fixtures added" in out
+
+
+# --- ambiguity ---------------------------------------------------------
+
+
+def _store(db, *names_and_leagues):
+    made = []
+    for name, league in names_and_leagues:
+        team = Team(name=name, league=league, aliases=[])
+        db.add(team)
+        made.append(team)
+    db.commit()
+    return made
+
+
+@pytest.mark.parametrize("order", ["real first", "atletico first"])
+def test_madrid_resolves_by_evidence_not_row_order(db_session, order):
+    """Both Madrid clubs score a perfect 1.00 for "Atletico Madrid".
+
+    "Real Madrid CF" reduces to the single token "madrid" once "Real" and
+    "CF" are stripped, and "Atletico Madrid" accounts for all of it. Ranking
+    on that number alone, the winner was whichever row the loop reached
+    first -- so Atletico's Champions League ties landed in Real Madrid's
+    history or not depending on primary-key order, silently.
+    """
+
+    rows = [("Real Madrid CF", "Spanish La Liga"), ("Atletico Madrid", "Spanish La Liga")]
+    if order == "atletico first":
+        rows.reverse()
+    _store(db_session, *rows)
+
+    resolved = TeamIndex(db_session).resolve("Atlético Madrid")
+    assert resolved is not None and resolved.name == "Atletico Madrid"
+
+
+def test_a_name_that_fits_two_clubs_equally_is_refused(db_session):
+    """"Sporting" alone is Gijón and Lisbon with equal force. Picking either
+    attaches a tie to a club that did not play it, which looks entirely
+    normal afterwards -- so nothing is picked."""
+
+    _store(
+        db_session,
+        ("Sporting Gijon", "Spanish La Liga"),
+        ("Sporting Lisbon", "Portuguese Primeira Liga"),
+    )
+
+    assert TeamIndex(db_session).resolve("Sporting") is None
+
+
+def test_both_unmatched_clubs_are_reported_not_just_the_home_side(db_session):
+    """A qualifying tie between two clubs from leagues we do not hold used to
+    report only one of them, so the other never appeared in the list a human
+    reads to decide whether an alias is missing."""
+
+    report = ImportReport()
+    index = TeamIndex(db_session)
+    for name in ("Tre Fiori", "Larne"):
+        candidate, score = index.nearest(name)
+        report.note_unresolved(name, candidate.name if candidate else None, score)
+
+    assert sorted(report.unresolved_clubs) == ["Larne", "Tre Fiori"]

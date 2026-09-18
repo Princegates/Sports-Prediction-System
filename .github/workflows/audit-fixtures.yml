@@ -1,0 +1,52 @@
+# Read-only, and spends no API requests.
+#
+# European fixtures are attached to domestic club rows by name, and a name can
+# fit two clubs. This checks what the importer actually wrote, using facts that
+# hold without knowing the real calendar: no club plays twice in a day, and a
+# league phase gives every club the same number of matches.
+name: Audit fixtures
+
+on:
+  workflow_dispatch:
+    inputs:
+      league:
+        description: "Competition to audit"
+        required: false
+        default: "UEFA Champions League"
+        type: choice
+        options:
+          - "UEFA Champions League"
+          - "UEFA Europa League"
+      list_all:
+        description: "Print every fixture, not only the problems"
+        required: false
+        default: "yes"
+        type: choice
+        options: ["yes", "no"]
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Audit
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          LEAGUE: ${{ inputs.league }}
+        run: |
+          FLAGS=""
+          [ "${{ inputs.list_all }}" = "yes" ] && FLAGS="--list"
+          python scripts/audit_european_fixtures.py --league "$LEAGUE" $FLAGS
