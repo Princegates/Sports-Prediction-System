@@ -25,6 +25,18 @@ from sqlalchemy.orm import Session
 from app.db.models import EloHistory, Match
 
 
+# Competitions whose clubs come from several domestic leagues. They are not
+# leagues and must never be replayed as one: every team would restart from
+# ``start_rating``, and because ``get_rating_before`` takes a team's most
+# recent snapshot regardless of competition, a European replay would overwrite
+# the domestic rating that took a decade of matches to earn.
+#
+# These matches have a different job. They are the only evidence this project
+# has about how the five domestic leagues compare, and that is what
+# ``league_strength`` fits them for.
+EUROPEAN_COMPETITIONS = frozenset({"UEFA Champions League", "UEFA Europa League"})
+
+
 # Davidson (1970) draw parameter. Tuned so that two perfectly matched teams
 # (elo_diff == 0) draw ~26% of the time, matching typical top-flight rates:
 # nu / (2 + nu) = 0.26  =>  nu ~= 0.70
@@ -64,6 +76,14 @@ def rebuild_elo_history(
 
     Returns the final rating dict {team_id: rating} for convenience.
     """
+
+    if league in EUROPEAN_COMPETITIONS:
+        raise ValueError(
+            f"{league} draws clubs from several domestic leagues, so replaying it as one "
+            "would restart every team at the base rating and overwrite the domestic "
+            "history that get_rating_before reads. Fit league offsets with "
+            "app.prediction_models.league_strength instead."
+        )
 
     db.execute(
         delete(EloHistory).where(
