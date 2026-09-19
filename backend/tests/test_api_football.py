@@ -470,6 +470,62 @@ def test_a_run_that_imported_something_succeeds(import_script, monkeypatch, db_s
     assert "4 fixtures added" in out
 
 
+def _run_with_odds(module, monkeypatch, db_session, *, days_ahead, odds):
+    monkeypatch.setattr(sys, "argv", [
+        "import_api_football.py", "--leagues", "UEFA Champions League",
+        "--odds", "--days-ahead", str(days_ahead),
+    ])
+    monkeypatch.setattr(module.app_settings, "all_values", lambda db: {"api_football_key": "test-key"})
+    monkeypatch.setattr(module, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(module, "init_db", lambda engine: None)
+    monkeypatch.setattr(db_session, "close", lambda: None)
+    monkeypatch.setattr(module, "import_fixtures", lambda db, client, *, league_id, season: ImportReport())
+    monkeypatch.setattr(module, "import_odds", odds)
+
+
+def test_odds_capture_asks_once_per_day_in_the_window(import_script, monkeypatch, db_session, capsys):
+    """The bug this replaces: a single unscoped league+season request, which
+    only ever reads page 1 of however a whole season's /odds response is
+    ordered -- not "the next few days", the only window a booking code ever
+    needs a price for."""
+
+    calls: list = []
+
+    def fake_odds(db, client, *, league_id, season, date):
+        calls.append(date)
+        return ImportReport(considered=1, inserted=1)
+
+    _run_with_odds(import_script, monkeypatch, db_session, days_ahead=3, odds=fake_odds)
+    import_script.main()
+
+    assert len(calls) == 3
+    assert calls == sorted(set(calls))  # three distinct, ascending dates
+    assert (calls[-1] - calls[0]).days == 2
+
+    out = capsys.readouterr().out
+    assert "3 price(s) stored across the next 3 day(s)" in out
+
+
+def test_odds_capture_stops_the_run_when_quota_runs_out_mid_window(import_script, monkeypatch, db_session, capsys):
+    calls: list = []
+
+    def fake_odds(db, client, *, league_id, season, date):
+        calls.append(date)
+        if len(calls) == 2:
+            raise QuotaExceeded("budget spent")
+        return ImportReport(considered=1, inserted=1)
+
+    _run_with_odds(import_script, monkeypatch, db_session, days_ahead=5, odds=fake_odds)
+
+    with pytest.raises(SystemExit) as exit_info:
+        import_script.main()
+
+    assert exit_info.value.code == 1
+    assert len(calls) == 2  # stopped mid-window, not all 5 days attempted
+    err = capsys.readouterr().err
+    assert "odds stopped after 1/5 day(s)" in err
+
+
 # --- ambiguity ---------------------------------------------------------
 
 

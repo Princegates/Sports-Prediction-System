@@ -130,11 +130,11 @@ def main() -> None:
         print(f"Known: {', '.join(sorted(LEAGUE_IDS))}", file=sys.stderr)
         raise SystemExit(2)
 
-    planned = len(args.leagues) * len(seasons) * (2 if args.odds else 1)
+    planned = len(args.leagues) * len(seasons) * (1 + (args.days_ahead if args.odds else 0))
     print("Plan")
     print(f"  leagues      : {', '.join(args.leagues)}")
     print(f"  seasons      : {', '.join(str(s) for s in seasons)}")
-    print(f"  odds         : {'yes' if args.odds else 'no'}")
+    print(f"  odds         : {'yes' if args.odds else 'no'}" + (f", next {args.days_ahead} day(s)" if args.odds else ""))
     print(f"  requests     : about {planned} (ceiling {args.max_requests})")
 
     if planned > args.max_requests:
@@ -237,15 +237,27 @@ def main() -> None:
                 print(f"            {len(report.skipped_unresolved)} skipped (clubs not recognised)")
 
             if args.odds:
+                # league+season alone, with no date, asks the /odds endpoint
+                # for however it orders an entire season and this only ever
+                # reads page 1 of that -- not paginated, and not "what's
+                # coming up". One request per date in the window instead:
+                # smaller, and every one of them a day someone could actually
+                # generate a booking code for.
+                today = dt.date.today()
+                odds_inserted = odds_days_done = 0
                 try:
-                    odds_report = import_odds(db, client, league_id=league_id, season=season)
-                    print(f"  odds    : {odds_report.inserted} prices stored")
+                    for offset in range(args.days_ahead):
+                        day = today + dt.timedelta(days=offset)
+                        odds_report = import_odds(db, client, league_id=league_id, season=season, date=day)
+                        odds_inserted += odds_report.inserted
+                        odds_days_done += 1
+                    print(f"  odds    : {odds_inserted} price(s) stored across the next {args.days_ahead} day(s)")
                 except QuotaExceeded as exc:
-                    print(f"  odds stopped: {exc}", file=sys.stderr)
+                    print(f"  odds stopped after {odds_days_done}/{args.days_ahead} day(s): {exc}", file=sys.stderr)
                     stopped_early = True
                     break
                 except ApiFootballError as exc:
-                    print(f"  odds failed: {exc}", file=sys.stderr)
+                    print(f"  odds failed after {odds_days_done}/{args.days_ahead} day(s): {exc}", file=sys.stderr)
                     failed.append(f"{label} (odds)")
 
         print(f"\n{'=' * 60}")
