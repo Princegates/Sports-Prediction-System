@@ -150,11 +150,11 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 default="233596909643"),
 
     # --- Appearance ------------------------------------------------------
-    SettingSpec("default_theme", "choice", "appearance", "Default theme",
-                "What visitors and new accounts see before choosing their own.",
+    SettingSpec("default_theme", "choice", "appearance", "Theme",
+                "Applies to every visitor and account -- there is no per-user override.",
                 choices=THEME_CHOICES, default="dark"),
-    SettingSpec("default_accent", "str", "appearance", "Default accent",
-                "One of the accent profiles offered in the app.", default="ocean"),
+    SettingSpec("default_accent", "str", "appearance", "Accent color",
+                "Applies to every visitor and account -- there is no per-user override.", default="ocean"),
     SettingSpec("site_name", "str", "appearance", "Site name",
                 "Shown in the browser tab.", default="Socca Intelligence"),
     SettingSpec("site_tagline", "str", "appearance", "Tagline", default="Football prediction AI"),

@@ -1,10 +1,8 @@
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { SearchCommand } from "./SearchCommand";
-import { AccentPicker } from "./AccentPicker";
 import { ChatDock } from "./ChatDock";
 import { useAuth } from "../lib/AuthContext";
-import { readStoredAccent, storeAccent } from "../lib/accentProfiles";
 
 const LEAGUES = [
   "English Premier League",
@@ -20,12 +18,20 @@ const LEAGUES = [
 ];
 
 interface LeagueContextValue {
+  // "" means "all leagues" -- every league-scoped page treats a falsy
+  // league as no filter (see fetchMatches/fetchMostLikely in api.ts), so
+  // this one sentinel works everywhere the topbar select is consumed.
   league: string;
   setLeague: (l: string) => void;
 }
 
 const LeagueContext = createContext<LeagueContextValue>({ league: LEAGUES[0], setLeague: () => {} });
 export const useLeague = () => useContext(LeagueContext);
+
+/** Display text for a `useLeague()` value, including the "all leagues" sentinel. */
+export function leagueLabel(league: string): string {
+  return league || "all leagues";
+}
 
 interface NavItem {
   to: string;
@@ -41,66 +47,6 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/app/betcodes", label: "AI Generation", icon: "▦" },
   { to: "/app/live", label: "Live", icon: "●" },
 ];
-
-type Theme = "dark" | "light";
-
-function readStoredTheme(): Theme {
-  try {
-    return (localStorage.getItem("theme") as Theme) || "dark";
-  } catch {
-    return "dark";
-  }
-}
-
-/** Every user has their own saved theme/accent -- once they actively change
- * it here, it's pushed to their account (not just this browser) via
- * onPersist, skipping the very first effect run so mounting doesn't
- * immediately re-save the value it just read. */
-function useTheme(onPersist?: (theme: Theme) => void) {
-  const [theme, setTheme] = useState<Theme>(readStoredTheme);
-  const firstRun = useRef(true);
-
-  useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-    try {
-      localStorage.setItem("theme", theme);
-    } catch {
-      // private-browsing / storage-disabled -- theme just won't persist
-    }
-    if (firstRun.current) {
-      firstRun.current = false;
-      return;
-    }
-    onPersist?.(theme);
-  }, [theme]);
-
-  return [theme, setTheme] as const;
-}
-
-function useAccent(onPersist?: (accent: string) => void) {
-  const [accent, setAccent] = useState<string>(readStoredAccent);
-  const firstRun = useRef(true);
-
-  useEffect(() => {
-    document.documentElement.setAttribute("data-accent", accent);
-    storeAccent(accent);
-    if (firstRun.current) {
-      firstRun.current = false;
-      return;
-    }
-    onPersist?.(accent);
-  }, [accent]);
-
-  return [accent, setAccent] as const;
-}
-
-function ThemeToggle({ theme, onToggle }: { theme: Theme; onToggle: () => void }) {
-  return (
-    <button className="btn ghost" onClick={onToggle} aria-label={theme === "dark" ? "Switch to day theme" : "Switch to night theme"} title={theme === "dark" ? "Day" : "Night"}>
-      {theme === "dark" ? "☀" : "☾"}
-    </button>
-  );
-}
 
 function UserMenu() {
   const { user, logout } = useAuth();
@@ -129,9 +75,7 @@ function UserMenu() {
 export function AppShell() {
   const [league, setLeague] = useState(LEAGUES[0]);
   const [searchOpen, setSearchOpen] = useState(false);
-  const { user, setPreferences, accessStatus } = useAuth();
-  const [theme, setTheme] = useTheme((t) => setPreferences({ theme: t }).catch(() => {}));
-  const [accent, setAccent] = useAccent((a) => setPreferences({ accent_profile: a }).catch(() => {}));
+  const { user, accessStatus } = useAuth();
   const needsAccess = user?.role !== "superadmin" && !accessStatus?.has_access;
   const navItems =
     user?.role === "superadmin"
@@ -204,14 +148,13 @@ export function AppShell() {
               <kbd>&#8984;K</kbd>
             </div>
             <select className="topbar-league" value={league} onChange={(e) => setLeague(e.target.value)} aria-label="Select league">
+              <option value="">All leagues</option>
               {LEAGUES.map((l) => (
                 <option key={l} value={l}>
                   {l}
                 </option>
               ))}
             </select>
-            <AccentPicker accent={accent} onChange={setAccent} />
-            <ThemeToggle theme={theme} onToggle={() => setTheme(theme === "dark" ? "light" : "dark")} />
           </header>
 
           <header className="mobile-topbar">
@@ -222,8 +165,6 @@ export function AppShell() {
               </span>
             </Link>
             <div style={{ display: "flex", gap: 8 }}>
-              <AccentPicker accent={accent} onChange={setAccent} />
-              <ThemeToggle theme={theme} onToggle={() => setTheme(theme === "dark" ? "light" : "dark")} />
               <button className="btn ghost" onClick={() => setSearchOpen(true)} aria-label="Search">
                 ⌕
               </button>

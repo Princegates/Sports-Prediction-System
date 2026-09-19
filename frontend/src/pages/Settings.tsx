@@ -16,7 +16,7 @@ const GROUP_NOTES: Record<string, string> = {
   email:
     "Leave the host blank to keep email off — access codes still work, you just send them yourself.",
   access: "Defaults for issuing codes, and whether new people can sign up at all.",
-  appearance: "What visitors see before they've chosen anything of their own.",
+  appearance: "Theme and accent color for the whole platform -- there's no per-user override.",
   notice: "A dismissible banner shown on the Dashboard to every signed-in account — for an outage, a new league going live, or anything else worth a heads-up.",
   picks: "Feature outcomes from a match's Markets tab to promote them on every Dashboard.",
   model:

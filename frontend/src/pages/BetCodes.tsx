@@ -3,7 +3,7 @@ import { previewBetCode } from "../api";
 import { CopyButton } from "../components/CopyButton";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
-import { LEAGUES } from "../components/AppShell";
+import { leagueLabel, useLeague } from "../components/AppShell";
 import type { BetCodeCriteria, BetCodeLeg, BetCodePreview } from "../types";
 
 /** Plain-text description of one generated combo, meant to be pasted
@@ -59,10 +59,10 @@ const ACCURACY_OPTIONS = [
 ];
 
 export function BetCodes() {
+  const { league } = useLeague();
   const [targetOdds, setTargetOdds] = useState(3.0);
   const [markets, setMarkets] = useState<string[]>([]);
   const [minProbability, setMinProbability] = useState(0.65);
-  const [league, setLeague] = useState("");
   const [daysAhead, setDaysAhead] = useState(7);
 
   const [preview, setPreview] = useState<BetCodePreview | null>(null);
@@ -105,7 +105,10 @@ export function BetCodes() {
     <div>
       <div className="section-header">
         <h2>AI Generation</h2>
-        <span className="meta">Combine matches toward a target price, priced from real bookmaker odds</span>
+        <span className="meta">
+          Combine matches toward a target price, priced from real bookmaker odds -- scoped to{" "}
+          <strong>{leagueLabel(league)}</strong> (change league in the top bar)
+        </span>
       </div>
 
       <p className="setting-note" style={{ marginBottom: 16 }}>
@@ -127,18 +130,6 @@ export function BetCodes() {
               value={targetOdds}
               onChange={(e) => setTargetOdds(Number(e.target.value))}
             />
-          </label>
-
-          <label>
-            League <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(optional)</span>
-            <select value={league} onChange={(e) => setLeague(e.target.value)}>
-              <option value="">Any league</option>
-              {LEAGUES.map((l) => (
-                <option key={l} value={l}>
-                  {l}
-                </option>
-              ))}
-            </select>
           </label>
 
           <label>

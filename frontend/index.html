@@ -21,6 +21,21 @@
     <meta name="twitter:card" content="summary" />
 
     <!--
+      Inter for body copy (a workhorse UI face built for small sizes and
+      tabular figures -- this project's tables lean on it) and Manrope for
+      headings (a geometric display face with enough contrast against Inter
+      to read as intentional, not just "the same font, bigger").
+      Preconnect first since the stylesheet itself blocks first paint until
+      it resolves.
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap"
+      rel="stylesheet"
+    />
+
+    <!--
       Inline SVG favicon. Declared rather than left to the browser's implicit
       /favicon.ico probe, which 404s on every page load otherwise. Inline so it
       costs no extra request and needs no binary asset in the repo.

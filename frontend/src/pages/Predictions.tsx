@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { fetchMatch, fetchMostLikely } from "../api";
-import { LEAGUES } from "../components/AppShell";
+import { LEAGUES, leagueLabel, useLeague } from "../components/AppShell";
 import { CopyButton } from "../components/CopyButton";
 import { DateStrip, localDayKey } from "../components/DateStrip";
 import { ConfidenceTag } from "../components/MostLikelyOutcome";
@@ -49,7 +49,7 @@ const TIERS: { min: number; max: number; label: string; note?: string }[] = [
 ];
 
 export function Predictions() {
-  const [league, setLeague] = useState<string>("ALL");
+  const { league } = useLeague();
   const [day, setDay] = useState<string | null>(null);
   const [confidence, setConfidence] = useState<ConfidenceFilter>("ALL");
   const [sortKey, setSortKey] = useState<SortKey>("kickoff");
@@ -64,7 +64,7 @@ export function Predictions() {
     setRows(null);
     setError(null);
 
-    const leaguesToFetch = league === "ALL" ? LEAGUES : [league];
+    const leaguesToFetch = league === "" ? LEAGUES : [league];
     Promise.all(leaguesToFetch.map((l) => fetchMostLikely(l, HORIZON_DAYS, 80).catch(() => [])))
       .then(async (perLeague) => {
         if (cancelled) return;
@@ -199,14 +199,6 @@ export function Predictions() {
       </div>
 
       <div className="filter-bar" style={{ marginBottom: 20 }}>
-        <select className="filter-select" value={league} onChange={(e) => setLeague(e.target.value)}>
-          <option value="ALL">All leagues</option>
-          {LEAGUES.map((l) => (
-            <option key={l} value={l}>
-              {l}
-            </option>
-          ))}
-        </select>
         {(["ALL", "HIGH", "MEDIUM", "LOW"] as ConfidenceFilter[]).map((c) => (
           <button key={c} className={`filter-chip${confidence === c ? " active" : ""}`} onClick={() => setConfidence(c)}>
             {c === "ALL" ? "Any confidence" : `${c.charAt(0)}${c.slice(1).toLowerCase()} confidence`}
@@ -226,7 +218,7 @@ export function Predictions() {
       {error && <ErrorState message={error} />}
       {!error && visible === null && <p className="badge-neutral">Loading predictions…</p>}
       {!error && visible !== null && visible.length === 0 && (
-        <EmptyState icon="◌" title="No predictions match these filters." />
+        <EmptyState icon="◌" title={`No predictions match these filters for ${leagueLabel(league)}.`} />
       )}
 
       {!error && visible !== null && visible.length > 0 && viewMode === "table" && (

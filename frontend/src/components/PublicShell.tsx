@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Link, NavLink } from "react-router-dom";
 import { useAuth } from "../lib/AuthContext";
 
@@ -6,23 +6,13 @@ import { useAuth } from "../lib/AuthContext";
  * Chrome for the public marketing pages.
  *
  * Separate from AppShell rather than a variant of it: AppShell assumes a
- * logged-in user (league selector, sidebar nav, per-account theme sync),
- * and threading "but not when anonymous" through all of that would make
- * both harder to read than two components are.
+ * logged-in user (league selector, sidebar nav), and threading "but not
+ * when anonymous" through all of that would make both harder to read than
+ * two components are.
  *
- * Theme is still respected here so a visitor who set light mode, signed out
- * and came back doesn't get flashed a dark page.
+ * Theme/accent are admin-controlled site-wide (applied in main.tsx before
+ * either shell mounts) -- there's no toggle here.
  */
-
-type Theme = "dark" | "light";
-
-function readStoredTheme(): Theme {
-  try {
-    return (localStorage.getItem("theme") as Theme) || "dark";
-  } catch {
-    return "dark";
-  }
-}
 
 const PUBLIC_NAV = [
   { to: "/", label: "Home" },
@@ -32,22 +22,7 @@ const PUBLIC_NAV = [
 
 export function PublicShell({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const [theme, setTheme] = useState<Theme>(readStoredTheme);
   const [menuOpen, setMenuOpen] = useState(false);
-  const firstRun = useRef(true);
-
-  useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-    if (firstRun.current) {
-      firstRun.current = false;
-      return;
-    }
-    try {
-      localStorage.setItem("theme", theme);
-    } catch {
-      // storage disabled -- the choice just won't persist
-    }
-  }, [theme]);
 
   return (
     <div className="public-shell">
@@ -74,14 +49,6 @@ export function PublicShell({ children }: { children: ReactNode }) {
         </nav>
 
         <div className="public-actions">
-          <button
-            className="btn ghost"
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            aria-label={theme === "dark" ? "Switch to day theme" : "Switch to night theme"}
-          >
-            {theme === "dark" ? "☀" : "☾"}
-          </button>
-
           {user ? (
             <Link className="btn" to="/app">
               Open dashboard

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { fetchLive, fetchMatches, fetchPrediction } from "../api";
-import { useLeague } from "../components/AppShell";
+import { leagueLabel, useLeague } from "../components/AppShell";
 import { CardGridSkeleton } from "../components/LoadingSkeleton";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
@@ -94,7 +94,7 @@ export function Live() {
 
       {upcoming === null && <p className="badge-neutral">Loading scheduled matches…</p>}
       {upcoming !== null && upcoming.length === 0 && (
-        <EmptyState icon="◌" title={`No scheduled matches for ${league} to simulate.`} />
+        <EmptyState icon="◌" title={`No scheduled matches for ${leagueLabel(league)} to simulate.`} />
       )}
       {upcoming !== null && upcoming.length > 0 && (
         <div className="card card-pad">

@@ -30,23 +30,3 @@ export const ACCENT_PROFILES: AccentProfile[] = [
   { id: "steel", label: "Steel", swatch: "#64748b" },
   { id: "ice", label: "Ice", swatch: "#38bdf8" },
 ];
-
-export const DEFAULT_ACCENT = ACCENT_PROFILES[0].id;
-const ACCENT_STORAGE_KEY = "accent_profile";
-
-export function readStoredAccent(): string {
-  try {
-    const stored = localStorage.getItem(ACCENT_STORAGE_KEY);
-    return stored && ACCENT_PROFILES.some((p) => p.id === stored) ? stored : DEFAULT_ACCENT;
-  } catch {
-    return DEFAULT_ACCENT;
-  }
-}
-
-export function storeAccent(id: string): void {
-  try {
-    localStorage.setItem(ACCENT_STORAGE_KEY, id);
-  } catch {
-    // private-browsing / storage-disabled -- selection just won't persist
-  }
-}

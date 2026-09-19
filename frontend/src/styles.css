@@ -57,7 +57,8 @@
   --space-7: 48px;
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px -16px rgba(0, 0, 0, 0.6);
   --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.4);
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto, Helvetica, Arial, sans-serif;
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-display: "Manrope", var(--font-sans);
   --topbar-h: 64px;
   --sidebar-w: 232px;
 }
@@ -163,6 +164,7 @@ button, input, select {
 
 h1, h2, h3, h4 {
   margin: 0;
+  font-family: var(--font-display);
   letter-spacing: -0.01em;
   font-weight: 700;
 }
@@ -235,6 +237,7 @@ h1, h2, h3, h4 {
 }
 
 .brand-text strong {
+  font-family: var(--font-display);
   font-size: 14px;
   font-weight: 700;
 }
@@ -2213,95 +2216,6 @@ table.admin-table {
 }
 
 
-
-/* ==========================================================================
-   COLOR PROFILE PICKER
-   ========================================================================== */
-.accent-picker {
-  position: relative;
-}
-
-.accent-picker-trigger {
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border-radius: var(--radius-pill);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.accent-swatch {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 0 2px var(--bg-surface-2), 0 0 0 3px var(--border);
-}
-
-.accent-picker-panel {
-  position: absolute;
-  top: calc(100% + 10px);
-  right: 0;
-  z-index: 60;
-  width: 260px;
-  padding: var(--space-3);
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-pop);
-}
-
-.accent-picker-panel h4 {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-muted);
-  margin: 0 0 10px;
-}
-
-.accent-grid {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 8px;
-}
-
-.accent-option {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: 2px solid transparent;
-  cursor: pointer;
-  padding: 0;
-  position: relative;
-  transition: transform 0.15s ease, border-color 0.15s ease;
-}
-
-.accent-option:hover {
-  transform: scale(1.12);
-}
-
-.accent-option.selected {
-  border-color: var(--text-primary);
-}
-
-.accent-option.selected::after {
-  content: "✓";
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  color: #fff;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-}
-
-@media (max-width: 860px) {
-  .accent-picker-panel {
-    right: -8px;
-  }
-}
 
 /* ==========================================================================
    MASCOT

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchFreePicks, fetchMatch, fetchMatches, fetchMostLikely, fetchPrediction } from "../api";
-import { useLeague } from "../components/AppShell";
+import { leagueLabel, useLeague } from "../components/AppShell";
 import { CardGridSkeleton } from "../components/LoadingSkeleton";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
@@ -205,7 +205,7 @@ export function Dashboard() {
           {!error && visibleRows !== null && visibleRows.length === 0 && (
             <EmptyState
               icon="◌"
-              title={`No ${highConfidenceOnly ? "high-confidence " : ""}matches found for ${league} in this range.`}
+              title={`No ${highConfidenceOnly ? "high-confidence " : ""}matches found for ${leagueLabel(league)} in this range.`}
               hint={
                 <>
                   Import more fixtures with <code>scripts/fetch_openfootball_data.py</code> or widen the date range.

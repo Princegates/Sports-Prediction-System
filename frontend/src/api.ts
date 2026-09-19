@@ -246,10 +246,6 @@ export function streamChatMessage(
   return () => controller.abort();
 }
 
-export function updatePreferences(payload: { theme?: string; accent_profile?: string }): Promise<User> {
-  return patch("/api/auth/preferences", payload);
-}
-
 export function updateProfile(name: string): Promise<User> {
   return patch("/api/auth/profile", { name });
 }
