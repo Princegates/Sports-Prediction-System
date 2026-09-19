@@ -33,6 +33,7 @@ LEAGUE_CODES: dict[str, str] = {
     "N1": "Dutch Eredivisie",
     "P1": "Portuguese Primeira Liga",
     "SC0": "Scottish Premiership",
+    "T1": "Turkish Süper Lig",
 }
 
 

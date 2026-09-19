@@ -40,6 +40,9 @@ LEAGUE_IDS: dict[str, int] = {
     "Italian Serie A": 135,
     "German Bundesliga": 78,
     "French Ligue 1": 61,
+    "Dutch Eredivisie": 88,
+    "Portuguese Primeira Liga": 94,
+    "Turkish Süper Lig": 203,
     "UEFA Champions League": 2,
     "UEFA Europa League": 3,
 }

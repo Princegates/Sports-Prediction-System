@@ -15,6 +15,7 @@ const LEAGUES = [
   "French Ligue 1",
   "Dutch Eredivisie",
   "Portuguese Primeira Liga",
+  "Turkish Süper Lig",
   "UEFA Champions League",
 ];
 
