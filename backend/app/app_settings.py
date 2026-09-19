@@ -81,6 +81,11 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 env_attr="smtp_from"),
     SettingSpec("smtp_use_tls", "bool", "email", "Use STARTTLS",
                 "Ignored on port 465, which is encrypted from the start.", env_attr="smtp_use_tls"),
+    SettingSpec("resend_api_key", "str", "email", "Resend API key",
+                "Sends over HTTPS instead of SMTP -- set this if your host blocks outbound SMTP "
+                "ports (common on free-tier platforms). Takes priority over the SMTP settings "
+                "above when set; the From address still comes from there.",
+                secret=True, env_attr="resend_api_key"),
     SettingSpec("public_site_url", "str", "email", "Public site URL",
                 "Included in the email so the recipient knows where to redeem.",
                 env_attr="public_site_url"),

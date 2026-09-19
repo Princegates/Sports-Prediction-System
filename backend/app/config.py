@@ -89,6 +89,15 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = True
     smtp_timeout: float = 15.0
 
+    # Alternative to raw SMTP: a Resend API key sends over HTTPS instead of
+    # an SMTP port. Some hosts (many free-tier PaaS platforms among them)
+    # block outbound SMTP entirely -- 25, 465 and 587 alike -- as a blanket
+    # anti-abuse measure, which no amount of host/port tweaking gets around.
+    # HTTPS to a known API is the one outbound path that's essentially never
+    # blocked, since the app's own traffic depends on it. Takes priority over
+    # SMTP when set; smtp_from still supplies the From address either way.
+    resend_api_key: str = ""
+
     # Put in the email so the recipient knows where to redeem. Not used for
     # anything else.
     public_site_url: str = ""

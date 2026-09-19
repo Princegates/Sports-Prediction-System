@@ -178,6 +178,81 @@ def test_email_settings_reach_the_mailer(db_session, admin):
     assert config.port == 465
 
 
+def test_resend_api_key_is_enough_to_be_configured_without_smtp_host(db_session, admin):
+    """A Resend key needs no SMTP host at all -- the whole point is sending
+    over HTTPS instead of an SMTP port."""
+
+    client.patch(
+        "/api/admin/settings",
+        json={"values": {"resend_api_key": "re_test_key", "smtp_from": "Bot <bot@example.com>"}},
+        headers=_headers(admin),
+    )
+
+    assert mailer.is_configured(db_session) is True
+    config = mailer.resolve_config(db_session)
+    assert config.resend_api_key == "re_test_key"
+    assert config.host == ""
+
+
+def test_send_email_prefers_resend_over_smtp_when_both_are_set(db_session, admin, monkeypatch):
+    client.patch(
+        "/api/admin/settings",
+        json={
+            "values": {
+                "resend_api_key": "re_test_key",
+                "smtp_host": "smtp.example.com",
+                "smtp_from": "Bot <bot@example.com>",
+            }
+        },
+        headers=_headers(admin),
+    )
+
+    calls: list[dict] = []
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        calls.append({"url": url, "headers": headers, "json": json})
+
+        class FakeResponse:
+            def raise_for_status(self):
+                pass
+
+        return FakeResponse()
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("SMTP path should not run when a Resend key is set")
+
+    monkeypatch.setattr(mailer.requests, "post", fake_post)
+    monkeypatch.setattr(mailer, "_connect", fail_if_called)
+
+    result = mailer.send_email("buyer@example.com", "Your access code", "CODE-HERE", db=db_session)
+
+    assert result.sent is True
+    assert len(calls) == 1
+    assert calls[0]["url"] == mailer.RESEND_API_URL
+    assert calls[0]["headers"]["Authorization"] == "Bearer re_test_key"
+    assert calls[0]["json"]["to"] == ["buyer@example.com"]
+    assert calls[0]["json"]["from"] == "Bot <bot@example.com>"
+
+
+def test_send_email_reports_a_resend_failure_without_raising(db_session, admin, monkeypatch):
+    client.patch(
+        "/api/admin/settings",
+        json={"values": {"resend_api_key": "re_bad_key", "smtp_from": "Bot <bot@example.com>"}},
+        headers=_headers(admin),
+    )
+
+    class FakeResponse:
+        def raise_for_status(self):
+            raise mailer.requests.HTTPError("401 Unauthorized")
+
+    monkeypatch.setattr(mailer.requests, "post", lambda *a, **k: FakeResponse())
+
+    result = mailer.send_email("buyer@example.com", "Your access code", "CODE-HERE", db=db_session)
+
+    assert result.sent is False
+    assert "401" in result.error
+
+
 def test_branding_is_public_and_follows_the_setting(db_session, admin):
     before = client.get("/api/public/branding")
     assert before.status_code == 200

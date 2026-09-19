@@ -267,6 +267,30 @@ Gmail's free sending limit is around 500 messages a day, which is far more
 than issuing access codes will ever need. Any other provider works the same
 way — only the host and port change.
 
+**If SMTP times out on every host and every port (25, 465, 587 alike), stop
+trying different providers — the outbound port itself is blocked, not the
+server you're pointing at.** This is a real, observed failure mode on some
+free-tier PaaS platforms (Render's free tier among them), which block
+outbound SMTP as a blanket anti-abuse measure regardless of destination. No
+combination of host/port fixes that, because the block isn't about the
+destination.
+
+The fix is **`RESEND_API_KEY`** (or the "Resend API key" field in the
+Settings panel), which sends over Resend's plain HTTPS API instead of an SMTP
+port. Port 443 is essentially never blocked, since the app's own traffic
+already depends on it working.
+
+| Variable | Example | Notes |
+|---|---|---|
+| `RESEND_API_KEY` | `re_...` | From resend.com → API Keys. Takes priority over SMTP when set. |
+
+Sign up at [resend.com](https://resend.com), verify your sending domain
+(Resend gives you 2-3 DNS records to add), create an API key, and set it
+here. `SMTP_FROM` still supplies the From address either way — no need to
+duplicate it. Everything else about email (the two behaviours below,
+`PUBLIC_SITE_URL`, the "send test email to myself" button) works identically
+regardless of which path is active.
+
 Two deliberate behaviours worth knowing:
 
 - **A failed send never loses the code.** Delivery is attempted after the code
