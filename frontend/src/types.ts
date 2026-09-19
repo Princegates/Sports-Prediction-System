@@ -15,6 +15,11 @@ export interface MatchSummary {
   away_team: Team;
   home_score: number | null;
   away_score: number | null;
+  /** Whether this match is genuinely, currently live -- unlike raw
+   * `status === "LIVE"`, this already accounts for a simulated event
+   * pushed from the match's own Live tab, or a real fixture stuck from a
+   * missed sync poll. Always prefer this over checking status directly. */
+  is_live: boolean;
 }
 
 export interface GlobalOutcome {

@@ -240,6 +240,13 @@ class Match(Base):
     status: Mapped[str] = mapped_column(String(16), default="SCHEDULED")
     source: Mapped[str] = mapped_column(String(32), default="football-data.co.uk")
 
+    # Set only by the real API-Football live-board sync, each time it
+    # confirms this fixture is still in play -- never by the Live tab's
+    # simulated-event sandbox. This is what lets "is this match genuinely
+    # live right now" be answered by recency rather than the status column
+    # alone: see live_engine.is_genuinely_live for why status can get stuck.
+    live_synced_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+
     # API-Football's own fixture id. Null for anything sourced from
     # openfootball/football-data.co.uk. This is what odds capture matches
     # against -- API-Football's /odds response carries no team names at

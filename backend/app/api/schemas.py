@@ -22,6 +22,11 @@ class MatchOut(BaseModel):
     away_team: TeamOut
     home_score: int | None
     away_score: int | None
+    # status alone can say "LIVE" for a simulated event pushed from this
+    # match's own Live tab, or a real fixture stuck from a missed sync poll
+    # -- this is the same recency check /api/matches?status=LIVE applies,
+    # so any page can trust it without re-deriving the staleness window.
+    is_live: bool
 
 
 class GlobalOutcomeOut(BaseModel):

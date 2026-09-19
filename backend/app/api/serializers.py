@@ -18,6 +18,7 @@ from app.api.schemas import (
     UserOut,
 )
 from app.db.models import AccessCode, AccessGrant, LivePrediction, Match, MatchView, Prediction, Team, User
+from app.live_engine import is_genuinely_live
 from app.outcomes.engine import secondary_outcomes
 from app.outcomes.registry import outcomes_from_prediction
 
@@ -98,6 +99,7 @@ def match_to_schema(match: Match) -> MatchOut:
         status=match.status,
         home_team=team_to_schema(match.home_team),
         away_team=team_to_schema(match.away_team),
+        is_live=is_genuinely_live(match),
         home_score=match.home_score,
         away_score=match.away_score,
     )

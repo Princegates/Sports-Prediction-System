@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import LivePrediction, Match, ModelMetric, Prediction, Team
 from app.features.team_stats import TeamForm, compute_team_form
+from app.live_engine import LIVE_STALE_AFTER
 
 
 @dataclass
@@ -225,8 +226,17 @@ def live_snapshots(db: Session, match_id: int, limit: int = 1) -> list[LivePredi
 
 
 def live_matches(db: Session, limit: int = 8) -> list[MatchCard]:
+    # A simulated event from a match's own Live tab sets status="LIVE" too
+    # (see live_engine.record_live_event) -- that's a local sandbox demo,
+    # not something Guda should tell every user is actually in play. Only a
+    # *recent* confirmation from the real sync job counts here, the same
+    # gate /api/matches?status=LIVE applies.
+    cutoff = dt.datetime.utcnow() - LIVE_STALE_AFTER
     matches = db.execute(
-        select(Match).where(Match.status == "LIVE").order_by(Match.date.asc()).limit(limit)
+        select(Match)
+        .where(Match.status == "LIVE", Match.live_synced_at.is_not(None), Match.live_synced_at >= cutoff)
+        .order_by(Match.date.asc())
+        .limit(limit)
     ).scalars().all()
     return [to_card(db, m) for m in matches]
 

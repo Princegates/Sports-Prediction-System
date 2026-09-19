@@ -38,6 +38,10 @@ _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     # API-Football's own fixture id -- odds capture matches against this,
     # not team names (the /odds response carries no team names at all).
     ("matches", "api_fixture_id", "INTEGER"),
+    # Set only by the real live-board sync, each time it confirms a fixture
+    # is still in play -- lets "genuinely live" be answered by recency
+    # instead of a status column that can get stuck.
+    ("matches", "live_synced_at", "DATETIME"),
 ]
 
 

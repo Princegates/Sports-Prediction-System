@@ -76,6 +76,7 @@ def scheduled_match(db_session, clubs):
 
 
 def test_matches_a_live_fixture_and_records_a_projection(db_session, scheduled_match):
+    before = dt.datetime.utcnow()
     client = FakeClient([_live_row()])
     report = sync_live_matches(db_session, client)
 
@@ -85,6 +86,8 @@ def test_matches_a_live_fixture_and_records_a_projection(db_session, scheduled_m
     assert scheduled_match.status == "LIVE"
     assert scheduled_match.home_score == 1
     assert scheduled_match.away_score == 0
+    assert scheduled_match.live_synced_at is not None
+    assert scheduled_match.live_synced_at >= before
 
     live = db_session.query(LivePrediction).one()
     assert live.match_id == scheduled_match.id
@@ -139,6 +142,11 @@ def test_does_not_duplicate_when_nothing_changed(db_session, scheduled_match):
     assert report.unchanged == 1
     assert report.updated == 0
     assert db_session.query(LivePrediction).count() == 1
+    # An "unchanged" poll still confirms the fixture is live -- this is what
+    # keeps live_synced_at fresh through the long stretches of a match where
+    # nothing scores.
+    db_session.refresh(scheduled_match)
+    assert scheduled_match.live_synced_at is not None
 
 
 def test_a_later_minute_records_a_fresh_projection(db_session, scheduled_match):
@@ -166,6 +174,7 @@ def test_full_time_transitions_status_without_a_live_prediction(db_session, sche
     assert scheduled_match.status == "FINISHED"
     assert scheduled_match.home_score == 2
     assert scheduled_match.away_score == 1
+    assert scheduled_match.live_synced_at is None
     # No new projection for a match that just ended -- there is nothing left
     # to project.
     assert db_session.query(LivePrediction).count() == 1

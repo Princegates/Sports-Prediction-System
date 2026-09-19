@@ -23,6 +23,36 @@ from app.prediction_models.poisson_model import build_score_matrix, expected_goa
 
 MAX_REMAINING_GOALS = 6
 
+# The sync workflow polls every 5 minutes and is itself best-effort (GitHub's
+# schedule trigger commonly lands a few minutes late), so this is generous
+# headroom rather than a tight bound -- the point is only to catch a fixture
+# that stopped getting confirmed at all (a missed FT transition, the sync
+# job being disabled, no API-Football key configured), not to flap on a
+# single slow poll.
+LIVE_STALE_AFTER = dt.timedelta(minutes=20)
+
+
+def is_genuinely_live(match: Match, *, now: dt.datetime | None = None) -> bool:
+    """Whether a match should be reported as live to everyone, not just
+    reachable from its own Live tab.
+
+    ``status == "LIVE"`` alone is not enough to answer that: it is also set
+    by anyone with access pushing a simulated event from the Live tab's
+    sandbox (see record_live_event) -- a local demo of the recalculation,
+    never meant to broadcast to the shared Live Match Center -- and, for a
+    real fixture, it can get stuck if the one poll that would have flipped
+    it to FINISHED is ever missed. Requiring a *recent* confirmation from
+    the real sync job (live_synced_at) rather than trusting the status
+    column alone fixes both: a simulated match never sets it, so it is
+    never genuinely live, and a real one that stops being confirmed quietly
+    stops being reported as live instead of staying wrong forever.
+    """
+
+    if match.status != "LIVE" or match.live_synced_at is None:
+        return False
+    now = now or dt.datetime.utcnow()
+    return now - match.live_synced_at <= LIVE_STALE_AFTER
+
 # Heuristic multipliers applied to a team's remaining-goal expectancy after a
 # red card. These are placeholders pending a properly fitted red-card model
 # (spec section 43 flags exactly this kind of thing for "model review").

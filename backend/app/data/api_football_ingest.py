@@ -561,6 +561,7 @@ def sync_live_matches(db: Session, client: ApiFootballClient) -> LiveSyncReport:
                 match.status = "FINISHED"
                 match.home_score = goals.get("home")
                 match.away_score = goals.get("away")
+                match.live_synced_at = None
                 report.finished += 1
             continue
 
@@ -580,8 +581,14 @@ def sync_live_matches(db: Session, client: ApiFootballClient) -> LiveSyncReport:
         score_away = goals.get("away")
         score_away = score_away if score_away is not None else (latest.score_away if latest else 0)
 
+        # Stamped on every poll that still finds this fixture live, changed
+        # or not -- this is what lets "genuinely live" be judged by recency
+        # rather than the status column alone (see live_engine.is_genuinely_live).
+        match.live_synced_at = dt.datetime.utcnow()
+
         if latest is not None and (latest.minute, latest.score_home, latest.score_away) == (minute, score_home, score_away):
             report.unchanged += 1
+            db.commit()
             continue
 
         record_live_event(db, match, minute=minute, score_home=score_home, score_away=score_away, trigger_event="sync")

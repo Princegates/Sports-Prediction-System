@@ -20,7 +20,7 @@ from app.api.schemas import (
 from app.api.serializers import live_prediction_to_schema, match_to_schema, prediction_to_schema
 from app.db.models import LivePrediction, Match, Prediction
 from app.features.team_stats import compute_team_form
-from app.live_engine import record_live_event
+from app.live_engine import LIVE_STALE_AFTER, record_live_event
 from app.outcomes.registry import outcomes_from_prediction
 from app.prediction_service import build_prediction_for_match
 
@@ -39,7 +39,21 @@ def list_matches(
     if league:
         stmt = stmt.where(Match.league == league)
     if status:
-        stmt = stmt.where(Match.status == status.upper())
+        status = status.upper()
+        if status == "LIVE":
+            # Anyone can push a simulated event from a match's own Live tab
+            # (see live_engine.record_live_event); that's a local demo, not
+            # something that should broadcast as genuinely live here. A real
+            # fixture also needs a *recent* confirmation from the sync job,
+            # so one that got stuck LIVE from a missed poll drops out on its
+            # own instead of staying wrong forever.
+            stmt = stmt.where(
+                Match.status == "LIVE",
+                Match.live_synced_at.is_not(None),
+                Match.live_synced_at >= dt.datetime.utcnow() - LIVE_STALE_AFTER,
+            )
+        else:
+            stmt = stmt.where(Match.status == status)
     if date:
         start = dt.datetime.combine(date, dt.time.min)
         end = start + dt.timedelta(days=1)

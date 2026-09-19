@@ -220,8 +220,8 @@ export function Dashboard() {
                   awayTeam={match.away_team.name}
                   kickoff={match.date}
                   competition={match.league}
-                  isLive={match.status === "LIVE"}
-                  liveScore={match.status === "LIVE" ? { home: match.home_score ?? 0, away: match.away_score ?? 0, minute: 0 } : undefined}
+                  isLive={match.is_live}
+                  liveScore={match.is_live ? { home: match.home_score ?? 0, away: match.away_score ?? 0, minute: 0 } : undefined}
                 />
               ))}
             </div>
