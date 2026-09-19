@@ -4,6 +4,7 @@ import { fetchOutcomes } from "../api";
 import { ConfidenceTag } from "../components/MostLikelyOutcome";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
+import { leagueLabel, useLeague } from "../components/AppShell";
 import type { OutcomesResponse } from "../types";
 
 /**
@@ -25,6 +26,7 @@ const FLOORS = [
 ];
 
 export function Markets() {
+  const { league } = useLeague();
   const [data, setData] = useState<OutcomesResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [market, setMarket] = useState<string>("");
@@ -37,13 +39,19 @@ export function Markets() {
     let cancelled = false;
     setData(null);
     setError(null);
-    fetchOutcomes({ market: market || undefined, days_ahead: days, min_probability: floor, confidence: confidence || undefined })
+    fetchOutcomes({
+      league: league || undefined,
+      market: market || undefined,
+      days_ahead: days,
+      min_probability: floor,
+      confidence: confidence || undefined,
+    })
       .then((d) => !cancelled && setData(d))
       .catch((e) => !cancelled && setError(String(e instanceof Error ? e.message : e)));
     return () => {
       cancelled = true;
     };
-  }, [market, days, floor, confidence]);
+  }, [league, market, days, floor, confidence]);
 
   // The market picker is built from what came back, so it can never offer a
   // market with nothing behind it. Kept from the unfiltered response, though,
@@ -65,7 +73,9 @@ export function Markets() {
       <div className="section-header">
         <h2>Betting markets</h2>
         <span className="meta">
-          {data ? `${data.total_outcomes.toLocaleString()} outcomes across ${data.total_matches} matches` : "Loading…"}
+          {data
+            ? `${data.total_outcomes.toLocaleString()} outcomes across ${data.total_matches} matches -- ${leagueLabel(league)}`
+            : "Loading…"}
         </span>
       </div>
 
