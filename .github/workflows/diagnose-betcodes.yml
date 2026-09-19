@@ -1,0 +1,53 @@
+# Read-only. Runs the exact query pipeline /api/betcodes/preview runs
+# (app.betcode.selection) against the real database and prints where the
+# funnel empties -- scheduled matches in the window, how many have a
+# Prediction row, how many have a MatchOdds row, and whether those two sets
+# even overlap. Changes nothing.
+name: Diagnose BetCodes preview
+
+on:
+  workflow_dispatch:
+    inputs:
+      league:
+        description: "League to check (blank = every league)"
+        required: false
+        default: "English Premier League"
+      days_ahead:
+        description: "Window in days, matching the BetCodes form"
+        required: false
+        default: "3"
+      min_probability:
+        description: "Minimum accuracy per leg, as a fraction (0.5 = 50%)"
+        required: false
+        default: "0.5"
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Diagnose
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          LEAGUE: ${{ inputs.league }}
+          DAYS_AHEAD: ${{ inputs.days_ahead }}
+          MIN_PROBABILITY: ${{ inputs.min_probability }}
+        run: |
+          FLAGS="--days-ahead $DAYS_AHEAD --min-probability $MIN_PROBABILITY"
+          if [ -n "$LEAGUE" ]; then
+            FLAGS="$FLAGS --league $LEAGUE"
+          fi
+          eval "python scripts/diagnose_betcodes.py $FLAGS"
