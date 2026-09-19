@@ -927,6 +927,7 @@ def test_captured_market_names_match_the_outcome_registry_exactly():
         ("Goals Over/Under", "Over 2.5"), ("Goals Over/Under", "Under 2.5"),
         ("Home/Away", "Home"), ("Home/Away", "Away"),
         ("Exact Score", "1:0"), ("Exact Score", "0:0"),
+        ("Double Chance", "Home/Draw"), ("Double Chance", "Home/Away"), ("Double Chance", "Draw/Away"),
     ]:
         parsed = _parse_bet(bet_name, value)
         assert parsed is not None, f"{bet_name}/{value} produced no market"
@@ -959,3 +960,17 @@ def test_exact_score_bet_maps_to_correct_score_with_dash_separator():
     assert _parse_bet("Exact Score", "0:0") == ("Correct Score", "0-0")
     assert _parse_bet("Exact Score", "12:3") == ("Correct Score", "12-3")
     assert _parse_bet("Exact Score", "not a score") is None
+
+
+def test_double_chance_bet_maps_straight_through():
+    """Confirmed against a live response: the provider's three values are
+    literally "Home/Draw" / "Home/Away" / "Draw/Away" -- already the
+    registry's own Double Chance selection text, so no translation at all,
+    only the market-name recognition."""
+
+    from app.data.api_football_ingest import _parse_bet
+
+    assert _parse_bet("Double Chance", "Home/Draw") == ("Double Chance", "Home/Draw")
+    assert _parse_bet("Double Chance", "Home/Away") == ("Double Chance", "Home/Away")
+    assert _parse_bet("Double Chance", "Draw/Away") == ("Double Chance", "Draw/Away")
+    assert _parse_bet("Double Chance", "1X") is None

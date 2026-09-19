@@ -350,11 +350,11 @@ def import_fixtures(
 
 # Named and valued to match app.outcomes.registry exactly -- "Match Result" /
 # "Home Win", "Both Teams To Score" / "Yes", "Total Goals 2.5" / "Over 2.5",
-# "Draw No Bet" / "Home", "Correct Score" / "1-0". That is deliberate: a
-# booking-code leg is built by joining a model outcome to a stored price on
-# (market, selection), and if the two sides ever spelled the same market
-# differently that join would silently return nothing rather than fail
-# loudly.
+# "Draw No Bet" / "Home", "Correct Score" / "1-0", "Double Chance" /
+# "Home/Draw". That is deliberate: a booking-code leg is built by joining a
+# model outcome to a stored price on (market, selection), and if the two
+# sides ever spelled the same market differently that join would silently
+# return nothing rather than fail loudly.
 #
 # Every bet name and value shape below is confirmed against a real /odds
 # response (scripts/probe_odds.py, run against live EPL fixtures), not
@@ -383,6 +383,12 @@ _DRAW_NO_BET_SELECTIONS = {"home": "Home", "away": "Away"}
 # scoreline "1-0". Only the separator differs.
 _EXACT_SCORE_MARKET_NAMES = {"exact score"}
 _EXACT_SCORE_PATTERN = re.compile(r"^(\d+):(\d+)$")
+
+# Confirmed identical on both sides -- the provider's three values are
+# literally "Home/Draw" / "Home/Away" / "Draw/Away", which is already the
+# registry's own selection text for Double Chance.
+_DOUBLE_CHANCE_MARKET_NAMES = {"double chance"}
+_DOUBLE_CHANCE_SELECTIONS = {"home/draw": "Home/Draw", "home/away": "Home/Away", "draw/away": "Draw/Away"}
 
 
 def _parse_bet(bet_name: str, value_text) -> tuple[str, str] | None:
@@ -426,6 +432,10 @@ def _parse_bet(bet_name: str, value_text) -> tuple[str, str] | None:
             return None
         home, away = match.group(1), match.group(2)
         return ("Correct Score", f"{home}-{away}")
+
+    if name in _DOUBLE_CHANCE_MARKET_NAMES:
+        selection = _DOUBLE_CHANCE_SELECTIONS.get(value.lower())
+        return ("Double Chance", selection) if selection else None
 
     return None
 
