@@ -88,6 +88,17 @@ def test_match_prediction_endpoint(db_session, auth_headers):
     assert "positive" in body["explanation"]
     assert "negative" in body["explanation"]
 
+    # The two outcomes alongside the headline pick: present, each with its
+    # own probability, never Double Chance, and never a repeat of the pick
+    # they sit beside.
+    also_likely = body["also_likely"]
+    assert 0 < len(also_likely) <= 2
+    headline = (body["global_outcome"]["market"], body["global_outcome"]["selection"])
+    for outcome in also_likely:
+        assert (outcome["market"], outcome["selection"]) != headline
+        assert outcome["market"] != "Double Chance"
+        assert 0 < outcome["probability"] <= 1
+
 
 def test_match_outcomes_endpoint_returns_every_market_for_that_match(db_session, auth_headers):
     """The per-match complement to /api/predictions/outcomes: every market

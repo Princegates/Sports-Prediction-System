@@ -37,6 +37,11 @@ export interface Prediction {
   most_likely_score: string;
   most_likely_score_probability: number;
   global_outcome: GlobalOutcome;
+  /** The next-best outcomes after the headline pick, each with its own
+   * probability -- never combined with it or with each other. Never
+   * includes Double Chance (see the backend for why) and shorter than 2
+   * for a thin-data match. */
+  also_likely: GlobalOutcome[];
   confidence: "HIGH" | "MEDIUM" | "LOW";
   data_quality_score: number;
   model_agreement_score: number;

@@ -44,6 +44,12 @@ class PredictionOut(BaseModel):
     most_likely_score: str
     most_likely_score_probability: float
     global_outcome: GlobalOutcomeOut
+    # The next-best outcomes after the headline pick, each with its own
+    # probability -- never combined with it or with each other. See
+    # app.outcomes.engine.secondary_outcomes for why Double Chance never
+    # appears here. Shorter than 2 for a thin-data match; the same
+    # data-quality gate that thins the headline pick applies here too.
+    also_likely: list[GlobalOutcomeOut] = []
     confidence: str
     data_quality_score: float
     model_agreement_score: float

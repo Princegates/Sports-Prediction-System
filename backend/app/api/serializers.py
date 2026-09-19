@@ -18,6 +18,8 @@ from app.api.schemas import (
     UserOut,
 )
 from app.db.models import AccessCode, AccessGrant, LivePrediction, Match, MatchView, Prediction, Team, User
+from app.outcomes.engine import secondary_outcomes
+from app.outcomes.registry import outcomes_from_prediction
 
 
 def team_to_schema(team: Team) -> TeamOut:
@@ -102,6 +104,14 @@ def match_to_schema(match: Match) -> MatchOut:
 
 
 def prediction_to_schema(prediction: Prediction) -> PredictionOut:
+    # Pure arithmetic over columns already loaded -- no extra query, same as
+    # every other caller of outcomes_from_prediction. Cheap even across a
+    # whole day's fixtures.
+    also_likely = secondary_outcomes(
+        outcomes_from_prediction(prediction),
+        exclude=(prediction.global_outcome_market, prediction.global_outcome_selection),
+    )
+
     return PredictionOut(
         match_id=prediction.match_id,
         created_at=prediction.created_at,
@@ -120,6 +130,10 @@ def prediction_to_schema(prediction: Prediction) -> PredictionOut:
             selection=prediction.global_outcome_selection,
             probability=prediction.global_outcome_probability,
         ),
+        also_likely=[
+            GlobalOutcomeOut(market=o.market, selection=o.selection, probability=o.probability)
+            for o in also_likely
+        ],
         confidence=prediction.confidence,
         data_quality_score=prediction.data_quality_score,
         model_agreement_score=prediction.model_agreement_score,
