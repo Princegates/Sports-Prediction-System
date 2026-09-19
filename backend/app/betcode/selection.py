@@ -40,6 +40,12 @@ target is reached or there is nothing left that qualifies. It never swaps in
 a weaker leg just to land closer to the number that was asked for -- a slip
 is only as good as its worst leg, and a target price is a preference, not a
 promise.
+
+**Meaningful markets by default.** Leaving ``markets`` unset does not search
+literally every priced line -- see ``DEFAULT_MARKETS`` for why an unfiltered
+search would fill every leg with a barely-above-stake extreme Total Goals
+line instead of anything a bettor would recognise as a pick. An unusual
+market is still reachable by asking for it explicitly.
 """
 
 from __future__ import annotations
@@ -57,12 +63,36 @@ DEFAULT_MIN_PROBABILITY = 0.65
 DEFAULT_MAX_LEGS = 8
 DEFAULT_DAYS_AHEAD = 7
 
+# What "any market" actually searches when criteria.markets is left empty.
+#
+# It is deliberately not literally every priced market. A bookmaker
+# publishes a Total Goals line for nearly every half-integer and quarter
+# line from 0.5 to 8.5+, and api_football_ingest captures all of them --
+# which means an extreme line (Under 7.5, Under 8.5) clears 99% for almost
+# every match, every time, and would win _best_priced_outcome's "highest
+# probability" comparison against every other market on offer. That leg is
+# correctly priced and correctly the single safest thing in the pool -- and
+# worthless as a recommendation, since a bookmaker prices it barely above a
+# stake-only return (odds ~1.01). "Any market" means any of the markets
+# bettors actually compare, not literally any line this project happens to
+# have a price for. An unusual line is still reachable -- just by asking for
+# it explicitly via criteria.markets, the same as any other specific choice.
+DEFAULT_MARKETS = (
+    "Match Result",
+    "Double Chance",
+    "Both Teams To Score",
+    "Draw No Bet",
+    "Total Goals 1.5",
+    "Total Goals 2.5",
+    "Total Goals 3.5",
+)
+
 
 @dataclass(frozen=True)
 class SlipCriteria:
     bookmaker: str                          # who the code is generated for
     target_odds: float
-    markets: tuple[str, ...] = ()           # empty = any market
+    markets: tuple[str, ...] = ()           # empty = DEFAULT_MARKETS; see its own comment for why
     min_probability: float = DEFAULT_MIN_PROBABILITY
     max_legs: int = DEFAULT_MAX_LEGS
     league: str | None = None
@@ -233,12 +263,14 @@ def build_candidate_legs(db: Session, criteria: SlipCriteria) -> list[Leg]:
     for (match_id, market, selection) in prices:
         priced_by_match.setdefault(match_id, set()).add((market, selection))
 
+    wanted_markets = criteria.markets or DEFAULT_MARKETS
+
     legs: list[Leg] = []
     for match_id, prediction in latest_prediction.items():
         outcomes = [
             o for o in outcomes_from_prediction(prediction) if o.probability >= criteria.min_probability
         ]
-        chosen = _best_priced_outcome(outcomes, criteria.markets, priced_by_match.get(match_id, set()))
+        chosen = _best_priced_outcome(outcomes, wanted_markets, priced_by_match.get(match_id, set()))
         if chosen is None:
             continue
 

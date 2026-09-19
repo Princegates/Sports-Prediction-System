@@ -250,3 +250,83 @@ def test_league_filter_excludes_other_leagues(db_session, three_matches):
         db_session, SlipCriteria(bookmaker="Bet9ja", target_odds=1.2, min_probability=0.5, league="Spanish La Liga"),
     )
     assert result.legs == []
+
+
+def test_default_markets_skip_a_trivial_near_certain_goal_line(db_session):
+    """A bookmaker prices a Total Goals line for nearly every half/quarter
+    line up to 8.5+, and one that far out clears well above 99% for almost
+    any match -- correctly priced, and worthless as a recommendation, since
+    the odds on it are barely above a stake-only return. Left unfiltered,
+    that line would win _best_priced_outcome's "highest probability" compare
+    against every real market on offer, every single time. Confirms
+    DEFAULT_MARKETS keeps that out of the default pool while still picking a
+    market a bettor would recognise -- here, Match Result."""
+
+    home = Team(name="Arsenal", league="English Premier League", aliases=[])
+    away = Team(name="Chelsea", league="English Premier League", aliases=[])
+    db_session.add_all([home, away])
+    db_session.commit()
+    db_session.refresh(home)
+    db_session.refresh(away)
+
+    match = Match(
+        league="English Premier League", season="2025-26", date=BASE, status="SCHEDULED",
+        home_team_id=home.id, away_team_id=away.id,
+    )
+    db_session.add(match)
+    db_session.commit()
+    db_session.refresh(match)
+
+    prediction = _prediction(match.id, home=0.70, draw=0.18, away=0.12)
+    prediction.over_probabilities = {"2.5": 0.60, "7.5": 0.009}  # Under 7.5 = 1 - 0.009 = 99.1%
+    db_session.add(prediction)
+    db_session.add(MatchOdds(
+        match_id=match.id, bookmaker="Bet9ja", market="Match Result", selection="Home Win", decimal_odds=1.60,
+    ))
+    db_session.add(MatchOdds(
+        match_id=match.id, bookmaker="Bet9ja", market="Total Goals 7.5", selection="Under 7.5", decimal_odds=1.01,
+    ))
+    db_session.commit()
+
+    legs = build_candidate_legs(
+        db_session, SlipCriteria(bookmaker="Bet9ja", target_odds=2.0, min_probability=0.5),
+    )
+
+    assert len(legs) == 1
+    assert (legs[0].market, legs[0].selection) == ("Match Result", "Home Win")
+
+
+def test_an_extreme_goal_line_is_still_reachable_if_asked_for_explicitly(db_session):
+    """DEFAULT_MARKETS only changes the *default* -- an unusual market is
+    still selectable by naming it in criteria.markets."""
+
+    home = Team(name="Arsenal", league="English Premier League", aliases=[])
+    away = Team(name="Chelsea", league="English Premier League", aliases=[])
+    db_session.add_all([home, away])
+    db_session.commit()
+    db_session.refresh(home)
+    db_session.refresh(away)
+
+    match = Match(
+        league="English Premier League", season="2025-26", date=BASE, status="SCHEDULED",
+        home_team_id=home.id, away_team_id=away.id,
+    )
+    db_session.add(match)
+    db_session.commit()
+    db_session.refresh(match)
+
+    prediction = _prediction(match.id, home=0.70, draw=0.18, away=0.12)
+    prediction.over_probabilities = {"2.5": 0.60, "7.5": 0.009}  # Under 7.5 = 1 - 0.009 = 99.1%
+    db_session.add(prediction)
+    db_session.add(MatchOdds(
+        match_id=match.id, bookmaker="Bet9ja", market="Total Goals 7.5", selection="Under 7.5", decimal_odds=1.01,
+    ))
+    db_session.commit()
+
+    legs = build_candidate_legs(
+        db_session,
+        SlipCriteria(bookmaker="Bet9ja", target_odds=1.05, min_probability=0.5, markets=("Total Goals 7.5",)),
+    )
+
+    assert len(legs) == 1
+    assert (legs[0].market, legs[0].selection) == ("Total Goals 7.5", "Under 7.5")
