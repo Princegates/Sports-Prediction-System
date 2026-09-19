@@ -104,7 +104,7 @@ def register(payload: RegisterIn, request: Request, db: Session = Depends(get_db
     # lost, so it never affects the response -- unlike an access-code send,
     # there's nothing here worth reporting back to the caller.
     if mailer.is_configured(db):
-        subject, body = mailer.welcome_message(mailer.resolve_config(db).site_url or None)
+        subject, body = mailer.welcome_message(mailer.resolve_config(db).site_url or None, trial_days=trial_days)
         mailer.send_email(email, subject, body, db=db)
 
     message = (

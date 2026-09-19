@@ -201,17 +201,37 @@ def access_code_message(code: str, duration_days: int, site_url: str | None = No
     return "Your access code", body
 
 
-def welcome_message(site_url: str | None = None) -> tuple[str, str]:
-    """Subject and body for a new account's confirmation email."""
+def welcome_message(site_url: str | None = None, trial_days: int = 0) -> tuple[str, str]:
+    """Subject and body for a new account's confirmation email.
+
+    ``trial_days`` mirrors whatever registration actually granted (the
+    ``trial_enabled``/``trial_duration_days`` settings, read once at
+    registration time), so the email never promises a trial that didn't
+    happen -- or stays silent about one that did.
+    """
 
     where = site_url or "the site"
-    body = (
-        "Your account has been created.\n\n"
-        f"Sign in at {where} whenever you're ready. Registering alone doesn't\n"
-        "grant access -- once you've arranged payment with a Super Admin, you'll\n"
-        "be issued an access code to redeem.\n\n"
-        "If you didn't create this account, you can ignore this email.\n"
-    )
+    if trial_days:
+        days = "1 day" if trial_days == 1 else f"{trial_days} days"
+        body = (
+            "Your account has been created.\n\n"
+            f"Sign in at {where} whenever you're ready -- you'll have full access to\n"
+            f"predictions, teams and matches for the next {days}, no code needed yet.\n\n"
+            "Once the trial ends, you'll drop to the free tier (one headline pick per\n"
+            "league) until you redeem an access code. A Super Admin issues one once\n"
+            "you've arranged payment with them -- there's no rush, your account and\n"
+            "everything in it stays put either way.\n\n"
+            "If you didn't create this account, you can ignore this email.\n"
+        )
+    else:
+        body = (
+            "Your account has been created.\n\n"
+            f"Sign in at {where} whenever you're ready. You'll start on the free tier\n"
+            "(one headline pick per league) until you redeem an access code -- once\n"
+            "you've arranged payment with a Super Admin, they'll issue you one to\n"
+            "redeem from the Access page.\n\n"
+            "If you didn't create this account, you can ignore this email.\n"
+        )
     return "Your account is ready", body
 
 
