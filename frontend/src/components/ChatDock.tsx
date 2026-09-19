@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { clearChatHistory, fetchChatHistory, streamChatMessage } from "../api";
+import { clearChatHistory, fetchBranding, fetchChatHistory, streamChatMessage } from "../api";
 import { Mascot } from "../components/Mascot";
+import { useAuth } from "../lib/AuthContext";
+import { formatWhatsapp, whatsappLink } from "../lib/whatsapp";
 import type { ChatAnswer, ChatSource } from "../types";
 
 /**
@@ -32,6 +34,9 @@ interface Turn {
   caveat?: string | null;
   streaming?: boolean;
   failed?: boolean;
+  /** Set on the synthetic "redeem a code" reply shown to accounts without
+   * access -- renders a WhatsApp button rather than a real network answer. */
+  whatsapp?: string;
 }
 
 const OPENING_SUGGESTIONS = [
@@ -127,17 +132,28 @@ function SourceChips({ sources }: { sources: ChatSource[] }) {
 }
 
 export function ChatDock() {
+  const { accessStatus } = useAuth();
+  const hasAccess = accessStatus?.has_access ?? false;
+
   const [open, setOpen] = useState(readStoredOpen);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [loadedHistory, setLoadedHistory] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [whatsapp, setWhatsapp] = useState<string | null>(null);
 
   const threadRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const abortRef = useRef<(() => void) | null>(null);
   const location = useLocation();
+
+  useEffect(() => {
+    if (hasAccess) return;
+    fetchBranding()
+      .then((b) => setWhatsapp(b.contact_whatsapp || null))
+      .catch(() => {});
+  }, [hasAccess]);
 
   // The match the user is looking at, so follow-up questions have a referent.
   const matchIdMatch = location.pathname.match(/\/match\/(\d+)/);
@@ -153,8 +169,10 @@ export function ChatDock() {
 
   // Load the stored conversation the first time the dock is opened, not on
   // mount: an unopened dock shouldn't cost a request on every page load.
+  // Skipped entirely without access -- chat history is as gated as chat
+  // itself, and there is never anything real to load.
   useEffect(() => {
-    if (!open || loadedHistory) return;
+    if (!open || loadedHistory || !hasAccess) return;
     setLoadedHistory(true);
     fetchChatHistory(40)
       .then((rows) => {
@@ -206,6 +224,23 @@ export function ChatDock() {
 
       setError(null);
       setInput("");
+
+      // Chat is a premium feature (require_active_access on the backend) --
+      // this answers locally rather than sending a request that would just
+      // 403, so it reads as Guda itself gating the conversation instead of
+      // a network error.
+      if (!hasAccess) {
+        const body = whatsapp
+          ? `Guda's full conversational assistant -- match predictions, team comparisons, live analysis, and everything else it can do -- is a premium feature. Redeem an access code to unlock it.\n\nMessage **${formatWhatsapp(whatsapp)}** on WhatsApp to arrange one -- WhatsApp only, no calls or texts.`
+          : "Guda's full conversational assistant is a premium feature. Redeem an access code from the Access page to unlock it.";
+        setTurns((prev) => [
+          ...prev,
+          { id: `user-${Date.now()}`, role: "user", text },
+          { id: `locked-${Date.now()}`, role: "assistant", text: body, whatsapp: whatsapp ?? undefined },
+        ]);
+        return;
+      }
+
       setBusy(true);
 
       const streamId = `stream-${Date.now()}`;
@@ -254,7 +289,7 @@ export function ChatDock() {
         });
       }, 120);
     },
-    [busy, contextMatchId],
+    [busy, contextMatchId, hasAccess, whatsapp],
   );
 
   async function handleClear() {
@@ -268,8 +303,11 @@ export function ChatDock() {
   }
 
   const lastAssistant = [...turns].reverse().find((t) => t.role === "assistant" && !t.streaming);
-  const suggestions =
-    turns.length === 0 ? OPENING_SUGGESTIONS : (lastAssistant?.suggestions ?? []).slice(0, 3);
+  const suggestions = !hasAccess
+    ? []
+    : turns.length === 0
+      ? OPENING_SUGGESTIONS
+      : (lastAssistant?.suggestions ?? []).slice(0, 3);
 
   if (!open) {
     return (
@@ -289,7 +327,11 @@ export function ChatDock() {
           <div>
             <strong>Guda</strong>
             <span>
-              {contextMatchId ? "Reading this match's data" : "Grounded in this system's database"}
+              {!hasAccess
+                ? "Premium feature"
+                : contextMatchId
+                  ? "Reading this match's data"
+                  : "Grounded in this system's database"}
             </span>
           </div>
         </div>
@@ -310,7 +352,28 @@ export function ChatDock() {
       </header>
 
       <div className="chat-thread" ref={threadRef}>
-        {turns.length === 0 && (
+        {turns.length === 0 && !hasAccess && (
+          <div className="chat-empty">
+            <Mascot pose="sad" size={56} />
+            <h4>Guda is a premium feature</h4>
+            <p>
+              Match predictions, team comparisons, live analysis and everything else Guda can do
+              unlocks with a redeemed access code.
+            </p>
+            {whatsapp && (
+              <a
+                className="btn"
+                href={whatsappLink(whatsapp, "Hi, I'd like an access code for Socca Intelligence.")}
+                target="_blank"
+                rel="noreferrer noopener"
+              >
+                Message {formatWhatsapp(whatsapp)} on WhatsApp
+              </a>
+            )}
+          </div>
+        )}
+
+        {turns.length === 0 && hasAccess && (
           <div className="chat-empty">
             <Mascot pose="thinking" size={56} />
             <h4>Ask about any fixture</h4>
@@ -336,6 +399,17 @@ export function ChatDock() {
                     <p className="chat-caveat">{turn.caveat}</p>
                   )}
                   {!turn.streaming && turn.sources && <SourceChips sources={turn.sources} />}
+                  {turn.whatsapp && (
+                    <a
+                      className="btn"
+                      style={{ marginTop: 8, display: "inline-block" }}
+                      href={whatsappLink(turn.whatsapp, "Hi, I'd like an access code for Socca Intelligence.")}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                    >
+                      Message on WhatsApp
+                    </a>
+                  )}
                 </>
               ) : (
                 turn.text
