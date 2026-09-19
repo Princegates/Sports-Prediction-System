@@ -68,6 +68,7 @@ class Intent(str, Enum):
     MATCH_PREDICTION = "match_prediction"
     TEAM_FORM = "team_form"
     HEAD_TO_HEAD = "head_to_head"
+    COMPARE_TEAMS = "compare_teams"
     TODAYS_CARD = "todays_card"
     BEST_PICKS = "best_picks"
     ACCURACY = "accuracy"
@@ -75,6 +76,7 @@ class Intent(str, Enum):
     RISKS = "risks"
     CORRECT_SCORE = "correct_score"
     LIVE_STATUS = "live_status"
+    WHAT_CHANGED = "what_changed"
     METHODOLOGY = "methodology"
     RESPONSIBLE_USE = "responsible_use"
     UNKNOWN = "unknown"
@@ -112,6 +114,10 @@ _INTENT_PATTERNS: list[tuple[Intent, tuple[str, ...]]] = [
     (Intent.HEAD_TO_HEAD, ("head to head", "head-to-head", "h2h", "past meetings",
                            "previous meetings", "last time they", "when they played",
                            "history between", "record against")),
+    (Intent.COMPARE_TEAMS, ("compare", "comparison", "who is better", "who's better",
+                            "which team is better", "which team is stronger",
+                            "who is stronger", "who's stronger", "how do they compare",
+                            "better team", "side by side", "compare both teams")),
     (Intent.BEST_PICKS, ("best pick", "best bet", "top pick", "top bet", "best selection",
                          "highest confidence", "high confidence", "safest", "strongest",
                          "most confident", "best value", "what should i back",
@@ -119,6 +125,11 @@ _INTENT_PATTERNS: list[tuple[Intent, tuple[str, ...]]] = [
     (Intent.TODAYS_CARD, ("today", "tonight", "tomorrow", "this weekend", "what's on",
                           "whats on", "fixtures", "what games", "which games",
                           "upcoming", "schedule")),
+    (Intent.WHAT_CHANGED, ("what changed", "what's changed", "whats changed",
+                           "what just happened", "what happened live",
+                           "why did it change", "why did that change",
+                           "why did it move", "why did the probability change",
+                           "why did the probability move")),
     (Intent.LIVE_STATUS, ("live", "in play", "in-play", "right now", "current score",
                           "what's the score", "whats the score")),
     (Intent.CORRECT_SCORE, ("correct score", "exact score", "final score", "scoreline",
@@ -302,6 +313,13 @@ def _classify(text: str, has_two_teams: bool, has_one_team: bool, has_context: b
                 return Intent.BEST_PICKS if intent != Intent.CORRECT_SCORE else Intent.TODAYS_CARD
         if intent == Intent.HEAD_TO_HEAD and not has_two_teams:
             return Intent.TEAM_FORM if has_one_team else Intent.HELP
+        if intent == Intent.COMPARE_TEAMS and not has_two_teams:
+            return Intent.TEAM_FORM if has_one_team else Intent.HELP
+        # "What changed" without a match named or open is a question about
+        # nothing in particular -- the closest real answer is just showing
+        # what's live right now, same fallback LIVE_STATUS itself uses.
+        if intent == Intent.WHAT_CHANGED and not (has_two_teams or has_context):
+            return Intent.LIVE_STATUS
         if intent == Intent.TEAM_FORM and not has_one_team:
             return Intent.BEST_PICKS
         return intent

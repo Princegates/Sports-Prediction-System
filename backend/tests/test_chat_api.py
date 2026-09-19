@@ -18,7 +18,7 @@ from app.api import rate_limit
 from app.auth.passwords import hash_password
 from app.auth.tokens import create_token
 from app.config import get_settings
-from app.db.models import ChatMessage, Match, ModelMetric, Prediction, Team, User
+from app.db.models import ChatMessage, LivePrediction, Match, ModelMetric, Prediction, Team, User
 from app.main import app
 from tests.conftest import grant_active_access
 
@@ -267,6 +267,52 @@ def test_head_to_head_counts_real_results(db_session, auth_headers, fixture_data
     # One played match in the fixture: Arsenal 2-1 Chelsea.
     assert "Arsenal: 1 wins" in body["text"]
     assert "Chelsea: 0 wins" in body["text"]
+
+
+def test_compare_teams_reports_each_sides_own_form(db_session, auth_headers, fixture_data):
+    """Distinct from head-to-head: each team's own record, not their record
+    against each other. Arsenal won the one played match in the fixture
+    (2-1 as home), so it should lead on every metric here."""
+
+    body = _ask("compare arsenal and chelsea", auth_headers)
+    assert body["intent"] == "compare_teams"
+    assert "Points per game: Arsenal 3.00 vs Chelsea 0.00 -- edge Arsenal" in body["text"]
+    assert "Goals scored per game: Arsenal 2.00 vs Chelsea 1.00 -- edge Arsenal" in body["text"]
+
+
+def test_what_changed_explains_a_live_probability_swing(db_session, auth_headers, fixture_data):
+    match = fixture_data["upcoming"]
+    db_session.add_all(
+        [
+            LivePrediction(
+                match_id=match.id, minute=10, score_home=0, score_away=0,
+                home_win=0.52, draw=0.26, away_win=0.22, over_probabilities={},
+                btts_yes=0.5, global_outcome_market="Total Goals 0.5",
+                global_outcome_selection="Over 0.5", global_outcome_probability=0.60,
+                trigger_event="kickoff",
+            ),
+            LivePrediction(
+                match_id=match.id, minute=23, score_home=1, score_away=0,
+                home_win=0.75, draw=0.15, away_win=0.10, over_probabilities={},
+                btts_yes=0.5, global_outcome_market="Total Goals 0.5",
+                global_outcome_selection="Over 0.5", global_outcome_probability=0.80,
+                trigger_event="goal",
+            ),
+        ]
+    )
+    db_session.commit()
+
+    body = _ask("what changed?", auth_headers, context_match_id=match.id)
+    assert body["intent"] == "what_changed"
+    assert "moved up from 60% to 80%" in body["text"]
+    assert "driven by: goal" in body["text"]
+    assert "Score moved from 0-0 to 1-0" in body["text"]
+
+
+def test_what_changed_with_no_live_events_says_so(db_session, auth_headers, fixture_data):
+    body = _ask("what changed?", auth_headers, context_match_id=fixture_data["upcoming"].id)
+    assert body["intent"] == "what_changed"
+    assert "No live events have been recorded yet" in body["text"]
 
 
 def test_todays_card_reports_actual_fixtures(db_session, auth_headers, fixture_data):

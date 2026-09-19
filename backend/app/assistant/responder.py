@@ -349,6 +349,66 @@ def _head_to_head(db: Session, q: ParsedQuery) -> Answer:
     return Answer(text="\n".join(lines), intent=q.intent, sources=sources, suggestions=suggestions)
 
 
+def _compare_teams(db: Session, q: ParsedQuery) -> Answer:
+    """Each side's own recent record, side by side -- distinct from H2H,
+    which is about their past meetings with each other. A team missing an
+    away game or a home game entirely (small sample) still compares fine on
+    every other row; the recent-form line is the one place that just goes
+    thin rather than wrong.
+    """
+
+    team_a, team_b = q.teams[0], q.teams[1]
+    form_a = retrieval.team_form(db, team_a)
+    form_b = retrieval.team_form(db, team_b)
+
+    if form_a.matches_played == 0 or form_b.matches_played == 0:
+        empty = team_a.name if form_a.matches_played == 0 else team_b.name
+        return Answer(
+            text=(
+                f"{empty} has no completed matches in the database yet, so there isn't enough to "
+                f"compare it against the other side."
+            ),
+            intent=q.intent,
+            sources=[Source("team", team_a.name, team_a.id), Source("team", team_b.name, team_b.id)],
+            suggestions=[f"{team_a.name} form", f"{team_b.name} form"],
+        )
+
+    def row(label: str, a: float, b: float, *, lower_is_better: bool = False, as_pct: bool = False) -> str:
+        fmt = _pct if as_pct else (lambda v: f"{v:.2f}")
+        if a == b:
+            edge = "even"
+        else:
+            edge = team_a.name if (a < b if lower_is_better else a > b) else team_b.name
+        return f"- {label}: {team_a.name} {fmt(a)} vs {team_b.name} {fmt(b)} -- edge {edge}"
+
+    lines = [
+        f"**{team_a.name}** vs **{team_b.name}** -- each side's own recent record, not their head-to-head:",
+        "",
+        row("Points per game", form_a.points_per_game, form_b.points_per_game),
+        row("Goals scored per game", form_a.goals_scored_avg, form_b.goals_scored_avg),
+        row("Goals conceded per game", form_a.goals_conceded_avg, form_b.goals_conceded_avg, lower_is_better=True),
+        row("Clean sheet rate", form_a.clean_sheet_rate, form_b.clean_sheet_rate, as_pct=True),
+        row("Home goals scored per game", form_a.home_goals_scored_avg, form_b.home_goals_scored_avg),
+        row("Away goals scored per game", form_a.away_goals_scored_avg, form_b.away_goals_scored_avg),
+        "",
+        f"- Recent form: {team_a.name} {''.join(form_a.recent_results[-5:]) or 'n/a'} vs "
+        f"{team_b.name} {''.join(form_b.recent_results[-5:]) or 'n/a'}",
+    ]
+
+    sources = [Source("team", team_a.name, team_a.id), Source("team", team_b.name, team_b.id)]
+    suggestions = []
+
+    if retrieval.head_to_head(db, team_a, team_b, limit=1):
+        suggestions.append(f"Head to head {team_a.name} vs {team_b.name}")
+
+    upcoming = retrieval.find_match_for_teams(db, team_a, team_b)
+    if upcoming is not None:
+        sources.append(Source("match", f"{upcoming.home_team} vs {upcoming.away_team}", upcoming.match_id))
+        suggestions.append(f"{team_a.name} vs {team_b.name} prediction")
+
+    return Answer(text="\n".join(lines), intent=q.intent, sources=sources, suggestions=suggestions)
+
+
 def _todays_card(db: Session, q: ParsedQuery, now: dt.datetime) -> Answer:
     today = dt.datetime.combine(now.date(), dt.time.min)
     date_from = q.date_from or today
@@ -603,6 +663,88 @@ def _live_status(db: Session, q: ParsedQuery) -> Answer:
     )
 
 
+def _what_changed(db: Session, q: ParsedQuery, card: MatchCard) -> Answer:
+    """Explains a live probability swing by comparing the two most recent
+    ``LivePrediction`` snapshots, rather than just restating the current
+    number the way live_status does.
+
+    The leading selection itself can flip between snapshots (a different
+    outcome becomes the model's top call, not just a probability shift on
+    the same one) -- reporting a plain before/after delta in that case would
+    silently compare two different bets, so that gets its own sentence
+    instead.
+    """
+
+    snapshots = retrieval.live_snapshots(db, card.match_id, limit=2)
+
+    if not snapshots:
+        return Answer(
+            text=(
+                f"No live events have been recorded yet for {card.home_team} vs {card.away_team}, "
+                f"so there's nothing to explain a change in. Ask again once it kicks off."
+            ),
+            intent=q.intent,
+            sources=[Source("match", f"{card.home_team} vs {card.away_team}", card.match_id)],
+            suggestions=[f"{card.home_team} vs {card.away_team} prediction"],
+        )
+
+    latest = snapshots[0]
+    if len(snapshots) == 1:
+        lines = [
+            f"**{card.home_team} {latest.score_home}-{latest.score_away} {card.away_team}** "
+            f"({latest.minute}') -- this is the first live update recorded, triggered by "
+            f"{latest.trigger_event.replace('_', ' ')}. There's no earlier snapshot to compare it "
+            f"against yet.",
+            "",
+            f"Right now the model favors {latest.global_outcome_selection} at "
+            f"{_pct(latest.global_outcome_probability)}.",
+        ]
+        return Answer(
+            text="\n".join(lines),
+            intent=q.intent,
+            sources=[Source("match", f"{card.home_team} vs {card.away_team}", card.match_id)],
+            suggestions=["What's live right now?"],
+            includes_probability=True,
+        )
+
+    previous = snapshots[1]
+    trigger = latest.trigger_event.replace("_", " ")
+    same_selection = latest.global_outcome_selection == previous.global_outcome_selection
+    score_changed = (latest.score_home, latest.score_away) != (previous.score_home, previous.score_away)
+
+    lines = [
+        f"**{card.home_team} {latest.score_home}-{latest.score_away} {card.away_team}** ({latest.minute}'):",
+        "",
+    ]
+    if same_selection:
+        delta = latest.global_outcome_probability - previous.global_outcome_probability
+        direction = "moved up" if delta > 0 else "moved down" if delta < 0 else "held steady"
+        lines.append(
+            f"{latest.global_outcome_selection} {direction} from {_pct(previous.global_outcome_probability)} "
+            f"to {_pct(latest.global_outcome_probability)} ({abs(delta) * 100:.0f} point"
+            f"{'s' if abs(round(delta * 100)) != 1 else ''}), driven by: {trigger}."
+        )
+    else:
+        lines.append(
+            f"The model's leading call flipped from {previous.global_outcome_selection} "
+            f"({_pct(previous.global_outcome_probability)}) to {latest.global_outcome_selection} "
+            f"({_pct(latest.global_outcome_probability)}), driven by: {trigger}."
+        )
+    if score_changed:
+        lines.append(
+            f"Score moved from {previous.score_home}-{previous.score_away} to "
+            f"{latest.score_home}-{latest.score_away} at minute {latest.minute}."
+        )
+
+    return Answer(
+        text="\n".join(lines),
+        intent=q.intent,
+        sources=[Source("match", f"{card.home_team} vs {card.away_team}", card.match_id)],
+        suggestions=[f"{card.home_team} vs {card.away_team} prediction", "What's live right now?"],
+        includes_probability=True,
+    )
+
+
 def _responsible_use(q: ParsedQuery) -> Answer:
     return Answer(
         text=(
@@ -652,6 +794,8 @@ I read those rows and report them; I don't improvise numbers.
 - "Why is this favored?" / "what are the risks?" -- the reasoning behind a call
 - "Liverpool form" -- recent results and goal rates
 - "Head to head Arsenal vs Spurs"
+- "Compare Arsenal and Chelsea" -- each side's own form, side by side
+- "What changed?" on a live match -- what moved the probability, and why
 - "How accurate are you?" -- real backtest numbers, held-out split
 - "How does the model work?" -- the actual methodology
 
@@ -717,10 +861,18 @@ def respond(db: Session, q: ParsedQuery, now: dt.datetime | None = None) -> Answ
         return _best_picks(db, q, now)
     if q.intent == Intent.HEAD_TO_HEAD and len(q.teams) >= 2:
         return _head_to_head(db, q)
+    if q.intent == Intent.COMPARE_TEAMS and len(q.teams) >= 2:
+        return _compare_teams(db, q)
     if q.intent == Intent.TEAM_FORM and q.teams:
         return _team_form(db, q)
 
-    if q.intent in (Intent.MATCH_PREDICTION, Intent.EXPLAIN_REASONING, Intent.RISKS, Intent.CORRECT_SCORE):
+    if q.intent in (
+        Intent.MATCH_PREDICTION,
+        Intent.EXPLAIN_REASONING,
+        Intent.RISKS,
+        Intent.CORRECT_SCORE,
+        Intent.WHAT_CHANGED,
+    ):
         card = _resolve_card(db, q)
         if card is None:
             if len(q.teams) >= 2:
@@ -743,6 +895,8 @@ def respond(db: Session, q: ParsedQuery, now: dt.datetime | None = None) -> Answ
             return _correct_score(db, q, card)
         if q.intent in (Intent.EXPLAIN_REASONING, Intent.RISKS):
             return _explain(db, q, card)
+        if q.intent == Intent.WHAT_CHANGED:
+            return _what_changed(db, q, card)
         return _match_prediction(db, q, card)
 
     return _unknown(db, q)

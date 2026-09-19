@@ -37,6 +37,7 @@ interface Turn {
 const OPENING_SUGGESTIONS = [
   "What are today's best picks?",
   "How accurate is the model?",
+  "Compare Arsenal and Chelsea",
   "How does the model work?",
   "What's on this weekend?",
 ];

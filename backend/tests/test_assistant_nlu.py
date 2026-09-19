@@ -108,6 +108,30 @@ def test_head_to_head_requires_two_teams(db_session, teams):
     assert parse(db_session, "head to head arsenal").intent == Intent.TEAM_FORM
 
 
+def test_compare_requires_two_teams(db_session, teams):
+    assert parse(db_session, "compare arsenal and chelsea").intent == Intent.COMPARE_TEAMS
+    assert parse(db_session, "who is better, arsenal or chelsea").intent == Intent.COMPARE_TEAMS
+    # Only one team named -- fall back to that team's form, same as head-to-head does.
+    assert parse(db_session, "compare arsenal").intent == Intent.TEAM_FORM
+
+
+def test_compare_does_not_hijack_a_plain_vs_query(db_session, teams):
+    """"Arsenal vs Chelsea" alone must still mean "predict this match" --
+    only an explicit comparison word should route to COMPARE_TEAMS."""
+
+    assert parse(db_session, "arsenal vs chelsea").intent == Intent.MATCH_PREDICTION
+
+
+def test_what_changed_resolves_against_the_match_in_context(db_session, teams):
+    parsed = parse(db_session, "what changed?", context_match_id=42)
+    assert parsed.intent == Intent.WHAT_CHANGED
+    assert parsed.context_match_id == 42
+
+
+def test_what_changed_without_a_match_falls_back_to_live_status(db_session, teams):
+    assert parse(db_session, "what changed?").intent == Intent.LIVE_STATUS
+
+
 def test_why_without_a_match_does_not_answer_about_an_arbitrary_one(db_session, teams):
     """"Why?" with no match named or in context has no referent. Answering
     would mean picking a match for the user, so it routes to best-picks."""
