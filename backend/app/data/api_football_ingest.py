@@ -276,6 +276,7 @@ def import_fixtures(
         kickoff = _parse_kickoff(fixture.get("date") or "")
         status_short = ((fixture.get("status") or {}).get("short") or "").upper()
         finished = status_short in {"FT", "AET", "PEN"}
+        api_fixture_id = fixture.get("id")
 
         key = (home.id, away.id, kickoff)
         match = existing.get(key)
@@ -302,6 +303,7 @@ def import_fixtures(
                 status="FINISHED" if finished else "SCHEDULED",
                 home_score=goals.get("home") if finished else None,
                 away_score=goals.get("away") if finished else None,
+                api_fixture_id=api_fixture_id,
             )
             db.add(match)
             report.inserted += 1
@@ -309,6 +311,11 @@ def import_fixtures(
                 scheduled_by_pair.setdefault((home.id, away.id), []).append(match)
             continue
 
+        if match.api_fixture_id != api_fixture_id:
+            # Backfills a row imported before this column existed, and
+            # keeps a reconciled (rescheduled-onto) row pointed at the
+            # provider fixture that most recently claimed it.
+            match.api_fixture_id = api_fixture_id
         if match.date != kickoff:
             match.date = kickoff
             report.rescheduled += 1
@@ -382,9 +389,15 @@ def import_odds(
 ) -> ImportReport:
     """Capture three-way prices for fixtures already in the database.
 
-    Matches the provider's fixture to ours by kickoff and clubs. A price that
-    cannot be tied to a stored match is dropped rather than stored loose --
-    odds with no match are not data, they are a future join that will go wrong.
+    Matches the provider's fixture to ours by API-Football's own fixture id
+    -- not by kickoff and club names. The real ``/odds`` response carries no
+    ``teams`` block at all, only ``fixture.id``; team-name matching here was
+    an unverified assumption that turned out wrong, and silently dropped
+    every single row regardless of how correctly the clubs themselves had
+    resolved. A price whose fixture id isn't one this project has stored
+    (from a prior ``import_fixtures`` run against the same league) is
+    dropped rather than stored loose -- odds with no match are not data,
+    they are a future join that will go wrong.
     """
 
     report = ImportReport()
@@ -393,23 +406,19 @@ def import_odds(
     rows = client.odds(league_id=league_id, season=season, date=date)
     report.requests_used = client.quota.used_this_run
 
-    index = TeamIndex(db)
     stored = {
-        (m.home_team_id, m.away_team_id, m.date): m
-        for m in db.execute(select(Match).where(Match.league == league_name)).scalars()
+        m.api_fixture_id: m
+        for m in db.execute(
+            select(Match).where(Match.league == league_name, Match.api_fixture_id.is_not(None))
+        ).scalars()
     }
     captured_at = dt.datetime.utcnow()
 
     for row in rows:
         report.considered += 1
         fixture = row.get("fixture") or {}
-        teams = row.get("teams") or {}
-        home = index.resolve((teams.get("home") or {}).get("name") or "")
-        away = index.resolve((teams.get("away") or {}).get("name") or "")
-        if home is None or away is None:
-            continue
 
-        match = stored.get((home.id, away.id, _parse_kickoff(fixture.get("date") or "")))
+        match = stored.get(fixture.get("id"))
         if match is None:
             continue
 

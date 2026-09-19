@@ -409,6 +409,98 @@ def test_odds_for_an_unknown_match_are_dropped(db_session, clubs):
     assert db_session.query(MatchOdds).count() == 0
 
 
+def test_odds_attach_by_fixture_id_with_no_teams_block_at_all(db_session, clubs):
+    """The real /odds response, confirmed against a live call: no ``teams``
+    key anywhere in a fixture row, only ``fixture.id``. Team-name matching
+    here was an unverified assumption and silently dropped every row --
+    this pins the shape that actually comes back."""
+
+    kickoff = "2026-10-01T19:00:00+00:00"
+    fixtures = FakeClient({
+        "fixtures": [{
+            "fixture": {"id": 555, "date": kickoff, "status": {"short": "NS"}},
+            "teams": {"home": {"name": "Real Madrid"}, "away": {"name": "Bayern Munich"}},
+            "goals": {"home": None, "away": None},
+        }]
+    })
+    import_fixtures(db_session, fixtures, league_id=2, season=2026)
+
+    odds_client = FakeClient({
+        "odds": [{
+            "fixture": {"id": 555, "date": kickoff},
+            "league": {"id": 2, "name": "UEFA Champions League"},
+            "bookmakers": [{
+                "name": "William Hill",
+                "bets": [{"name": "Match Winner", "values": [
+                    {"value": "Home", "odd": "2.10"}, {"value": "Draw", "odd": "3.40"}, {"value": "Away", "odd": "3.60"},
+                ]}],
+            }],
+        }]
+    })
+    report = import_odds(db_session, odds_client, league_id=2, season=2026)
+
+    assert report.inserted == 3
+    assert {r.selection for r in db_session.query(MatchOdds).all()} == {"Home Win", "Draw", "Away Win"}
+
+
+def test_odds_ignore_team_names_entirely_and_match_only_on_fixture_id(db_session, clubs):
+    """Even when a ``teams`` block is present, it must play no role --
+    proven by giving it names that don't exist anywhere and confirming the
+    price still attaches, purely on the shared fixture id."""
+
+    kickoff = "2026-10-01T19:00:00+00:00"
+    fixtures = FakeClient({
+        "fixtures": [{
+            "fixture": {"id": 777, "date": kickoff, "status": {"short": "NS"}},
+            "teams": {"home": {"name": "Real Madrid"}, "away": {"name": "Bayern Munich"}},
+            "goals": {"home": None, "away": None},
+        }]
+    })
+    import_fixtures(db_session, fixtures, league_id=2, season=2026)
+
+    odds_client = FakeClient({
+        "odds": [{
+            "fixture": {"id": 777, "date": kickoff},
+            "teams": {"home": {"name": "Nonexistent United"}, "away": {"name": "Not A Real Club FC"}},
+            "bookmakers": [{"name": "Bet365", "bets": [{"name": "Match Winner",
+                            "values": [{"value": "Home", "odd": "1.90"}]}]}],
+        }]
+    })
+    report = import_odds(db_session, odds_client, league_id=2, season=2026)
+
+    assert report.inserted == 1
+
+
+def test_a_fixture_id_not_yet_imported_is_dropped(db_session, clubs):
+    """Odds for a fixture this league's import hasn't seen yet -- not the
+    "wrong league" case, just not stored -- attach to nothing."""
+
+    client = FakeClient({
+        "odds": [{
+            "fixture": {"id": 999, "date": "2026-10-05T19:00:00+00:00"},
+            "bookmakers": [{"name": "Bet365", "bets": [{"name": "Match Winner",
+                            "values": [{"value": "Home", "odd": "2.0"}]}]}],
+        }]
+    })
+    report = import_odds(db_session, client, league_id=2, season=2026)
+    assert report.inserted == 0
+
+
+def test_import_fixtures_stores_the_provider_fixture_id(db_session, clubs):
+    kickoff = "2026-10-01T19:00:00+00:00"
+    fixtures = FakeClient({
+        "fixtures": [{
+            "fixture": {"id": 4242, "date": kickoff, "status": {"short": "NS"}},
+            "teams": {"home": {"name": "Real Madrid"}, "away": {"name": "Bayern Munich"}},
+            "goals": {"home": None, "away": None},
+        }]
+    })
+    import_fixtures(db_session, fixtures, league_id=2, season=2026)
+
+    match = db_session.query(Match).one()
+    assert match.api_fixture_id == 4242
+
+
 # --- the run's exit code ----------------------------------------------
 
 

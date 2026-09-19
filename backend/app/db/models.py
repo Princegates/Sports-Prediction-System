@@ -240,6 +240,13 @@ class Match(Base):
     status: Mapped[str] = mapped_column(String(16), default="SCHEDULED")
     source: Mapped[str] = mapped_column(String(32), default="football-data.co.uk")
 
+    # API-Football's own fixture id. Null for anything sourced from
+    # openfootball/football-data.co.uk. This is what odds capture matches
+    # against -- API-Football's /odds response carries no team names at
+    # all, only this id, so a (home, away, kickoff) lookup can never find
+    # a row there regardless of how correct the team/kickoff data is.
+    api_fixture_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+
     # --- In-match statistics -------------------------------------------
     # Nullable throughout: openfootball supplies fixtures and scores but no
     # match stats, so most rows start without these and are enriched later
