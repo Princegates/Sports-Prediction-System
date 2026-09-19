@@ -2,11 +2,11 @@ import type { MatchSummary, Prediction } from "../types";
 
 /**
  * Plain-text description of the AI's call for one match, meant to be pasted
- * wherever a user tracks their own picks or places bets themselves. This is
- * deliberately just a probability statement -- no bookmaker integration, no
- * generated bet-slip code, no deep link to stake. The platform's role stops
- * at analysis; what a user does with it happens entirely elsewhere, the same
- * way payment for access happens entirely outside this system.
+ * wherever a user tracks their own picks or places bets themselves. Just a
+ * probability statement -- no bookmaker integration, no code, no deep link.
+ * That combination lives in the booking-codes feature (see app/betcode/ on
+ * the backend and pages/BetCodes.tsx here) for someone who wants it; this
+ * function is for someone who doesn't, and stays that thin on purpose.
  */
 export function formatSelection(match: MatchSummary, prediction: Prediction): string {
   const kickoff = new Date(match.date).toLocaleString(undefined, {

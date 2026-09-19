@@ -110,6 +110,22 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 "the market, not just whether it was right.",
                 default=True),
 
+    # --- Booking codes -----------------------------------------------------
+    SettingSpec("betcode_provider", "choice", "betcode", "Booking-code aggregator",
+                "None means selections and combined odds still show; only the redeemable "
+                "code and deep link need a provider.",
+                choices=("none", "mybetcode"), default="none"),
+    SettingSpec("betcode_api_key", "str", "betcode", "Aggregator API key",
+                secret=True),
+    SettingSpec("betcode_base_url", "str", "betcode", "Aggregator base URL",
+                default="https://api.mybetcode.com"),
+    SettingSpec("betcode_min_probability", "float", "betcode", "Default accuracy floor",
+                "A leg needs at least this model probability to be offered as a candidate.",
+                default=0.65, minimum=0.5, maximum=0.99),
+    SettingSpec("betcode_max_legs", "int", "betcode", "Default leg cap",
+                "How many matches a generated slip may combine.",
+                default=8, minimum=1, maximum=15),
+
     # --- Access ----------------------------------------------------------
     SettingSpec("default_code_duration_days", "int", "access", "Default code duration (days)",
                 "Pre-filled when issuing a code. You can still change it per code.",
@@ -167,6 +183,7 @@ GROUP_LABELS = {
     "appearance": "Appearance",
     "model": "Model defaults",
     "notice": "Site notice",
+    "betcode": "Booking codes",
 }
 
 

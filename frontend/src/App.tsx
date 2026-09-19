@@ -4,6 +4,7 @@ import { RequireAccess, RequireAuth, RequireSuperadmin } from "./components/Requ
 import { Access } from "./pages/Access";
 import { AccountStatus } from "./pages/AccountStatus";
 import { AdminUsers } from "./pages/AdminUsers";
+import { BetCodes } from "./pages/BetCodes";
 import { Dashboard } from "./pages/Dashboard";
 import { HowItWorks } from "./pages/HowItWorks";
 import { Live } from "./pages/Live";
@@ -58,6 +59,7 @@ export default function App() {
             <Route path="match/:id" element={<MatchDetail />} />
             <Route path="predictions" element={<Predictions />} />
             <Route path="markets" element={<Markets />} />
+            <Route path="betcodes" element={<BetCodes />} />
             <Route path="live" element={<Live />} />
             <Route path="teams/:id" element={<TeamPage />} />
           </Route>

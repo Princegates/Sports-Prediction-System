@@ -425,3 +425,58 @@ class MatchOdds(Base):
             name="uq_match_odds_snapshot",
         ),
     )
+
+
+
+class BookingSlip(Base):
+    """A multi-match selection assembled toward a target combined price, and
+    whatever a booking-code aggregator returned for it.
+
+    Three states live in one row rather than three tables, because unlike
+    ``AccessCode`` this has no lifecycle worth splitting apart: a slip is
+    built once, sent once, and its provider outcome is either present or
+    it isn't. ``legs`` is a frozen snapshot -- each entry carries the
+    probability and price as they stood at generation time, not a live join
+    back to ``predictions``/``match_odds``, because both change daily and a
+    slip has to keep meaning what it meant when it was shown to whoever
+    might act on it.
+
+    ``booking_code`` is only ever a string the aggregator actually returned.
+    Nothing in this codebase invents one: a code that looks real but was not
+    issued by a bookmaker fails silently when someone tries to use it, which
+    is worse than the honest "no aggregator configured" this shows instead.
+    """
+
+    __tablename__ = "booking_slips"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
+
+    bookmaker: Mapped[str] = mapped_column(String(64))
+
+    # What was asked for, kept for the slip's own history view -- "generate
+    # this again" starts from here rather than nothing.
+    criteria: Mapped[dict] = mapped_column(JSON)
+
+    # [{match_id, league, home_team, away_team, kickoff, market, selection,
+    #   model_probability, decimal_odds}, ...] -- see build note above.
+    legs: Mapped[list] = mapped_column(JSON)
+    combined_odds: Mapped[float] = mapped_column(Float)
+    # Product of each leg's own model probability. Matches are independent
+    # events and every leg is a different match (selection.py enforces one
+    # leg per match), so multiplying them is valid -- not an approximation
+    # the way combining markets on the *same* match would be.
+    combined_probability: Mapped[float] = mapped_column(Float)
+
+    # A slip is worthless once its earliest match kicks off.
+    expires_at: Mapped[dt.datetime] = mapped_column(DateTime, index=True)
+
+    provider: Mapped[str] = mapped_column(String(32))
+    # selected | code_ready | provider_unavailable | provider_error
+    status: Mapped[str] = mapped_column(String(24), default="selected")
+    booking_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    deep_link: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    provider_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    user: Mapped["User"] = relationship()

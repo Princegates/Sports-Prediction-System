@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import re
 from dataclasses import dataclass, field
 
 from sqlalchemy import select
@@ -276,11 +277,54 @@ def import_fixtures(
     return report
 
 
-# Only the three-way result market is stored for now. Over/under and BTTS
-# prices exist too, but every extra market is more of a budget that is already
-# only a hundred requests a day.
+# Three markets, named and valued to match app.outcomes.registry exactly --
+# "Match Result" / "Home Win", "Both Teams To Score" / "Yes", "Total Goals
+# 2.5" / "Over 2.5". That is deliberate: a booking-code leg is built by
+# joining a model outcome to a stored price on (market, selection), and if
+# the two sides ever spelled the same market differently that join would
+# silently return nothing rather than fail loudly.
+#
+# Provider bet-name matching is unverified against a live response -- this
+# sandbox cannot reach api-sports.io -- and is built from the documented
+# name/value conventions of the "Match Winner", "Both Teams Score" and
+# "Goals Over/Under" bets. The Match Result path above it has run against
+# real data; this has not. Confirm the bet names an actual response uses
+# before relying on BTTS/Over-Under prices for anything.
 _RESULT_MARKET_NAMES = {"match winner", "1x2", "full time result"}
-_SELECTION_MAP = {"home": "Home Win", "draw": "Draw", "away": "Away Win"}
+_RESULT_SELECTIONS = {"home": "Home Win", "draw": "Draw", "away": "Away Win"}
+_SELECTION_MAP = _RESULT_SELECTIONS  # kept for anything still importing the old name
+
+_BTTS_MARKET_NAMES = {"both teams score", "both teams to score"}
+_BTTS_SELECTIONS = {"yes": "Yes", "no": "No"}
+
+_GOALS_MARKET_NAMES = {"goals over/under"}
+_GOALS_LINE_PATTERN = re.compile(r"^(over|under)\s+([\d.]+)$", re.IGNORECASE)
+
+
+def _parse_bet(bet_name: str, value_text: str) -> tuple[str, str] | None:
+    """One bookmaker value -> (our market name, our selection name), or None
+    for a bet this project does not price. Isolated in one place so a fourth
+    market is one function to extend, not a third copy of this loop."""
+
+    name = (bet_name or "").strip().lower()
+    value = (value_text or "").strip()
+
+    if name in _RESULT_MARKET_NAMES:
+        selection = _RESULT_SELECTIONS.get(value.lower())
+        return ("Match Result", selection) if selection else None
+
+    if name in _BTTS_MARKET_NAMES:
+        selection = _BTTS_SELECTIONS.get(value.lower())
+        return ("Both Teams To Score", selection) if selection else None
+
+    if name in _GOALS_MARKET_NAMES:
+        match = _GOALS_LINE_PATTERN.match(value)
+        if not match:
+            return None
+        direction, line = match.group(1).capitalize(), match.group(2)
+        return (f"Total Goals {line}", f"{direction} {line}")
+
+    return None
 
 
 def import_odds(
@@ -327,12 +371,11 @@ def import_odds(
         for bookmaker in row.get("bookmakers") or []:
             book_name = bookmaker.get("name") or "unknown"
             for bet in bookmaker.get("bets") or []:
-                if (bet.get("name") or "").strip().lower() not in _RESULT_MARKET_NAMES:
-                    continue
                 for value in bet.get("values") or []:
-                    selection = _SELECTION_MAP.get((value.get("value") or "").strip().lower())
-                    if selection is None:
+                    parsed = _parse_bet(bet.get("name") or "", value.get("value") or "")
+                    if parsed is None:
                         continue
+                    market, selection = parsed
                     try:
                         price = float(value.get("odd"))
                     except (TypeError, ValueError):
@@ -342,7 +385,7 @@ def import_odds(
                             match_id=match.id,
                             captured_at=captured_at,
                             bookmaker=book_name,
-                            market="Match Result",
+                            market=market,
                             selection=selection,
                             decimal_odds=price,
                             source_fixture_id=fixture.get("id"),

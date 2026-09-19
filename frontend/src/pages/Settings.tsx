@@ -8,7 +8,7 @@ type Draft = Record<string, string | number | boolean>;
 
 /** Groups in the order an operator actually needs them: turn email on, set
  *  how access works, make it look right, and only then touch the model. */
-const GROUP_ORDER = ["data", "email", "access", "appearance", "model"];
+const GROUP_ORDER = ["data", "email", "access", "appearance", "model", "betcode"];
 
 const GROUP_NOTES: Record<string, string> = {
   data:
@@ -19,6 +19,8 @@ const GROUP_NOTES: Record<string, string> = {
   appearance: "What visitors see before they've chosen anything of their own.",
   model:
     "Only a fallback. Once a league has been backtested, its weights are fitted from that league's own validation data and those are used instead — these apply to leagues that haven't been trained yet.",
+  betcode:
+    "Provider = none still lets people build and preview selections at a target price — only the redeemable code and the deep link into the sportsbook need an aggregator.",
 };
 
 function relative(iso: string | null): string {

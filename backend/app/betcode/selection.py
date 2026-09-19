@@ -1,0 +1,305 @@
+"""Turns a set of preferences into a combination of real-priced legs.
+
+This is the "AI Generation" step: someone picks a target combined price, a
+minimum accuracy, and optionally which markets and bookmaker they want, and
+this reads the database for matches that qualify and assembles them toward
+that target.
+
+Three rules keep the result honest rather than merely impressive-looking:
+
+**Real prices only.** A leg needs an actual ``MatchOdds`` row for the
+requested bookmaker -- there is no synthetic "implied odds" fallback. A
+combined price built partly from real prices and partly from guesses would
+look identical to one built from real prices throughout, and the difference
+matters enormously to whoever pastes it into a betting app.
+
+**One leg per match.** Two qualifying markets on the same fixture (a 70% Home
+Win and a 68% BTTS No) are correlated, not independent, so only the stronger
+one is used. This also keeps ``combined_probability`` a valid product of
+independent events -- different matches don't influence each other, so
+multiplying their probabilities is the correct thing to do, and would not be
+if two legs ever shared a match.
+
+**No forced fit.** The greedy search adds legs, safest first, until the
+target is reached or there is nothing left that qualifies. It never swaps in
+a weaker leg just to land closer to the number that was asked for -- a slip
+is only as good as its worst leg, and a target price is a preference, not a
+promise.
+"""
+
+from __future__ import annotations
+
+import datetime as dt
+from dataclasses import dataclass, field
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session, selectinload
+
+from app.db.models import Match, MatchOdds, Prediction
+from app.outcomes.registry import Outcome, outcomes_from_prediction
+
+DEFAULT_MIN_PROBABILITY = 0.65
+DEFAULT_MAX_LEGS = 8
+DEFAULT_DAYS_AHEAD = 7
+
+
+@dataclass(frozen=True)
+class SlipCriteria:
+    bookmaker: str
+    target_odds: float
+    markets: tuple[str, ...] = ()          # empty = any market
+    min_probability: float = DEFAULT_MIN_PROBABILITY
+    max_legs: int = DEFAULT_MAX_LEGS
+    league: str | None = None
+    days_ahead: int = DEFAULT_DAYS_AHEAD
+
+    def as_json(self) -> dict:
+        """What gets stored on the ``BookingSlip`` row -- plain values only,
+        so it round-trips through JSON without a custom decoder."""
+
+        return {
+            "bookmaker": self.bookmaker,
+            "target_odds": self.target_odds,
+            "markets": list(self.markets),
+            "min_probability": self.min_probability,
+            "max_legs": self.max_legs,
+            "league": self.league,
+            "days_ahead": self.days_ahead,
+        }
+
+
+@dataclass(frozen=True)
+class Leg:
+    match_id: int
+    league: str
+    home_team: str
+    away_team: str
+    kickoff: dt.datetime
+    market: str
+    selection: str
+    model_probability: float
+    decimal_odds: float
+
+    def as_json(self) -> dict:
+        return {
+            "match_id": self.match_id,
+            "league": self.league,
+            "home_team": self.home_team,
+            "away_team": self.away_team,
+            "kickoff": self.kickoff.isoformat(),
+            "market": self.market,
+            "selection": self.selection,
+            "model_probability": self.model_probability,
+            "decimal_odds": self.decimal_odds,
+        }
+
+
+@dataclass
+class SelectionResult:
+    criteria: SlipCriteria
+    legs: list[Leg]
+    combined_odds: float
+    combined_probability: float
+    candidates_considered: int
+    met_target: bool
+    warnings: list[str] = field(default_factory=list)
+
+    @property
+    def expires_at(self) -> dt.datetime | None:
+        """A slip is dead the moment its earliest match kicks off -- there is
+        nothing left to book once one leg has started."""
+
+        return min((leg.kickoff for leg in self.legs), default=None)
+
+
+def _latest_odds(
+    db: Session, match_ids: list[int], bookmaker: str
+) -> dict[tuple[int, str, str], float]:
+    """The most recent stored price per (match, market, selection), for one
+    bookmaker. One query regardless of how many matches are in play -- the
+    per-match version of this is the pattern that already cost this project
+    a month of database bandwidth once."""
+
+    if not match_ids:
+        return {}
+
+    rows = db.execute(
+        select(MatchOdds)
+        .where(MatchOdds.match_id.in_(match_ids), MatchOdds.bookmaker == bookmaker)
+        .order_by(MatchOdds.captured_at.asc())
+    ).scalars()
+
+    # Ascending order, so a later row for the same key overwrites an earlier
+    # one -- the dict ends up holding only the latest snapshot per key.
+    latest: dict[tuple[int, str, str], float] = {}
+    for row in rows:
+        latest[(row.match_id, row.market, row.selection)] = row.decimal_odds
+    return latest
+
+
+def _best_priced_outcome(
+    outcomes: list[Outcome], wanted_markets: tuple[str, ...], priced: set[tuple[str, str]]
+) -> Outcome | None:
+    """The single strongest *priced* qualifying outcome for one match, so a
+    match never contributes two correlated legs to the same slip.
+
+    Priced first, then strongest -- not the other way round. A derived
+    outcome like a Double Chance selection is a probability union and is
+    therefore always at least as high as the 1X2 pick it's built from, so
+    picking by probability alone before checking for a price means Double
+    Chance always wins the comparison and then has no odds behind it,
+    silently dropping a match that had a perfectly good priced leg.
+    """
+
+    candidates = [
+        o for o in outcomes
+        if (not wanted_markets or o.market in wanted_markets) and (o.market, o.selection) in priced
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda o: o.probability)
+
+
+def build_candidate_legs(db: Session, criteria: SlipCriteria) -> list[Leg]:
+    """Every match that could contribute a leg: has a prediction already
+    (this never builds one on demand -- see ``routes_predictions.outcomes``
+    for why generating a whole day's models because someone opened a page is
+    the wrong trade), meets the accuracy floor, and has a real price from the
+    requested bookmaker.
+    """
+
+    now = dt.datetime.utcnow()
+    cutoff = now + dt.timedelta(days=criteria.days_ahead)
+
+    match_query = (
+        select(Match)
+        .where(Match.date >= now, Match.date < cutoff, Match.status == "SCHEDULED")
+        .options(selectinload(Match.home_team), selectinload(Match.away_team))
+    )
+    if criteria.league:
+        match_query = match_query.where(Match.league == criteria.league)
+    matches = list(db.execute(match_query).scalars())
+    if not matches:
+        return []
+
+    by_id = {m.id: m for m in matches}
+    predictions = db.execute(
+        select(Prediction)
+        .where(Prediction.match_id.in_(list(by_id)))
+        .order_by(Prediction.created_at.asc())
+    ).scalars()
+    latest_prediction: dict[int, Prediction] = {p.match_id: p for p in predictions}
+    if not latest_prediction:
+        return []
+
+    prices = _latest_odds(db, list(latest_prediction), criteria.bookmaker)
+
+    # Priced (market, selection) pairs, per match -- not pooled across every
+    # match, or a pair priced for one fixture would look priced for all of
+    # them and the lookup two lines down would raise on the mismatch.
+    priced_by_match: dict[int, set[tuple[str, str]]] = {}
+    for (match_id, market, selection) in prices:
+        priced_by_match.setdefault(match_id, set()).add((market, selection))
+
+    legs: list[Leg] = []
+    for match_id, prediction in latest_prediction.items():
+        outcomes = [
+            o for o in outcomes_from_prediction(prediction) if o.probability >= criteria.min_probability
+        ]
+        chosen = _best_priced_outcome(outcomes, criteria.markets, priced_by_match.get(match_id, set()))
+        if chosen is None:
+            continue
+
+        price = prices[(match_id, chosen.market, chosen.selection)]
+        match = by_id[match_id]
+        legs.append(
+            Leg(
+                match_id=match.id,
+                league=match.league,
+                home_team=match.home_team.name,
+                away_team=match.away_team.name,
+                kickoff=match.date,
+                market=chosen.market,
+                selection=chosen.selection,
+                model_probability=chosen.probability,
+                decimal_odds=price,
+            )
+        )
+
+    return legs
+
+
+def select_legs(db: Session, criteria: SlipCriteria) -> SelectionResult:
+    """Greedily assemble legs toward ``criteria.target_odds``, safest first.
+
+    Sorting by probability descending before adding anything means the first
+    legs chosen are always the ones with the least individual risk; the
+    search stops as soon as the target is met rather than continuing to pad
+    the slip with weaker picks it does not need.
+    """
+
+    warnings: list[str] = []
+
+    if criteria.target_odds <= 1.0:
+        return SelectionResult(
+            criteria=criteria, legs=[], combined_odds=1.0, combined_probability=1.0,
+            candidates_considered=0, met_target=False,
+            warnings=["Target odds must be greater than 1.0 -- a single leg's own price already clears that."],
+        )
+
+    candidates = build_candidate_legs(db, criteria)
+    candidates.sort(key=lambda leg: -leg.model_probability)
+
+    chosen: list[Leg] = []
+    combined_odds = 1.0
+    combined_probability = 1.0
+
+    for leg in candidates:
+        if len(chosen) >= criteria.max_legs:
+            break
+        if combined_odds >= criteria.target_odds:
+            break
+        chosen.append(leg)
+        combined_odds *= leg.decimal_odds
+        combined_probability *= leg.model_probability
+
+    met_target = combined_odds >= criteria.target_odds
+
+    if not candidates:
+        warnings.append(
+            f"No scheduled match in the next {criteria.days_ahead} day(s) both meets "
+            f"{criteria.min_probability:.0%} accuracy and has a stored price from "
+            f"{criteria.bookmaker!r}. Widen the window, lower the accuracy floor, or "
+            "capture odds for this bookmaker first."
+        )
+    elif not met_target and len(chosen) >= criteria.max_legs:
+        warnings.append(
+            f"Reached the {criteria.max_legs}-leg cap at {combined_odds:.2f}, short of the "
+            f"{criteria.target_odds:.2f} target. Raise the leg cap or lower the accuracy floor "
+            "to allow riskier legs in."
+        )
+    elif not met_target:
+        warnings.append(
+            f"Used every qualifying match ({len(candidates)}) and reached {combined_odds:.2f}, "
+            f"short of the {criteria.target_odds:.2f} target. There is nothing left this "
+            "accuracy floor and bookmaker allow -- lower one of them to go further."
+        )
+
+    if chosen:
+        drop = 1.0 - combined_probability
+        warnings.append(
+            f"Combined probability is {combined_probability:.0%}, not each leg's own "
+            f"{'/'.join(f'{leg.model_probability:.0%}' for leg in chosen)} -- stacking "
+            f"{len(chosen)} legs multiplies the risk by about {drop:.0%}, it doesn't add "
+            "the confidence."
+        )
+
+    return SelectionResult(
+        criteria=criteria,
+        legs=chosen,
+        combined_odds=combined_odds,
+        combined_probability=combined_probability,
+        candidates_considered=len(candidates),
+        met_target=met_target,
+        warnings=warnings,
+    )

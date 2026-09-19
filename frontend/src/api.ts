@@ -1,4 +1,7 @@
 import type {
+  BetCode,
+  BetCodeCriteria,
+  BetCodePreview,
   OutcomesResponse,
   Branding,
   SettingsPayload,
@@ -465,6 +468,20 @@ export function fetchBranding(): Promise<Branding> {
 /** No auth needed -- shown to every visitor, logged in or not. */
 export function fetchNotice(): Promise<SiteNotice> {
   return get("/api/public/notice");
+}
+
+// --- Booking codes -------------------------------------------------------
+
+export function previewBetCode(criteria: BetCodeCriteria): Promise<BetCodePreview> {
+  return post("/api/betcodes/preview", criteria);
+}
+
+export function generateBetCode(criteria: BetCodeCriteria, legs?: BetCodePreview["legs"]): Promise<BetCode> {
+  return post("/api/betcodes", { criteria, legs: legs ?? null });
+}
+
+export function fetchBetCodeHistory(limit = 20): Promise<BetCode[]> {
+  return get(`/api/betcodes?limit=${limit}`);
 }
 
 export function fetchOutcomes(params: {

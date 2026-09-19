@@ -444,3 +444,143 @@ def test_both_unmatched_clubs_are_reported_not_just_the_home_side(db_session):
         report.note_unresolved(name, candidate.name if candidate else None, score)
 
     assert sorted(report.unresolved_clubs) == ["Larne", "Tre Fiori"]
+
+
+# --- BTTS and Over/Under prices, named to match the outcome registry --------
+
+
+def test_btts_prices_are_captured(db_session, clubs):
+    kickoff = "2026-10-01T19:00:00+00:00"
+    fixtures = FakeClient({
+        "fixtures": [{
+            "fixture": {"id": 5, "date": kickoff, "status": {"short": "NS"}},
+            "teams": {"home": {"name": "Real Madrid"}, "away": {"name": "Bayern Munich"}},
+            "goals": {"home": None, "away": None},
+        }]
+    })
+    import_fixtures(db_session, fixtures, league_id=2, season=2026)
+
+    odds_client = FakeClient({
+        "odds": [{
+            "fixture": {"id": 5, "date": kickoff},
+            "teams": {"home": {"name": "Real Madrid"}, "away": {"name": "Bayern Munich"}},
+            "bookmakers": [{
+                "name": "Bet365",
+                "bets": [{
+                    "name": "Both Teams Score",
+                    "values": [{"value": "Yes", "odd": "1.65"}, {"value": "No", "odd": "2.20"}],
+                }],
+            }],
+        }]
+    })
+    import_odds(db_session, odds_client, league_id=2, season=2026)
+
+    rows = db_session.query(MatchOdds).all()
+    assert {(r.market, r.selection) for r in rows} == {
+        ("Both Teams To Score", "Yes"),
+        ("Both Teams To Score", "No"),
+    }
+
+
+def test_over_under_prices_are_captured_per_line(db_session, clubs):
+    kickoff = "2026-10-01T19:00:00+00:00"
+    fixtures = FakeClient({
+        "fixtures": [{
+            "fixture": {"id": 6, "date": kickoff, "status": {"short": "NS"}},
+            "teams": {"home": {"name": "Real Madrid"}, "away": {"name": "Bayern Munich"}},
+            "goals": {"home": None, "away": None},
+        }]
+    })
+    import_fixtures(db_session, fixtures, league_id=2, season=2026)
+
+    odds_client = FakeClient({
+        "odds": [{
+            "fixture": {"id": 6, "date": kickoff},
+            "teams": {"home": {"name": "Real Madrid"}, "away": {"name": "Bayern Munich"}},
+            "bookmakers": [{
+                "name": "Bet365",
+                "bets": [{
+                    "name": "Goals Over/Under",
+                    "values": [
+                        {"value": "Over 1.5", "odd": "1.25"},
+                        {"value": "Under 1.5", "odd": "3.75"},
+                        {"value": "Over 2.5", "odd": "1.90"},
+                        {"value": "Under 2.5", "odd": "1.90"},
+                    ],
+                }],
+            }],
+        }]
+    })
+    import_odds(db_session, odds_client, league_id=2, season=2026)
+
+    rows = db_session.query(MatchOdds).all()
+    assert {(r.market, r.selection) for r in rows} == {
+        ("Total Goals 1.5", "Over 1.5"),
+        ("Total Goals 1.5", "Under 1.5"),
+        ("Total Goals 2.5", "Over 2.5"),
+        ("Total Goals 2.5", "Under 2.5"),
+    }
+
+
+def test_an_unpriced_bet_type_is_skipped_not_guessed(db_session, clubs):
+    """A bet this project has no market for (corners, cards, ...) is dropped
+    rather than stored under an invented name."""
+
+    kickoff = "2026-10-01T19:00:00+00:00"
+    fixtures = FakeClient({
+        "fixtures": [{
+            "fixture": {"id": 7, "date": kickoff, "status": {"short": "NS"}},
+            "teams": {"home": {"name": "Real Madrid"}, "away": {"name": "Bayern Munich"}},
+            "goals": {"home": None, "away": None},
+        }]
+    })
+    import_fixtures(db_session, fixtures, league_id=2, season=2026)
+
+    odds_client = FakeClient({
+        "odds": [{
+            "fixture": {"id": 7, "date": kickoff},
+            "teams": {"home": {"name": "Real Madrid"}, "away": {"name": "Bayern Munich"}},
+            "bookmakers": [{
+                "name": "Bet365",
+                "bets": [{"name": "Corners Over/Under", "values": [{"value": "Over 9.5", "odd": "1.90"}]}],
+            }],
+        }]
+    })
+    report = import_odds(db_session, odds_client, league_id=2, season=2026)
+
+    assert report.inserted == 0
+    assert db_session.query(MatchOdds).count() == 0
+
+
+def test_captured_market_names_match_the_outcome_registry_exactly():
+    """The whole point of naming odds this way: a booking-code leg is built
+    by joining a model outcome to a stored price on (market, selection). If
+    the two sides ever drifted apart that join would silently return
+    nothing. This pins both sides against the same real bet-provider shapes,
+    so a rename on either side breaks a test instead of breaking silently in
+    production."""
+
+    from app.data.api_football_ingest import _parse_bet
+    from app.outcomes.registry import build_outcome_registry
+
+    outcomes = build_outcome_registry(
+        home_win=0.4, draw=0.3, away_win=0.3,
+        over_probabilities={"1.5": 0.8, "2.5": 0.55},
+        btts_yes=0.6, btts_no=0.4,
+        correct_score_probabilities={},
+        matches_available=10,
+    )
+    registry_pairs = {(o.market, o.selection) for o in outcomes}
+
+    provider_pairs = set()
+    for bet_name, value in [
+        ("Match Winner", "Home"), ("Match Winner", "Draw"), ("Match Winner", "Away"),
+        ("Both Teams Score", "Yes"), ("Both Teams Score", "No"),
+        ("Goals Over/Under", "Over 1.5"), ("Goals Over/Under", "Under 1.5"),
+        ("Goals Over/Under", "Over 2.5"), ("Goals Over/Under", "Under 2.5"),
+    ]:
+        parsed = _parse_bet(bet_name, value)
+        assert parsed is not None, f"{bet_name}/{value} produced no market"
+        provider_pairs.add(parsed)
+
+    assert provider_pairs <= registry_pairs, provider_pairs - registry_pairs

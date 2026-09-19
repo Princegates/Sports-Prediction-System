@@ -377,3 +377,54 @@ export interface OutcomesResponse {
   total_matches: number;
   days_ahead: number;
 }
+
+// --- Booking codes -------------------------------------------------------
+
+export interface BetCodeCriteria {
+  bookmaker: string;
+  target_odds: number;
+  markets: string[];
+  min_probability?: number | null;
+  max_legs?: number | null;
+  league?: string | null;
+  days_ahead: number;
+}
+
+export interface BetCodeLeg {
+  match_id: number;
+  league: string;
+  home_team: string;
+  away_team: string;
+  kickoff: string;
+  market: string;
+  selection: string;
+  model_probability: number;
+  decimal_odds: number;
+}
+
+export interface BetCodePreview {
+  legs: BetCodeLeg[];
+  combined_odds: number;
+  combined_probability: number;
+  target_odds: number;
+  met_target: boolean;
+  candidates_considered: number;
+  warnings: string[];
+}
+
+export type BetCodeStatus = "selected" | "code_ready" | "provider_unavailable" | "provider_error";
+
+export interface BetCode {
+  id: number;
+  created_at: string;
+  bookmaker: string;
+  legs: BetCodeLeg[];
+  combined_odds: number;
+  combined_probability: number;
+  expires_at: string;
+  provider: string;
+  status: BetCodeStatus;
+  booking_code: string | null;
+  deep_link: string | null;
+  provider_message: string | null;
+}

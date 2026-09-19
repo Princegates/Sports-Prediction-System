@@ -506,3 +506,65 @@ class FreePickOut(BaseModel):
     selection: str
     probability: float
     confidence: str
+
+
+# --- Booking codes -----------------------------------------------------
+
+
+class BetCodeCriteriaIn(BaseModel):
+    bookmaker: str
+    target_odds: float
+    markets: list[str] = []
+    min_probability: float | None = None
+    max_legs: int | None = None
+    league: str | None = None
+    days_ahead: int = 7
+
+
+class BetCodeLegOut(BaseModel):
+    match_id: int
+    league: str
+    home_team: str
+    away_team: str
+    kickoff: dt.datetime
+    market: str
+    selection: str
+    model_probability: float
+    decimal_odds: float
+
+
+class BetCodePreviewOut(BaseModel):
+    """The selection step's own output -- what the AI picked and why, before
+    anything is sent anywhere. No provider is called to produce this, so
+    it's free to preview repeatedly while narrowing down criteria."""
+
+    legs: list[BetCodeLegOut]
+    combined_odds: float
+    combined_probability: float
+    target_odds: float
+    met_target: bool
+    candidates_considered: int
+    warnings: list[str]
+
+
+class BetCodeGenerateIn(BaseModel):
+    criteria: BetCodeCriteriaIn
+    # Pass the exact legs a prior /preview call returned, so what gets sent
+    # to the aggregator is provably what was shown on screen -- omit to run
+    # selection fresh instead.
+    legs: list[BetCodeLegOut] | None = None
+
+
+class BetCodeOut(BaseModel):
+    id: int
+    created_at: dt.datetime
+    bookmaker: str
+    legs: list[BetCodeLegOut]
+    combined_odds: float
+    combined_probability: float
+    expires_at: dt.datetime
+    provider: str
+    status: str
+    booking_code: str | None
+    deep_link: str | None
+    provider_message: str | None
