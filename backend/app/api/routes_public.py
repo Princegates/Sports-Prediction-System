@@ -24,6 +24,7 @@ from app.api.schemas import (
     BrandingOut,
     ConfidenceBandRecordOut,
     LeagueAccuracyOut,
+    NoticeOut,
     PublicAccuracyOut,
     PublicFixtureOut,
     PublicStatsOut,
@@ -155,6 +156,20 @@ def public_branding(db: Session = Depends(get_db)) -> BrandingOut:
         default_accent=str(values["default_accent"]),
         registration_open=bool(values["registration_open"]),
     )
+
+
+@router.get("/notice", response_model=NoticeOut)
+def public_notice(db: Session = Depends(get_db)) -> NoticeOut:
+    """A superadmin-authored banner shown to every visitor -- logged in,
+    free tier, or premium alike, and even before login. Not a prediction, not
+    sensitive: a maintenance window, a new league going live, or anything
+    else worth a heads-up. Off by default, and reads as off if the message
+    was left blank -- a notice with nothing to say is a bug waiting to be
+    shown."""
+
+    values = app_settings.all_values(db)
+    message = str(values.get("notice_message") or "").strip()
+    return NoticeOut(enabled=bool(values.get("notice_enabled")) and bool(message), message=message)
 
 
 @router.get("/fixtures", response_model=list[PublicFixtureOut])

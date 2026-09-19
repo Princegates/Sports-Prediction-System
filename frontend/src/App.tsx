@@ -26,9 +26,12 @@ import { Welcome } from "./pages/Welcome";
  *   login form with no explanation of what they'd be logging into.
  * - `/app/*` is the product, behind RequireAuth. Logging in only needs an
  *   account that isn't suspended -- reaching the prediction-serving pages
+ *   (match detail, the full predictions table, markets, live, teams)
  *   additionally needs a live access grant, checked separately by
- *   RequireAccess, so an account with none still lands on /app/access
- *   instead of a dead dashboard rather than being bounced out of the app.
+ *   RequireAccess. The dashboard is the one exception: it's free for any
+ *   logged-in account, since it's how a no-code account sees the free-tier
+ *   headline picks and the redeem-a-code prompt, rather than being bounced
+ *   straight to /app/access with nothing to look at first.
  *
  * The signed-in app lives under its own prefix rather than sharing `/` with
  * the marketing page so neither has to know about the other's state.
@@ -49,9 +52,9 @@ export default function App() {
         <Route path="/app" element={<AppShell />}>
           <Route path="profile" element={<Profile />} />
           <Route path="access" element={<Access />} />
+          <Route index element={<Dashboard />} />
 
           <Route element={<RequireAccess />}>
-            <Route index element={<Dashboard />} />
             <Route path="match/:id" element={<MatchDetail />} />
             <Route path="predictions" element={<Predictions />} />
             <Route path="markets" element={<Markets />} />

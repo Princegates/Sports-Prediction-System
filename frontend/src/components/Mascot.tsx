@@ -1,9 +1,15 @@
 type Pose = "idle" | "thinking" | "celebrating" | "sad";
+type Variant = "compact" | "hero";
 
 interface Props {
   pose?: Pose;
   size?: number;
   className?: string;
+  /** "hero" adds a continuous 3D turn (perspective + rotateY) and an
+   * animated juggling ball, for a large standalone placement (the dashboard
+   * introduction). "compact" (default) is the original flat, still figure
+   * used in loading/empty states, where constant motion would be noise. */
+  variant?: Variant;
 }
 
 /**
@@ -11,10 +17,10 @@ interface Props {
  * celebration overlay. Deliberately not a casino/betting mascot -- a friendly
  * "AI analyst" reading data, never holding a trophy, dice, or cash.
  */
-export function Mascot({ pose = "idle", size = 96, className }: Props) {
-  return (
+export function Mascot({ pose = "idle", size = 96, className, variant = "compact" }: Props) {
+  const svg = (
     <svg
-      className={`mascot mascot-${pose}${className ? ` ${className}` : ""}`}
+      className={`mascot mascot-${pose}${variant === "hero" ? " mascot-hero" : ""}${className ? ` ${className}` : ""}`}
       width={size}
       height={size}
       viewBox="0 0 96 96"
@@ -59,11 +65,19 @@ export function Mascot({ pose = "idle", size = 96, className }: Props) {
         </>
       )}
 
-      {/* football, cradled -- idle/sad only */}
-      {(pose === "idle" || pose === "sad") && (
+      {/* football, cradled -- idle/sad only, and only when not juggling below */}
+      {(pose === "idle" || pose === "sad") && variant !== "hero" && (
         <g transform="translate(38, 58)">
           <circle r="9" fill="var(--bg-surface)" stroke="var(--text-muted)" strokeWidth="2" />
           <path d="M0 -9 L0 9 M-9 0 L9 0 M-6.5 -6.5 L6.5 6.5 M-6.5 6.5 L6.5 -6.5" stroke="var(--text-muted)" strokeWidth="1" opacity="0.5" />
+        </g>
+      )}
+
+      {/* football, juggling near the feet -- the hero variant's signature motion */}
+      {variant === "hero" && (
+        <g className="mascot-hero-ball" transform="translate(48, 82)">
+          <circle r="10" fill="var(--bg-surface)" stroke="var(--accent)" strokeWidth="2" />
+          <path d="M0 -10 L0 10 M-10 0 L10 0 M-7 -7 L7 7 M-7 7 L7 -7" stroke="var(--accent)" strokeWidth="1" opacity="0.6" />
         </g>
       )}
 
@@ -84,4 +98,12 @@ export function Mascot({ pose = "idle", size = 96, className }: Props) {
       )}
     </svg>
   );
+
+  if (variant !== "hero") return svg;
+
+  // The stage carries the perspective; the SVG inside it does the turning.
+  // Splitting them is what makes the rotation read as depth instead of a
+  // flat shape stretching -- the same pairing tilt-card uses for its hover
+  // tilt, just animated continuously instead of pointer-driven.
+  return <div className="mascot-hero-stage">{svg}</div>;
 }

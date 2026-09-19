@@ -238,6 +238,27 @@ export interface AccessStatus {
   expires_at: string | null;
 }
 
+export interface SiteNotice {
+  enabled: boolean;
+  message: string;
+}
+
+/** The free tier's shape -- deliberately thinner than Prediction: a
+ * headline pick, not the full market breakdown. */
+export interface FreePick {
+  match_id: number;
+  league: string;
+  home_team: string;
+  away_team: string;
+  kickoff: string;
+  home_win: number;
+  draw: number;
+  away_win: number;
+  selection: string;
+  probability: number;
+  confidence: "HIGH" | "MEDIUM" | "LOW";
+}
+
 // --- Admin ---------------------------------------------------------------
 
 export interface AdminOverview {

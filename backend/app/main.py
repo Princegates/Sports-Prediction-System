@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api.deps import require_active_access
+from app.api.deps import get_current_user, require_active_access
 from app.api.routes_access import router as access_router
 from app.api.routes_admin import router as admin_router
 from app.api.routes_auth import router as auth_router
@@ -106,9 +106,13 @@ app.add_middleware(
 
 # /api/auth/* (register/login/status) and /api/public/* (landing-page figures)
 # are intentionally open. /api/access/* needs only a logged-in account (an
-# expired user must still be able to redeem a new code). Teams, matches,
-# predictions and chat -- the whole prediction-serving surface, including the
-# live endpoints under matches -- additionally require a live access grant.
+# expired user must still be able to redeem a new code). Teams, matches and
+# chat -- full match detail, live tracking, team history -- require a live
+# access grant. predictions_router is mounted with only the login
+# requirement: most of its routes add `require_active_access` themselves
+# (see routes_predictions.py), but /free-picks deliberately doesn't, so a
+# logged-in account with no code yet still gets a genuine, if small, taste
+# of the model instead of a wall of 403s.
 app.include_router(auth_router)
 app.include_router(public_router)
 app.include_router(admin_router)
@@ -117,7 +121,7 @@ app.include_router(access_router)
 app.include_router(chat_router, dependencies=[Depends(require_active_access)])
 app.include_router(teams_router, dependencies=[Depends(require_active_access)])
 app.include_router(matches_router, dependencies=[Depends(require_active_access)])
-app.include_router(predictions_router, dependencies=[Depends(require_active_access)])
+app.include_router(predictions_router, dependencies=[Depends(get_current_user)])
 
 
 @app.exception_handler(SQLAlchemyError)

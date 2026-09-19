@@ -482,3 +482,27 @@ class OutcomesOut(BaseModel):
     total_outcomes: int
     total_matches: int
     days_ahead: int
+
+
+class NoticeOut(BaseModel):
+    enabled: bool
+    message: str
+
+
+class FreePickOut(BaseModel):
+    """The free tier's shape: a headline pick, not the product. Deliberately
+    thinner than ``PredictionOut`` -- no full market breakdown, no
+    explanation, no correct-score detail -- so the free/premium boundary
+    holds at the API itself, not just in what the frontend chooses to show."""
+
+    match_id: int
+    league: str
+    home_team: str
+    away_team: str
+    kickoff: dt.datetime
+    home_win: float
+    draw: float
+    away_win: float
+    selection: str
+    probability: float
+    confidence: str

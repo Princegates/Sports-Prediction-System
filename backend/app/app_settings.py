@@ -142,6 +142,14 @@ REGISTRY: tuple[SettingSpec, ...] = (
     SettingSpec("elo_k_factor", "float", "model", "Elo K-factor",
                 "How sharply ratings move after each result.",
                 env_attr="elo_k_factor", minimum=1, maximum=100),
+
+    # --- Notice ------------------------------------------------------------
+    SettingSpec("notice_enabled", "bool", "notice", "Show a site notice",
+                "A banner shown to every visitor, logged in or not -- for a maintenance "
+                "window, a new league going live, or anything else worth a heads-up.",
+                default=False),
+    SettingSpec("notice_message", "str", "notice", "Notice message",
+                "Shown only while the notice above is turned on.", default=""),
 )
 
 BY_KEY: dict[str, SettingSpec] = {spec.key: spec for spec in REGISTRY}
@@ -152,6 +160,7 @@ GROUP_LABELS = {
     "access": "Access & registration",
     "appearance": "Appearance",
     "model": "Model defaults",
+    "notice": "Site notice",
 }
 
 

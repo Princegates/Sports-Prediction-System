@@ -272,21 +272,21 @@ export function ChatDock() {
 
   if (!open) {
     return (
-      <button className="chat-fab" onClick={() => setOpen(true)} aria-label="Open AI assistant">
+      <button className="chat-fab" onClick={() => setOpen(true)} aria-label="Open Guda">
         <Mascot pose="idle" size={30} />
-        <span className="chat-fab-label">Ask the AI</span>
+        <span className="chat-fab-label">Ask Guda</span>
         <kbd>&#8984;J</kbd>
       </button>
     );
   }
 
   return (
-    <div className="chat-dock" role="dialog" aria-label="AI assistant">
+    <div className="chat-dock" role="dialog" aria-label="Guda">
       <header className="chat-dock-head">
         <div className="chat-dock-title">
           <Mascot pose={busy ? "thinking" : "idle"} size={28} />
           <div>
-            <strong>Match Intelligence AI</strong>
+            <strong>Guda</strong>
             <span>
               {contextMatchId ? "Reading this match's data" : "Grounded in this system's database"}
             </span>
@@ -314,9 +314,9 @@ export function ChatDock() {
             <Mascot pose="thinking" size={56} />
             <h4>Ask about any fixture</h4>
             <p>
-              I answer from this system's own database — stored predictions, team form, backtest
-              results. I report what's there and cite it, so I can't invent a statistic. If I don't know
-              something, I'll say so.
+              I'm Guda. I answer from this system's own database — stored predictions, team form,
+              backtest results. I report what's there and cite it, so I can't invent a statistic. If I
+              don't know something, I'll say so.
             </p>
           </div>
         )}
@@ -324,7 +324,7 @@ export function ChatDock() {
         {turns.map((turn) => (
           <div key={turn.id} className={`chat-turn ${turn.role}`}>
             {turn.role === "assistant" && (
-              <span className="chat-turn-badge">{turn.failed ? "Unavailable" : "AI"}</span>
+              <span className="chat-turn-badge">{turn.failed ? "Unavailable" : "Guda"}</span>
             )}
             <div className={`chat-bubble ${turn.role}${turn.failed ? " failed" : ""}`}>
               {turn.role === "assistant" ? (
@@ -385,7 +385,7 @@ export function ChatDock() {
           placeholder={contextMatchId ? "Ask about this match..." : "Ask about a fixture, team or the model..."}
           rows={1}
           maxLength={1000}
-          aria-label="Message the AI assistant"
+          aria-label="Message Guda"
           disabled={busy}
         />
         <button className="btn chat-send" type="submit" disabled={busy || !input.trim()}>

@@ -13,6 +13,7 @@ import type {
   AuditLogEntry,
   ChatAnswer,
   ChatMessage,
+  FreePick,
   HeadToHeadMatch,
   LivePrediction,
   MatchHistoryEntry,
@@ -22,6 +23,7 @@ import type {
   PublicAccuracy,
   PublicFixture,
   PublicStats,
+  SiteNotice,
   Team,
   TeamForm,
   TokenResponse,
@@ -297,6 +299,13 @@ export function fetchAccessStatus(): Promise<AccessStatus> {
   return get("/api/access/status");
 }
 
+/** One headline pick per league -- works for any logged-in account, even
+ * one with no redeemed code. See FreePickOut on the backend for why it's
+ * deliberately thinner than a full Prediction. */
+export function fetchFreePicks(): Promise<FreePick[]> {
+  return get("/api/predictions/free-picks");
+}
+
 export function redeemAccessCode(code: string): Promise<AccessGrant> {
   return post("/api/access/redeem", { code });
 }
@@ -445,6 +454,11 @@ export function fetchSystemStatus(): Promise<SystemStatus> {
 
 export function fetchBranding(): Promise<Branding> {
   return get("/api/public/branding");
+}
+
+/** No auth needed -- shown to every visitor, logged in or not. */
+export function fetchNotice(): Promise<SiteNotice> {
+  return get("/api/public/notice");
 }
 
 export function fetchOutcomes(params: {

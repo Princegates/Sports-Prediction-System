@@ -6,8 +6,9 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.api.deps import get_db
+from app.api.deps import get_db, require_active_access
 from app.api.schemas import (
+    FreePickOut,
     LeagueOutcomesOut,
     MarketOut,
     OutcomeOut,
@@ -50,7 +51,7 @@ def _build_all(db: Session, matches: list[Match]) -> list[Prediction]:
     return [_get_or_build_prediction(db, m, pool) for m in matches]
 
 
-@router.get("/today", response_model=list[PredictionOut])
+@router.get("/today", response_model=list[PredictionOut], dependencies=[Depends(require_active_access)])
 def predictions_today(league: str | None = None, db: Session = Depends(get_db)) -> list[PredictionOut]:
     today = dt.datetime.utcnow().date()
     start = dt.datetime.combine(today, dt.time.min)
@@ -65,7 +66,7 @@ def predictions_today(league: str | None = None, db: Session = Depends(get_db)) 
     return [prediction_to_schema(p) for p in predictions]
 
 
-@router.get("/high-confidence", response_model=list[PredictionOut])
+@router.get("/high-confidence", response_model=list[PredictionOut], dependencies=[Depends(require_active_access)])
 def predictions_high_confidence(
     league: str | None = None,
     days_ahead: int = Query(default=3, ge=0, le=14),
@@ -88,7 +89,7 @@ def predictions_high_confidence(
     return [prediction_to_schema(p) for p in filtered]
 
 
-@router.get("/most-likely", response_model=list[PredictionOut])
+@router.get("/most-likely", response_model=list[PredictionOut], dependencies=[Depends(require_active_access)])
 def predictions_most_likely(
     league: str | None = None,
     days_ahead: int = Query(default=1, ge=0, le=14),
@@ -108,7 +109,7 @@ def predictions_most_likely(
     return [prediction_to_schema(p) for p in predictions[:limit]]
 
 
-@router.get("/outcomes", response_model=OutcomesOut)
+@router.get("/outcomes", response_model=OutcomesOut, dependencies=[Depends(require_active_access)])
 def browse_outcomes(
     market: str | None = Query(None, description="Exact market name, e.g. 'Match Result' or 'Total Goals 2.5'"),
     league: str | None = None,
@@ -228,3 +229,59 @@ def browse_outcomes(
         total_matches=sum(lg.matches for lg in leagues),
         days_ahead=days_ahead,
     )
+
+
+@router.get("/free-picks", response_model=list[FreePickOut])
+def free_picks(db: Session = Depends(get_db)) -> list[FreePickOut]:
+    """One headline pick per league, for any logged-in account -- including
+    one with no redeemed access code. A genuine taste of the model, not the
+    product itself: no full market breakdown, no explanation, no correct
+    score, and (unlike ``/today`` etc.) it never builds a prediction on
+    demand, since this runs for accounts that haven't paid for that compute.
+
+    Deliberately not gated by ``require_active_access`` -- the login-only
+    dependency at the router mount is all this route gets, by design.
+    """
+
+    now = dt.datetime.utcnow()
+    cutoff = now + dt.timedelta(days=3)
+
+    matches = db.execute(
+        select(Match)
+        .where(Match.date >= now, Match.date < cutoff)
+        .options(selectinload(Match.home_team), selectinload(Match.away_team))
+    ).scalars().all()
+    by_id = {m.id: m for m in matches}
+    if not by_id:
+        return []
+
+    predictions = db.execute(
+        select(Prediction).where(Prediction.match_id.in_(list(by_id))).order_by(Prediction.created_at.asc())
+    ).scalars()
+    latest: dict[int, Prediction] = {p.match_id: p for p in predictions}
+
+    best_per_league: dict[str, tuple[Match, Prediction]] = {}
+    for match_id, prediction in latest.items():
+        match = by_id[match_id]
+        current = best_per_league.get(match.league)
+        if current is None or prediction.global_outcome_probability > current[1].global_outcome_probability:
+            best_per_league[match.league] = (match, prediction)
+
+    picks = [
+        FreePickOut(
+            match_id=match.id,
+            league=match.league,
+            home_team=match.home_team.name,
+            away_team=match.away_team.name,
+            kickoff=match.date,
+            home_win=prediction.home_win,
+            draw=prediction.draw,
+            away_win=prediction.away_win,
+            selection=prediction.global_outcome_selection,
+            probability=prediction.global_outcome_probability,
+            confidence=prediction.confidence,
+        )
+        for match, prediction in best_per_league.values()
+    ]
+    picks.sort(key=lambda p: -p.probability)
+    return picks[:8]
