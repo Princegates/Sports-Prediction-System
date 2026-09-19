@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { fetchMatches, fetchPrediction } from "../api";
+import { fetchLive, fetchMatches, fetchPrediction } from "../api";
 import { useLeague } from "../components/AppShell";
 import { CardGridSkeleton } from "../components/LoadingSkeleton";
 import { EmptyState } from "../components/EmptyState";
@@ -11,6 +11,7 @@ import type { MatchSummary, Prediction } from "../types";
 interface Row {
   prediction: Prediction;
   match: MatchSummary;
+  minute: number;
 }
 
 export function Live() {
@@ -29,9 +30,21 @@ export function Live() {
     Promise.all([fetchMatches({ status: "LIVE" }), fetchMatches({ league, status: "SCHEDULED" })])
       .then(async ([live, scheduled]) => {
         if (cancelled) return;
-        const predictions = await Promise.all(live.map((m) => fetchPrediction(m.id)));
+        const [predictions, liveHistories] = await Promise.all([
+          Promise.all(live.map((m) => fetchPrediction(m.id))),
+          Promise.all(live.map((m) => fetchLive(m.id))),
+        ]);
         if (cancelled) return;
-        setLiveRows(live.map((match, i) => ({ match, prediction: predictions[i] })));
+        setLiveRows(
+          live.map((match, i) => {
+            const history = liveHistories[i];
+            return {
+              match,
+              prediction: predictions[i],
+              minute: history[history.length - 1]?.minute ?? 0,
+            };
+          }),
+        );
         setUpcoming(scheduled.slice(0, 6));
       })
       .catch((err) => !cancelled && setError(String(err)));
@@ -54,12 +67,12 @@ export function Live() {
         <EmptyState
           icon="●"
           title="No matches are live right now."
-          hint="Live status appears here the moment a match receives a live event (goal, card, substitution, etc.)."
+          hint="A real match appears here automatically within a few minutes of kickoff, once its league is tracked and an API-Football key is configured -- or push a simulated event from any match's Live tab below."
         />
       )}
       {!error && liveRows !== null && liveRows.length > 0 && (
         <div className="grid">
-          {liveRows.map(({ prediction, match }) => (
+          {liveRows.map(({ prediction, match, minute }) => (
             <PredictionCard
               key={prediction.match_id}
               prediction={prediction}
@@ -68,7 +81,7 @@ export function Live() {
               kickoff={match.date}
               competition={match.league}
               isLive
-              liveScore={{ home: match.home_score ?? 0, away: match.away_score ?? 0, minute: 0 }}
+              liveScore={{ home: match.home_score ?? 0, away: match.away_score ?? 0, minute }}
             />
           ))}
         </div>
@@ -76,7 +89,7 @@ export function Live() {
 
       <div className="section-header">
         <h2>Try the live engine</h2>
-        <span className="meta">No paid live-data feed is wired up -- simulate events on any scheduled match instead</span>
+        <span className="meta">Simulate events on any scheduled match to see it recalculate, whether or not it's actually live</span>
       </div>
 
       {upcoming === null && <p className="badge-neutral">Loading scheduled matches…</p>}

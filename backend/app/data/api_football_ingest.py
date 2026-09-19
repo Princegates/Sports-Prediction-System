@@ -33,7 +33,8 @@ from sqlalchemy.orm import Session
 
 from app.data.providers.api_football import ApiFootballClient, ID_TO_LEAGUE
 from app.data.team_matching import canonical_alias, name_match_score
-from app.db.models import Match, MatchOdds, Team
+from app.db.models import LivePrediction, Match, MatchOdds, Team
+from app.live_engine import record_live_event
 from app.prediction_models.elo import EUROPEAN_COMPETITIONS
 
 logger = logging.getLogger(__name__)
@@ -436,6 +437,124 @@ def import_odds(
                         )
                     )
                     report.inserted += 1
+
+    db.commit()
+    return report
+
+
+@dataclass
+class LiveSyncReport:
+    considered: int = 0
+    updated: int = 0
+    unchanged: int = 0
+    finished: int = 0
+    skipped_no_match: list[str] = field(default_factory=list)
+    requests_used: int = 0
+
+
+# Fixture states that mean "not actually being played right now", so no
+# in-play projection is meaningful. FT/AET/PEN are handled separately, as a
+# transition to record rather than a state to skip.
+_NON_PLAYING_STATUSES = {"PST", "CANC", "ABD", "AWD", "WO", "TBD", "SUSP", "INT"}
+
+
+def sync_live_matches(db: Session, client: ApiFootballClient) -> LiveSyncReport:
+    """Pull every fixture API-Football currently has in play, worldwide, in
+    one request, and reconcile it onto our own Match rows.
+
+    ``live_fixtures()`` is not scoped to a league or season -- it is the
+    entire world's live board, and most of it is a club this project holds no
+    row for. ``TeamIndex.resolve`` filters that down for free, the same as an
+    unresolved club is skipped everywhere else in this module: never created
+    from a live probe, only matched against what a real fixture import
+    already established.
+
+    A poll that finds nothing changed since the last one recorded writes
+    nothing -- this runs every few minutes while matches are on, and a
+    ``LivePrediction`` row per poll per live match would mostly be the same
+    minute and score repeated.
+    """
+
+    report = LiveSyncReport()
+    rows = client.live_fixtures()
+    report.requests_used = client.quota.used_this_run
+
+    index = TeamIndex(db)
+
+    for row in rows:
+        report.considered += 1
+        fixture = row.get("fixture") or {}
+        league = row.get("league") or {}
+        teams = row.get("teams") or {}
+        goals = row.get("goals") or {}
+        status = fixture.get("status") or {}
+
+        league_name = ID_TO_LEAGUE.get(league.get("id"))
+        if league_name is None:
+            continue  # a live match in a league this project doesn't hold
+
+        home_name = (teams.get("home") or {}).get("name") or ""
+        away_name = (teams.get("away") or {}).get("name") or ""
+        home = index.resolve(home_name)
+        away = index.resolve(away_name)
+        if home is None or away is None:
+            continue
+
+        candidates = list(
+            db.execute(
+                select(Match).where(
+                    Match.league == league_name,
+                    Match.home_team_id == home.id,
+                    Match.away_team_id == away.id,
+                    Match.status.in_(["SCHEDULED", "LIVE"]),
+                )
+            ).scalars()
+        )
+        if not candidates:
+            report.skipped_no_match.append(f"{home_name} vs {away_name} ({league_name})")
+            continue
+
+        kickoff = _parse_kickoff(fixture.get("date") or "")
+        match = min(candidates, key=lambda m: abs(m.date - kickoff))
+
+        status_short = (status.get("short") or "").upper()
+
+        if status_short in {"FT", "AET", "PEN"}:
+            if match.status != "FINISHED":
+                match.status = "FINISHED"
+                match.home_score = goals.get("home")
+                match.away_score = goals.get("away")
+                report.finished += 1
+            continue
+
+        if status_short in _NON_PLAYING_STATUSES:
+            continue
+
+        latest = db.execute(
+            select(LivePrediction)
+            .where(LivePrediction.match_id == match.id)
+            .order_by(LivePrediction.created_at.desc())
+        ).scalars().first()
+
+        elapsed = status.get("elapsed")
+        minute = elapsed if isinstance(elapsed, int) else (latest.minute if latest else 0)
+        score_home = goals.get("home")
+        score_home = score_home if score_home is not None else (latest.score_home if latest else 0)
+        score_away = goals.get("away")
+        score_away = score_away if score_away is not None else (latest.score_away if latest else 0)
+
+        if latest is not None and (latest.minute, latest.score_home, latest.score_away) == (minute, score_home, score_away):
+            report.unchanged += 1
+            continue
+
+        record_live_event(db, match, minute=minute, score_home=score_home, score_away=score_away, trigger_event="sync")
+        # record_live_event guesses FINISHED from minute >= 90, which is wrong
+        # for stoppage time in a match that is, per the provider, still on.
+        # The status check above is the authority on FT; short of that, this
+        # poll only ever means the match is live.
+        match.status = "LIVE"
+        db.commit()
+        report.updated += 1
 
     db.commit()
     return report

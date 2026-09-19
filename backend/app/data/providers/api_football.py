@@ -207,6 +207,14 @@ class ApiFootballClient:
             },
         )
 
+    def live_fixtures(self) -> list[dict]:
+        """Every fixture in play anywhere, right now -- one request regardless
+        of how many matches that is, unlike ``fixtures()`` which is scoped to
+        a single league and season. Callers filter down to the leagues this
+        project tracks; most of the world's live board is not one of them."""
+
+        return self.get("fixtures", {"live": "all"})
+
     def odds(self, *, fixture_id: int | None = None, league_id: int | None = None,
              season: int | None = None, date: dt.date | None = None, page: int = 1) -> list[dict]:
         return self.get(
