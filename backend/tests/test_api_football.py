@@ -196,6 +196,112 @@ def test_finished_fixtures_bring_their_scores(db_session, clubs):
     assert (match.status, match.home_score, match.away_score) == ("FINISHED", 2, 1)
 
 
+def test_a_moved_kickoff_updates_the_existing_fixture_not_a_duplicate(db_session, clubs):
+    """The bug found on live data: a broadcaster moves a kickoff, the
+    provider's timestamp no longer matches what is already stored, and an
+    exact-timestamp key alone treated that as a brand-new fixture -- every
+    club in the league then appeared to "play twice in a day" against the
+    audit script, because it genuinely did, on paper."""
+
+    original = Match(
+        league="Spanish La Liga", season="2026", date=dt.datetime(2026, 10, 4, 15, 0),
+        home_team_id=clubs["Real Madrid CF"].id, away_team_id=clubs["Arsenal FC"].id, status="SCHEDULED",
+    )
+    db_session.add(original)
+    db_session.commit()
+
+    # Same fixture, moved three days later for television -- well inside a
+    # normal reschedule, nowhere near a real fixture months away.
+    client = FakeClient({
+        "fixtures": [{
+            "fixture": {"id": 300, "date": "2026-10-07T19:30:00+00:00", "status": {"short": "NS"}},
+            "teams": {"home": {"name": "Real Madrid"}, "away": {"name": "Arsenal"}},
+            "goals": {"home": None, "away": None},
+        }]
+    })
+    report = import_fixtures(db_session, client, league_id=140, season=2026)
+
+    assert report.inserted == 0
+    assert report.rescheduled == 1
+    assert db_session.query(Match).count() == 1
+
+    db_session.refresh(original)
+    assert original.date == dt.datetime(2026, 10, 7, 19, 30)
+
+
+def test_a_moved_kickoff_still_brings_its_score_if_already_played(db_session, clubs):
+    original = Match(
+        league="Spanish La Liga", season="2026", date=dt.datetime(2026, 10, 4, 15, 0),
+        home_team_id=clubs["Real Madrid CF"].id, away_team_id=clubs["Arsenal FC"].id, status="SCHEDULED",
+    )
+    db_session.add(original)
+    db_session.commit()
+
+    client = FakeClient({
+        "fixtures": [{
+            "fixture": {"id": 300, "date": "2026-10-07T19:30:00+00:00", "status": {"short": "FT"}},
+            "teams": {"home": {"name": "Real Madrid"}, "away": {"name": "Arsenal"}},
+            "goals": {"home": 3, "away": 1},
+        }]
+    })
+    import_fixtures(db_session, client, league_id=140, season=2026)
+
+    db_session.refresh(original)
+    assert (original.status, original.home_score, original.away_score) == ("FINISHED", 3, 1)
+
+
+def test_a_kickoff_far_outside_the_window_is_a_new_fixture_not_a_reschedule(db_session, clubs):
+    """A genuine second meeting -- the reverse fixture, months later -- must
+    never be folded into the first one just because it shares both clubs."""
+
+    original = Match(
+        league="Spanish La Liga", season="2026", date=dt.datetime(2026, 10, 4, 15, 0),
+        home_team_id=clubs["Real Madrid CF"].id, away_team_id=clubs["Arsenal FC"].id, status="SCHEDULED",
+    )
+    db_session.add(original)
+    db_session.commit()
+
+    client = FakeClient({
+        "fixtures": [{
+            "fixture": {"id": 301, "date": "2027-02-20T19:30:00+00:00", "status": {"short": "NS"}},
+            "teams": {"home": {"name": "Real Madrid"}, "away": {"name": "Arsenal"}},
+            "goals": {"home": None, "away": None},
+        }]
+    })
+    report = import_fixtures(db_session, client, league_id=140, season=2026)
+
+    assert report.inserted == 1
+    assert report.rescheduled == 0
+    assert db_session.query(Match).count() == 2
+
+
+def test_a_finished_fixtures_date_is_never_rewritten_by_a_reschedule_match(db_session, clubs):
+    """Only a still-SCHEDULED fixture can be a reschedule target -- a
+    FINISHED match's date is a fact of history, not something still moving,
+    and folding a later provider row onto it would corrupt Elo's chronology."""
+
+    finished = Match(
+        league="Spanish La Liga", season="2026", date=dt.datetime(2026, 10, 4, 15, 0),
+        home_team_id=clubs["Real Madrid CF"].id, away_team_id=clubs["Arsenal FC"].id,
+        status="FINISHED", home_score=2, away_score=0,
+    )
+    db_session.add(finished)
+    db_session.commit()
+
+    client = FakeClient({
+        "fixtures": [{
+            "fixture": {"id": 302, "date": "2026-10-06T19:30:00+00:00", "status": {"short": "NS"}},
+            "teams": {"home": {"name": "Real Madrid"}, "away": {"name": "Arsenal"}},
+            "goals": {"home": None, "away": None},
+        }]
+    })
+    report = import_fixtures(db_session, client, league_id=140, season=2026)
+
+    assert report.inserted == 1  # a new SCHEDULED row -- a genuine next meeting
+    db_session.refresh(finished)
+    assert finished.date == dt.datetime(2026, 10, 4, 15, 0)  # untouched
+
+
 def test_a_domestic_leagues_first_import_creates_its_clubs(db_session):
     """The opposite case from a European tie: a brand-new domestic league has
     no existing rows to resolve to. Skipping every fixture until someone

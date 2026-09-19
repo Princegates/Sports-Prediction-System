@@ -198,7 +198,7 @@ def main() -> None:
         print(f"  budget       : {daily_budget}/day, "
               f"{int(values.get('api_football_per_minute') or 300)}/minute (from settings)")
 
-        total_inserted = total_updated = 0
+        total_inserted = total_updated = total_rescheduled = 0
         unresolved: dict[str, UnresolvedClub] = {}
         skipped_fixtures = 0
         failed: list[str] = []
@@ -222,6 +222,7 @@ def main() -> None:
 
             total_inserted += report.inserted
             total_updated += report.updated
+            total_rescheduled += report.rescheduled
             skipped_fixtures += len(report.skipped_unresolved)
             for name, club in report.unresolved_clubs.items():
                 seen = unresolved.get(name)
@@ -230,6 +231,8 @@ def main() -> None:
                 else:
                     seen.fixtures += club.fixtures
             print(f"  fixtures: {report.considered} seen, {report.inserted} new, {report.updated} updated")
+            if report.rescheduled:
+                print(f"            {report.rescheduled} matched to an existing fixture under a moved kickoff")
             if report.skipped_unresolved:
                 print(f"            {len(report.skipped_unresolved)} skipped (clubs not recognised)")
 
@@ -246,7 +249,8 @@ def main() -> None:
                     failed.append(f"{label} (odds)")
 
         print(f"\n{'=' * 60}")
-        print(f"{total_inserted} fixtures added, {total_updated} updated.")
+        print(f"{total_inserted} fixtures added, {total_updated} updated"
+              f"{f', {total_rescheduled} rescheduled' if total_rescheduled else ''}.")
         print(f"Requests used this run: {client.quota.used_this_run}")
         if client.quota.remaining_reported is not None:
             print(f"The API reports {client.quota.remaining_reported} left today.")

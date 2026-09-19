@@ -67,6 +67,12 @@ class ImportReport:
     considered: int = 0
     inserted: int = 0
     updated: int = 0
+    # A provider kickoff that didn't match ours exactly, reconciled onto an
+    # existing SCHEDULED fixture between the same two clubs instead of
+    # inserted as a new one -- see import_fixtures for why an exact-timestamp
+    # key alone produced duplicate rows every time a broadcaster moved a
+    # kickoff.
+    rescheduled: int = 0
     skipped_unresolved: list[str] = field(default_factory=list)
     unresolved_clubs: dict[str, UnresolvedClub] = field(default_factory=dict)
     requests_used: int = 0
@@ -203,6 +209,16 @@ def import_fixtures(
     league has no rows to resolve to on its first import, so unresolved
     clubs are created instead, the same as the free providers in
     app/data/ingest.py do.
+
+    A domestic league can already hold this fixture under a different
+    kickoff -- broadcasters move matches by hours or days after a schedule
+    is first published, routinely. Matching on an exact timestamp treated
+    every one of those as a brand-new fixture, silently duplicating the
+    entire remaining calendar the first time this ran against a league whose
+    matches came from somewhere else first. A still-SCHEDULED match between
+    the same two clubs, close in time, is now reconciled onto instead --
+    never a FINISHED one, whose date is a fact of history rather than
+    something still moving.
     """
 
     report = ImportReport()
@@ -216,10 +232,18 @@ def import_fixtures(
 
     # One query for everything already stored for this competition, rather than
     # a lookup per fixture.
-    existing = {
-        (m.home_team_id, m.away_team_id, m.date): m
-        for m in db.execute(select(Match).where(Match.league == league_name)).scalars()
-    }
+    stored = list(db.execute(select(Match).where(Match.league == league_name)).scalars())
+    existing = {(m.home_team_id, m.away_team_id, m.date): m for m in stored}
+
+    # A same-direction rematch between two clubs inside one league season
+    # does not happen in a standard round-robin format, so at most one
+    # SCHEDULED fixture should ever be waiting per (home, away) pair -- this
+    # index exists purely to survive a moved kickoff, not to disambiguate a
+    # real rematch.
+    scheduled_by_pair: dict[tuple[int, int], list[Match]] = {}
+    for m in stored:
+        if m.status == "SCHEDULED":
+            scheduled_by_pair.setdefault((m.home_team_id, m.away_team_id), []).append(m)
 
     for row in rows:
         report.considered += 1
@@ -254,6 +278,19 @@ def import_fixtures(
 
         key = (home.id, away.id, kickoff)
         match = existing.get(key)
+
+        if match is None:
+            # Exact timestamp missed. Reconcile onto a SCHEDULED fixture
+            # between the same two clubs within a broadcaster-reschedule
+            # window rather than assume this is a genuinely new match.
+            RESCHEDULE_WINDOW = dt.timedelta(days=7)
+            pending = scheduled_by_pair.get((home.id, away.id)) or []
+            for candidate in pending:
+                if abs(candidate.date - kickoff) <= RESCHEDULE_WINDOW:
+                    match = candidate
+                    pending.remove(candidate)  # claimed; a later provider row must not also snap onto it
+                    break
+
         if match is None:
             match = Match(
                 league=league_name,
@@ -267,7 +304,14 @@ def import_fixtures(
             )
             db.add(match)
             report.inserted += 1
-        elif finished and match.home_score is None:
+            if not finished:
+                scheduled_by_pair.setdefault((home.id, away.id), []).append(match)
+            continue
+
+        if match.date != kickoff:
+            match.date = kickoff
+            report.rescheduled += 1
+        if finished and match.home_score is None:
             match.home_score = goals.get("home")
             match.away_score = goals.get("away")
             match.status = "FINISHED"
