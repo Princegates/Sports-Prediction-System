@@ -31,6 +31,7 @@ import { ScoreHeatmap } from "../components/ScoreHeatmap";
 import { Tabs } from "../components/Tabs";
 import { TeamComparison } from "../components/TeamComparison";
 import { formatSelection } from "../lib/copySelections";
+import { useAuth } from "../lib/AuthContext";
 import type {
   HeadToHeadMatch,
   LivePrediction,
@@ -44,6 +45,7 @@ import type {
 const TAB_NAMES = ["Overview", "AI Prediction", "Form", "H2H", "Live", "Markets", "Explanation"];
 
 export function MatchDetail() {
+  const { user } = useAuth();
   const { id } = useParams();
   const matchId = Number(id);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -314,6 +316,12 @@ export function MatchDetail() {
                 setGoalTrigger((k) => k + 1);
               }
               setLive((prev) => [...prev, result]);
+            }}
+            canClear={user?.role === "superadmin"}
+            hasEvents={live.length > 0}
+            onCleared={(resetMatch) => {
+              setLive([]);
+              setMatch(resetMatch);
             }}
           />
           <div className="card card-pad">

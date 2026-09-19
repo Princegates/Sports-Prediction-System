@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { postLiveEvent } from "../api";
-import type { LivePrediction } from "../types";
+import { clearMatchLiveEvents, postLiveEvent } from "../api";
+import type { LivePrediction, MatchSummary } from "../types";
 
 const TRIGGER_OPTIONS = ["kickoff", "goal", "red_card_home", "red_card_away", "penalty", "substitution", "half_time", "match_restart"];
 
@@ -10,15 +10,31 @@ interface Props {
   currentHome: number;
   currentAway: number;
   onEvent: (live: LivePrediction) => void;
+  /** Superadmin only -- lets them undo the sandbox instead of leaving a
+   * simulated score on the fixture forever. */
+  canClear?: boolean;
+  hasEvents?: boolean;
+  onCleared?: (match: MatchSummary) => void;
 }
 
-export function LiveEventControls({ matchId, currentMinute, currentHome, currentAway, onEvent }: Props) {
+export function LiveEventControls({
+  matchId,
+  currentMinute,
+  currentHome,
+  currentAway,
+  onEvent,
+  canClear = false,
+  hasEvents = false,
+  onCleared,
+}: Props) {
   const [minute, setMinute] = useState(currentMinute || 1);
   const [scoreHome, setScoreHome] = useState(currentHome);
   const [scoreAway, setScoreAway] = useState(currentAway);
   const [trigger, setTrigger] = useState("goal");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [clearing, setClearing] = useState(false);
+  const [clearErr, setClearErr] = useState<string | null>(null);
 
   async function submit() {
     setBusy(true);
@@ -30,6 +46,19 @@ export function LiveEventControls({ matchId, currentMinute, currentHome, current
       setErr(String(e));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleClear() {
+    setClearing(true);
+    setClearErr(null);
+    try {
+      const match = await clearMatchLiveEvents(matchId);
+      onCleared?.(match);
+    } catch (e) {
+      setClearErr(String(e));
+    } finally {
+      setClearing(false);
     }
   }
 
@@ -86,10 +115,18 @@ export function LiveEventControls({ matchId, currentMinute, currentHome, current
           </select>
         </label>
       </div>
-      <button className="btn" onClick={submit} disabled={busy}>
-        {busy ? "Recalculating..." : "Push live event"}
-      </button>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button className="btn" onClick={submit} disabled={busy}>
+          {busy ? "Recalculating..." : "Push live event"}
+        </button>
+        {canClear && hasEvents && (
+          <button className="btn ghost" onClick={handleClear} disabled={clearing} title="Superadmin only -- wipes every simulated event and resets this fixture to SCHEDULED">
+            {clearing ? "Clearing..." : "Clear simulated events"}
+          </button>
+        )}
+      </div>
       {err && <p style={{ color: "var(--critical)", fontSize: 12.5, marginTop: 8 }}>{err}</p>}
+      {clearErr && <p style={{ color: "var(--critical)", fontSize: 12.5, marginTop: 8 }}>{clearErr}</p>}
     </div>
   );
 }

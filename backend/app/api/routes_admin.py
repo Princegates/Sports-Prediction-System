@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.access import (
@@ -14,7 +14,7 @@ from app.access import (
     revoke_access_code,
     revoke_current_grant,
 )
-from app.api.deps import get_db, require_superadmin
+from app.api.deps import get_db, get_match_or_404, require_superadmin
 from app.api.schemas import (
     AccessCodeCreatedOut,
     AccessCodeCreateIn,
@@ -23,13 +23,14 @@ from app.api.schemas import (
     AdminUserOut,
     AuditLogOut,
     ExtendGrantIn,
+    MatchOut,
     RevokeCodeIn,
     RevokeGrantIn,
 )
-from app.api.serializers import access_code_to_schema, admin_user_to_schema
+from app.api.serializers import access_code_to_schema, admin_user_to_schema, match_to_schema
 from app.config import get_settings
 from app import mailer
-from app.db.models import AccessCode, AccessGrant, AuditLog, ChatMessage, Match, Prediction, User
+from app.db.models import AccessCode, AccessGrant, AuditLog, ChatMessage, LivePrediction, Match, Prediction, User
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_superadmin)])
 
@@ -355,3 +356,30 @@ def revoke_user_access(
     except AccessCodeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return admin_user_to_schema(target, db)
+
+
+# --- Live engine sandbox -----------------------------------------------------
+
+
+@router.delete("/matches/{match_id}/live-events", response_model=MatchOut)
+def clear_match_live_events(
+    match: Match = Depends(get_match_or_404),
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> MatchOut:
+    """Undoes every simulated event pushed to a match from the Live tab's
+    sandbox (anyone with access can push one -- see LiveEventControls), and
+    puts the fixture back to SCHEDULED with no score. Without this, a
+    simulated goal is permanent: the sandbox writes straight onto the real
+    Match row, so there was previously no way back short of editing the
+    database by hand.
+    """
+
+    result = db.execute(delete(LivePrediction).where(LivePrediction.match_id == match.id))
+    match.status = "SCHEDULED"
+    match.home_score = None
+    match.away_score = None
+    _record(db, admin, "match.live_cleared", detail={"match_id": match.id, "events_cleared": result.rowcount})
+    db.commit()
+    db.refresh(match)
+    return match_to_schema(match)

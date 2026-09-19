@@ -429,6 +429,12 @@ export function postLiveEvent(
   return post(`/api/matches/${matchId}/live-event`, payload);
 }
 
+/** Superadmin only -- wipes every simulated event pushed to this match from
+ * the Live tab's sandbox and puts the fixture back to SCHEDULED. */
+export function clearMatchLiveEvents(matchId: number): Promise<MatchSummary> {
+  return del(`/api/admin/matches/${matchId}/live-events`);
+}
+
 export type { TeamForm } from "./types";
 
 // --- Super Admin settings --------------------------------------------------
