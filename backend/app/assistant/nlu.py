@@ -413,6 +413,22 @@ def parse(
     if intent in (Intent.TODAYS_CARD, Intent.LIVE_STATUS) and len(teams) >= 2:
         intent = Intent.MATCH_PREDICTION if intent == Intent.TODAYS_CARD else intent
 
+    # A market keyword with nothing else -- no team, no other intent
+    # matched -- is "BTTS today" / "over 2.5 tips" / "double chance picks",
+    # not literally unanswerable. BEST_PICKS's own patterns require "best"
+    # or "top" sitting right next to "pick"/"bet", which market vocabulary
+    # like this doesn't satisfy, so this fallback only fires once every more
+    # specific pattern already had its chance to match -- it can't steal a
+    # message another intent's own needle already claimed.
+    #
+    # "1x2" is excluded: its own trigger words ("win", "draw") are single
+    # common words rather than distinctive market vocabulary, so treating
+    # them as a strong signal on their own would misfire on unrelated
+    # messages like "did I win" -- honest UNKNOWN beats a confident but
+    # irrelevant picks list there.
+    if intent == Intent.UNKNOWN and market not in (None, "1x2") and not teams:
+        intent = Intent.BEST_PICKS
+
     league = teams[0].league if teams else None
 
     selection_count = probability_floor = None

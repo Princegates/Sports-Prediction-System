@@ -218,4 +218,37 @@ def test_generate_selections_count_is_capped(db_session, teams):
 def test_generate_selections_recognizes_accumulator_phrasing(db_session, teams):
     for message in ["build me an accumulator", "give me an acca", "generate a betting slip"]:
         assert parse(db_session, message).intent == Intent.GENERATE_SELECTIONS, message
+
+
+# --- Market-filtered best-picks fallback -----------------------------------
+
+
+def test_bare_market_keyword_with_no_team_falls_back_to_best_picks(db_session, teams):
+    """"btts" alone matches no other intent's patterns and names no team --
+    it's a market-picks request, not literally unanswerable."""
+
+    parsed = parse(db_session, "btts")
+    assert parsed.intent == Intent.BEST_PICKS
+    assert parsed.market == "btts"
+
+    parsed = parse(db_session, "double chance picks")
+    assert parsed.intent == Intent.BEST_PICKS
+    assert parsed.market == "double_chance"
+
+
+def test_1x2_alone_does_not_hijack_an_unrelated_message(db_session, teams):
+    """"win"/"draw" are single common words, not distinctive market
+    vocabulary on their own -- an honest UNKNOWN beats a confident but
+    irrelevant picks list for something like "did I win"."""
+
+    assert parse(db_session, "did i win").intent == Intent.UNKNOWN
+
+
+def test_market_keyword_with_a_team_named_is_still_a_match_question(db_session, teams):
+    """A named team already gives has_two_teams/has_one_team a chance to
+    win -- the bare-market fallback must never override that."""
+
+    parsed = parse(db_session, "arsenal chelsea btts")
+    assert parsed.intent == Intent.MATCH_PREDICTION
+    assert parsed.market == "btts"
     assert parse(db_session, "over 2.5 goals arsenal chelsea").market == "over_under"

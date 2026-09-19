@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from app.db.models import LivePrediction, Match, ModelMetric, Prediction, Team
 from app.features.team_stats import TeamForm, compute_team_form
 from app.live_engine import LIVE_STALE_AFTER
+from app.outcomes.registry import outcomes_from_prediction
 
 
 @dataclass
@@ -34,6 +35,89 @@ class MatchCard:
     home_score: int | None = None
     away_score: int | None = None
     prediction: Prediction | None = None
+
+
+@dataclass
+class OutcomeHit:
+    """One market/selection on one match, for a market-filtered picks
+    request ("best BTTS picks today") -- distinct from MatchCard, which
+    carries a whole prediction rather than the single outcome asked about."""
+
+    match_id: int
+    league: str
+    kickoff: dt.datetime
+    home_team: str
+    away_team: str
+    market: str
+    selection: str
+    probability: float
+    confidence: str
+
+
+# nlu._detect_market's coarse categories, mapped to the outcome registry's
+# real market names. "over_under" picks the 2.5 line specifically -- the
+# one this project treats as the standard reference line everywhere else
+# (see e.g. responder._match_prediction) -- since the category alone
+# doesn't say which line the user meant.
+MARKET_CATEGORY_NAMES: dict[str, tuple[str, ...]] = {
+    "btts": ("Both Teams To Score",),
+    "over_under": ("Total Goals 2.5",),
+    "double_chance": ("Double Chance",),
+    "correct_score": ("Correct Score",),
+    "1x2": ("Match Result",),
+}
+
+
+def best_outcomes(
+    db: Session,
+    market_category: str,
+    date_from: dt.datetime,
+    date_to: dt.datetime,
+    league: str | None = None,
+    limit: int = 5,
+) -> list[OutcomeHit]:
+    """The highest-probability selection in this market family, one per
+    match, across upcoming fixtures that already have a stored prediction.
+
+    Only stored predictions -- same reasoning as ranked_predictions: this
+    reads what the ensemble already produced rather than running it inside
+    a chat turn.
+    """
+
+    wanted = MARKET_CATEGORY_NAMES.get(market_category, ())
+    if not wanted:
+        return []
+
+    stmt = (
+        select(Match, Prediction)
+        .join(Prediction, Prediction.match_id == Match.id)
+        .where(Match.date >= date_from, Match.date < date_to)
+    )
+    if league:
+        stmt = stmt.where(Match.league == league)
+
+    hits: list[OutcomeHit] = []
+    for match, prediction in db.execute(stmt).all():
+        candidates = [o for o in outcomes_from_prediction(prediction) if o.market in wanted]
+        if not candidates:
+            continue
+        best = max(candidates, key=lambda o: o.probability)
+        hits.append(
+            OutcomeHit(
+                match_id=match.id,
+                league=match.league,
+                kickoff=match.date,
+                home_team=match.home_team.name,
+                away_team=match.away_team.name,
+                market=best.market,
+                selection=best.selection,
+                probability=best.probability,
+                confidence=prediction.confidence,
+            )
+        )
+
+    hits.sort(key=lambda h: h.probability, reverse=True)
+    return hits[:limit]
 
 
 @dataclass

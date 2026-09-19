@@ -459,7 +459,61 @@ def _todays_card(db: Session, q: ParsedQuery, now: dt.datetime) -> Answer:
     )
 
 
+_MARKET_LABELS = {
+    "btts": "both teams to score",
+    "over_under": "over/under 2.5 goals",
+    "double_chance": "double chance",
+    "correct_score": "correct score",
+    "1x2": "match result",
+}
+
+
+def _best_picks_for_market(db: Session, q: ParsedQuery, now: dt.datetime) -> Answer:
+    """"Best BTTS picks", "top over/under picks" -- q.market filters this to
+    one market family instead of _best_picks' global most-likely outcome,
+    which could be Match Result on one match and Correct Score on the next."""
+
+    date_from = q.date_from or now
+    date_to = q.date_to or now + dt.timedelta(days=3)
+    hits = retrieval.best_outcomes(db, q.market, date_from, date_to, q.league, limit=5)
+    label = _MARKET_LABELS.get(q.market, q.market)
+
+    if not hits:
+        return Answer(
+            text=(
+                f"No stored predictions in the next few days price a {label} outcome I can rank -- "
+                f"either there's nothing scheduled, or the fixtures haven't had predictions generated "
+                f"for them yet."
+            ),
+            intent=q.intent,
+            sources=[Source("page", "Markets", "/app/markets")],
+            suggestions=["What are today's best picks?", "What fixtures are on today?"],
+        )
+
+    lines = [f"**Highest-probability {label} calls in the next few days:**", ""]
+    for i, h in enumerate(hits, start=1):
+        lines.append(f"{i}. **{h.selection}** ({h.market}) -- {_pct(h.probability, 1)}")
+        lines.append(f"   {h.home_team} vs {h.away_team}, {_kickoff(h.kickoff)} · {h.confidence.lower()} confidence")
+
+    lines.append("")
+    lines.append(
+        "Ranked purely by model probability, same caveat as any best-picks list: a high probability "
+        "and a good price are different things -- this doesn't look at bookmaker odds at all."
+    )
+
+    return Answer(
+        text="\n".join(lines),
+        intent=q.intent,
+        sources=[Source("match", f"{h.home_team} vs {h.away_team}", h.match_id) for h in hits],
+        suggestions=["What are today's best picks?", "What fixtures are on today?"],
+        includes_probability=True,
+    )
+
+
 def _best_picks(db: Session, q: ParsedQuery, now: dt.datetime) -> Answer:
+    if q.market:
+        return _best_picks_for_market(db, q, now)
+
     date_from = q.date_from or now
     date_to = q.date_to or now + dt.timedelta(days=3)
     cards = retrieval.ranked_predictions(db, date_from, date_to, q.league, limit=5)
@@ -868,6 +922,7 @@ I read those rows and report them; I don't improvise numbers.
 - "Arsenal vs Chelsea" -- full prediction for a fixture
 - "What's on today?" / "fixtures this weekend"
 - "What are the best picks?" -- ranked by model probability
+- "Best BTTS picks" / "top double chance picks" -- ranked within one market
 - "Give me 10 selections with at least 60% chance" -- a combo priced from real bookmaker odds
 - "Why is this favored?" / "what are the risks?" -- the reasoning behind a call
 - "Liverpool form" -- recent results and goal rates

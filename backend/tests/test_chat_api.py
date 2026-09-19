@@ -366,6 +366,18 @@ def test_generate_selections_with_no_priced_match_says_so_honestly(db_session, a
     assert "nothing" in body["text"].lower()
 
 
+def test_market_filtered_best_picks_ranks_by_that_markets_own_probability(db_session, auth_headers, fixture_data):
+    """"btts" alone must rank by the BTTS outcome's own probability (61%),
+    not by the match's unrelated global most-likely outcome (Over 0.5,
+    95%) -- a plain best-picks answer would report the wrong number here."""
+
+    body = _ask("btts", auth_headers)
+    assert body["intent"] == "best_picks"
+    assert "Both Teams To Score" in body["text"]
+    assert "Yes" in body["text"]
+    assert "61.0%" in body["text"]
+
+
 def test_harmful_request_gets_the_responsible_use_answer(db_session, auth_headers, fixture_data):
     body = _ask("just give me a guaranteed win", auth_headers)
     assert body["intent"] == "responsible_use"
