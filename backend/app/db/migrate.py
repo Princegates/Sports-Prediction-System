@@ -41,7 +41,10 @@ _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     # Set only by the real live-board sync, each time it confirms a fixture
     # is still in play -- lets "genuinely live" be answered by recency
     # instead of a status column that can get stuck.
-    ("matches", "live_synced_at", "DATETIME"),
+    # TIMESTAMP, not DATETIME -- Postgres has no DATETIME type at all, and a
+    # missing type on ALTER TABLE fails the whole schema migration, which
+    # takes every data endpoint down with it (see main.py's _try_init_database).
+    ("matches", "live_synced_at", "TIMESTAMP"),
 ]
 
 
