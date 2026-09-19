@@ -22,8 +22,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from sqlalchemy import select
 
 from app.betcode.selection import SlipCriteria, build_candidate_legs, select_legs
-from app.db.models import Match, MatchOdds, Prediction
+from app.data.team_matching import name_match_score
+from app.db.models import Match, MatchOdds, Prediction, Team
 from app.db.session import SessionLocal
+from app.features.team_stats import matches_played_before
 from app.outcomes.registry import outcomes_from_prediction
 
 
@@ -107,6 +109,29 @@ def main() -> None:
                 print(f"     stored odds markets:  {stored_pairs}")
                 print(f"     model outcomes >= {args.min_probability:.0%}: {model_pairs}")
                 print(f"     overlap: {sorted(overlap) or 'NONE'}")
+
+        print("\n4c. Team-identity check: is low matches_available a fresh 'stub' row fragmenting real history?")
+        team_ids = sorted({m.home_team_id for m in matches} | {m.away_team_id for m in matches})
+        teams_by_id = {t.id: t for t in db.execute(select(Team).where(Team.id.in_(team_ids))).scalars()}
+        all_league_teams = list(db.execute(select(Team).where(Team.league == args.league)).scalars()) if args.league else []
+        for m in matches:
+            for role, tid in (("home", m.home_team_id), ("away", m.away_team_id)):
+                team = teams_by_id.get(tid)
+                if team is None:
+                    continue
+                scoped = matches_played_before(db, tid, m.date, args.league)
+                any_league = matches_played_before(db, tid, m.date, None)
+                siblings = [
+                    (t.id, t.name, matches_played_before(db, t.id, m.date, args.league))
+                    for t in all_league_teams
+                    if t.id != tid and name_match_score(team.name, t.name)[0] >= 0.6
+                ]
+                print(
+                    f"   match#{m.id} {role}: #{tid} {team.name!r} league={team.league!r} "
+                    f"scoped_matches={scoped} any_league_matches={any_league} aliases={team.aliases}"
+                )
+                if siblings:
+                    print(f"     *** possible sibling row(s) (same club, different id): {siblings}")
 
         print(f"\n5. Running build_candidate_legs() with min_probability={args.min_probability:.0%}, any market, any price_bookmaker ...")
         criteria = SlipCriteria(
