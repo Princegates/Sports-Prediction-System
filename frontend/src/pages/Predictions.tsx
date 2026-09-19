@@ -8,6 +8,7 @@ import { ConfidenceTag } from "../components/MostLikelyOutcome";
 import { ErrorState } from "../components/ErrorState";
 import { EmptyState } from "../components/EmptyState";
 import { formatSelection, formatSelections } from "../lib/copySelections";
+import { downloadCsv, toCsv } from "../lib/csvExport";
 import type { MatchSummary, Prediction } from "../types";
 
 interface Row {
@@ -96,7 +97,16 @@ export function Predictions() {
         <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
           <span className="meta">{visible ? `${visible.length} matches` : "Loading..."}</span>
           {visible && visible.length > 0 && (
-            <CopyButton text={formatSelections(visible)} label="Copy all selections" />
+            <>
+              <CopyButton text={formatSelections(visible)} label="Copy all selections" />
+              <button
+                type="button"
+                className="btn ghost"
+                onClick={() => downloadCsv(`predictions-${day ?? "all"}.csv`, toCsv(visible))}
+              >
+                Export CSV
+              </button>
+            </>
           )}
         </div>
       </div>
