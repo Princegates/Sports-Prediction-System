@@ -17,6 +17,7 @@ interface Row {
 }
 
 type ConfidenceFilter = "ALL" | "HIGH" | "MEDIUM" | "LOW";
+type ViewMode = "table" | "tiers";
 
 // How far ahead to load. The refresh workflow generates predictions 10 days
 // out by default, so asking for more returns nothing extra.
@@ -30,12 +31,30 @@ type SortKey = "kickoff" | "probability" | "confidence";
 
 const CONFIDENCE_RANK = { HIGH: 3, MEDIUM: 2, LOW: 1 };
 
+// Confidence tiers: each match's own probability, unmodified, bucketed for
+// browsing from near-certain down to high-risk. Deliberately not a way to
+// combine several picks into one -- multiplying independent probabilities
+// together (what an accumulator does) turns three 90% calls into a ~73%
+// one, and presenting that product as a single confidence number is the
+// exact thing the Markets page's "stacking multiplies risk" note warns
+// against. Every row here stands alone.
+const TIERS: { min: number; max: number; label: string; note?: string }[] = [
+  { min: 0.95, max: 1.001, label: "95–100%", note: "Near certain" },
+  { min: 0.9, max: 0.95, label: "90–95%" },
+  { min: 0.8, max: 0.9, label: "80–90%" },
+  { min: 0.7, max: 0.8, label: "70–80%" },
+  { min: 0.6, max: 0.7, label: "60–70%" },
+  { min: 0.5, max: 0.6, label: "50–60%" },
+  { min: 0, max: 0.5, label: "Below 50%", note: "High risk" },
+];
+
 export function Predictions() {
   const [league, setLeague] = useState<string>("ALL");
   const [day, setDay] = useState<string | null>(null);
   const [confidence, setConfidence] = useState<ConfidenceFilter>("ALL");
   const [sortKey, setSortKey] = useState<SortKey>("kickoff");
   const [sortDir, setSortDir] = useState<1 | -1>(1);
+  const [viewMode, setViewMode] = useState<ViewMode>("table");
   const [rows, setRows] = useState<Row[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -81,6 +100,19 @@ export function Predictions() {
     return filtered;
   }, [rows, confidence, day, sortKey, sortDir]);
 
+  const tieredGroups = useMemo(() => {
+    if (!visible) return [];
+    const byProbabilityDesc = [...visible].sort(
+      (a, b) => b.prediction.global_outcome.probability - a.prediction.global_outcome.probability,
+    );
+    return TIERS.map((tier) => ({
+      ...tier,
+      rows: byProbabilityDesc.filter(
+        (r) => r.prediction.global_outcome.probability >= tier.min && r.prediction.global_outcome.probability < tier.max,
+      ),
+    })).filter((tier) => tier.rows.length > 0);
+  }, [visible]);
+
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
       setSortDir((d) => (d === 1 ? -1 : 1));
@@ -88,6 +120,54 @@ export function Predictions() {
       setSortKey(key);
       setSortDir(1);
     }
+  }
+
+  function renderTable(rowsToShow: Row[]) {
+    return (
+      <div className="predictions-table-wrapper">
+        <table className="predictions-table">
+          <thead>
+            <tr>
+              <th>Match</th>
+              <th>AI Outcome</th>
+              <th onClick={viewMode === "table" ? () => toggleSort("probability") : undefined}>
+                Probability {viewMode === "table" && sortKey === "probability" ? (sortDir === 1 ? "↑" : "↓") : ""}
+              </th>
+              <th onClick={viewMode === "table" ? () => toggleSort("confidence") : undefined}>
+                Confidence {viewMode === "table" && sortKey === "confidence" ? (sortDir === 1 ? "↑" : "↓") : ""}
+              </th>
+              <th onClick={viewMode === "table" ? () => toggleSort("kickoff") : undefined}>
+                Kickoff {viewMode === "table" && sortKey === "kickoff" ? (sortDir === 1 ? "↑" : "↓") : ""}
+              </th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rowsToShow.map(({ prediction, match }) => (
+              <tr key={prediction.match_id} onClick={() => navigate(`/app/match/${prediction.match_id}`)}>
+                <td>
+                  <div className="match-cell">
+                    {match.home_team.name} vs {match.away_team.name}
+                  </div>
+                  <div className="sub">{match.league}</div>
+                </td>
+                <td>{prediction.global_outcome.selection}</td>
+                <td className="tabular-nums">{(prediction.global_outcome.probability * 100).toFixed(0)}%</td>
+                <td>
+                  <ConfidenceTag confidence={prediction.confidence} />
+                </td>
+                <td>{new Date(match.date).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
+                <td>{match.status}</td>
+                <td>
+                  <CopyButton text={formatSelection(match, prediction)} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
   }
 
   return (
@@ -125,6 +205,13 @@ export function Predictions() {
             {c === "ALL" ? "Any confidence" : `${c.charAt(0)}${c.slice(1).toLowerCase()} confidence`}
           </button>
         ))}
+        <span style={{ width: 1, alignSelf: "stretch", background: "var(--border)", margin: "0 4px" }} />
+        <button className={`filter-chip${viewMode === "table" ? " active" : ""}`} onClick={() => setViewMode("table")}>
+          Table
+        </button>
+        <button className={`filter-chip${viewMode === "tiers" ? " active" : ""}`} onClick={() => setViewMode("tiers")}>
+          Confidence tiers
+        </button>
       </div>
 
       <DateStrip dates={kickoffs} horizonDays={HORIZON_DAYS} value={day} onChange={setDay} />
@@ -134,44 +221,29 @@ export function Predictions() {
       {!error && visible !== null && visible.length === 0 && (
         <EmptyState icon="◌" title="No predictions match these filters." />
       )}
-      {!error && visible !== null && visible.length > 0 && (
-        <div className="predictions-table-wrapper">
-          <table className="predictions-table">
-            <thead>
-              <tr>
-                <th>Match</th>
-                <th>AI Outcome</th>
-                <th onClick={() => toggleSort("probability")}>Probability {sortKey === "probability" ? (sortDir === 1 ? "↑" : "↓") : ""}</th>
-                <th onClick={() => toggleSort("confidence")}>Confidence {sortKey === "confidence" ? (sortDir === 1 ? "↑" : "↓") : ""}</th>
-                <th onClick={() => toggleSort("kickoff")}>Kickoff {sortKey === "kickoff" ? (sortDir === 1 ? "↑" : "↓") : ""}</th>
-                <th>Status</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {visible.map(({ prediction, match }) => (
-                <tr key={prediction.match_id} onClick={() => navigate(`/app/match/${prediction.match_id}`)}>
-                  <td>
-                    <div className="match-cell">
-                      {match.home_team.name} vs {match.away_team.name}
-                    </div>
-                    <div className="sub">{match.league}</div>
-                  </td>
-                  <td>{prediction.global_outcome.selection}</td>
-                  <td className="tabular-nums">{(prediction.global_outcome.probability * 100).toFixed(0)}%</td>
-                  <td>
-                    <ConfidenceTag confidence={prediction.confidence} />
-                  </td>
-                  <td>{new Date(match.date).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
-                  <td>{match.status}</td>
-                  <td>
-                    <CopyButton text={formatSelection(match, prediction)} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+
+      {!error && visible !== null && visible.length > 0 && viewMode === "table" && renderTable(visible)}
+
+      {!error && visible !== null && visible.length > 0 && viewMode === "tiers" && (
+        <>
+          <p className="setting-note" style={{ marginBottom: 16 }}>
+            Each match's own probability, grouped from near-certain down to high-risk. These are not
+            combined into one bet -- stacking several picks together multiplies the risk, it doesn't
+            add the confidence.
+          </p>
+          {tieredGroups.map((tier) => (
+            <div key={tier.label} style={{ marginBottom: 24 }}>
+              <div className="section-header" style={{ marginBottom: 8 }}>
+                <h3 style={{ margin: 0 }}>
+                  {tier.label}
+                  {tier.note && <span className="sub" style={{ marginLeft: 8 }}>{tier.note}</span>}
+                </h3>
+                <span className="meta">{tier.rows.length} match{tier.rows.length === 1 ? "" : "es"}</span>
+              </div>
+              {renderTable(tier.rows)}
+            </div>
+          ))}
+        </>
       )}
     </div>
   );
