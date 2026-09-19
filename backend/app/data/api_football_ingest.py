@@ -372,13 +372,21 @@ _GOALS_MARKET_NAMES = {"goals over/under"}
 _GOALS_LINE_PATTERN = re.compile(r"^(over|under)\s+([\d.]+)$", re.IGNORECASE)
 
 
-def _parse_bet(bet_name: str, value_text: str) -> tuple[str, str] | None:
+def _parse_bet(bet_name: str, value_text) -> tuple[str, str] | None:
     """One bookmaker value -> (our market name, our selection name), or None
     for a bet this project does not price. Isolated in one place so a fourth
-    market is one function to extend, not a third copy of this loop."""
+    market is one function to extend, not a third copy of this loop.
+
+    ``value_text`` is typed loose on purpose: confirmed against a live
+    response, API-Football's own "value" field is a bare number for some
+    bets (e.g. a handicap line) rather than a string like every recognised
+    market here uses, and this is called for every bet a bookmaker offers,
+    not only the three markets this project prices -- an unrecognised
+    market's numeric value must not crash the whole import before this
+    even gets a chance to say "not one of ours"."""
 
     name = (bet_name or "").strip().lower()
-    value = (value_text or "").strip()
+    value = "" if value_text is None else str(value_text).strip()
 
     if name in _RESULT_MARKET_NAMES:
         selection = _RESULT_SELECTIONS.get(value.lower())
@@ -445,7 +453,7 @@ def import_odds(
             book_name = bookmaker.get("name") or "unknown"
             for bet in bookmaker.get("bets") or []:
                 for value in bet.get("values") or []:
-                    parsed = _parse_bet(bet.get("name") or "", value.get("value") or "")
+                    parsed = _parse_bet(bet.get("name") or "", value.get("value"))
                     if parsed is None:
                         continue
                     market, selection = parsed

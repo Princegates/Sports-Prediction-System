@@ -859,6 +859,43 @@ def test_an_unpriced_bet_type_is_skipped_not_guessed(db_session, clubs):
     assert db_session.query(MatchOdds).count() == 0
 
 
+def test_a_bare_numeric_value_does_not_crash_the_import(db_session, clubs):
+    """Found against a live response: this project only recognises three
+    markets, but _parse_bet() runs for every bet a bookmaker offers, and
+    some unrelated markets (handicap lines, corner counts) hand back a
+    bare number rather than a string -- '2.5' the float, not "Over 2.5".
+    Before this crashed the whole run on .strip(); it must instead just
+    fail to match one of this project's three recognised markets, same as
+    any other bet type it doesn't price."""
+
+    kickoff = "2026-10-01T19:00:00+00:00"
+    fixtures = FakeClient({
+        "fixtures": [{
+            "fixture": {"id": 42, "date": kickoff, "status": {"short": "NS"}},
+            "teams": {"home": {"name": "Real Madrid"}, "away": {"name": "Bayern Munich"}},
+            "goals": {"home": None, "away": None},
+        }]
+    })
+    import_fixtures(db_session, fixtures, league_id=2, season=2026)
+
+    odds_client = FakeClient({
+        "odds": [{
+            "fixture": {"id": 42, "date": kickoff},
+            "bookmakers": [{
+                "name": "Pinnacle",
+                "bets": [
+                    {"name": "Asian Handicap", "values": [{"value": 2.5, "odd": "1.90"}]},
+                    {"name": "Match Winner", "values": [{"value": "Home", "odd": "2.10"}]},
+                ],
+            }],
+        }]
+    })
+    report = import_odds(db_session, odds_client, league_id=2, season=2026)
+
+    assert report.inserted == 1
+    assert db_session.query(MatchOdds).one().selection == "Home Win"
+
+
 def test_captured_market_names_match_the_outcome_registry_exactly():
     """The whole point of naming odds this way: a booking-code leg is built
     by joining a model outcome to a stored price on (market, selection). If
