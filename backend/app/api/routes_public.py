@@ -155,6 +155,7 @@ def public_branding(db: Session = Depends(get_db)) -> BrandingOut:
         default_theme=str(values["default_theme"]),
         default_accent=str(values["default_accent"]),
         registration_open=bool(values["registration_open"]),
+        contact_whatsapp=str(values["contact_whatsapp"]),
     )
 
 

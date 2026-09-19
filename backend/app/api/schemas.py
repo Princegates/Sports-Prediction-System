@@ -439,6 +439,7 @@ class BrandingOut(BaseModel):
     default_theme: str
     default_accent: str
     registration_open: bool
+    contact_whatsapp: str
 
 
 # --- Outcome browser -------------------------------------------------------

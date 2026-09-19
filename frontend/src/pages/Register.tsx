@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { registerAccount } from "../api";
+import { fetchBranding, registerAccount } from "../api";
 import { Mascot } from "../components/Mascot";
 import { PublicShell } from "../components/PublicShell";
+import { formatWhatsapp, whatsappLink } from "../lib/whatsapp";
 
 export function Register() {
   const navigate = useNavigate();
@@ -12,6 +13,13 @@ export function Register() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
+  const [whatsapp, setWhatsapp] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchBranding()
+      .then((b) => setWhatsapp(b.contact_whatsapp || null))
+      .catch(() => {});
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -41,8 +49,19 @@ export function Register() {
               <ol>
                 <li>Sign in right away -- there's no approval queue to wait on.</li>
                 <li>
-                  Arrange payment with a Super Admin outside the platform. Once confirmed, they'll hand you
-                  an access code.
+                  When your trial ends, arrange payment with a Super Admin outside the platform
+                  {whatsapp ? (
+                    <>
+                      {" "}
+                      -- message{" "}
+                      <a href={whatsappLink(whatsapp, "Hi, I'd like an access code for Socca Intelligence.")} target="_blank" rel="noreferrer noopener">
+                        {formatWhatsapp(whatsapp)} on WhatsApp
+                      </a>{" "}
+                      (WhatsApp only). Once confirmed, they'll hand you an access code.
+                    </>
+                  ) : (
+                    ". Once confirmed, they'll hand you an access code."
+                  )}
                 </li>
                 <li>Redeem the code from the Access page and the full platform unlocks.</li>
               </ol>

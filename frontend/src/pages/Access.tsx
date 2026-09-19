@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { redeemAccessCode } from "../api";
+import { fetchBranding, redeemAccessCode } from "../api";
 import { Mascot } from "../components/Mascot";
 import { useTilt } from "../lib/useTilt";
 import { useAuth } from "../lib/AuthContext";
+import { formatWhatsapp, whatsappLink } from "../lib/whatsapp";
 
 /**
  * Where a logged-in account without a live grant lands -- redirected here by
@@ -67,9 +68,13 @@ export function Access() {
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [justActivated, setJustActivated] = useState<{ activated_at: string; expires_at: string } | null>(null);
+  const [whatsapp, setWhatsapp] = useState<string | null>(null);
 
   useEffect(() => {
     refreshAccessStatus();
+    fetchBranding()
+      .then((b) => setWhatsapp(b.contact_whatsapp || null))
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -153,6 +158,19 @@ export function Access() {
                 Predictions, teams and matches stay locked until you redeem a code. A Super Admin issues one
                 after confirming your payment outside the platform.
               </p>
+              {whatsapp && (
+                <div className="status-result-actions">
+                  <a
+                    className="btn btn-lg"
+                    href={whatsappLink(whatsapp, "Hi, I'd like an access code for Socca Intelligence.")}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                  >
+                    Message {formatWhatsapp(whatsapp)} on WhatsApp
+                  </a>
+                  <span className="meta">WhatsApp only -- no calls or texts.</span>
+                </div>
+              )}
             </>
           )}
         </div>

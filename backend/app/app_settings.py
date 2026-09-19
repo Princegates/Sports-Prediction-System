@@ -142,7 +142,12 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 "duration below -- then it reverts to the free tier until a code is redeemed.",
                 default=True),
     SettingSpec("trial_duration_days", "int", "access", "Trial length (days)",
-                default=1, minimum=1, maximum=30),
+                default=5, minimum=1, maximum=30),
+    SettingSpec("contact_whatsapp", "str", "access", "WhatsApp contact for access requests",
+                "Shown wherever an account needs a Super Admin for a code -- the welcome email, "
+                "the locked-access page, and registration. Digits with country code, no spaces "
+                "or punctuation (e.g. 233596909643), since this also builds the wa.me link.",
+                default="233596909643"),
 
     # --- Appearance ------------------------------------------------------
     SettingSpec("default_theme", "choice", "appearance", "Default theme",

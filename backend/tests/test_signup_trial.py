@@ -40,7 +40,7 @@ def test_registering_grants_immediate_access(db_session):
         json={"email": "new.member@example.com", "name": "New Member", "password": "a-good-password"},
     )
     assert register.status_code == 200, register.text
-    assert "full access for the next 1 day" in register.json()["message"]
+    assert "full access for the next 5 days" in register.json()["message"]
 
     login = client.post("/api/auth/login", json={"email": "new.member@example.com", "password": "a-good-password"})
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
@@ -51,9 +51,9 @@ def test_registering_grants_immediate_access(db_session):
     assert body["has_access"] is True
     assert body["status"] == "active"
 
-    # Roughly a day out, not indefinite.
+    # Roughly the default 5-day trial out, not indefinite.
     expires_at = dt.datetime.fromisoformat(body["expires_at"])
-    assert dt.timedelta(hours=23) < (expires_at - dt.datetime.utcnow()) < dt.timedelta(hours=25)
+    assert dt.timedelta(days=4, hours=23) < (expires_at - dt.datetime.utcnow()) < dt.timedelta(days=5, hours=1)
 
 
 def test_the_trial_length_follows_the_admin_setting(db_session):

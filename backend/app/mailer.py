@@ -201,16 +201,36 @@ def access_code_message(code: str, duration_days: int, site_url: str | None = No
     return "Your access code", body
 
 
-def welcome_message(site_url: str | None = None, trial_days: int = 0) -> tuple[str, str]:
+def format_whatsapp(digits: str) -> str:
+    """Digits-only contact number (e.g. ``233596909643``) as ``+233 59 690 9643``.
+
+    Falls back to a bare ``+``-prefixed string for any length that isn't the
+    3-country-code + 9-subscriber-digit shape this was written for, rather
+    than producing a mis-grouped number.
+    """
+
+    digits = digits.strip()
+    if len(digits) == 12:
+        return f"+{digits[:3]} {digits[3:5]} {digits[5:8]} {digits[8:]}"
+    return f"+{digits}" if digits else digits
+
+
+def welcome_message(site_url: str | None = None, trial_days: int = 0, whatsapp: str | None = None) -> tuple[str, str]:
     """Subject and body for a new account's confirmation email.
 
     ``trial_days`` mirrors whatever registration actually granted (the
     ``trial_enabled``/``trial_duration_days`` settings, read once at
     registration time), so the email never promises a trial that didn't
-    happen -- or stays silent about one that did.
+    happen -- or stays silent about one that did. ``whatsapp`` is the
+    ``contact_whatsapp`` setting, digits only -- formatted for display here.
     """
 
     where = site_url or "the site"
+    contact = (
+        f"To get a code, message {format_whatsapp(whatsapp)} on WhatsApp -- WhatsApp only, no calls or texts.\n\n"
+        if whatsapp
+        else ""
+    )
     if trial_days:
         days = "1 day" if trial_days == 1 else f"{trial_days} days"
         body = (
@@ -218,18 +238,17 @@ def welcome_message(site_url: str | None = None, trial_days: int = 0) -> tuple[s
             f"Sign in at {where} whenever you're ready -- you'll have full access to\n"
             f"predictions, teams and matches for the next {days}, no code needed yet.\n\n"
             "Once the trial ends, you'll drop to the free tier (one headline pick per\n"
-            "league) until you redeem an access code. A Super Admin issues one once\n"
-            "you've arranged payment with them -- there's no rush, your account and\n"
-            "everything in it stays put either way.\n\n"
+            "league) until you redeem an access code. There's no rush -- your account\n"
+            "and everything in it stays put either way.\n\n"
+            f"{contact}"
             "If you didn't create this account, you can ignore this email.\n"
         )
     else:
         body = (
             "Your account has been created.\n\n"
             f"Sign in at {where} whenever you're ready. You'll start on the free tier\n"
-            "(one headline pick per league) until you redeem an access code -- once\n"
-            "you've arranged payment with a Super Admin, they'll issue you one to\n"
-            "redeem from the Access page.\n\n"
+            "(one headline pick per league) until you redeem an access code.\n\n"
+            f"{contact}"
             "If you didn't create this account, you can ignore this email.\n"
         )
     return "Your account is ready", body

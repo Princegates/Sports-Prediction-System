@@ -257,10 +257,18 @@ def test_branding_is_public_and_follows_the_setting(db_session, admin):
     before = client.get("/api/public/branding")
     assert before.status_code == 200
     assert before.json()["default_theme"] == "dark"
+    assert before.json()["contact_whatsapp"] == "233596909643"
 
     client.patch(
         "/api/admin/settings",
-        json={"values": {"site_name": "Prince Predicts", "default_theme": "light", "default_accent": "violet"}},
+        json={
+            "values": {
+                "site_name": "Prince Predicts",
+                "default_theme": "light",
+                "default_accent": "violet",
+                "contact_whatsapp": "233209998888",
+            }
+        },
         headers=_headers(admin),
     )
 
@@ -268,6 +276,7 @@ def test_branding_is_public_and_follows_the_setting(db_session, admin):
     assert after["site_name"] == "Prince Predicts"
     assert after["default_theme"] == "light"
     assert after["default_accent"] == "violet"
+    assert after["contact_whatsapp"] == "233209998888"
 
 
 def test_model_weight_override_reaches_the_ensemble(db_session, admin):

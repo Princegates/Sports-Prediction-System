@@ -341,6 +341,7 @@ export interface Branding {
   default_theme: string;
   default_accent: string;
   registration_open: boolean;
+  contact_whatsapp: string;
 }
 
 // --- Outcome browser -------------------------------------------------------
