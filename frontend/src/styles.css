@@ -547,6 +547,90 @@ h1, h2, h3, h4 {
 }
 
 /* ==========================================================================
+   RISK PRESETS (AI Generation)
+   ========================================================================== */
+.risk-preset-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.risk-preset-card {
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.risk-preset-card:hover {
+  border-color: var(--border-strong);
+}
+
+.risk-preset-card:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.risk-preset-card.low { border-left-color: var(--good); }
+.risk-preset-card.medium { border-left-color: var(--warning); }
+.risk-preset-card.high { border-left-color: var(--critical); }
+
+.risk-preset-card.active {
+  background: var(--bg-surface-2);
+}
+
+.risk-preset-card.low.active { border-color: rgba(12, 163, 12, 0.4); }
+.risk-preset-card.medium.active { border-color: rgba(250, 178, 25, 0.4); }
+.risk-preset-card.high.active { border-color: rgba(230, 103, 103, 0.4); }
+
+.risk-preset-label {
+  font-weight: 700;
+  font-size: 13.5px;
+  color: var(--text-primary);
+}
+
+.risk-preset-description {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.risk-tag {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid;
+  white-space: nowrap;
+}
+
+.risk-tag.low {
+  color: var(--good);
+  border-color: rgba(12, 163, 12, 0.4);
+  background: var(--good-soft);
+}
+
+.risk-tag.medium {
+  color: var(--warning);
+  border-color: rgba(250, 178, 25, 0.4);
+  background: var(--warning-soft);
+}
+
+.risk-tag.high {
+  color: var(--critical);
+  border-color: rgba(230, 103, 103, 0.4);
+  background: var(--critical-soft);
+}
+
+/* ==========================================================================
    DATE STRIP
    ========================================================================== */
 .date-strip {

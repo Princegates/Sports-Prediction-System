@@ -63,6 +63,62 @@ const ACCURACY_OPTIONS = [
 const DEFAULT_MAX_LEGS = 8;
 const LEG_COUNT_OPTIONS = [2, 3, 4, 5, 6, 8, 10];
 
+type RiskLevel = "low" | "medium" | "high";
+
+/**
+ * One-click generation presets. Each fills in (and immediately runs) the
+ * same criteria fields the form below exposes -- these aren't a separate
+ * mode, just a fast way to reach a sensible corner of the same search.
+ *
+ * The three levers that actually drive risk here: how safe the floor is,
+ * how many legs get stacked (more legs compounds risk fast even at a high
+ * floor), and which markets are in play. Low risk leaves markets at the
+ * engine's own default set (DEFAULT_MARKETS on the backend -- meaningful
+ * markets, no trivial extreme goal lines). High risk explicitly adds
+ * Correct Score on top of that default set: it's this project's highest-
+ * variance, highest-odds market, deliberately excluded from the default
+ * search, and "higher odds accumulation" means actually reaching into it
+ * rather than just lowering the floor on the same safe markets.
+ */
+const RISK_PRESETS: Record<
+  RiskLevel,
+  { label: string; description: string; minProbability: number; maxLegs: number; targetOdds: number; markets: string[] }
+> = {
+  low: {
+    label: "Low risk",
+    description: "85%+ picks only, up to 3 legs, the safest markets",
+    minProbability: 0.85,
+    maxLegs: 3,
+    targetOdds: 3,
+    markets: [],
+  },
+  medium: {
+    label: "Medium risk",
+    description: "65%+ picks, up to 5 legs",
+    minProbability: 0.65,
+    maxLegs: 5,
+    targetOdds: 10,
+    markets: [],
+  },
+  high: {
+    label: "High risk",
+    description: "50%+ picks, up to 8 legs, correct score included",
+    minProbability: 0.5,
+    maxLegs: 8,
+    targetOdds: 50,
+    markets: [...MARKET_OPTIONS.map((m) => m.value)],
+  },
+};
+
+// Labels the *result*, independent of which preset (if any) produced it --
+// a "High risk" generate that only found 2 very safe legs is honestly a
+// low-risk result, and this says so rather than repeating the input choice.
+function resultRiskLabel(combinedProbability: number): { label: string; tone: "low" | "medium" | "high" } {
+  if (combinedProbability >= 0.5) return { label: "Low risk", tone: "low" };
+  if (combinedProbability >= 0.2) return { label: "Medium risk", tone: "medium" };
+  return { label: "High risk", tone: "high" };
+}
+
 export function BetCodes() {
   const { league } = useLeague();
   const [targetOdds, setTargetOdds] = useState(3.0);
@@ -70,12 +126,16 @@ export function BetCodes() {
   const [markets, setMarkets] = useState<string[]>([]);
   const [minProbability, setMinProbability] = useState(0.65);
   const [daysAhead, setDaysAhead] = useState(7);
+  // Which risk preset (if any) exactly matches the form's current values --
+  // cleared the moment any control is touched by hand, so the highlighted
+  // chip never claims a match that no longer holds.
+  const [activeRisk, setActiveRisk] = useState<RiskLevel | null>(null);
 
   const [preview, setPreview] = useState<BetCodePreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
 
-  function criteria(): BetCodeCriteria {
+  function criteria(overrides?: Partial<BetCodeCriteria>): BetCodeCriteria {
     return {
       // Vestigial on the backend now that no aggregator is called -- kept
       // only because the API still accepts a bookmaker field on the
@@ -88,14 +148,15 @@ export function BetCodes() {
       min_probability: minProbability,
       league: league || null,
       days_ahead: daysAhead,
+      ...overrides,
     };
   }
 
-  async function handlePreview() {
+  async function runPreview(c: BetCodeCriteria) {
     setPreviewing(true);
     setPreviewError(null);
     try {
-      setPreview(await previewBetCode(criteria()));
+      setPreview(await previewBetCode(c));
     } catch (e) {
       setPreview(null);
       setPreviewError(String(e instanceof Error ? e.message : e));
@@ -104,7 +165,25 @@ export function BetCodes() {
     }
   }
 
+  function handlePreview() {
+    return runPreview(criteria());
+  }
+
+  // Fills in the preset's values (so the form reflects what actually ran,
+  // and stays tweakable afterward) and generates immediately -- one click
+  // for "just get me a low-risk slip" rather than four.
+  function runPreset(risk: RiskLevel) {
+    const p = RISK_PRESETS[risk];
+    setTargetOdds(p.targetOdds);
+    setMaxLegs(p.maxLegs);
+    setMinProbability(p.minProbability);
+    setMarkets(p.markets);
+    setActiveRisk(risk);
+    return runPreview(criteria({ target_odds: p.targetOdds, max_legs: p.maxLegs, min_probability: p.minProbability, markets: p.markets }));
+  }
+
   function toggleMarket(value: string) {
+    setActiveRisk(null);
     setMarkets((m) => (m.includes(value) ? m.filter((v) => v !== value) : [...m, value]));
   }
 
@@ -127,6 +206,32 @@ export function BetCodes() {
       </p>
 
       <div className="card card-pad" style={{ marginBottom: 20 }}>
+        <div className="meta" style={{ marginBottom: 10 }}>
+          Generate by risk level
+        </div>
+        <div className="risk-preset-row">
+          {(Object.keys(RISK_PRESETS) as RiskLevel[]).map((risk) => {
+            const p = RISK_PRESETS[risk];
+            return (
+              <button
+                key={risk}
+                type="button"
+                className={`risk-preset-card ${risk}${activeRisk === risk ? " active" : ""}`}
+                onClick={() => runPreset(risk)}
+                disabled={previewing}
+              >
+                <span className="risk-preset-label">{p.label}</span>
+                <span className="risk-preset-description">{p.description}</span>
+              </button>
+            );
+          })}
+        </div>
+        <p className="setting-note" style={{ marginTop: 10, marginBottom: 0 }}>
+          Fills in (and runs) the fields below -- feel free to adjust anything afterward and generate again.
+        </p>
+      </div>
+
+      <div className="card card-pad" style={{ marginBottom: 20 }}>
         <div className="auth-form" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
           <label>
             Target combined odds
@@ -135,13 +240,22 @@ export function BetCodes() {
               min={1.1}
               step={0.1}
               value={targetOdds}
-              onChange={(e) => setTargetOdds(Number(e.target.value))}
+              onChange={(e) => {
+                setActiveRisk(null);
+                setTargetOdds(Number(e.target.value));
+              }}
             />
           </label>
 
           <label>
             Window
-            <select value={daysAhead} onChange={(e) => setDaysAhead(Number(e.target.value))}>
+            <select
+              value={daysAhead}
+              onChange={(e) => {
+                setActiveRisk(null);
+                setDaysAhead(Number(e.target.value));
+              }}
+            >
               {[3, 7, 14].map((d) => (
                 <option key={d} value={d}>
                   Next {d} days
@@ -163,7 +277,10 @@ export function BetCodes() {
               <button
                 key={n}
                 className={`filter-chip${maxLegs === n ? " active" : ""}`}
-                onClick={() => setMaxLegs(n)}
+                onClick={() => {
+                  setActiveRisk(null);
+                  setMaxLegs(n);
+                }}
               >
                 {n}
               </button>
@@ -180,7 +297,10 @@ export function BetCodes() {
               <button
                 key={o.value}
                 className={`filter-chip${minProbability === o.value ? " active" : ""}`}
-                onClick={() => setMinProbability(o.value)}
+                onClick={() => {
+                  setActiveRisk(null);
+                  setMinProbability(o.value);
+                }}
               >
                 {o.label}
               </button>
@@ -226,10 +346,15 @@ export function BetCodes() {
                   matches before reaching either one. */}
               {!preview.met_target && !(preview.legs.length > 0 && preview.legs.length === maxLegs) ? " (short of target)" : ""}
             </h3>
-            <span className="meta tabular-nums">
-              {preview.combined_odds.toFixed(2)} combined · {(preview.combined_probability * 100).toFixed(0)}%
-              combined probability
-            </span>
+            {preview.legs.length > 0 && (
+              <span className="meta tabular-nums" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                {preview.combined_odds.toFixed(2)} combined · {(preview.combined_probability * 100).toFixed(0)}%
+                combined probability
+                <span className={`risk-tag ${resultRiskLabel(preview.combined_probability).tone}`}>
+                  {resultRiskLabel(preview.combined_probability).label}
+                </span>
+              </span>
+            )}
           </div>
 
           {preview.legs.length === 0 ? (
