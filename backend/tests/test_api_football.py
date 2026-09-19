@@ -686,6 +686,59 @@ def test_a_name_that_fits_two_clubs_equally_is_refused(db_session):
     assert TeamIndex(db_session).resolve("Sporting") is None
 
 
+def test_a_promoted_clubs_old_division_row_no_longer_blocks_its_new_one(db_session):
+    """The bug this was found for: a club keeps its old division's Team row
+    (a real, separate history) alongside a new one for wherever it plays
+    now, so its own exact name is tied against itself across two leagues.
+    A caller resolving fixtures for one specific domestic league already
+    knows every club in them plays there -- that is not a guess, it is
+    the one piece of context a name score alone never has."""
+
+    lower, upper = _store(
+        db_session,
+        ("AFC Bournemouth", "English Championship"),
+        ("AFC Bournemouth", "English Premier League"),
+    )
+
+    index = TeamIndex(db_session)
+    assert index.resolve("Bournemouth") is None  # unchanged without that context
+    assert index.resolve("Bournemouth", prefer_league="English Premier League") is upper
+    assert index.resolve("Bournemouth", prefer_league="English Championship") is lower
+
+
+def test_prefer_league_settles_a_cross_league_tie_correctly_too(db_session):
+    """Sporting Gijon and Sporting Lisbon are two different clubs, not one
+    club in two divisions -- but a caller resolving names for a Spanish La
+    Liga fixture list still knows, as a hard fact rather than a guess, that
+    every club in it plays in Spanish La Liga. That is exactly the same
+    reasoning the promoted-club case relies on, so it resolves the same
+    way: to whichever tied candidate is actually in that league."""
+
+    gijon, _lisbon = _store(
+        db_session,
+        ("Sporting Gijon", "Spanish La Liga"),
+        ("Sporting Lisbon", "Portuguese Primeira Liga"),
+    )
+
+    assert TeamIndex(db_session).resolve("Sporting", prefer_league="Spanish La Liga") is gijon
+
+
+def test_prefer_league_does_not_rescue_a_tie_within_the_same_league(db_session):
+    """Narrowing by league still leaves more than one candidate when two
+    different, similarly-named clubs share the target league itself --
+    that is a real ambiguity prefer_league cannot and must not resolve.
+    Same tie as the cross-league case above, moved into one league to
+    isolate exactly what prefer_league does and does not settle."""
+
+    _store(
+        db_session,
+        ("Sporting Gijon", "Spanish La Liga"),
+        ("Sporting Lisbon", "Spanish La Liga"),
+    )
+
+    assert TeamIndex(db_session).resolve("Sporting", prefer_league="Spanish La Liga") is None
+
+
 def test_both_unmatched_clubs_are_reported_not_just_the_home_side(db_session):
     """A qualifying tie between two clubs from leagues we do not hold used to
     report only one of them, so the other never appeared in the list a human

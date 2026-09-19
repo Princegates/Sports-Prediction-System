@@ -157,13 +157,26 @@ class TeamIndex:
         scored.sort(key=lambda row: (-row[0], -row[1], row[2].name))
         return scored
 
-    def resolve(self, provider_name: str) -> Team | None:
+    def resolve(self, provider_name: str, *, prefer_league: str | None = None) -> Team | None:
         """Find the domestic club row for a name as the provider spells it.
 
-        Refuses an ambiguous match. When two different clubs score identically
-        there is no evidence for either, and picking one anyway is how a tie
-        ends up in the wrong club's history -- the failure this whole module
-        exists to avoid. Better to skip it and say so.
+        Refuses an ambiguous match -- unless ``prefer_league`` is given and
+        settles it: a promoted or relegated club keeps its old division's
+        Team row (a real, separate history) alongside a new one for its
+        current division, so the exact same club name legitimately exists
+        twice, in two different leagues. A caller importing fixtures for one
+        specific domestic league already knows every club in them plays in
+        that league, so a tie broken by "the candidate actually in this
+        league" is not a guess -- it is the one piece of context a
+        league-blind name score can never have. It is never passed for a
+        European competition's own import, where the whole point of this
+        class is resolving to a club's *domestic* league, not the
+        competition's name.
+
+        Without a same-league candidate to settle it, two different clubs
+        scoring identically is still refused outright: there the tie is
+        real, and picking one anyway is how it ends up in the wrong club's
+        history -- the failure this whole module exists to avoid.
         """
 
         candidates = self._ranked(provider_name)
@@ -173,6 +186,11 @@ class TeamIndex:
         primary, coverage, team = candidates[0]
         tied = [c for c in candidates[1:] if (c[0], c[1]) == (primary, coverage) and c[2].id != team.id]
         if tied:
+            if prefer_league is not None:
+                top = [team] + [c[2] for c in tied]
+                same_league = [t for t in top if t.league == prefer_league]
+                if len(same_league) == 1:
+                    return same_league[0]
             logger.warning(
                 "Ambiguous club name %r: %s all score %.2f/%.2f -- skipping rather than guessing",
                 provider_name,
@@ -254,8 +272,9 @@ def import_fixtures(
 
         home_name = (teams.get("home") or {}).get("name") or ""
         away_name = (teams.get("away") or {}).get("name") or ""
-        home = index.resolve(home_name)
-        away = index.resolve(away_name)
+        prefer_league = league_name if domestic else None
+        home = index.resolve(home_name, prefer_league=prefer_league)
+        away = index.resolve(away_name, prefer_league=prefer_league)
 
         if domestic:
             if home is None:
@@ -504,8 +523,9 @@ def sync_live_matches(db: Session, client: ApiFootballClient) -> LiveSyncReport:
 
         home_name = (teams.get("home") or {}).get("name") or ""
         away_name = (teams.get("away") or {}).get("name") or ""
-        home = index.resolve(home_name)
-        away = index.resolve(away_name)
+        prefer_league = league_name if league_name not in EUROPEAN_COMPETITIONS else None
+        home = index.resolve(home_name, prefer_league=prefer_league)
+        away = index.resolve(away_name, prefer_league=prefer_league)
         if home is None or away is None:
             continue
 
