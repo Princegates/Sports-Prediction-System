@@ -85,13 +85,25 @@ def main() -> None:
             for mid in sorted(both)[:8]:
                 stored_pairs = sorted({(o.market, o.selection) for o in odds_by_match[mid]})
                 prediction = pred_by_match[mid]
+                all_outcomes = outcomes_from_prediction(prediction)
                 model_pairs = sorted(
                     (o.market, o.selection, round(o.probability, 3))
-                    for o in outcomes_from_prediction(prediction)
+                    for o in all_outcomes
                     if o.probability >= args.min_probability
                 )
                 overlap = {(m, s) for (m, s) in stored_pairs} & {(m, s) for (m, s, _p) in model_pairs}
+                matches_available = round((prediction.data_quality_score or 0.0) * 10)
                 print(f"   match #{mid}:")
+                print(
+                    f"     prediction row: home_win={prediction.home_win:.3f} draw={prediction.draw:.3f} "
+                    f"away_win={prediction.away_win:.3f} btts_yes={prediction.btts_yes:.3f} "
+                    f"btts_no={prediction.btts_no:.3f} data_quality_score={prediction.data_quality_score!r} "
+                    f"-> matches_available={matches_available}"
+                )
+                print(f"     outcomes_from_prediction() total outcomes (any probability): {len(all_outcomes)}")
+                if all_outcomes:
+                    top5 = sorted(all_outcomes, key=lambda o: -o.probability)[:5]
+                    print(f"     top 5 by probability: {[(o.market, o.selection, round(o.probability, 3)) for o in top5]}")
                 print(f"     stored odds markets:  {stored_pairs}")
                 print(f"     model outcomes >= {args.min_probability:.0%}: {model_pairs}")
                 print(f"     overlap: {sorted(overlap) or 'NONE'}")
