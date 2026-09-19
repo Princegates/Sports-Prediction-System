@@ -57,6 +57,7 @@ def _criteria_from_in(db: Session, payload: BetCodeCriteriaIn) -> SlipCriteria:
         ),
         league=payload.league,
         days_ahead=payload.days_ahead,
+        price_bookmaker=payload.price_bookmaker,
     )
 
 
@@ -65,7 +66,7 @@ def _legs_to_out(legs: list[Leg]) -> list[BetCodeLegOut]:
         BetCodeLegOut(
             match_id=leg.match_id, league=leg.league, home_team=leg.home_team, away_team=leg.away_team,
             kickoff=leg.kickoff, market=leg.market, selection=leg.selection,
-            model_probability=leg.model_probability, decimal_odds=leg.decimal_odds,
+            model_probability=leg.model_probability, decimal_odds=leg.decimal_odds, priced_by=leg.priced_by,
         )
         for leg in legs
     ]
@@ -76,7 +77,7 @@ def _legs_from_in(legs: list[BetCodeLegOut]) -> list[Leg]:
         Leg(
             match_id=leg.match_id, league=leg.league, home_team=leg.home_team, away_team=leg.away_team,
             kickoff=leg.kickoff, market=leg.market, selection=leg.selection,
-            model_probability=leg.model_probability, decimal_odds=leg.decimal_odds,
+            model_probability=leg.model_probability, decimal_odds=leg.decimal_odds, priced_by=leg.priced_by,
         )
         for leg in legs
     ]

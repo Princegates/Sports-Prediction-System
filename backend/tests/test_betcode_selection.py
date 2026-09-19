@@ -82,14 +82,62 @@ def three_matches(db_session):
     return matches
 
 
-def test_a_leg_needs_a_real_price_not_just_a_qualifying_probability(db_session, three_matches):
+def test_a_leg_needs_a_real_price_from_somewhere_not_just_a_qualifying_probability(db_session):
     """A match that clears the accuracy floor but has no stored price from
-    the requested bookmaker contributes nothing -- there is no synthetic
-    fallback price."""
+    *any* bookmaker contributes nothing -- there is no synthetic fallback
+    price. Genuinely unpriced, not merely filtered to a league with no
+    matches (that's a different, already-covered case)."""
 
-    criteria = SlipCriteria(bookmaker="SportyBet", target_odds=2.0, min_probability=0.5)
-    legs = build_candidate_legs(db_session, criteria)
+    home = Team(name="Villa", league="English Premier League", aliases=[])
+    away = Team(name="Wolves", league="English Premier League", aliases=[])
+    db_session.add_all([home, away])
+    db_session.commit()
+    match = Match(
+        league="English Premier League", season="2025-26", date=BASE + dt.timedelta(days=1),
+        home_team_id=home.id, away_team_id=away.id, status="SCHEDULED",
+    )
+    db_session.add(match)
+    db_session.commit()
+    db_session.refresh(match)
+    db_session.add(_prediction(match.id, home=0.9, draw=0.06, away=0.04))
+    db_session.commit()
+
+    legs = build_candidate_legs(db_session, SlipCriteria(bookmaker="SportyBet", target_odds=2.0, min_probability=0.5))
     assert legs == []
+
+
+def test_which_bookmaker_the_code_is_for_does_not_affect_pricing(db_session, three_matches):
+    """The bug this fixed: `bookmaker` used to double as both "who the final
+    code is for" and "whose prices to use", so asking for a code from a
+    bookmaker this project has never captured odds from (SportyBet, MSport,
+    Bet9ja are Ghanaian brands; the odds this project actually captures come
+    from whoever the data source returns, e.g. Bet365) silently zeroed every
+    preview. `bookmaker` must now be free to be anything -- pricing pools
+    whatever bookmaker's quote is actually on file, per price_bookmaker."""
+
+    for name in ["SportyBet", "MSport", "Bet9ja", "A Bookmaker Nobody Captured Odds From"]:
+        legs = build_candidate_legs(
+            db_session, SlipCriteria(bookmaker=name, target_odds=2.0, min_probability=0.5)
+        )
+        assert len(legs) == 3, f"bookmaker={name!r} should not change which legs are found"
+        assert all(leg.priced_by == "Bet9ja" for leg in legs)  # the only bookmaker three_matches actually priced
+
+
+def test_price_bookmaker_set_still_filters_strictly(db_session, three_matches):
+    """The escape hatch: someone who *does* care which bookmaker's numbers
+    price the slip can still ask for exactly one."""
+
+    legs = build_candidate_legs(
+        db_session,
+        SlipCriteria(bookmaker="Bet9ja", target_odds=2.0, min_probability=0.5, price_bookmaker="SportyBet"),
+    )
+    assert legs == []
+
+    legs = build_candidate_legs(
+        db_session,
+        SlipCriteria(bookmaker="Bet9ja", target_odds=2.0, min_probability=0.5, price_bookmaker="Bet9ja"),
+    )
+    assert len(legs) == 3
 
 
 def test_one_leg_per_match_prefers_the_stronger_outcome(db_session, three_matches):

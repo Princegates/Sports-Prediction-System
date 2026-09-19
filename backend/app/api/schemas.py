@@ -518,13 +518,17 @@ class FreePickOut(BaseModel):
 
 
 class BetCodeCriteriaIn(BaseModel):
-    bookmaker: str
+    bookmaker: str  # who the generated code is for
     target_odds: float
     markets: list[str] = []
     min_probability: float | None = None
     max_legs: int | None = None
     league: str | None = None
     days_ahead: int = 7
+    # Whose captured prices to build legs from. Unset = any bookmaker this
+    # project has a real quote from -- see app.betcode.selection's module
+    # docstring for why that differs from `bookmaker` above.
+    price_bookmaker: str | None = None
 
 
 class BetCodeLegOut(BaseModel):
@@ -537,6 +541,7 @@ class BetCodeLegOut(BaseModel):
     selection: str
     model_probability: float
     decimal_odds: float
+    priced_by: str  # which bookmaker's stored quote this price came from
 
 
 class BetCodePreviewOut(BaseModel):

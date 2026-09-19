@@ -136,12 +136,17 @@ export function BetCodes() {
         <div className="auth-form" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
           <label>
             Bookmaker
-            <input list="bookmaker-options" value={bookmaker} onChange={(e) => setBookmaker(e.target.value)} />
-            <datalist id="bookmaker-options">
+            <select value={bookmaker} onChange={(e) => setBookmaker(e.target.value)}>
               {BOOKMAKERS.map((b) => (
-                <option key={b} value={b} />
+                <option key={b} value={b}>
+                  {b}
+                </option>
               ))}
-            </datalist>
+            </select>
+            <span className="sub" style={{ fontWeight: 400 }}>
+              Who the code is generated for. Prices come from whichever bookmaker this project has a
+              stored quote from -- see "Priced by" per leg below.
+            </span>
           </label>
 
           <label>
@@ -245,6 +250,7 @@ export function BetCodes() {
                     <th>Selection</th>
                     <th>Probability</th>
                     <th>Odds</th>
+                    <th>Priced by</th>
                     <th>Kickoff</th>
                   </tr>
                 </thead>
@@ -263,6 +269,7 @@ export function BetCodes() {
                       </td>
                       <td className="tabular-nums">{(leg.model_probability * 100).toFixed(0)}%</td>
                       <td className="tabular-nums">{leg.decimal_odds.toFixed(2)}</td>
+                      <td className="sub">{leg.priced_by}</td>
                       <td className="sub">
                         {new Date(leg.kickoff).toLocaleString(undefined, {
                           month: "short",

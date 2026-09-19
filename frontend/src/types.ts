@@ -386,6 +386,8 @@ export interface OutcomesResponse {
 // --- Booking codes -------------------------------------------------------
 
 export interface BetCodeCriteria {
+  /** Who the generated code is for -- has no bearing on which bookmaker's
+   * prices get used, see price_bookmaker and BetCodeLeg.priced_by. */
   bookmaker: string;
   target_odds: number;
   markets: string[];
@@ -393,6 +395,9 @@ export interface BetCodeCriteria {
   max_legs?: number | null;
   league?: string | null;
   days_ahead: number;
+  /** Whose captured prices to price legs from. Omitted/null = any bookmaker
+   * this project has a real quote from. */
+  price_bookmaker?: string | null;
 }
 
 export interface BetCodeLeg {
@@ -405,6 +410,9 @@ export interface BetCodeLeg {
   selection: string;
   model_probability: number;
   decimal_odds: number;
+  /** Which bookmaker's stored quote this price came from -- not necessarily
+   * the bookmaker the slip is being generated for. */
+  priced_by: string;
 }
 
 export interface BetCodePreview {

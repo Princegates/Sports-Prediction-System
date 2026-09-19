@@ -24,7 +24,7 @@ from app.betcode.selection import Leg
 LEG = Leg(
     match_id=1, league="English Premier League", home_team="Arsenal", away_team="Chelsea",
     kickoff=dt.datetime(2026, 10, 1, 19, 0), market="Match Result", selection="Home Win",
-    model_probability=0.7, decimal_odds=1.5,
+    model_probability=0.7, decimal_odds=1.5, priced_by="Bet365",
 )
 
 

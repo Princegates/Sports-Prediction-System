@@ -5,13 +5,28 @@ minimum accuracy, and optionally which markets and bookmaker they want, and
 this reads the database for matches that qualify and assembles them toward
 that target.
 
-Three rules keep the result honest rather than merely impressive-looking:
+``bookmaker`` and ``price_bookmaker`` answer two different questions, kept
+separate on purpose. ``bookmaker`` is who the *code* is for -- it goes
+straight to the aggregator at generation time and needs nothing from this
+database. ``price_bookmaker`` is whose captured prices to build the combined
+odds *from*, and defaults to none, meaning any bookmaker this project has a
+real quote from. They will often be the same name, but odds are only ever
+captured from whichever bookmaker(s) the data source actually returns --
+Bet365 and similar, not necessarily the Ghanaian brands the aggregator step
+targets -- and requiring an exact match between the two turned "preview my
+selections" into "preview my selections, but only if I happen to have typed
+the one bookmaker's name this project has prices for", which is a worse
+feature than either half alone.
 
-**Real prices only.** A leg needs an actual ``MatchOdds`` row for the
-requested bookmaker -- there is no synthetic "implied odds" fallback. A
-combined price built partly from real prices and partly from guesses would
-look identical to one built from real prices throughout, and the difference
-matters enormously to whoever pastes it into a betting app.
+Four rules keep the result honest rather than merely impressive-looking:
+
+**Real prices only.** A leg needs an actual ``MatchOdds`` row -- there is no
+synthetic "implied odds" fallback. A combined price built partly from real
+prices and partly from guesses would look identical to one built from real
+prices throughout, and the difference matters enormously to whoever pastes
+it into a betting app. Which bookmaker supplied each leg's price is recorded
+on the leg itself, never hidden behind a single number that might quietly
+mix bookmakers.
 
 **One leg per match.** Two qualifying markets on the same fixture (a 70% Home
 Win and a 68% BTTS No) are correlated, not independent, so only the stronger
@@ -45,13 +60,17 @@ DEFAULT_DAYS_AHEAD = 7
 
 @dataclass(frozen=True)
 class SlipCriteria:
-    bookmaker: str
+    bookmaker: str                          # who the code is generated for
     target_odds: float
-    markets: tuple[str, ...] = ()          # empty = any market
+    markets: tuple[str, ...] = ()           # empty = any market
     min_probability: float = DEFAULT_MIN_PROBABILITY
     max_legs: int = DEFAULT_MAX_LEGS
     league: str | None = None
     days_ahead: int = DEFAULT_DAYS_AHEAD
+    # Whose captured prices to price legs from. None/blank = any bookmaker
+    # this project has a real quote from -- see the module docstring for why
+    # that is the default rather than an edge case.
+    price_bookmaker: str | None = None
 
     def as_json(self) -> dict:
         """What gets stored on the ``BookingSlip`` row -- plain values only,
@@ -65,6 +84,7 @@ class SlipCriteria:
             "max_legs": self.max_legs,
             "league": self.league,
             "days_ahead": self.days_ahead,
+            "price_bookmaker": self.price_bookmaker,
         }
 
 
@@ -79,6 +99,10 @@ class Leg:
     selection: str
     model_probability: float
     decimal_odds: float
+    # Which bookmaker's stored quote this price came from -- always a real
+    # name, never "any" or blank, so a leg never hides where its number came
+    # from behind the criteria's own (possibly unset) price_bookmaker.
+    priced_by: str
 
     def as_json(self) -> dict:
         return {
@@ -91,6 +115,7 @@ class Leg:
             "selection": self.selection,
             "model_probability": self.model_probability,
             "decimal_odds": self.decimal_odds,
+            "priced_by": self.priced_by,
         }
 
 
@@ -113,27 +138,33 @@ class SelectionResult:
 
 
 def _latest_odds(
-    db: Session, match_ids: list[int], bookmaker: str
-) -> dict[tuple[int, str, str], float]:
-    """The most recent stored price per (match, market, selection), for one
-    bookmaker. One query regardless of how many matches are in play -- the
+    db: Session, match_ids: list[int], price_bookmaker: str | None
+) -> dict[tuple[int, str, str], tuple[float, str]]:
+    """The most recent stored (price, bookmaker) per (match, market,
+    selection). One query regardless of how many matches are in play -- the
     per-match version of this is the pattern that already cost this project
-    a month of database bandwidth once."""
+    a month of database bandwidth once.
+
+    ``price_bookmaker`` set filters to that one bookmaker's own quotes, same
+    as before this existed. Left unset, every bookmaker this project has
+    captured a price from is pooled, and whichever quote was captured most
+    recently for a given (match, market, selection) wins -- still always a
+    real, attributable price, never a blend of several.
+    """
 
     if not match_ids:
         return {}
 
-    rows = db.execute(
-        select(MatchOdds)
-        .where(MatchOdds.match_id.in_(match_ids), MatchOdds.bookmaker == bookmaker)
-        .order_by(MatchOdds.captured_at.asc())
-    ).scalars()
+    stmt = select(MatchOdds).where(MatchOdds.match_id.in_(match_ids)).order_by(MatchOdds.captured_at.asc())
+    if price_bookmaker:
+        stmt = stmt.where(MatchOdds.bookmaker == price_bookmaker)
 
     # Ascending order, so a later row for the same key overwrites an earlier
-    # one -- the dict ends up holding only the latest snapshot per key.
-    latest: dict[tuple[int, str, str], float] = {}
-    for row in rows:
-        latest[(row.match_id, row.market, row.selection)] = row.decimal_odds
+    # one -- the dict ends up holding only the latest snapshot per key,
+    # whichever bookmaker it came from.
+    latest: dict[tuple[int, str, str], tuple[float, str]] = {}
+    for row in db.execute(stmt).scalars():
+        latest[(row.match_id, row.market, row.selection)] = (row.decimal_odds, row.bookmaker)
     return latest
 
 
@@ -164,8 +195,9 @@ def build_candidate_legs(db: Session, criteria: SlipCriteria) -> list[Leg]:
     """Every match that could contribute a leg: has a prediction already
     (this never builds one on demand -- see ``routes_predictions.outcomes``
     for why generating a whole day's models because someone opened a page is
-    the wrong trade), meets the accuracy floor, and has a real price from the
-    requested bookmaker.
+    the wrong trade), meets the accuracy floor, and has a real price --
+    from ``criteria.price_bookmaker`` if set, otherwise from any bookmaker
+    this project has captured one from.
     """
 
     now = dt.datetime.utcnow()
@@ -192,7 +224,7 @@ def build_candidate_legs(db: Session, criteria: SlipCriteria) -> list[Leg]:
     if not latest_prediction:
         return []
 
-    prices = _latest_odds(db, list(latest_prediction), criteria.bookmaker)
+    prices = _latest_odds(db, list(latest_prediction), criteria.price_bookmaker)
 
     # Priced (market, selection) pairs, per match -- not pooled across every
     # match, or a pair priced for one fixture would look priced for all of
@@ -210,7 +242,7 @@ def build_candidate_legs(db: Session, criteria: SlipCriteria) -> list[Leg]:
         if chosen is None:
             continue
 
-        price = prices[(match_id, chosen.market, chosen.selection)]
+        price, priced_by = prices[(match_id, chosen.market, chosen.selection)]
         match = by_id[match_id]
         legs.append(
             Leg(
@@ -223,6 +255,7 @@ def build_candidate_legs(db: Session, criteria: SlipCriteria) -> list[Leg]:
                 selection=chosen.selection,
                 model_probability=chosen.probability,
                 decimal_odds=price,
+                priced_by=priced_by,
             )
         )
 
@@ -266,11 +299,12 @@ def select_legs(db: Session, criteria: SlipCriteria) -> SelectionResult:
     met_target = combined_odds >= criteria.target_odds
 
     if not candidates:
+        price_source = f"from {criteria.price_bookmaker!r}" if criteria.price_bookmaker else "from any bookmaker"
         warnings.append(
             f"No scheduled match in the next {criteria.days_ahead} day(s) both meets "
-            f"{criteria.min_probability:.0%} accuracy and has a stored price from "
-            f"{criteria.bookmaker!r}. Widen the window, lower the accuracy floor, or "
-            "capture odds for this bookmaker first."
+            f"{criteria.min_probability:.0%} accuracy and has a stored price {price_source}. Widen "
+            "the window, lower the accuracy floor, or capture odds for this league first -- Settings "
+            "-> Data sources, or run the import workflow with odds: yes."
         )
     elif not met_target and len(chosen) >= criteria.max_legs:
         warnings.append(
@@ -281,8 +315,9 @@ def select_legs(db: Session, criteria: SlipCriteria) -> SelectionResult:
     elif not met_target:
         warnings.append(
             f"Used every qualifying match ({len(candidates)}) and reached {combined_odds:.2f}, "
-            f"short of the {criteria.target_odds:.2f} target. There is nothing left this "
-            "accuracy floor and bookmaker allow -- lower one of them to go further."
+            f"short of the {criteria.target_odds:.2f} target. There is nothing left this accuracy "
+            "floor and available pricing allow -- lower the floor, widen the window, or capture "
+            "more odds to go further."
         )
 
     if chosen:
