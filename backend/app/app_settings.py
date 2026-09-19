@@ -119,6 +119,12 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 default=True),
     SettingSpec("email_code_by_default", "bool", "access", "Tick “email it to them” by default",
                 default=True),
+    SettingSpec("trial_enabled", "bool", "access", "Give new signups a free trial",
+                "A brand-new account gets full access automatically, no code needed, for the "
+                "duration below -- then it reverts to the free tier until a code is redeemed.",
+                default=True),
+    SettingSpec("trial_duration_days", "int", "access", "Trial length (days)",
+                default=1, minimum=1, maximum=30),
 
     # --- Appearance ------------------------------------------------------
     SettingSpec("default_theme", "choice", "appearance", "Default theme",

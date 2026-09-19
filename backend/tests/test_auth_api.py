@@ -129,11 +129,12 @@ def test_login_rejects_wrong_password(db_session):
     assert response.status_code == 401
 
 
-def test_full_register_login_locked_until_redeemed_flow(db_session):
-    """Registering and logging in no longer needs a superadmin in the loop --
-    but the prediction surface stays locked until the account redeems a code.
-    The redemption itself is covered end-to-end in test_access_codes.py; this
-    just checks the boundary between the two."""
+def test_full_register_login_trial_flow(db_session):
+    """Registering and logging in no longer needs a superadmin in the loop,
+    and the prediction surface isn't locked immediately either -- a
+    brand-new account gets a short automatic trial (see test_signup_trial.py
+    for the trial's own behavior, including what happens once it lapses).
+    This just checks the boundary right after signing up."""
     from app.main import app
 
     client = TestClient(app)
@@ -153,8 +154,8 @@ def test_full_register_login_locked_until_redeemed_flow(db_session):
     assert me_resp.status_code == 200
     assert me_resp.json()["status"] == "active"
 
-    # But the prediction surface is locked -- there's no access grant yet.
-    assert client.get("/api/teams", headers=user_headers).status_code == 403
+    # The trial unlocks the prediction surface right away.
+    assert client.get("/api/teams", headers=user_headers).status_code == 200
 
 
 def test_non_superadmin_cannot_access_admin_routes(db_session, auth_headers):

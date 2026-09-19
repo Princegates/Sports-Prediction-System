@@ -183,7 +183,10 @@ def test_cannot_suspend_or_demote_yourself(db_session, admin):
 # --- Account status endpoint ---------------------------------------------
 
 
-def test_account_status_reports_no_access_before_redeeming_a_code(db_session):
+def test_account_status_reports_active_during_the_signup_trial(db_session):
+    """A brand-new account's automatic trial (see tests/test_signup_trial.py)
+    means this reports "active", not "no_access", right after registering."""
+
     rate_limit.reset()
     client.post(
         "/api/auth/register",
@@ -194,13 +197,30 @@ def test_account_status_reports_no_access_before_redeeming_a_code(db_session):
         "/api/auth/status", json={"email": "waiting@example.com", "password": "a-good-password"}
     )
     assert response.status_code == 200
-    assert response.json()["status"] == "no_access"
+    assert response.json()["status"] == "active"
 
-    # Login itself works right away -- it's the prediction surface that's
-    # locked until a code is redeemed, not the account.
+    # Login itself works right away regardless.
     assert client.post(
         "/api/auth/login", json={"email": "waiting@example.com", "password": "a-good-password"}
     ).status_code == 200
+
+
+def test_account_status_reports_no_access_when_the_trial_is_off(db_session, admin):
+    rate_limit.reset()
+    settings = get_settings()
+    admin_headers = {"Authorization": f"Bearer {create_token({'user_id': admin.id, 'role': admin.role}, settings.secret_key, settings.session_ttl_seconds)}"}
+    client.patch("/api/admin/settings", json={"values": {"trial_enabled": False}}, headers=admin_headers)
+
+    client.post(
+        "/api/auth/register",
+        json={"email": "no-trial-status@example.com", "name": "No Trial", "password": "a-good-password"},
+    )
+
+    response = client.post(
+        "/api/auth/status", json={"email": "no-trial-status@example.com", "password": "a-good-password"}
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "no_access"
 
 
 def test_account_status_does_not_enumerate_accounts(db_session, admin):

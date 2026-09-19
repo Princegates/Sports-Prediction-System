@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.access import current_grant
+from app.access import AccessCodeError, current_grant, issue_signup_trial
 from app import app_settings, mailer
 from app.api.deps import get_current_user, get_db
 from app.api.rate_limit import enforce
@@ -85,6 +85,21 @@ def register(payload: RegisterIn, request: Request, db: Session = Depends(get_db
     )
     db.commit()
 
+    # A brand-new account gets a taste of full access with no code, so it
+    # isn't bounced straight to a paywall before it has seen anything --
+    # then reverts to the free tier once the trial runs out, same as any
+    # other expired grant. Never blocks registration: the astronomically
+    # unlikely failure mode (a code-generation collision after five
+    # retries) still leaves a perfectly normal account that can redeem a
+    # real code later.
+    trial_days = 0
+    if app_settings.get_value(db, "trial_enabled"):
+        trial_days = int(app_settings.get_value(db, "trial_duration_days") or 1)
+        try:
+            issue_signup_trial(db, user, duration_days=trial_days)
+        except AccessCodeError:
+            trial_days = 0
+
     # Best-effort: a bounced welcome email is a courtesy lost, not a code
     # lost, so it never affects the response -- unlike an access-code send,
     # there's nothing here worth reporting back to the caller.
@@ -92,11 +107,18 @@ def register(payload: RegisterIn, request: Request, db: Session = Depends(get_db
         subject, body = mailer.welcome_message(mailer.resolve_config(db).site_url or None)
         mailer.send_email(email, subject, body, db=db)
 
-    return RegisterOut(
-        message=(
+    message = (
+        f"Account created. You have full access for the next {trial_days} day{'s' if trial_days != 1 else ''} "
+        "to explore -- redeem a code any time to keep it going once the trial ends."
+        if trial_days
+        else (
             "Account created. Sign in, then redeem your access code to unlock predictions -- if you "
             "haven't arranged payment yet, do that with a Super Admin first."
-        ),
+        )
+    )
+
+    return RegisterOut(
+        message=message,
         user=user_to_schema(user),
     )
 

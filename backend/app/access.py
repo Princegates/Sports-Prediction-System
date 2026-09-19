@@ -228,6 +228,35 @@ def revoke_current_grant(db: Session, admin: User, user: User, reason: str | Non
     return grant
 
 
+def issue_signup_trial(db: Session, user: User, *, duration_days: int) -> AccessGrant:
+    """A brand-new account's one-time taste of full access, no code needed.
+
+    Goes through the exact same create-then-redeem path a real code does,
+    rather than hand-building an AccessGrant, so it leaves the identical
+    trail (an AccessCode, an AccessGrant, an AccessRedemption, two audit-log
+    rows) that the rest of the admin tooling already knows how to display --
+    a superadmin looking at this user's access history sees an ordinary
+    single-use code, not a special case. Self-issued: the new account is
+    both the "admin" who cuts the code and the redeemer, since there is no
+    human actor at signup to attribute it to.
+
+    A second registration can never call this twice for the same account --
+    the email uniqueness check in routes_auth.py's register() already
+    prevents that -- so there is no risk of stacking trials.
+    """
+
+    code = create_access_code(
+        db,
+        user,
+        duration_days=duration_days,
+        redemption_limit=1,
+        assigned_user_id=user.id,
+        assigned_email=user.email,
+        notes="Automatic first-signup trial",
+    )
+    return redeem_access_code(db, user, code.code)
+
+
 def redeem_access_code(db: Session, user: User, raw_code: str) -> AccessGrant:
     """Validate and redeem a code for ``user``, returning the grant it opens.
 
