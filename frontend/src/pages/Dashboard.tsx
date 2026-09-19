@@ -30,7 +30,10 @@ const EXAMPLE_PROMPTS = [
 ];
 
 async function loadForDate(league: string, date: string): Promise<Row[]> {
-  const matches = await fetchMatches({ league, date });
+  // /api/matches filters by calendar date, not by kickoff time, so "today"
+  // still includes an early match that's already finished -- the Dashboard
+  // is for what's coming up, not a results page, so drop those here.
+  const matches = (await fetchMatches({ league, date })).filter((m) => m.status !== "FINISHED");
   const predictions = await Promise.all(matches.map((m) => fetchPrediction(m.id)));
   return matches.map((match, i) => ({ match, prediction: predictions[i] }));
 }
@@ -40,6 +43,7 @@ async function loadForWeek(league: string): Promise<Row[]> {
   const matches = await Promise.all(predictions.map((p) => fetchMatch(p.match_id)));
   return predictions
     .map((prediction, i) => ({ prediction, match: matches[i] }))
+    .filter((r) => r.match.status !== "FINISHED")
     .sort((a, b) => new Date(a.match.date).getTime() - new Date(b.match.date).getTime());
 }
 
