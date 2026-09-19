@@ -46,8 +46,8 @@ jobs:
           DAYS_AHEAD: ${{ inputs.days_ahead }}
           MIN_PROBABILITY: ${{ inputs.min_probability }}
         run: |
-          FLAGS="--days-ahead $DAYS_AHEAD --min-probability $MIN_PROBABILITY"
+          ARGS=(--days-ahead "$DAYS_AHEAD" --min-probability "$MIN_PROBABILITY")
           if [ -n "$LEAGUE" ]; then
-            FLAGS="$FLAGS --league $LEAGUE"
+            ARGS+=(--league "$LEAGUE")
           fi
-          eval "python scripts/diagnose_betcodes.py $FLAGS"
+          python scripts/diagnose_betcodes.py "${ARGS[@]}"
