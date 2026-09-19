@@ -17,6 +17,10 @@ on:
       date:
         description: "YYYY-MM-DD, a date a fixture is actually scheduled"
         required: true
+      bet_name:
+        description: "Print every value row for this exact bet name (optional)"
+        required: false
+        default: ""
 
 jobs:
   probe:
@@ -39,5 +43,10 @@ jobs:
         working-directory: backend
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BET_NAME: ${{ inputs.bet_name }}
         run: |
-          python scripts/probe_odds.py --league-id "${{ inputs.league_id }}" --season "${{ inputs.season }}" --date "${{ inputs.date }}"
+          ARGS=(--league-id "${{ inputs.league_id }}" --season "${{ inputs.season }}" --date "${{ inputs.date }}")
+          if [ -n "$BET_NAME" ]; then
+            ARGS+=(--bet-name "$BET_NAME")
+          fi
+          python scripts/probe_odds.py "${ARGS[@]}"

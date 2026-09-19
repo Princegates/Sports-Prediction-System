@@ -31,6 +31,11 @@ def main() -> None:
     parser.add_argument("--league-id", type=int, required=True)
     parser.add_argument("--season", type=int, required=True)
     parser.add_argument("--date", type=lambda s: dt.date.fromisoformat(s), required=True)
+    parser.add_argument(
+        "--bet-name", default=None,
+        help="Print every (bookmaker, value, odd) row for this exact bet name, across all fixtures -- "
+             "for confirming one market's real value shape when the truncated first-fixture dump doesn't reach it.",
+    )
     args = parser.parse_args()
 
     sys.stdout.reconfigure(line_buffering=True)
@@ -74,6 +79,15 @@ def main() -> None:
                     seen.add((bookmaker.get("name"), bet.get("name")))
         for bookmaker_name, bet_name in sorted(seen):
             print(f"  bookmaker={bookmaker_name!r:<20} bet={bet_name!r}")
+
+        if args.bet_name:
+            print(f"\nValues for bet={args.bet_name!r}, across all fixtures/bookmakers:")
+            for row in rows:
+                for bookmaker in row.get("bookmakers") or []:
+                    for bet in bookmaker.get("bets") or []:
+                        if bet.get("name") == args.bet_name:
+                            values = [(v.get("value"), v.get("odd")) for v in bet.get("values") or []]
+                            print(f"  bookmaker={bookmaker.get('name')!r:<20} values={values}")
     finally:
         db.close()
 
