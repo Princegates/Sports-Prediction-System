@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.access import (
     AccessCodeError,
+    access_code_effective_status,
     create_access_code,
     extend_grant,
     revoke_access_code,
@@ -249,6 +250,52 @@ def create_code(
             result = mailer.send_email(assigned_email, subject, body, db=db)
             emailed = result.sent
             email_error = result.error
+
+    return AccessCodeCreatedOut(
+        **access_code_to_schema(code, reveal_full=True).model_dump(),
+        emailed=emailed,
+        email_error=email_error,
+    )
+
+
+@router.post("/access-codes/{code_id}/resend", response_model=AccessCodeCreatedOut)
+def resend_code(
+    code_id: int,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> AccessCodeCreatedOut:
+    """Re-sends an already-issued code's email without creating a new one --
+    for a buyer who lost the first message, or whose first send failed
+    (a still-unverified sending domain, a typo caught after the fact, a
+    server that was down that day) and who shouldn't need a second code."""
+
+    code = db.get(AccessCode, code_id)
+    if code is None:
+        raise HTTPException(status_code=404, detail=f"Access code {code_id} not found")
+    if not code.assigned_email:
+        raise HTTPException(status_code=400, detail="This code has no assigned email to resend to.")
+
+    status = access_code_effective_status(code)
+    if status != "active":
+        raise HTTPException(status_code=400, detail=f"Code is {status}, so it can't be resent.")
+
+    emailed = False
+    email_error: str | None = None
+    if not mailer.is_configured(db):
+        email_error = (
+            "Email is not configured on this server. Set SMTP_HOST and SMTP_FROM "
+            "to enable sending; the code below is still valid."
+        )
+    else:
+        subject, body = mailer.access_code_message(
+            code.code, code.duration_days, mailer.resolve_config(db).site_url or None
+        )
+        result = mailer.send_email(code.assigned_email, subject, body, db=db)
+        emailed = result.sent
+        email_error = result.error
+
+    _record(db, admin, "access_code.resent", detail={"access_code_id": code.id})
+    db.commit()
 
     return AccessCodeCreatedOut(
         **access_code_to_schema(code, reveal_full=True).model_dump(),

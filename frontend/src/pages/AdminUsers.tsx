@@ -10,6 +10,7 @@ import {
   fetchSettings,
   promoteUser,
   reinstateUser,
+  resendAccessCode,
   revokeAccessCode,
   revokeUserAccess,
   suspendUser,
@@ -74,6 +75,7 @@ export function AdminUsers() {
   const [codeError, setCodeError] = useState<string | null>(null);
   const [codeBusy, setCodeBusy] = useState(false);
   const [justCreated, setJustCreated] = useState<AccessCode | null>(null);
+  const [justCreatedWasResend, setJustCreatedWasResend] = useState(false);
   const [durationPreset, setDurationPreset] = useState("30");
   const [durationDays, setDurationDays] = useState("30");
   const [sendByEmail, setSendByEmail] = useState(true);
@@ -172,6 +174,7 @@ export function AdminUsers() {
         send_email: sendByEmail,
       });
       setJustCreated(created);
+      setJustCreatedWasResend(false);
       setAssignedEmail("");
       setCodeNotes("");
       loadCodes();
@@ -187,6 +190,20 @@ export function AdminUsers() {
     try {
       await revokeAccessCode(id);
       loadCodes();
+    } catch (err) {
+      setCodeError(String(err instanceof Error ? err.message : err));
+    } finally {
+      setCodeBusy(false);
+    }
+  }
+
+  async function handleResendCode(id: number) {
+    setCodeError(null);
+    setCodeBusy(true);
+    try {
+      const resent = await resendAccessCode(id);
+      setJustCreated(resent);
+      setJustCreatedWasResend(true);
     } catch (err) {
       setCodeError(String(err instanceof Error ? err.message : err));
     } finally {
@@ -393,7 +410,7 @@ export function AdminUsers() {
       <div className="card card-pad" style={{ marginBottom: 20 }}>
         {justCreated && (
           <div className="status-result-explainer" style={{ marginBottom: 16 }}>
-            <h3>Code generated -- shown once</h3>
+            <h3>{justCreatedWasResend ? "Code resent" : "Code generated -- shown once"}</h3>
             <p style={{ fontFamily: "monospace", fontSize: 18, letterSpacing: 1 }}>{justCreated.code}</p>
             {justCreated.emailed ? (
               <p style={{ margin: 0 }}>
@@ -526,7 +543,12 @@ export function AdminUsers() {
                 <td>{c.assigned_email ?? "--"}</td>
                 <td>{c.notes || "--"}</td>
                 <td>{new Date(c.created_at).toLocaleDateString()}</td>
-                <td>
+                <td style={{ display: "flex", gap: 8 }}>
+                  {c.status === "active" && c.assigned_email && (
+                    <button className="btn ghost" disabled={codeBusy} onClick={() => handleResendCode(c.id)}>
+                      Resend
+                    </button>
+                  )}
                   {c.status === "active" && (
                     <button className="btn ghost" disabled={codeBusy} onClick={() => handleRevokeCode(c.id)}>
                       Revoke

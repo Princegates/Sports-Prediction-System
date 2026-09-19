@@ -321,6 +321,11 @@ export function revokeAccessCode(codeId: number, reason?: string): Promise<Acces
   return post(`/api/admin/access-codes/${codeId}/revoke`, { reason });
 }
 
+/** Re-sends an already-issued code's email, without creating a new code. */
+export function resendAccessCode(codeId: number): Promise<AccessCode> {
+  return post(`/api/admin/access-codes/${codeId}/resend`, {});
+}
+
 export function extendUserAccess(userId: number, additionalDays: number): Promise<AdminUser> {
   return post(`/api/admin/users/${userId}/access/extend`, { additional_days: additionalDays });
 }

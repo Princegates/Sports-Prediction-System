@@ -211,3 +211,82 @@ def test_nothing_is_sent_unless_asked(db_session, admin, monkeypatch):
     )
     assert response.status_code == 200, response.text
     assert response.json()["emailed"] is False
+
+
+# --- resending a code that already exists -------------------------------
+
+
+def _issue_code(admin, email: str, **overrides) -> dict:
+    payload = {"duration_days": 7, "assigned_user_email": email, "send_email": False}
+    payload.update(overrides)
+    response = client.post("/api/admin/access-codes", json=payload, headers=_headers(admin))
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_resend_delivers_the_same_code_to_the_assigned_address(db_session, admin, monkeypatch):
+    _user(db_session, "buyer@example.com")
+    created = _issue_code(admin, "buyer@example.com")
+
+    sent: list[tuple] = []
+    monkeypatch.setattr(mailer, "is_configured", lambda *a, **k: True)
+    monkeypatch.setattr(
+        mailer, "send_email",
+        lambda to, subject, body, **kwargs: (sent.append((to, subject, body)), mailer.SendResult(sent=True))[1],
+    )
+
+    response = client.post(f"/api/admin/access-codes/{created['id']}/resend", headers=_headers(admin))
+    assert response.status_code == 200, response.text
+
+    body = response.json()
+    assert body["emailed"] is True
+    assert body["code"] == created["code"]  # same code, not a new one
+    assert db_session.query(AccessCode).filter_by(code=created["code"]).count() == 1
+
+    assert len(sent) == 1
+    to, subject, text = sent[0]
+    assert to == "buyer@example.com"
+    assert created["code"] in text
+
+
+def test_resend_reports_when_mail_is_not_configured(db_session, admin, monkeypatch):
+    _user(db_session, "buyer@example.com")
+    created = _issue_code(admin, "buyer@example.com")
+    monkeypatch.setattr(mailer, "is_configured", lambda *a, **k: False)
+
+    response = client.post(f"/api/admin/access-codes/{created['id']}/resend", headers=_headers(admin))
+    assert response.status_code == 200, response.text
+
+    body = response.json()
+    assert body["emailed"] is False
+    assert "not configured" in body["email_error"].lower()
+
+
+def test_resend_reports_a_failed_send(db_session, admin, monkeypatch):
+    _user(db_session, "buyer@example.com")
+    created = _issue_code(admin, "buyer@example.com")
+    monkeypatch.setattr(mailer, "is_configured", lambda *a, **k: True)
+    monkeypatch.setattr(
+        mailer, "send_email", lambda *a, **k: mailer.SendResult(sent=False, error="SMTPAuthenticationError: bad password")
+    )
+
+    response = client.post(f"/api/admin/access-codes/{created['id']}/resend", headers=_headers(admin))
+    assert response.status_code == 200, response.text
+    assert "bad password" in response.json()["email_error"]
+
+
+def test_resend_refuses_a_revoked_code(db_session, admin):
+    _user(db_session, "buyer@example.com")
+    created = _issue_code(admin, "buyer@example.com")
+
+    revoke = client.post(f"/api/admin/access-codes/{created['id']}/revoke", json={}, headers=_headers(admin))
+    assert revoke.status_code == 200, revoke.text
+
+    response = client.post(f"/api/admin/access-codes/{created['id']}/resend", headers=_headers(admin))
+    assert response.status_code == 400
+    assert "revoked" in response.json()["detail"].lower()
+
+
+def test_resend_returns_404_for_an_unknown_code(db_session, admin):
+    response = client.post("/api/admin/access-codes/999999/resend", headers=_headers(admin))
+    assert response.status_code == 404
