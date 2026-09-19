@@ -114,11 +114,13 @@ REGISTRY: tuple[SettingSpec, ...] = (
     SettingSpec("betcode_provider", "choice", "betcode", "Booking-code aggregator",
                 "None means selections and combined odds still show; only the redeemable "
                 "code and deep link need a provider.",
-                choices=("none", "mybetcode"), default="none"),
+                choices=("none", "mybetcode", "betpaddi"), default="none"),
     SettingSpec("betcode_api_key", "str", "betcode", "Aggregator API key",
                 secret=True),
     SettingSpec("betcode_base_url", "str", "betcode", "Aggregator base URL",
-                default="https://api.mybetcode.com"),
+                "Leave blank to use the selected provider's default. Only needed to point "
+                "at a sandbox/staging host, or if the provider's real domain turns out to "
+                "differ from this codebase's unverified guess."),
     SettingSpec("betcode_min_probability", "float", "betcode", "Default accuracy floor",
                 "A leg needs at least this model probability to be offered as a candidate.",
                 default=0.65, minimum=0.5, maximum=0.99),

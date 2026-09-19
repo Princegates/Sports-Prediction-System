@@ -12,6 +12,7 @@ import urllib.error
 import pytest
 
 from app.betcode.providers import (
+    BetPaddiProvider,
     BookingCodeError,
     MyBetCodeProvider,
     NotConfiguredProvider,
@@ -103,6 +104,83 @@ def test_mybetcode_raises_cleanly_on_an_http_error(monkeypatch):
 
     provider = MyBetCodeProvider(api_key="bad-key", base_url="https://api.mybetcode.com")
     with pytest.raises(BookingCodeError, match="401"):
+        provider.create_slip(bookmaker="Bet9ja", legs=[LEG])
+
+
+def test_get_provider_returns_betpaddi_once_configured(db_session):
+    from app.db.models import AppSetting
+
+    db_session.add(AppSetting(key="betcode_provider", value="betpaddi", updated_at=dt.datetime.utcnow()))
+    db_session.add(AppSetting(key="betcode_api_key", value="paddi-key-456", updated_at=dt.datetime.utcnow()))
+    db_session.commit()
+
+    provider = get_provider(db_session)
+    assert isinstance(provider, BetPaddiProvider)
+
+
+def test_betpaddi_uses_its_own_default_base_url_when_none_is_set(db_session):
+    """Two providers, one shared 'base URL' setting -- each must fall back to
+    its own default rather than silently reusing whichever one happened to
+    be hardcoded first (the bug this guards against: MyBetCode's URL used to
+    be the *only* default, which would have been wrong for BetPaddi)."""
+
+    from app.db.models import AppSetting
+
+    db_session.add(AppSetting(key="betcode_provider", value="betpaddi", updated_at=dt.datetime.utcnow()))
+    db_session.add(AppSetting(key="betcode_api_key", value="paddi-key-456", updated_at=dt.datetime.utcnow()))
+    db_session.commit()
+
+    provider = get_provider(db_session)
+    assert provider._base_url == BetPaddiProvider.default_base_url
+    assert provider._base_url != MyBetCodeProvider.default_base_url
+
+
+def test_betpaddi_refuses_to_construct_with_an_empty_key():
+    with pytest.raises(ProviderNotConfigured, match="BetPaddi"):
+        BetPaddiProvider(api_key="", base_url="https://api.betpaddi.com")
+
+
+def test_betpaddi_sends_the_bookmaker_and_every_leg(monkeypatch):
+    """Same contract shape as MyBetCode (see that test and the module
+    docstring for why); this only proves BetPaddi's client sends it too."""
+
+    captured = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return json.dumps({"code": "PADDI-CODE-9", "deep_link": "https://betpaddi.example/slip/9"}).encode()
+
+    def fake_urlopen(request, timeout=None):
+        captured["url"] = request.full_url
+        captured["headers"] = dict(request.header_items())
+        captured["body"] = json.loads(request.data.decode())
+        return FakeResponse()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    provider = BetPaddiProvider(api_key="paddi-secret", base_url="https://api.betpaddi.com")
+    result = provider.create_slip(bookmaker="SportyBet", legs=[LEG])
+
+    assert result.code == "PADDI-CODE-9"
+    assert result.deep_link == "https://betpaddi.example/slip/9"
+    assert captured["body"]["bookmaker"] == "SportyBet"
+    assert "paddi-secret" in captured["headers"].get("Authorization", "")
+
+
+def test_betpaddi_raises_cleanly_on_an_http_error(monkeypatch):
+    def fake_urlopen(request, timeout=None):
+        raise urllib.error.HTTPError(request.full_url, 403, "forbidden", {}, None)
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    provider = BetPaddiProvider(api_key="bad-key", base_url="https://api.betpaddi.com")
+    with pytest.raises(BookingCodeError, match="BetPaddi"):
         provider.create_slip(bookmaker="Bet9ja", legs=[LEG])
 
 

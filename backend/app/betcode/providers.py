@@ -11,15 +11,17 @@ until someone pastes it into a betting app and it fails, at which point the
 platform that generated it looks broken or dishonest. "No code yet" is a
 worse-looking response and a true one.
 
-``MyBetCodeProvider`` is a real HTTP client, but its endpoint path, auth
-header and request/response field names are this module's one placeholder:
-they follow the shape most booking-code aggregators use (an API key header,
-a JSON body of legs described by bookmaker/competition/selection text, a
-response carrying the code and a deep link), but they are not verified
-against MyBetCode's actual documentation -- this sandbox cannot reach their
-site to check, and typing out invented field names as if confirmed would be
-worse than not writing the client at all. Every line that needs checking
-against the real docs is marked ``CONFIRM`` below.
+Two real HTTP clients exist below, ``MyBetCodeProvider`` and
+``BetPaddiProvider``, both built on ``_HttpBookingCodeProvider``. Their
+endpoint path, auth header and request/response field names are this
+module's one placeholder, shared by both because neither has been checked
+against real documentation -- this sandbox cannot reach either site. They
+follow the shape most booking-code aggregators use (an API key header, a
+JSON body of legs described by bookmaker/competition/selection text, a
+response carrying the code and a deep link), which is a reasonable default
+and not a confirmed one. Every line that needs checking once real docs are
+in hand is marked ``CONFIRM``, in one place so fixing it for one aggregator
+doesn't mean re-deriving the same fix for the other.
 """
 
 from __future__ import annotations
@@ -61,22 +63,24 @@ class NotConfiguredProvider:
     def create_slip(self, *, bookmaker: str, legs: list[Leg]) -> ProviderResult:
         raise ProviderNotConfigured(
             "No booking-code aggregator is configured. Add a provider and API key in "
-            "Settings -> Data sources to generate real bookmaker codes; until then, the "
+            "Settings -> Booking codes to generate real bookmaker codes; until then, the "
             "selections and combined price above are still real -- just not turned into "
             "a redeemable code."
         )
 
 
-class MyBetCodeProvider:
-    """A real client, against an unverified contract -- see the module
-    docstring. Configuration comes from the settings panel, the same way the
-    API-Football key does, so rotating it takes effect immediately with no
-    redeploy and no secret living anywhere this session's chat history does.
+class _HttpBookingCodeProvider:
+    """Shared shape for a real aggregator client -- see the module docstring
+    for what is and isn't verified here. Subclasses give only a display name
+    (for error messages) and a default base URL.
     """
+
+    display_name = "the aggregator"
+    default_base_url = "https://example.invalid"  # every real subclass overrides this
 
     def __init__(self, *, api_key: str, base_url: str, timeout: float = 15.0) -> None:
         if not api_key:
-            raise ProviderNotConfigured("A MyBetCode API key is set as the provider but is empty.")
+            raise ProviderNotConfigured(f"A {self.display_name} API key is set as the provider but is empty.")
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
@@ -110,7 +114,8 @@ class MyBetCodeProvider:
             ],
         }
 
-        # CONFIRM: header name and scheme (Bearer vs a custom header).
+        # CONFIRM: header name and scheme (Bearer vs a custom header, e.g.
+        # x-api-key -- both are common and this guesses Bearer).
         request = urllib.request.Request(
             url,
             data=json.dumps(payload).encode(),
@@ -123,28 +128,50 @@ class MyBetCodeProvider:
                 body = json.loads(response.read().decode())
         except urllib.error.HTTPError as exc:
             detail = exc.read()[:300].decode(errors="replace")
-            raise BookingCodeError(f"MyBetCode rejected the request (HTTP {exc.code}): {detail}") from exc
+            raise BookingCodeError(
+                f"{self.display_name} rejected the request (HTTP {exc.code}): {detail}"
+            ) from exc
         except Exception as exc:  # noqa: BLE001
-            raise BookingCodeError(f"Could not reach MyBetCode: {type(exc).__name__}: {exc}") from exc
+            raise BookingCodeError(f"Could not reach {self.display_name}: {type(exc).__name__}: {exc}") from exc
 
         # CONFIRM: response field names.
         code = body.get("code") or body.get("booking_code")
         if not code:
-            raise BookingCodeError(f"MyBetCode did not return a code: {body!r}")
+            raise BookingCodeError(f"{self.display_name} did not return a code: {body!r}")
 
         return ProviderResult(code=str(code), deep_link=body.get("deep_link"), raw=body)
+
+
+class MyBetCodeProvider(_HttpBookingCodeProvider):
+    display_name = "MyBetCode"
+    default_base_url = "https://api.mybetcode.com"
+
+
+class BetPaddiProvider(_HttpBookingCodeProvider):
+    display_name = "BetPaddi"
+    default_base_url = "https://api.betpaddi.com"
+
+
+# One entry per real provider: the settings-panel value it's chosen by, and
+# the class that implements it. Adding a third aggregator is one line here,
+# not a new branch buried in get_provider.
+_PROVIDERS: dict[str, type[_HttpBookingCodeProvider]] = {
+    "mybetcode": MyBetCodeProvider,
+    "betpaddi": BetPaddiProvider,
+}
 
 
 def get_provider(db: Session) -> BookingCodeProvider:
     """Which provider is configured, read from the settings panel."""
 
     values = app_settings.all_values(db)
-    provider = str(values.get("betcode_provider") or "none")
+    provider_key = str(values.get("betcode_provider") or "none")
 
-    if provider == "mybetcode":
-        return MyBetCodeProvider(
-            api_key=str(values.get("betcode_api_key") or ""),
-            base_url=str(values.get("betcode_base_url") or "https://api.mybetcode.com"),
-        )
+    provider_cls = _PROVIDERS.get(provider_key)
+    if provider_cls is None:
+        return NotConfiguredProvider()
 
-    return NotConfiguredProvider()
+    return provider_cls(
+        api_key=str(values.get("betcode_api_key") or ""),
+        base_url=str(values.get("betcode_base_url") or provider_cls.default_base_url),
+    )
