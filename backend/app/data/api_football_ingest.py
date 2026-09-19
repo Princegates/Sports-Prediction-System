@@ -33,6 +33,7 @@ from sqlalchemy.orm import Session
 from app.data.providers.api_football import ApiFootballClient, ID_TO_LEAGUE
 from app.data.team_matching import canonical_alias, name_match_score
 from app.db.models import Match, MatchOdds, Team
+from app.prediction_models.elo import EUROPEAN_COMPETITIONS
 
 logger = logging.getLogger(__name__)
 
@@ -90,10 +91,26 @@ class TeamIndex:
     """
 
     def __init__(self, db: Session) -> None:
+        self.db = db
         self._teams = list(db.execute(select(Team)).scalars())
         self._by_canonical: dict[str, Team] = {}
         for team in self._teams:
             self._by_canonical.setdefault(canonical_alias(team.name), team)
+
+    def create(self, name: str, league: str) -> Team:
+        """Add a new club, for a domestic league importing for the first time.
+
+        Never used for a European competition -- there, an unresolved name
+        must stay unresolved (see the module docstring), or it silently
+        starts a second history for a club that already has one.
+        """
+
+        team = Team(name=name, league=league, aliases=[])
+        self.db.add(team)
+        self.db.flush()
+        self._teams.append(team)
+        self._by_canonical.setdefault(canonical_alias(name), team)
+        return team
 
     def nearest(self, provider_name: str) -> tuple[Team | None, float]:
         """The closest stored club to a provider spelling, and how close.
@@ -177,10 +194,19 @@ def import_fixtures(
     from_date: dt.date | None = None,
     to_date: dt.date | None = None,
 ) -> ImportReport:
-    """Import one competition's fixtures, reusing existing club rows."""
+    """Import one competition's fixtures.
+
+    A European competition draws clubs from domestic leagues already in the
+    database and must resolve to those exact rows -- see the module
+    docstring for why a mismatch is worse than a skip. A plain domestic
+    league has no rows to resolve to on its first import, so unresolved
+    clubs are created instead, the same as the free providers in
+    app/data/ingest.py do.
+    """
 
     report = ImportReport()
     league_name = ID_TO_LEAGUE.get(league_id, f"League {league_id}")
+    domestic = league_name not in EUROPEAN_COMPETITIONS
 
     rows = client.fixtures(league_id=league_id, season=season, from_date=from_date, to_date=to_date)
     report.requests_used = client.quota.used_this_run
@@ -204,6 +230,12 @@ def import_fixtures(
         away_name = (teams.get("away") or {}).get("name") or ""
         home = index.resolve(home_name)
         away = index.resolve(away_name)
+
+        if domestic:
+            if home is None:
+                home = index.create(home_name, league_name)
+            if away is None:
+                away = index.create(away_name, league_name)
 
         if home is None or away is None:
             missing = [n for n, t in ((home_name, home), (away_name, away)) if t is None]

@@ -196,6 +196,55 @@ def test_finished_fixtures_bring_their_scores(db_session, clubs):
     assert (match.status, match.home_score, match.away_score) == ("FINISHED", 2, 1)
 
 
+def test_a_domestic_leagues_first_import_creates_its_clubs(db_session):
+    """The opposite case from a European tie: a brand-new domestic league has
+    no existing rows to resolve to. Skipping every fixture until someone
+    seeds the clubs by hand would mean the league could never be imported at
+    all, so it creates them instead -- the same as the free providers do."""
+
+    before = db_session.query(Team).count()
+    client = FakeClient({
+        "fixtures": [{
+            "fixture": {"id": 200, "date": "2026-10-01T19:00:00+00:00", "status": {"short": "NS"}},
+            "teams": {"home": {"name": "Galatasaray"}, "away": {"name": "Fenerbahçe"}},
+            "goals": {"home": None, "away": None},
+        }]
+    })
+
+    report = import_fixtures(db_session, client, league_id=203, season=2026)
+
+    assert report.inserted == 1
+    assert db_session.query(Team).count() == before + 2
+
+    match = db_session.query(Match).filter_by(league="Turkish Süper Lig").one()
+    home = db_session.get(Team, match.home_team_id)
+    away = db_session.get(Team, match.away_team_id)
+    assert {home.name, away.name} == {"Galatasaray", "Fenerbahçe"}
+    assert home.league == away.league == "Turkish Süper Lig"
+
+
+def test_a_club_seen_twice_in_one_domestic_import_is_created_once(db_session):
+    client = FakeClient({
+        "fixtures": [
+            {
+                "fixture": {"id": 201, "date": "2026-10-01T19:00:00+00:00", "status": {"short": "NS"}},
+                "teams": {"home": {"name": "Galatasaray"}, "away": {"name": "Fenerbahçe"}},
+                "goals": {"home": None, "away": None},
+            },
+            {
+                "fixture": {"id": 202, "date": "2026-10-08T19:00:00+00:00", "status": {"short": "NS"}},
+                "teams": {"home": {"name": "Fenerbahçe"}, "away": {"name": "Galatasaray"}},
+                "goals": {"home": None, "away": None},
+            },
+        ]
+    })
+
+    report = import_fixtures(db_session, client, league_id=203, season=2026)
+
+    assert report.inserted == 2
+    assert db_session.query(Team).filter_by(league="Turkish Süper Lig").count() == 2
+
+
 # --- odds capture -----------------------------------------------------
 
 
