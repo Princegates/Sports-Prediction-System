@@ -311,6 +311,29 @@ def list_access_codes(db: Session = Depends(get_db)) -> list[AccessCodeOut]:
     return [access_code_to_schema(c) for c in codes]
 
 
+@router.post("/access-codes/{code_id}/reveal", response_model=AccessCodeOut)
+def reveal_code(
+    code_id: int,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> AccessCodeOut:
+    """Shows a code's full value again after the one-time reveal at creation.
+
+    Masked everywhere else on purpose (see mask_code) -- this is the deliberate
+    on-demand exception, for a code someone needs to read out or paste again
+    after email delivery failed or wasn't set up, e.g. to send over WhatsApp
+    by hand. Audit-logged like any other privileged look at sensitive data,
+    rather than just leaving every code permanently in plaintext on the page.
+    """
+
+    code = db.get(AccessCode, code_id)
+    if code is None:
+        raise HTTPException(status_code=404, detail=f"Access code {code_id} not found")
+    _record(db, admin, "access_code.revealed", detail={"access_code_id": code.id})
+    db.commit()
+    return access_code_to_schema(code, reveal_full=True)
+
+
 @router.post("/access-codes/{code_id}/revoke", response_model=AccessCodeOut)
 def revoke_code(
     code_id: int,

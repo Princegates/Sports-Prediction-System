@@ -94,6 +94,44 @@ def test_listed_and_revoked_codes_are_masked(db_session, admin):
     assert "*" in row["code"]
 
 
+def test_superadmin_can_reveal_a_masked_code(db_session, admin):
+    created = _create_code(admin)
+
+    masked = next(c for c in client.get("/api/admin/access-codes", headers=_headers(admin)).json() if c["id"] == created["id"])
+    assert "*" in masked["code"]
+
+    revealed = client.post(f"/api/admin/access-codes/{created['id']}/reveal", headers=_headers(admin))
+    assert revealed.status_code == 200
+    assert revealed.json()["code"] == created["code"]
+
+
+def test_revealing_a_code_is_superadmin_only(db_session, admin):
+    plain = _make_user(db_session, "plain-reveal@example.com")
+    code = _create_code(admin)
+
+    assert client.post(f"/api/admin/access-codes/{code['id']}/reveal", headers=_headers(plain)).status_code == 403
+    assert client.post(f"/api/admin/access-codes/{code['id']}/reveal").status_code == 401
+
+
+def test_revealing_an_unknown_code_is_404(admin):
+    assert client.post("/api/admin/access-codes/999999/reveal", headers=_headers(admin)).status_code == 404
+
+
+def test_revealing_a_code_is_audit_logged(db_session, admin):
+    code = _create_code(admin)
+    client.post(f"/api/admin/access-codes/{code['id']}/reveal", headers=_headers(admin))
+
+    entry = (
+        db_session.query(AuditLog)
+        .filter(AuditLog.action == "access_code.revealed")
+        .order_by(AuditLog.id.desc())
+        .first()
+    )
+    assert entry is not None
+    assert entry.actor_user_id == admin.id
+    assert entry.detail["access_code_id"] == code["id"]
+
+
 def test_revoking_a_code_is_superadmin_only_and_idempotently_rejected(db_session, admin):
     plain = _make_user(db_session, "plain-revoke@example.com")
     code = _create_code(admin)

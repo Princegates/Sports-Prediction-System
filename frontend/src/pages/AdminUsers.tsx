@@ -11,6 +11,7 @@ import {
   promoteUser,
   reinstateUser,
   resendAccessCode,
+  revealAccessCode,
   revokeAccessCode,
   revokeUserAccess,
   suspendUser,
@@ -74,6 +75,7 @@ export function AdminUsers() {
   const [codes, setCodes] = useState<AccessCode[] | null>(null);
   const [codeError, setCodeError] = useState<string | null>(null);
   const [codeBusy, setCodeBusy] = useState(false);
+  const [revealed, setRevealed] = useState<Record<number, string>>({});
   const [justCreated, setJustCreated] = useState<AccessCode | null>(null);
   const [justCreatedWasResend, setJustCreatedWasResend] = useState(false);
   const [durationPreset, setDurationPreset] = useState("30");
@@ -195,6 +197,20 @@ export function AdminUsers() {
     } finally {
       setCodeBusy(false);
     }
+  }
+
+  function toggleReveal(id: number) {
+    if (id in revealed) {
+      setRevealed((r) => {
+        const { [id]: _drop, ...rest } = r;
+        return rest;
+      });
+      return;
+    }
+    setCodeError(null);
+    revealAccessCode(id)
+      .then((full) => setRevealed((r) => ({ ...r, [id]: full.code })))
+      .catch((err) => setCodeError(String(err instanceof Error ? err.message : err)));
   }
 
   async function handleResendCode(id: number) {
@@ -532,7 +548,7 @@ export function AdminUsers() {
             )}
             {visibleCodes.map((c) => (
               <tr key={c.id}>
-                <td style={{ fontFamily: "monospace" }}>{c.code}</td>
+                <td style={{ fontFamily: "monospace" }}>{revealed[c.id] ?? c.code}</td>
                 <td>
                   <span className={`status-tag ${CODE_TONE[c.status]}`}>{c.status}</span>
                 </td>
@@ -543,7 +559,10 @@ export function AdminUsers() {
                 <td>{c.assigned_email ?? "--"}</td>
                 <td>{c.notes || "--"}</td>
                 <td>{new Date(c.created_at).toLocaleDateString()}</td>
-                <td style={{ display: "flex", gap: 8 }}>
+                <td style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button className="btn ghost" onClick={() => toggleReveal(c.id)}>
+                    {c.id in revealed ? "Hide" : "Reveal"}
+                  </button>
                   {c.status === "active" && c.assigned_email && (
                     <button className="btn ghost" disabled={codeBusy} onClick={() => handleResendCode(c.id)}>
                       Resend

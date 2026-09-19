@@ -333,6 +333,12 @@ export function revokeAccessCode(codeId: number, reason?: string): Promise<Acces
   return post(`/api/admin/access-codes/${codeId}/revoke`, { reason });
 }
 
+/** Shows a masked code's full value again -- e.g. to paste it into a WhatsApp
+ * message when the assigned email either isn't configured or bounced. */
+export function revealAccessCode(codeId: number): Promise<AccessCode> {
+  return post(`/api/admin/access-codes/${codeId}/reveal`, {});
+}
+
 /** Re-sends an already-issued code's email, without creating a new code. */
 export function resendAccessCode(codeId: number): Promise<AccessCode> {
   return post(`/api/admin/access-codes/${codeId}/resend`, {});
