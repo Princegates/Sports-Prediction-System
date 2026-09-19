@@ -64,8 +64,8 @@ export function Register() {
         <div className="brand" style={{ marginBottom: 24 }}>
           <span className="brand-mark">AI</span>
           <span className="brand-text">
-            <strong>Match Intelligence</strong>
-            <span>Football AI</span>
+            <strong>Socca Intelligence</strong>
+            <span>Football prediction AI</span>
           </span>
         </div>
 

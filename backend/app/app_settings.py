@@ -77,7 +77,7 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 "For Gmail this is an app password, not your account password.",
                 secret=True, env_attr="smtp_password"),
     SettingSpec("smtp_from", "str", "email", "From address",
-                'What the recipient sees, e.g. "Match Intelligence <you@gmail.com>".',
+                'What the recipient sees, e.g. "Socca Intelligence <you@gmail.com>".',
                 env_attr="smtp_from"),
     SettingSpec("smtp_use_tls", "bool", "email", "Use STARTTLS",
                 "Ignored on port 465, which is encrypted from the start.", env_attr="smtp_use_tls"),
@@ -133,8 +133,8 @@ REGISTRY: tuple[SettingSpec, ...] = (
     SettingSpec("default_accent", "str", "appearance", "Default accent",
                 "One of the accent profiles offered in the app.", default="ocean"),
     SettingSpec("site_name", "str", "appearance", "Site name",
-                "Shown in the sidebar and the browser tab.", default="Match Intelligence"),
-    SettingSpec("site_tagline", "str", "appearance", "Tagline", default="FOOTBALL AI"),
+                "Shown in the browser tab.", default="Socca Intelligence"),
+    SettingSpec("site_tagline", "str", "appearance", "Tagline", default="Football prediction AI"),
 
     # --- Model -----------------------------------------------------------
     SettingSpec("ensemble_weight_elo", "float", "model", "Elo weight",

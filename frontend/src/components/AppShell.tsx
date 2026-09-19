@@ -165,8 +165,8 @@ export function AppShell() {
           <Link to="/app" className="brand">
             <span className="brand-mark">AI</span>
             <span className="brand-text">
-              <strong>Match Intelligence</strong>
-              <span>Football AI</span>
+              <strong>Socca Intelligence</strong>
+              <span>Football prediction AI</span>
             </span>
           </Link>
 
@@ -218,7 +218,7 @@ export function AppShell() {
             <Link to="/app" className="brand">
               <span className="brand-mark">AI</span>
               <span className="brand-text">
-                <strong>Match Intelligence</strong>
+                <strong>Socca Intelligence</strong>
               </span>
             </Link>
             <div style={{ display: "flex", gap: 8 }}>
