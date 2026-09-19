@@ -206,6 +206,7 @@ export function PublicShell({ children }: { children: ReactNode }) {
             Built on free and open data sources. Elo · Dixon-Coles Poisson · Gradient Boosting ·
             Isotonic calibration.
           </p>
+          <p className="public-footer-copy">&copy; 2026 Soccaintel.com. All rights reserved. Powered by Anknovate IT Services.</p>
         </div>
       </footer>
     </div>
