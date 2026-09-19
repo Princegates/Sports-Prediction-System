@@ -5,6 +5,7 @@ import {
   fetchLive,
   fetchMatch,
   fetchMatches,
+  fetchMatchOutcomes,
   fetchPrediction,
   fetchPredictionHistory,
   fetchStatistics,
@@ -13,6 +14,7 @@ import {
 import { AiExplanationPanel } from "../components/AiExplanationPanel";
 import { AskAboutMatch } from "../components/AskAboutMatch";
 import { CopyButton } from "../components/CopyButton";
+import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { FormStrip } from "../components/FormStrip";
 import { GoalCelebration } from "../components/GoalCelebration";
@@ -29,9 +31,17 @@ import { ScoreHeatmap } from "../components/ScoreHeatmap";
 import { Tabs } from "../components/Tabs";
 import { TeamComparison } from "../components/TeamComparison";
 import { formatSelection } from "../lib/copySelections";
-import type { HeadToHeadMatch, LivePrediction, MatchStatistics, MatchSummary, ModelBreakdown, Prediction } from "../types";
+import type {
+  HeadToHeadMatch,
+  LivePrediction,
+  MatchStatistics,
+  MatchSummary,
+  ModelBreakdown,
+  OutcomesResponse,
+  Prediction,
+} from "../types";
 
-const TAB_NAMES = ["Overview", "AI Prediction", "Form", "H2H", "Live", "Explanation"];
+const TAB_NAMES = ["Overview", "AI Prediction", "Form", "H2H", "Live", "Markets", "Explanation"];
 
 export function MatchDetail() {
   const { id } = useParams();
@@ -45,6 +55,7 @@ export function MatchDetail() {
   const [stats, setStats] = useState<MatchStatistics | null>(null);
   const [history, setHistory] = useState<Prediction[]>([]);
   const [live, setLive] = useState<LivePrediction[]>([]);
+  const [outcomes, setOutcomes] = useState<OutcomesResponse | null>(null);
   const [h2h, setH2h] = useState<HeadToHeadMatch[] | null>(null);
   const [homeRecent, setHomeRecent] = useState<MatchSummary[]>([]);
   const [awayRecent, setAwayRecent] = useState<MatchSummary[]>([]);
@@ -57,14 +68,22 @@ export function MatchDetail() {
     setMatch(null);
     setError(null);
 
-    Promise.all([fetchMatch(matchId), fetchPrediction(matchId), fetchStatistics(matchId), fetchLive(matchId), fetchPredictionHistory(matchId)])
-      .then(async ([m, p, s, l, hist]) => {
+    Promise.all([
+      fetchMatch(matchId),
+      fetchPrediction(matchId),
+      fetchStatistics(matchId),
+      fetchLive(matchId),
+      fetchPredictionHistory(matchId),
+      fetchMatchOutcomes(matchId).catch(() => null),
+    ])
+      .then(async ([m, p, s, l, hist, allOutcomes]) => {
         if (cancelled) return;
         setMatch(m);
         setPrediction(p);
         setStats(s);
         setLive(l);
         setHistory(hist);
+        setOutcomes(allOutcomes);
 
         const [h2hRows, homeMatches, awayMatches] = await Promise.all([
           fetchHeadToHead(m.home_team.id, m.away_team.id).catch(() => []),
@@ -305,6 +324,50 @@ export function MatchDetail() {
               <ProbabilityTimeline points={live.map((l) => ({ label: `${l.minute}'`, value: l.home_win }))} />
             )}
           </div>
+        </div>
+      )}
+
+      {tab === "Markets" && (
+        <div className="card card-pad">
+          <h3 style={{ marginBottom: 4, fontSize: 15 }}>Every market for this fixture</h3>
+          <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 0, marginBottom: 16 }}>
+            Grouped the way the model groups them: selections in the same group are mutually exclusive and add
+            up to 100%, except Correct Score -- most matches land on none of the scores listed.
+          </p>
+          {!outcomes && <p className="badge-neutral">Loading markets…</p>}
+          {outcomes && outcomes.markets.length === 0 && (
+            <EmptyState icon="◌" title="Not enough history yet to offer markets for this fixture." />
+          )}
+          {outcomes &&
+            outcomes.markets.map((m) => {
+              const rows = outcomes.leagues[0]?.outcomes.filter((o) => o.market === m.market) ?? [];
+              return (
+                <div key={m.market} style={{ marginBottom: 20 }}>
+                  <div className="match-meta-row" style={{ marginBottom: 6 }}>
+                    <strong>{m.market}</strong>
+                    <span className="sub" style={{ marginLeft: 8 }}>
+                      {m.mutually_exclusive ? "sums to 100%" : "not mutually exclusive"}
+                    </span>
+                  </div>
+                  <div className="predictions-table-wrapper">
+                    <table className="predictions-table">
+                      <tbody>
+                        {[...rows]
+                          .sort((a, b) => b.probability - a.probability)
+                          .map((o) => (
+                            <tr key={o.selection} title={o.definition}>
+                              <td>{o.selection}</td>
+                              <td className="tabular-nums" style={{ width: 80 }}>
+                                {(o.probability * 100).toFixed(0)}%
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })}
         </div>
       )}
 

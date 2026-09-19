@@ -7,11 +7,21 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_match_or_404
-from app.api.schemas import LiveEventIn, LivePredictionOut, MatchOut, PredictionOut
+from app.api.schemas import (
+    LeagueOutcomesOut,
+    LiveEventIn,
+    LivePredictionOut,
+    MarketOut,
+    MatchOut,
+    OutcomeOut,
+    OutcomesOut,
+    PredictionOut,
+)
 from app.api.serializers import live_prediction_to_schema, match_to_schema, prediction_to_schema
 from app.db.models import LivePrediction, Match, Prediction
 from app.features.team_stats import compute_team_form
 from app.live_engine import record_live_event
+from app.outcomes.registry import outcomes_from_prediction
 from app.prediction_service import build_prediction_for_match
 
 router = APIRouter(prefix="/api/matches", tags=["matches"])
@@ -61,6 +71,69 @@ def get_match_prediction(
         prediction = build_prediction_for_match(db, match)
 
     return prediction_to_schema(prediction)
+
+
+@router.get("/{match_id}/outcomes", response_model=OutcomesOut)
+def get_match_outcomes(match: Match = Depends(get_match_or_404), db: Session = Depends(get_db)) -> OutcomesOut:
+    """Every outcome this match's current prediction supports -- not just the
+    handful surfaced elsewhere on the page.
+
+    ``/predictions/outcomes`` answers "where is the best Over 2.5 this week"
+    by comparing one market across many matches. This answers the opposite
+    question, "everything about this match", which a league-wide browse can't
+    show without either truncating hard or drowning one fixture's markets in
+    everyone else's -- exactly what happened once the registry grew past a
+    couple dozen markets.
+    """
+
+    prediction = db.execute(
+        select(Prediction).where(Prediction.match_id == match.id).order_by(Prediction.created_at.desc())
+    ).scalars().first()
+    if prediction is None:
+        prediction = build_prediction_for_match(db, match)
+
+    market_selections: dict[str, set[str]] = {}
+    market_groups: dict[str, str] = {}
+    rows: list[OutcomeOut] = []
+    for outcome in outcomes_from_prediction(prediction):
+        market_selections.setdefault(outcome.market, set()).add(outcome.selection)
+        market_groups[outcome.market] = outcome.mutually_exclusive_group
+        rows.append(
+            OutcomeOut(
+                match_id=match.id,
+                league=match.league,
+                home_team=match.home_team.name,
+                away_team=match.away_team.name,
+                kickoff=match.date,
+                market=outcome.market,
+                selection=outcome.selection,
+                probability=outcome.probability,
+                confidence=prediction.confidence,
+                data_quality_score=prediction.data_quality_score,
+                group=outcome.mutually_exclusive_group,
+                definition=outcome.definition,
+            )
+        )
+    rows.sort(key=lambda o: -o.probability)
+
+    markets = [
+        MarketOut(
+            market=name,
+            group=market_groups[name],
+            selections=sorted(market_selections[name]),
+            outcomes=sum(1 for o in rows if o.market == name),
+            mutually_exclusive=market_groups[name] != "correct_score",
+        )
+        for name in sorted(market_selections)
+    ]
+
+    return OutcomesOut(
+        markets=markets,
+        leagues=[LeagueOutcomesOut(league=match.league, matches=1, outcomes=rows)],
+        total_outcomes=len(rows),
+        total_matches=1,
+        days_ahead=0,
+    )
 
 
 @router.get("/{match_id}/prediction-history", response_model=list[PredictionOut])

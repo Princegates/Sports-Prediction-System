@@ -89,6 +89,42 @@ def test_match_prediction_endpoint(db_session, auth_headers):
     assert "negative" in body["explanation"]
 
 
+def test_match_outcomes_endpoint_returns_every_market_for_that_match(db_session, auth_headers):
+    """The per-match complement to /api/predictions/outcomes: every market
+    the registry offers for one fixture, not the top few or a slice of one
+    market compared across a whole league."""
+
+    from app.main import app
+
+    _, upcoming = _seed_league(db_session)
+
+    client = TestClient(app)
+    # Build the prediction first so its model_breakdown (and therefore the
+    # matrix-derived markets) definitely exists before outcomes are read.
+    client.get(f"/api/matches/{upcoming.id}/prediction", headers=auth_headers)
+
+    response = client.get(f"/api/matches/{upcoming.id}/outcomes", headers=auth_headers)
+    assert response.status_code == 200
+    body = response.json()
+
+    assert body["total_matches"] == 1
+    assert len(body["leagues"]) == 1
+    league = body["leagues"][0]
+    assert league["league"] == "Test League"
+    assert league["matches"] == 1
+    assert all(o["match_id"] == upcoming.id for o in league["outcomes"])
+
+    market_names = {m["market"] for m in body["markets"]}
+    # The base registry...
+    assert {"Match Result", "Both Teams To Score"} <= market_names
+    # ...and the matrix-derived expansion, which only appears once a
+    # prediction with lambda_home/lambda_away has actually been generated.
+    assert {"Winning Margin", "Home Clean Sheet", "Total Goals Range"} <= market_names
+
+    outcomes_1x2 = [o for o in league["outcomes"] if o["market"] == "Match Result"]
+    assert abs(sum(o["probability"] for o in outcomes_1x2) - 1.0) < 1e-6
+
+
 def test_list_matches_endpoint(db_session, auth_headers):
     from app.main import app
 

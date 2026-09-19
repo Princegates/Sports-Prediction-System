@@ -365,6 +365,11 @@ export function fetchPredictionHistory(matchId: number): Promise<Prediction[]> {
   return get(`/api/matches/${matchId}/prediction-history`);
 }
 
+/** Every market the outcome registry offers for this one match. */
+export function fetchMatchOutcomes(matchId: number): Promise<OutcomesResponse> {
+  return get(`/api/matches/${matchId}/outcomes`);
+}
+
 export function fetchLive(matchId: number): Promise<LivePrediction[]> {
   return get(`/api/matches/${matchId}/live`);
 }
