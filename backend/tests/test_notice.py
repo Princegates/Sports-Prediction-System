@@ -1,9 +1,10 @@
-"""The site-wide notice: a superadmin-authored banner for every visitor.
+"""The Dashboard notice: a superadmin-authored banner for every signed-in account.
 
 Reuses the existing settings registry rather than a bespoke table -- two
-settings (notice_enabled, notice_message) an admin edits like any other, read
-back through a public endpoint since a notice about a maintenance window is
-exactly the kind of thing a logged-out visitor should also see.
+settings (notice_enabled, notice_message) an admin edits like any other. The
+read endpoint itself stays public/unauthenticated (cheap to serve, nothing
+sensitive in it) even though the frontend only renders the banner on the
+Dashboard, which requires being signed in.
 """
 
 from __future__ import annotations

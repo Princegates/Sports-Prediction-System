@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, NavLink } from "react-router-dom";
 import { useAuth } from "../lib/AuthContext";
-import { NoticeBanner } from "./NoticeBanner";
 
 /**
  * Chrome for the public marketing pages.
@@ -142,7 +141,6 @@ export function PublicShell({ children }: { children: ReactNode }) {
       )}
 
       <main className="public-main">
-        <NoticeBanner />
         {children}
       </main>
 

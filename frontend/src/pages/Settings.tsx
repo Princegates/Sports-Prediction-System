@@ -17,7 +17,7 @@ const GROUP_NOTES: Record<string, string> = {
     "Leave the host blank to keep email off — access codes still work, you just send them yourself.",
   access: "Defaults for issuing codes, and whether new people can sign up at all.",
   appearance: "What visitors see before they've chosen anything of their own.",
-  notice: "A dismissible banner shown to every visitor, logged in or not — for an outage, a new league going live, or anything else worth a heads-up.",
+  notice: "A dismissible banner shown on the Dashboard to every signed-in account — for an outage, a new league going live, or anything else worth a heads-up.",
   model:
     "Only a fallback. Once a league has been backtested, its weights are fitted from that league's own validation data and those are used instead — these apply to leagues that haven't been trained yet.",
   betcode:

@@ -174,8 +174,9 @@ REGISTRY: tuple[SettingSpec, ...] = (
 
     # --- Notice ------------------------------------------------------------
     SettingSpec("notice_enabled", "bool", "notice", "Show a site notice",
-                "A banner shown to every visitor, logged in or not -- for a maintenance "
-                "window, a new league going live, or anything else worth a heads-up.",
+                "A banner shown on the Dashboard to every signed-in account -- for a "
+                "maintenance window, a new league going live, or anything else worth a "
+                "heads-up.",
                 default=False),
     SettingSpec("notice_message", "str", "notice", "Notice message",
                 "Shown only while the notice above is turned on.", default=""),

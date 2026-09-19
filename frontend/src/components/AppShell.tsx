@@ -3,7 +3,6 @@ import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { SearchCommand } from "./SearchCommand";
 import { AccentPicker } from "./AccentPicker";
 import { ChatDock } from "./ChatDock";
-import { NoticeBanner } from "./NoticeBanner";
 import { useAuth } from "../lib/AuthContext";
 import { readStoredAccent, storeAccent } from "../lib/accentProfiles";
 
@@ -232,7 +231,6 @@ export function AppShell() {
           </header>
 
           <main className="app-content">
-            <NoticeBanner />
             <Outlet />
           </main>
         </div>

@@ -161,12 +161,13 @@ def public_branding(db: Session = Depends(get_db)) -> BrandingOut:
 
 @router.get("/notice", response_model=NoticeOut)
 def public_notice(db: Session = Depends(get_db)) -> NoticeOut:
-    """A superadmin-authored banner shown to every visitor -- logged in,
-    free tier, or premium alike, and even before login. Not a prediction, not
+    """A superadmin-authored banner, rendered on the Dashboard for every
+    signed-in account, free tier or premium alike. Not a prediction, not
     sensitive: a maintenance window, a new league going live, or anything
-    else worth a heads-up. Off by default, and reads as off if the message
-    was left blank -- a notice with nothing to say is a bug waiting to be
-    shown."""
+    else worth a heads-up. The endpoint itself stays public/unauthenticated
+    since it's cheap to serve and there's nothing here worth gating. Off by
+    default, and reads as off if the message was left blank -- a notice with
+    nothing to say is a bug waiting to be shown."""
 
     values = app_settings.all_values(db)
     message = str(values.get("notice_message") or "").strip()

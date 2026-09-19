@@ -7,6 +7,7 @@ import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { FreePickCard } from "../components/FreePickCard";
 import { Mascot } from "../components/Mascot";
+import { NoticeBanner } from "../components/NoticeBanner";
 import { PredictionCard } from "../components/PredictionCard";
 import { SearchCommand } from "../components/SearchCommand";
 import { LEAGUES } from "../components/AppShell";
@@ -91,6 +92,7 @@ export function Dashboard() {
 
   return (
     <div>
+      <NoticeBanner />
       <section className="hero">
         <div className="hero-eyebrow">
           <span className="dot" /> Meet Guda, your football intelligence
