@@ -18,7 +18,7 @@ from app.api import rate_limit
 from app.auth.passwords import hash_password
 from app.auth.tokens import create_token
 from app.config import get_settings
-from app.db.models import ChatMessage, LivePrediction, Match, ModelMetric, Prediction, Team, User
+from app.db.models import ChatMessage, LivePrediction, Match, MatchOdds, ModelMetric, Prediction, Team, User
 from app.main import app
 from tests.conftest import grant_active_access
 
@@ -331,6 +331,39 @@ def test_best_picks_ranks_by_stored_probability(db_session, auth_headers, fixtur
     assert "Over 0.5" in body["text"]
     # The honest caveat that high probability != high value must be present.
     assert "value" in body["text"].lower()
+
+
+def test_generate_selections_uses_the_real_priced_selection_engine(db_session, auth_headers, fixture_data):
+    """The chat answer must come from the same engine (and the same real,
+    stored prices) AI Generation's own page uses -- never an estimated odds
+    figure invented for the reply."""
+
+    db_session.add(
+        MatchOdds(
+            match_id=fixture_data["upcoming"].id,
+            bookmaker="Bet365",
+            market="Match Result",
+            selection="Home Win",
+            decimal_odds=1.85,
+        )
+    )
+    db_session.commit()
+
+    body = _ask("give me 5 selections with at least 50% chance", auth_headers)
+    assert body["intent"] == "generate_selections"
+    assert "Home Win" in body["text"]
+    assert "Arsenal vs Chelsea" in body["text"]
+    assert "1.85" in body["text"]
+    assert "Bet365" in body["text"]
+
+
+def test_generate_selections_with_no_priced_match_says_so_honestly(db_session, auth_headers, fixture_data):
+    """No MatchOdds seeded here -- there is nothing to price, and the
+    assistant must say that rather than quote a made-up combo."""
+
+    body = _ask("give me 5 selections with at least 50% chance", auth_headers)
+    assert body["intent"] == "generate_selections"
+    assert "nothing" in body["text"].lower()
 
 
 def test_harmful_request_gets_the_responsible_use_answer(db_session, auth_headers, fixture_data):

@@ -182,4 +182,40 @@ def test_extracts_weekend_window_starting_saturday(db_session, teams):
 
 def test_detects_market_keywords(db_session, teams):
     assert parse(db_session, "btts arsenal vs chelsea").market == "btts"
+
+
+# --- Generate-selections requests -----------------------------------------
+
+
+def test_generate_selections_extracts_count_and_floor(db_session, teams):
+    parsed = parse(db_session, "give me 20 odds selection with at least 50% chance")
+    assert parsed.intent == Intent.GENERATE_SELECTIONS
+    assert parsed.selection_count == 20
+    assert parsed.probability_floor == 0.5
+
+
+def test_generate_selections_handles_percent_before_the_count(db_session, teams):
+    """The percentage must never be mistaken for the count just because it
+    appears first in the sentence."""
+
+    parsed = parse(db_session, "selections with 70% chance, give me 8 of them")
+    assert parsed.selection_count == 8
+    assert parsed.probability_floor == 0.7
+
+
+def test_generate_selections_defaults_are_none_when_unstated(db_session, teams):
+    parsed = parse(db_session, "build me a combo")
+    assert parsed.intent == Intent.GENERATE_SELECTIONS
+    assert parsed.selection_count is None
+    assert parsed.probability_floor is None
+
+
+def test_generate_selections_count_is_capped(db_session, teams):
+    parsed = parse(db_session, "give me 500 selections with at least 50% chance")
+    assert parsed.selection_count == 20  # MAX_SELECTION_COUNT, not 500
+
+
+def test_generate_selections_recognizes_accumulator_phrasing(db_session, teams):
+    for message in ["build me an accumulator", "give me an acca", "generate a betting slip"]:
+        assert parse(db_session, message).intent == Intent.GENERATE_SELECTIONS, message
     assert parse(db_session, "over 2.5 goals arsenal chelsea").market == "over_under"

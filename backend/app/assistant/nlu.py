@@ -75,6 +75,7 @@ class Intent(str, Enum):
     EXPLAIN_REASONING = "explain_reasoning"
     RISKS = "risks"
     CORRECT_SCORE = "correct_score"
+    GENERATE_SELECTIONS = "generate_selections"
     LIVE_STATUS = "live_status"
     WHAT_CHANGED = "what_changed"
     METHODOLOGY = "methodology"
@@ -94,6 +95,12 @@ class ParsedQuery:
     # from the client so "why is this favored?" resolves without the user
     # having to re-name the teams.
     context_match_id: int | None = None
+    # How many legs and what accuracy floor a GENERATE_SELECTIONS request
+    # asked for ("give me 20 selections with at least 50% chance") -- None
+    # when the number/threshold wasn't stated, which the responder fills
+    # with the same defaults AI Generation itself uses.
+    selection_count: int | None = None
+    probability_floor: float | None = None
     raw: str = ""
 
 
@@ -118,6 +125,11 @@ _INTENT_PATTERNS: list[tuple[Intent, tuple[str, ...]]] = [
                             "which team is better", "which team is stronger",
                             "who is stronger", "who's stronger", "how do they compare",
                             "better team", "side by side", "compare both teams")),
+    (Intent.GENERATE_SELECTIONS, ("odds selection", "generate selections", "generate picks",
+                                  "generate a slip", "build a slip", "build me a combo",
+                                  "combo", "combination bet", "accumulator", "acca",
+                                  "betting slip", "selections with", "selection with",
+                                  "picks with", "legs with")),
     (Intent.BEST_PICKS, ("best pick", "best bet", "top pick", "top bet", "best selection",
                          "highest confidence", "high confidence", "safest", "strongest",
                          "most confident", "best value", "what should i back",
@@ -205,6 +217,49 @@ def _detect_market(text: str) -> str | None:
         if _matches_any(text, patterns):
             return market
     return None
+
+
+# Matches the number attached to a "%"/"percent" token -- checked first so
+# it can be masked out before looking for the leg count, otherwise "20 ...
+# 50% chance" would find "50" (from the percentage) as the count instead of
+# "20". Capped to 3 digits; nothing meaningful here exceeds 100.
+#
+# The trailing \b sits only after "percent", not after "%": "%" is already a
+# non-word character, so a \b right after it (with whitespace following)
+# spans two non-word characters and never matches -- that would silently
+# fail this pattern on the single most common phrasing, "50% chance".
+_PERCENT_PATTERN = re.compile(r"(\d{1,3}(?:\.\d+)?)\s*(?:%|percent\b)")
+# Any bare 1-3 digit integer left over once the percentage is masked out --
+# the leg count, clamped below to MAX_SELECTION_COUNT so "give me 500
+# selections" is read as "as many as you'll give me" rather than ignored.
+# Capped at 3 digits so a 4-digit year is never mistaken for it.
+_COUNT_PATTERN = re.compile(r"\b(\d{1,3})\b")
+
+# Hard ceiling on how many legs a chat request can ask for -- generous
+# enough for any real use, small enough that "give me 500 selections"
+# doesn't try to walk the entire fixture list into one reply.
+MAX_SELECTION_COUNT = 20
+
+
+def _detect_selection_request(text: str) -> tuple[int | None, float | None]:
+    """Pulls a leg count and an accuracy floor out of a selections request,
+    e.g. "give me 20 odds selection with at least 50% chance" -> (20, 0.5).
+    Either half is optional -- the responder falls back to AI Generation's
+    own defaults when one is missing."""
+
+    probability = None
+    masked = text
+    percent_match = _PERCENT_PATTERN.search(text)
+    if percent_match:
+        probability = max(0.0, min(1.0, float(percent_match.group(1)) / 100))
+        masked = text[: percent_match.start()] + text[percent_match.end() :]
+
+    count = None
+    count_match = _COUNT_PATTERN.search(masked)
+    if count_match:
+        count = max(1, min(MAX_SELECTION_COUNT, int(count_match.group(1))))
+
+    return count, probability
 
 
 def _detect_dates(text: str, now: dt.datetime) -> tuple[dt.datetime | None, dt.datetime | None]:
@@ -360,6 +415,10 @@ def parse(
 
     league = teams[0].league if teams else None
 
+    selection_count = probability_floor = None
+    if intent == Intent.GENERATE_SELECTIONS:
+        selection_count, probability_floor = _detect_selection_request(text)
+
     return ParsedQuery(
         intent=intent,
         teams=teams,
@@ -368,5 +427,7 @@ def parse(
         date_to=date_to,
         market=market,
         context_match_id=context_match_id,
+        selection_count=selection_count,
+        probability_floor=probability_floor,
         raw=message.strip(),
     )

@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from app.assistant import retrieval
 from app.assistant.nlu import Intent, ParsedQuery
 from app.assistant.retrieval import MatchCard
+from app.betcode.selection import DEFAULT_MIN_PROBABILITY, SlipCriteria, select_legs
 from app.db.models import Prediction
 
 # Never phrase a probability as a certainty. This line is appended to any
@@ -510,6 +511,82 @@ def _best_picks(db: Session, q: ParsedQuery, now: dt.datetime) -> Answer:
     )
 
 
+def _generate_selections(db: Session, q: ParsedQuery) -> Answer:
+    """"Give me 20 selections with at least 50% chance" and its variants --
+    the chat entry point to the same engine AI Generation's page uses
+    (app.betcode.selection.select_legs), so a chat answer and a page preview
+    can never disagree about what counts as a real, priced pick.
+
+    Target odds is set effectively unreachable rather than left to a
+    default: a count and a floor were what the user actually asked for, and
+    a target price stopping the search early would silently hand back fewer
+    legs than requested without saying why.
+    """
+
+    count = q.selection_count or 10
+    floor = q.probability_floor if q.probability_floor is not None else DEFAULT_MIN_PROBABILITY
+
+    criteria = SlipCriteria(
+        bookmaker="any",
+        target_odds=1_000_000.0,
+        min_probability=floor,
+        max_legs=count,
+        league=q.league,
+        days_ahead=7,
+    )
+    result = select_legs(db, criteria)
+
+    if not result.legs:
+        return Answer(
+            text=(
+                f"No scheduled match in the next 7 days{f' in {q.league}' if q.league else ''} both clears "
+                f"{_pct(floor)} model probability and has a real, stored bookmaker price -- so there's "
+                f"nothing I can put together honestly. Try a lower floor, a different league, or capture "
+                f"more odds first (Settings -> Data sources)."
+            ),
+            intent=q.intent,
+            sources=[Source("page", "AI Generation", "/app/betcodes")],
+            suggestions=["What are today's best picks?", "How accurate is the model?"],
+        )
+
+    lines = [
+        f"**{len(result.legs)} selection{'s' if len(result.legs) != 1 else ''}**, each priced from a real, "
+        f"stored bookmaker quote, {_pct(floor)}+ model probability:",
+        "",
+    ]
+    for i, leg in enumerate(result.legs, start=1):
+        lines.append(
+            f"{i}. **{leg.selection}** ({leg.market}) -- {leg.home_team} vs {leg.away_team}, "
+            f"{_kickoff(leg.kickoff)} -- {_pct(leg.model_probability)} at {leg.decimal_odds:.2f} "
+            f"({leg.priced_by})"
+        )
+
+    lines.append("")
+    if len(result.legs) < count:
+        lines.append(
+            f"That's every match in the next 7 days{f' in {q.league}' if q.league else ''} that clears "
+            f"{_pct(floor)} with a real price -- short of the {count} you asked for. A lower floor or a "
+            f"wider league would surface more."
+        )
+        lines.append("")
+    lines.append(
+        f"Combined: {result.combined_odds:.2f} odds, {_pct(result.combined_probability)} probability -- "
+        f"stacking {len(result.legs)} legs multiplies the risk, it doesn't add the confidence."
+    )
+
+    return Answer(
+        text="\n".join(lines),
+        intent=q.intent,
+        sources=[Source("page", "AI Generation", "/app/betcodes")]
+        + [Source("match", f"{leg.home_team} vs {leg.away_team}", leg.match_id) for leg in result.legs[:5]],
+        suggestions=[
+            "What are today's best picks?",
+            f"Give me {count} selections with at least {min(95, int((floor + 0.15) * 100))}% chance",
+        ],
+        includes_probability=True,
+    )
+
+
 def _accuracy(db: Session, q: ParsedQuery) -> Answer:
     snapshot = retrieval.accuracy_snapshot(db)
 
@@ -791,6 +868,7 @@ I read those rows and report them; I don't improvise numbers.
 - "Arsenal vs Chelsea" -- full prediction for a fixture
 - "What's on today?" / "fixtures this weekend"
 - "What are the best picks?" -- ranked by model probability
+- "Give me 10 selections with at least 60% chance" -- a combo priced from real bookmaker odds
 - "Why is this favored?" / "what are the risks?" -- the reasoning behind a call
 - "Liverpool form" -- recent results and goal rates
 - "Head to head Arsenal vs Spurs"
@@ -859,6 +937,8 @@ def respond(db: Session, q: ParsedQuery, now: dt.datetime | None = None) -> Answ
         return _todays_card(db, q, now)
     if q.intent == Intent.BEST_PICKS:
         return _best_picks(db, q, now)
+    if q.intent == Intent.GENERATE_SELECTIONS:
+        return _generate_selections(db, q)
     if q.intent == Intent.HEAD_TO_HEAD and len(q.teams) >= 2:
         return _head_to_head(db, q)
     if q.intent == Intent.COMPARE_TEAMS and len(q.teams) >= 2:
