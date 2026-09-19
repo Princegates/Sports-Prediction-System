@@ -44,6 +44,47 @@ def test_register_rejects_duplicate_email(db_session):
     assert client.post("/api/auth/register", json=payload).status_code == 409
 
 
+def test_register_sends_a_welcome_email_when_mail_is_configured(db_session, monkeypatch):
+    from app import mailer
+    from app.main import app
+
+    sent = []
+    monkeypatch.setattr(mailer, "is_configured", lambda db=None: True)
+    monkeypatch.setattr(
+        mailer,
+        "send_email",
+        lambda to, subject, body, db=None: sent.append((to, subject)) or mailer.SendResult(sent=True),
+    )
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/auth/register",
+        json={"email": "Welcome.User@Example.com", "name": "Welcome User", "password": "a-good-password"},
+    )
+
+    assert response.status_code == 200
+    assert sent == [("welcome.user@example.com", "Your account is ready")]
+
+
+def test_register_does_not_call_send_email_when_mail_is_not_configured(db_session, monkeypatch):
+    from app import mailer
+    from app.main import app
+
+    monkeypatch.setattr(mailer, "is_configured", lambda db=None: False)
+
+    def fail(*args, **kwargs):
+        raise AssertionError("send_email should not be called when mail is not configured")
+
+    monkeypatch.setattr(mailer, "send_email", fail)
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/auth/register",
+        json={"email": "no.mail@example.com", "name": "No Mail", "password": "a-good-password"},
+    )
+    assert response.status_code == 200
+
+
 def test_login_succeeds_immediately_after_register(db_session):
     """There is no approval gate to clear any more -- a freshly registered
     account can log in right away. Whether it can reach predictions is a
@@ -216,6 +257,29 @@ def test_change_password_succeeds_and_old_password_stops_working(db_session, aut
         "/api/auth/login", json={"email": "test-user@example.com", "password": "a-new-good-password"}
     )
     assert new_login.status_code == 200
+
+
+def test_change_password_sends_a_security_notice_when_mail_is_configured(db_session, auth_headers, monkeypatch):
+    from app import mailer
+    from app.main import app
+
+    sent = []
+    monkeypatch.setattr(mailer, "is_configured", lambda db=None: True)
+    monkeypatch.setattr(
+        mailer,
+        "send_email",
+        lambda to, subject, body, db=None: sent.append((to, subject)) or mailer.SendResult(sent=True),
+    )
+
+    client = TestClient(app)
+    response = client.patch(
+        "/api/auth/password",
+        json={"current_password": "test-password-123", "new_password": "a-new-good-password"},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 204
+    assert sent == [("test-user@example.com", "Your password was changed")]
 
 
 def test_match_history_is_per_user(db_session, auth_headers):

@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.access import current_grant
-from app import app_settings
+from app import app_settings, mailer
 from app.api.deps import get_current_user, get_db
 from app.api.rate_limit import enforce
 from app.api.schemas import (
@@ -84,6 +84,13 @@ def register(payload: RegisterIn, request: Request, db: Session = Depends(get_db
         )
     )
     db.commit()
+
+    # Best-effort: a bounced welcome email is a courtesy lost, not a code
+    # lost, so it never affects the response -- unlike an access-code send,
+    # there's nothing here worth reporting back to the caller.
+    if mailer.is_configured(db):
+        subject, body = mailer.welcome_message(mailer.resolve_config(db).site_url or None)
+        mailer.send_email(email, subject, body, db=db)
 
     return RegisterOut(
         message=(
@@ -228,6 +235,10 @@ def change_password(
         )
     )
     db.commit()
+
+    if mailer.is_configured(db):
+        subject, body = mailer.password_changed_message()
+        mailer.send_email(user.email, subject, body, db=db)
 
 
 @router.post("/history/{match_id}", status_code=204)

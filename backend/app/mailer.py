@@ -199,3 +199,29 @@ def access_code_message(code: str, duration_days: int, site_url: str | None = No
         "Predictions are model probabilities, never guarantees of outcome.\n"
     )
     return "Your access code", body
+
+
+def welcome_message(site_url: str | None = None) -> tuple[str, str]:
+    """Subject and body for a new account's confirmation email."""
+
+    where = site_url or "the site"
+    body = (
+        "Your account has been created.\n\n"
+        f"Sign in at {where} whenever you're ready. Registering alone doesn't\n"
+        "grant access -- once you've arranged payment with a Super Admin, you'll\n"
+        "be issued an access code to redeem.\n\n"
+        "If you didn't create this account, you can ignore this email.\n"
+    )
+    return "Your account is ready", body
+
+
+def password_changed_message() -> tuple[str, str]:
+    """Subject and body for a password-change security notice."""
+
+    body = (
+        "Your password was just changed.\n\n"
+        "If this was you, there's nothing else to do.\n\n"
+        "If it wasn't, someone else may have access to your account -- contact "
+        "a Super Admin right away so they can secure it.\n"
+    )
+    return "Your password was changed", body
