@@ -905,15 +905,18 @@ def test_captured_market_names_match_the_outcome_registry_exactly():
     production."""
 
     from app.data.api_football_ingest import _parse_bet
-    from app.outcomes.registry import build_outcome_registry
+    from app.outcomes.registry import build_outcome_registry, matrix_derived_outcomes
 
     outcomes = build_outcome_registry(
         home_win=0.4, draw=0.3, away_win=0.3,
         over_probabilities={"1.5": 0.8, "2.5": 0.55},
         btts_yes=0.6, btts_no=0.4,
-        correct_score_probabilities={},
+        correct_score_probabilities={"1-0": 0.12, "0-0": 0.08},
         matches_available=10,
     )
+    # Draw No Bet is matrix-derived (app.outcomes.registry.matrix_derived_outcomes),
+    # not part of build_outcome_registry() itself.
+    outcomes += matrix_derived_outcomes(lambda_home=1.4, lambda_away=1.1, matches_available=10)
     registry_pairs = {(o.market, o.selection) for o in outcomes}
 
     provider_pairs = set()
@@ -922,9 +925,37 @@ def test_captured_market_names_match_the_outcome_registry_exactly():
         ("Both Teams Score", "Yes"), ("Both Teams Score", "No"),
         ("Goals Over/Under", "Over 1.5"), ("Goals Over/Under", "Under 1.5"),
         ("Goals Over/Under", "Over 2.5"), ("Goals Over/Under", "Under 2.5"),
+        ("Home/Away", "Home"), ("Home/Away", "Away"),
+        ("Exact Score", "1:0"), ("Exact Score", "0:0"),
     ]:
         parsed = _parse_bet(bet_name, value)
         assert parsed is not None, f"{bet_name}/{value} produced no market"
         provider_pairs.add(parsed)
 
     assert provider_pairs <= registry_pairs, provider_pairs - registry_pairs
+
+
+def test_home_away_bet_maps_to_draw_no_bet():
+    """API-Football's real name for this bet is literally "Home/Away" -- two
+    values, stake refunded on a draw, which is Draw No Bet by definition.
+    The registry's own selection text for it is already "Home"/"Away", so
+    this is a market-name rename only, no value translation."""
+
+    from app.data.api_football_ingest import _parse_bet
+
+    assert _parse_bet("Home/Away", "Home") == ("Draw No Bet", "Home")
+    assert _parse_bet("Home/Away", "Away") == ("Draw No Bet", "Away")
+    assert _parse_bet("Home/Away", "Draw") is None
+
+
+def test_exact_score_bet_maps_to_correct_score_with_dash_separator():
+    """Confirmed against a live response: the provider spells a scoreline
+    "1:0"; app.prediction_models.poisson_model spells the same scoreline
+    "1-0" (f"{h}-{a}"). Only the separator needs converting."""
+
+    from app.data.api_football_ingest import _parse_bet
+
+    assert _parse_bet("Exact Score", "1:0") == ("Correct Score", "1-0")
+    assert _parse_bet("Exact Score", "0:0") == ("Correct Score", "0-0")
+    assert _parse_bet("Exact Score", "12:3") == ("Correct Score", "12-3")
+    assert _parse_bet("Exact Score", "not a score") is None

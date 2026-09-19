@@ -348,19 +348,18 @@ def import_fixtures(
     return report
 
 
-# Three markets, named and valued to match app.outcomes.registry exactly --
-# "Match Result" / "Home Win", "Both Teams To Score" / "Yes", "Total Goals
-# 2.5" / "Over 2.5". That is deliberate: a booking-code leg is built by
-# joining a model outcome to a stored price on (market, selection), and if
-# the two sides ever spelled the same market differently that join would
-# silently return nothing rather than fail loudly.
+# Named and valued to match app.outcomes.registry exactly -- "Match Result" /
+# "Home Win", "Both Teams To Score" / "Yes", "Total Goals 2.5" / "Over 2.5",
+# "Draw No Bet" / "Home", "Correct Score" / "1-0". That is deliberate: a
+# booking-code leg is built by joining a model outcome to a stored price on
+# (market, selection), and if the two sides ever spelled the same market
+# differently that join would silently return nothing rather than fail
+# loudly.
 #
-# Provider bet-name matching is unverified against a live response -- this
-# sandbox cannot reach api-sports.io -- and is built from the documented
-# name/value conventions of the "Match Winner", "Both Teams Score" and
-# "Goals Over/Under" bets. The Match Result path above it has run against
-# real data; this has not. Confirm the bet names an actual response uses
-# before relying on BTTS/Over-Under prices for anything.
+# Every bet name and value shape below is confirmed against a real /odds
+# response (scripts/probe_odds.py, run against live EPL fixtures), not
+# guessed from documentation -- see that script's --bet-name flag for how to
+# check a market this project doesn't yet price before adding it.
 _RESULT_MARKET_NAMES = {"match winner", "1x2", "full time result"}
 _RESULT_SELECTIONS = {"home": "Home Win", "draw": "Draw", "away": "Away Win"}
 _SELECTION_MAP = _RESULT_SELECTIONS  # kept for anything still importing the old name
@@ -371,19 +370,33 @@ _BTTS_SELECTIONS = {"yes": "Yes", "no": "No"}
 _GOALS_MARKET_NAMES = {"goals over/under"}
 _GOALS_LINE_PATTERN = re.compile(r"^(over|under)\s+([\d.]+)$", re.IGNORECASE)
 
+# API-Football's own name for this bet is literally "Home/Away" -- two
+# values, "Home" and "Away", refunding the stake on a draw. That is Draw No
+# Bet by definition (win probability conditional on there being a winner),
+# and the registry's own selection text for it is already exactly "Home" /
+# "Away", so no value translation is needed, only the market-name mapping.
+_DRAW_NO_BET_MARKET_NAMES = {"home/away"}
+_DRAW_NO_BET_SELECTIONS = {"home": "Home", "away": "Away"}
+
+# The provider spells a scoreline "1:0"; the registry (built off the
+# Poisson matrix in app.prediction_models.poisson_model) spells the same
+# scoreline "1-0". Only the separator differs.
+_EXACT_SCORE_MARKET_NAMES = {"exact score"}
+_EXACT_SCORE_PATTERN = re.compile(r"^(\d+):(\d+)$")
+
 
 def _parse_bet(bet_name: str, value_text) -> tuple[str, str] | None:
     """One bookmaker value -> (our market name, our selection name), or None
-    for a bet this project does not price. Isolated in one place so a fourth
-    market is one function to extend, not a third copy of this loop.
+    for a bet this project does not price. Isolated in one place so another
+    market is one function to extend, not another copy of this loop.
 
     ``value_text`` is typed loose on purpose: confirmed against a live
     response, API-Football's own "value" field is a bare number for some
     bets (e.g. a handicap line) rather than a string like every recognised
     market here uses, and this is called for every bet a bookmaker offers,
-    not only the three markets this project prices -- an unrecognised
-    market's numeric value must not crash the whole import before this
-    even gets a chance to say "not one of ours"."""
+    not only the markets this project prices -- an unrecognised market's
+    numeric value must not crash the whole import before this even gets a
+    chance to say "not one of ours"."""
 
     name = (bet_name or "").strip().lower()
     value = "" if value_text is None else str(value_text).strip()
@@ -402,6 +415,17 @@ def _parse_bet(bet_name: str, value_text) -> tuple[str, str] | None:
             return None
         direction, line = match.group(1).capitalize(), match.group(2)
         return (f"Total Goals {line}", f"{direction} {line}")
+
+    if name in _DRAW_NO_BET_MARKET_NAMES:
+        selection = _DRAW_NO_BET_SELECTIONS.get(value.lower())
+        return ("Draw No Bet", selection) if selection else None
+
+    if name in _EXACT_SCORE_MARKET_NAMES:
+        match = _EXACT_SCORE_PATTERN.match(value)
+        if not match:
+            return None
+        home, away = match.group(1), match.group(2)
+        return ("Correct Score", f"{home}-{away}")
 
     return None
 
