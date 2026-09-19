@@ -26,6 +26,10 @@ on:
         description: "Seasons, space-separated. Blank = current season only."
         required: false
         default: ""
+      days_ahead:
+        description: "Odds capture window in days (1 request per day, per league -- only used with odds: yes)"
+        required: false
+        default: "14"
       max_requests:
         description: "Hard ceiling for this run (Pro allows 7,500/day)"
         required: false
@@ -66,9 +70,10 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           LEAGUES: ${{ inputs.leagues }}
           SEASONS: ${{ inputs.seasons }}
+          DAYS_AHEAD: ${{ inputs.days_ahead }}
           MAX_REQUESTS: ${{ inputs.max_requests }}
         run: |
-          FLAGS=""
+          FLAGS="--days-ahead $DAYS_AHEAD"
           [ "${{ inputs.odds }}" = "yes" ] && FLAGS="$FLAGS --odds"
           [ "${{ inputs.dry_run }}" = "yes" ] && FLAGS="$FLAGS --dry-run"
           [ -n "$SEASONS" ] && FLAGS="$FLAGS --seasons $SEASONS"

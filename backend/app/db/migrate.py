@@ -35,6 +35,9 @@ _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     ("matches", "away_yellows", "INTEGER"),
     ("matches", "home_reds", "INTEGER"),
     ("matches", "away_reds", "INTEGER"),
+    # API-Football's own fixture id -- odds capture matches against this,
+    # not team names (the /odds response carries no team names at all).
+    ("matches", "api_fixture_id", "INTEGER"),
 ]
 
 

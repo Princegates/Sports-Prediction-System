@@ -65,8 +65,9 @@ export function LiveEventControls({
   return (
     <div className="card card-pad">
       <p style={{ marginTop: 0, fontSize: 13, color: "var(--text-secondary)" }}>
-        No paid live-data feed is connected to this deployment, so there's no automatic in-play stream. Push a
-        simulated event below to see the live engine recalculate the Global Most-Likely Outcome for real.
+        A real match syncs here automatically every few minutes when an API-Football key is configured. Push a
+        simulated event below to see the live engine recalculate the Global Most-Likely Outcome for real, on any
+        match, live or not.
       </p>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10, marginBottom: 12 }}>
         <label style={{ fontSize: 12, color: "var(--text-muted)" }}>

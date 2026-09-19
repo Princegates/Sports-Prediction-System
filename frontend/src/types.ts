@@ -37,6 +37,11 @@ export interface Prediction {
   most_likely_score: string;
   most_likely_score_probability: number;
   global_outcome: GlobalOutcome;
+  /** The next-best outcomes after the headline pick, each with its own
+   * probability -- never combined with it or with each other. Never
+   * includes Double Chance (see the backend for why) and shorter than 2
+   * for a thin-data match. */
+  also_likely: GlobalOutcome[];
   confidence: "HIGH" | "MEDIUM" | "LOW";
   data_quality_score: number;
   model_agreement_score: number;
@@ -376,4 +381,63 @@ export interface OutcomesResponse {
   total_outcomes: number;
   total_matches: number;
   days_ahead: number;
+}
+
+// --- Booking codes -------------------------------------------------------
+
+export interface BetCodeCriteria {
+  /** Who the generated code is for -- has no bearing on which bookmaker's
+   * prices get used, see price_bookmaker and BetCodeLeg.priced_by. */
+  bookmaker: string;
+  target_odds: number;
+  markets: string[];
+  min_probability?: number | null;
+  max_legs?: number | null;
+  league?: string | null;
+  days_ahead: number;
+  /** Whose captured prices to price legs from. Omitted/null = any bookmaker
+   * this project has a real quote from. */
+  price_bookmaker?: string | null;
+}
+
+export interface BetCodeLeg {
+  match_id: number;
+  league: string;
+  home_team: string;
+  away_team: string;
+  kickoff: string;
+  market: string;
+  selection: string;
+  model_probability: number;
+  decimal_odds: number;
+  /** Which bookmaker's stored quote this price came from -- not necessarily
+   * the bookmaker the slip is being generated for. */
+  priced_by: string;
+}
+
+export interface BetCodePreview {
+  legs: BetCodeLeg[];
+  combined_odds: number;
+  combined_probability: number;
+  target_odds: number;
+  met_target: boolean;
+  candidates_considered: number;
+  warnings: string[];
+}
+
+export type BetCodeStatus = "selected" | "code_ready" | "provider_unavailable" | "provider_error";
+
+export interface BetCode {
+  id: number;
+  created_at: string;
+  bookmaker: string;
+  legs: BetCodeLeg[];
+  combined_odds: number;
+  combined_probability: number;
+  expires_at: string;
+  provider: string;
+  status: BetCodeStatus;
+  booking_code: string | null;
+  deep_link: string | null;
+  provider_message: string | null;
 }

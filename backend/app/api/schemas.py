@@ -44,6 +44,12 @@ class PredictionOut(BaseModel):
     most_likely_score: str
     most_likely_score_probability: float
     global_outcome: GlobalOutcomeOut
+    # The next-best outcomes after the headline pick, each with its own
+    # probability -- never combined with it or with each other. See
+    # app.outcomes.engine.secondary_outcomes for why Double Chance never
+    # appears here. Shorter than 2 for a thin-data match; the same
+    # data-quality gate that thins the headline pick applies here too.
+    also_likely: list[GlobalOutcomeOut] = []
     confidence: str
     data_quality_score: float
     model_agreement_score: float
@@ -506,3 +512,70 @@ class FreePickOut(BaseModel):
     selection: str
     probability: float
     confidence: str
+
+
+# --- Booking codes -----------------------------------------------------
+
+
+class BetCodeCriteriaIn(BaseModel):
+    bookmaker: str  # who the generated code is for
+    target_odds: float
+    markets: list[str] = []
+    min_probability: float | None = None
+    max_legs: int | None = None
+    league: str | None = None
+    days_ahead: int = 7
+    # Whose captured prices to build legs from. Unset = any bookmaker this
+    # project has a real quote from -- see app.betcode.selection's module
+    # docstring for why that differs from `bookmaker` above.
+    price_bookmaker: str | None = None
+
+
+class BetCodeLegOut(BaseModel):
+    match_id: int
+    league: str
+    home_team: str
+    away_team: str
+    kickoff: dt.datetime
+    market: str
+    selection: str
+    model_probability: float
+    decimal_odds: float
+    priced_by: str  # which bookmaker's stored quote this price came from
+
+
+class BetCodePreviewOut(BaseModel):
+    """The selection step's own output -- what the AI picked and why, before
+    anything is sent anywhere. No provider is called to produce this, so
+    it's free to preview repeatedly while narrowing down criteria."""
+
+    legs: list[BetCodeLegOut]
+    combined_odds: float
+    combined_probability: float
+    target_odds: float
+    met_target: bool
+    candidates_considered: int
+    warnings: list[str]
+
+
+class BetCodeGenerateIn(BaseModel):
+    criteria: BetCodeCriteriaIn
+    # Pass the exact legs a prior /preview call returned, so what gets sent
+    # to the aggregator is provably what was shown on screen -- omit to run
+    # selection fresh instead.
+    legs: list[BetCodeLegOut] | None = None
+
+
+class BetCodeOut(BaseModel):
+    id: int
+    created_at: dt.datetime
+    bookmaker: str
+    legs: list[BetCodeLegOut]
+    combined_odds: float
+    combined_probability: float
+    expires_at: dt.datetime
+    provider: str
+    status: str
+    booking_code: str | None
+    deep_link: str | None
+    provider_message: str | None

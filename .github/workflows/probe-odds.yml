@@ -1,0 +1,43 @@
+# Read-only, spends exactly one request. Prints the raw shape of one
+# /odds response so a "0 prices stored" report can be told apart from
+# "the API returned nothing" vs "it returned rows this project doesn't
+# recognise the bet names for".
+name: Probe odds
+
+on:
+  workflow_dispatch:
+    inputs:
+      league_id:
+        description: "API-Football league id (English Premier League = 39)"
+        required: false
+        default: "39"
+      season:
+        required: false
+        default: "2026"
+      date:
+        description: "YYYY-MM-DD, a date a fixture is actually scheduled"
+        required: true
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Probe
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          python scripts/probe_odds.py --league-id "${{ inputs.league_id }}" --season "${{ inputs.season }}" --date "${{ inputs.date }}"

@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import re
 from dataclasses import dataclass, field
 
 from sqlalchemy import select
@@ -32,7 +33,8 @@ from sqlalchemy.orm import Session
 
 from app.data.providers.api_football import ApiFootballClient, ID_TO_LEAGUE
 from app.data.team_matching import canonical_alias, name_match_score
-from app.db.models import Match, MatchOdds, Team
+from app.db.models import LivePrediction, Match, MatchOdds, Team
+from app.live_engine import record_live_event
 from app.prediction_models.elo import EUROPEAN_COMPETITIONS
 
 logger = logging.getLogger(__name__)
@@ -66,6 +68,12 @@ class ImportReport:
     considered: int = 0
     inserted: int = 0
     updated: int = 0
+    # A provider kickoff that didn't match ours exactly, reconciled onto an
+    # existing SCHEDULED fixture between the same two clubs instead of
+    # inserted as a new one -- see import_fixtures for why an exact-timestamp
+    # key alone produced duplicate rows every time a broadcaster moved a
+    # kickoff.
+    rescheduled: int = 0
     skipped_unresolved: list[str] = field(default_factory=list)
     unresolved_clubs: dict[str, UnresolvedClub] = field(default_factory=dict)
     requests_used: int = 0
@@ -149,13 +157,26 @@ class TeamIndex:
         scored.sort(key=lambda row: (-row[0], -row[1], row[2].name))
         return scored
 
-    def resolve(self, provider_name: str) -> Team | None:
+    def resolve(self, provider_name: str, *, prefer_league: str | None = None) -> Team | None:
         """Find the domestic club row for a name as the provider spells it.
 
-        Refuses an ambiguous match. When two different clubs score identically
-        there is no evidence for either, and picking one anyway is how a tie
-        ends up in the wrong club's history -- the failure this whole module
-        exists to avoid. Better to skip it and say so.
+        Refuses an ambiguous match -- unless ``prefer_league`` is given and
+        settles it: a promoted or relegated club keeps its old division's
+        Team row (a real, separate history) alongside a new one for its
+        current division, so the exact same club name legitimately exists
+        twice, in two different leagues. A caller importing fixtures for one
+        specific domestic league already knows every club in them plays in
+        that league, so a tie broken by "the candidate actually in this
+        league" is not a guess -- it is the one piece of context a
+        league-blind name score can never have. It is never passed for a
+        European competition's own import, where the whole point of this
+        class is resolving to a club's *domestic* league, not the
+        competition's name.
+
+        Without a same-league candidate to settle it, two different clubs
+        scoring identically is still refused outright: there the tie is
+        real, and picking one anyway is how it ends up in the wrong club's
+        history -- the failure this whole module exists to avoid.
         """
 
         candidates = self._ranked(provider_name)
@@ -165,6 +186,11 @@ class TeamIndex:
         primary, coverage, team = candidates[0]
         tied = [c for c in candidates[1:] if (c[0], c[1]) == (primary, coverage) and c[2].id != team.id]
         if tied:
+            if prefer_league is not None:
+                top = [team] + [c[2] for c in tied]
+                same_league = [t for t in top if t.league == prefer_league]
+                if len(same_league) == 1:
+                    return same_league[0]
             logger.warning(
                 "Ambiguous club name %r: %s all score %.2f/%.2f -- skipping rather than guessing",
                 provider_name,
@@ -202,6 +228,16 @@ def import_fixtures(
     league has no rows to resolve to on its first import, so unresolved
     clubs are created instead, the same as the free providers in
     app/data/ingest.py do.
+
+    A domestic league can already hold this fixture under a different
+    kickoff -- broadcasters move matches by hours or days after a schedule
+    is first published, routinely. Matching on an exact timestamp treated
+    every one of those as a brand-new fixture, silently duplicating the
+    entire remaining calendar the first time this ran against a league whose
+    matches came from somewhere else first. A still-SCHEDULED match between
+    the same two clubs, close in time, is now reconciled onto instead --
+    never a FINISHED one, whose date is a fact of history rather than
+    something still moving.
     """
 
     report = ImportReport()
@@ -215,10 +251,18 @@ def import_fixtures(
 
     # One query for everything already stored for this competition, rather than
     # a lookup per fixture.
-    existing = {
-        (m.home_team_id, m.away_team_id, m.date): m
-        for m in db.execute(select(Match).where(Match.league == league_name)).scalars()
-    }
+    stored = list(db.execute(select(Match).where(Match.league == league_name)).scalars())
+    existing = {(m.home_team_id, m.away_team_id, m.date): m for m in stored}
+
+    # A same-direction rematch between two clubs inside one league season
+    # does not happen in a standard round-robin format, so at most one
+    # SCHEDULED fixture should ever be waiting per (home, away) pair -- this
+    # index exists purely to survive a moved kickoff, not to disambiguate a
+    # real rematch.
+    scheduled_by_pair: dict[tuple[int, int], list[Match]] = {}
+    for m in stored:
+        if m.status == "SCHEDULED":
+            scheduled_by_pair.setdefault((m.home_team_id, m.away_team_id), []).append(m)
 
     for row in rows:
         report.considered += 1
@@ -228,8 +272,9 @@ def import_fixtures(
 
         home_name = (teams.get("home") or {}).get("name") or ""
         away_name = (teams.get("away") or {}).get("name") or ""
-        home = index.resolve(home_name)
-        away = index.resolve(away_name)
+        prefer_league = league_name if domestic else None
+        home = index.resolve(home_name, prefer_league=prefer_league)
+        away = index.resolve(away_name, prefer_league=prefer_league)
 
         if domestic:
             if home is None:
@@ -250,9 +295,23 @@ def import_fixtures(
         kickoff = _parse_kickoff(fixture.get("date") or "")
         status_short = ((fixture.get("status") or {}).get("short") or "").upper()
         finished = status_short in {"FT", "AET", "PEN"}
+        api_fixture_id = fixture.get("id")
 
         key = (home.id, away.id, kickoff)
         match = existing.get(key)
+
+        if match is None:
+            # Exact timestamp missed. Reconcile onto a SCHEDULED fixture
+            # between the same two clubs within a broadcaster-reschedule
+            # window rather than assume this is a genuinely new match.
+            RESCHEDULE_WINDOW = dt.timedelta(days=7)
+            pending = scheduled_by_pair.get((home.id, away.id)) or []
+            for candidate in pending:
+                if abs(candidate.date - kickoff) <= RESCHEDULE_WINDOW:
+                    match = candidate
+                    pending.remove(candidate)  # claimed; a later provider row must not also snap onto it
+                    break
+
         if match is None:
             match = Match(
                 league=league_name,
@@ -263,10 +322,23 @@ def import_fixtures(
                 status="FINISHED" if finished else "SCHEDULED",
                 home_score=goals.get("home") if finished else None,
                 away_score=goals.get("away") if finished else None,
+                api_fixture_id=api_fixture_id,
             )
             db.add(match)
             report.inserted += 1
-        elif finished and match.home_score is None:
+            if not finished:
+                scheduled_by_pair.setdefault((home.id, away.id), []).append(match)
+            continue
+
+        if match.api_fixture_id != api_fixture_id:
+            # Backfills a row imported before this column existed, and
+            # keeps a reconciled (rescheduled-onto) row pointed at the
+            # provider fixture that most recently claimed it.
+            match.api_fixture_id = api_fixture_id
+        if match.date != kickoff:
+            match.date = kickoff
+            report.rescheduled += 1
+        if finished and match.home_score is None:
             match.home_score = goals.get("home")
             match.away_score = goals.get("away")
             match.status = "FINISHED"
@@ -276,11 +348,62 @@ def import_fixtures(
     return report
 
 
-# Only the three-way result market is stored for now. Over/under and BTTS
-# prices exist too, but every extra market is more of a budget that is already
-# only a hundred requests a day.
+# Three markets, named and valued to match app.outcomes.registry exactly --
+# "Match Result" / "Home Win", "Both Teams To Score" / "Yes", "Total Goals
+# 2.5" / "Over 2.5". That is deliberate: a booking-code leg is built by
+# joining a model outcome to a stored price on (market, selection), and if
+# the two sides ever spelled the same market differently that join would
+# silently return nothing rather than fail loudly.
+#
+# Provider bet-name matching is unverified against a live response -- this
+# sandbox cannot reach api-sports.io -- and is built from the documented
+# name/value conventions of the "Match Winner", "Both Teams Score" and
+# "Goals Over/Under" bets. The Match Result path above it has run against
+# real data; this has not. Confirm the bet names an actual response uses
+# before relying on BTTS/Over-Under prices for anything.
 _RESULT_MARKET_NAMES = {"match winner", "1x2", "full time result"}
-_SELECTION_MAP = {"home": "Home Win", "draw": "Draw", "away": "Away Win"}
+_RESULT_SELECTIONS = {"home": "Home Win", "draw": "Draw", "away": "Away Win"}
+_SELECTION_MAP = _RESULT_SELECTIONS  # kept for anything still importing the old name
+
+_BTTS_MARKET_NAMES = {"both teams score", "both teams to score"}
+_BTTS_SELECTIONS = {"yes": "Yes", "no": "No"}
+
+_GOALS_MARKET_NAMES = {"goals over/under"}
+_GOALS_LINE_PATTERN = re.compile(r"^(over|under)\s+([\d.]+)$", re.IGNORECASE)
+
+
+def _parse_bet(bet_name: str, value_text) -> tuple[str, str] | None:
+    """One bookmaker value -> (our market name, our selection name), or None
+    for a bet this project does not price. Isolated in one place so a fourth
+    market is one function to extend, not a third copy of this loop.
+
+    ``value_text`` is typed loose on purpose: confirmed against a live
+    response, API-Football's own "value" field is a bare number for some
+    bets (e.g. a handicap line) rather than a string like every recognised
+    market here uses, and this is called for every bet a bookmaker offers,
+    not only the three markets this project prices -- an unrecognised
+    market's numeric value must not crash the whole import before this
+    even gets a chance to say "not one of ours"."""
+
+    name = (bet_name or "").strip().lower()
+    value = "" if value_text is None else str(value_text).strip()
+
+    if name in _RESULT_MARKET_NAMES:
+        selection = _RESULT_SELECTIONS.get(value.lower())
+        return ("Match Result", selection) if selection else None
+
+    if name in _BTTS_MARKET_NAMES:
+        selection = _BTTS_SELECTIONS.get(value.lower())
+        return ("Both Teams To Score", selection) if selection else None
+
+    if name in _GOALS_MARKET_NAMES:
+        match = _GOALS_LINE_PATTERN.match(value)
+        if not match:
+            return None
+        direction, line = match.group(1).capitalize(), match.group(2)
+        return (f"Total Goals {line}", f"{direction} {line}")
+
+    return None
 
 
 def import_odds(
@@ -293,9 +416,15 @@ def import_odds(
 ) -> ImportReport:
     """Capture three-way prices for fixtures already in the database.
 
-    Matches the provider's fixture to ours by kickoff and clubs. A price that
-    cannot be tied to a stored match is dropped rather than stored loose --
-    odds with no match are not data, they are a future join that will go wrong.
+    Matches the provider's fixture to ours by API-Football's own fixture id
+    -- not by kickoff and club names. The real ``/odds`` response carries no
+    ``teams`` block at all, only ``fixture.id``; team-name matching here was
+    an unverified assumption that turned out wrong, and silently dropped
+    every single row regardless of how correctly the clubs themselves had
+    resolved. A price whose fixture id isn't one this project has stored
+    (from a prior ``import_fixtures`` run against the same league) is
+    dropped rather than stored loose -- odds with no match are not data,
+    they are a future join that will go wrong.
     """
 
     report = ImportReport()
@@ -304,35 +433,30 @@ def import_odds(
     rows = client.odds(league_id=league_id, season=season, date=date)
     report.requests_used = client.quota.used_this_run
 
-    index = TeamIndex(db)
     stored = {
-        (m.home_team_id, m.away_team_id, m.date): m
-        for m in db.execute(select(Match).where(Match.league == league_name)).scalars()
+        m.api_fixture_id: m
+        for m in db.execute(
+            select(Match).where(Match.league == league_name, Match.api_fixture_id.is_not(None))
+        ).scalars()
     }
     captured_at = dt.datetime.utcnow()
 
     for row in rows:
         report.considered += 1
         fixture = row.get("fixture") or {}
-        teams = row.get("teams") or {}
-        home = index.resolve((teams.get("home") or {}).get("name") or "")
-        away = index.resolve((teams.get("away") or {}).get("name") or "")
-        if home is None or away is None:
-            continue
 
-        match = stored.get((home.id, away.id, _parse_kickoff(fixture.get("date") or "")))
+        match = stored.get(fixture.get("id"))
         if match is None:
             continue
 
         for bookmaker in row.get("bookmakers") or []:
             book_name = bookmaker.get("name") or "unknown"
             for bet in bookmaker.get("bets") or []:
-                if (bet.get("name") or "").strip().lower() not in _RESULT_MARKET_NAMES:
-                    continue
                 for value in bet.get("values") or []:
-                    selection = _SELECTION_MAP.get((value.get("value") or "").strip().lower())
-                    if selection is None:
+                    parsed = _parse_bet(bet.get("name") or "", value.get("value"))
+                    if parsed is None:
                         continue
+                    market, selection = parsed
                     try:
                         price = float(value.get("odd"))
                     except (TypeError, ValueError):
@@ -342,13 +466,132 @@ def import_odds(
                             match_id=match.id,
                             captured_at=captured_at,
                             bookmaker=book_name,
-                            market="Match Result",
+                            market=market,
                             selection=selection,
                             decimal_odds=price,
                             source_fixture_id=fixture.get("id"),
                         )
                     )
                     report.inserted += 1
+
+    db.commit()
+    return report
+
+
+@dataclass
+class LiveSyncReport:
+    considered: int = 0
+    updated: int = 0
+    unchanged: int = 0
+    finished: int = 0
+    skipped_no_match: list[str] = field(default_factory=list)
+    requests_used: int = 0
+
+
+# Fixture states that mean "not actually being played right now", so no
+# in-play projection is meaningful. FT/AET/PEN are handled separately, as a
+# transition to record rather than a state to skip.
+_NON_PLAYING_STATUSES = {"PST", "CANC", "ABD", "AWD", "WO", "TBD", "SUSP", "INT"}
+
+
+def sync_live_matches(db: Session, client: ApiFootballClient) -> LiveSyncReport:
+    """Pull every fixture API-Football currently has in play, worldwide, in
+    one request, and reconcile it onto our own Match rows.
+
+    ``live_fixtures()`` is not scoped to a league or season -- it is the
+    entire world's live board, and most of it is a club this project holds no
+    row for. ``TeamIndex.resolve`` filters that down for free, the same as an
+    unresolved club is skipped everywhere else in this module: never created
+    from a live probe, only matched against what a real fixture import
+    already established.
+
+    A poll that finds nothing changed since the last one recorded writes
+    nothing -- this runs every few minutes while matches are on, and a
+    ``LivePrediction`` row per poll per live match would mostly be the same
+    minute and score repeated.
+    """
+
+    report = LiveSyncReport()
+    rows = client.live_fixtures()
+    report.requests_used = client.quota.used_this_run
+
+    index = TeamIndex(db)
+
+    for row in rows:
+        report.considered += 1
+        fixture = row.get("fixture") or {}
+        league = row.get("league") or {}
+        teams = row.get("teams") or {}
+        goals = row.get("goals") or {}
+        status = fixture.get("status") or {}
+
+        league_name = ID_TO_LEAGUE.get(league.get("id"))
+        if league_name is None:
+            continue  # a live match in a league this project doesn't hold
+
+        home_name = (teams.get("home") or {}).get("name") or ""
+        away_name = (teams.get("away") or {}).get("name") or ""
+        prefer_league = league_name if league_name not in EUROPEAN_COMPETITIONS else None
+        home = index.resolve(home_name, prefer_league=prefer_league)
+        away = index.resolve(away_name, prefer_league=prefer_league)
+        if home is None or away is None:
+            continue
+
+        candidates = list(
+            db.execute(
+                select(Match).where(
+                    Match.league == league_name,
+                    Match.home_team_id == home.id,
+                    Match.away_team_id == away.id,
+                    Match.status.in_(["SCHEDULED", "LIVE"]),
+                )
+            ).scalars()
+        )
+        if not candidates:
+            report.skipped_no_match.append(f"{home_name} vs {away_name} ({league_name})")
+            continue
+
+        kickoff = _parse_kickoff(fixture.get("date") or "")
+        match = min(candidates, key=lambda m: abs(m.date - kickoff))
+
+        status_short = (status.get("short") or "").upper()
+
+        if status_short in {"FT", "AET", "PEN"}:
+            if match.status != "FINISHED":
+                match.status = "FINISHED"
+                match.home_score = goals.get("home")
+                match.away_score = goals.get("away")
+                report.finished += 1
+            continue
+
+        if status_short in _NON_PLAYING_STATUSES:
+            continue
+
+        latest = db.execute(
+            select(LivePrediction)
+            .where(LivePrediction.match_id == match.id)
+            .order_by(LivePrediction.created_at.desc())
+        ).scalars().first()
+
+        elapsed = status.get("elapsed")
+        minute = elapsed if isinstance(elapsed, int) else (latest.minute if latest else 0)
+        score_home = goals.get("home")
+        score_home = score_home if score_home is not None else (latest.score_home if latest else 0)
+        score_away = goals.get("away")
+        score_away = score_away if score_away is not None else (latest.score_away if latest else 0)
+
+        if latest is not None and (latest.minute, latest.score_home, latest.score_away) == (minute, score_home, score_away):
+            report.unchanged += 1
+            continue
+
+        record_live_event(db, match, minute=minute, score_home=score_home, score_away=score_away, trigger_event="sync")
+        # record_live_event guesses FINISHED from minute >= 90, which is wrong
+        # for stoppage time in a match that is, per the provider, still on.
+        # The status check above is the authority on FT; short of that, this
+        # poll only ever means the match is live.
+        match.status = "LIVE"
+        db.commit()
+        report.updated += 1
 
     db.commit()
     return report

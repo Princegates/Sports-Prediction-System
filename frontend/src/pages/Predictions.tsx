@@ -152,7 +152,14 @@ export function Predictions() {
                   </div>
                   <div className="sub">{match.league}</div>
                 </td>
-                <td>{prediction.global_outcome.selection}</td>
+                <td>
+                  <div>{prediction.global_outcome.selection}</div>
+                  {prediction.also_likely.map((o) => (
+                    <div className="sub" key={`${o.market}-${o.selection}`}>
+                      {o.selection} ({o.market}) — {(o.probability * 100).toFixed(0)}%
+                    </div>
+                  ))}
+                </td>
                 <td className="tabular-nums">{(prediction.global_outcome.probability * 100).toFixed(0)}%</td>
                 <td>
                   <ConfidenceTag confidence={prediction.confidence} />
@@ -222,7 +229,15 @@ export function Predictions() {
         <EmptyState icon="◌" title="No predictions match these filters." />
       )}
 
-      {!error && visible !== null && visible.length > 0 && viewMode === "table" && renderTable(visible)}
+      {!error && visible !== null && visible.length > 0 && viewMode === "table" && (
+        <>
+          <p className="setting-note" style={{ marginBottom: 12 }}>
+            Each row shows the model's top pick plus up to two more outcomes it also rates highly for that
+            match -- three separate readings of the same fixture, not one bet built from all three.
+          </p>
+          {renderTable(visible)}
+        </>
+      )}
 
       {!error && visible !== null && visible.length > 0 && viewMode === "tiers" && (
         <>

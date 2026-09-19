@@ -196,6 +196,112 @@ def test_finished_fixtures_bring_their_scores(db_session, clubs):
     assert (match.status, match.home_score, match.away_score) == ("FINISHED", 2, 1)
 
 
+def test_a_moved_kickoff_updates_the_existing_fixture_not_a_duplicate(db_session, clubs):
+    """The bug found on live data: a broadcaster moves a kickoff, the
+    provider's timestamp no longer matches what is already stored, and an
+    exact-timestamp key alone treated that as a brand-new fixture -- every
+    club in the league then appeared to "play twice in a day" against the
+    audit script, because it genuinely did, on paper."""
+
+    original = Match(
+        league="Spanish La Liga", season="2026", date=dt.datetime(2026, 10, 4, 15, 0),
+        home_team_id=clubs["Real Madrid CF"].id, away_team_id=clubs["Arsenal FC"].id, status="SCHEDULED",
+    )
+    db_session.add(original)
+    db_session.commit()
+
+    # Same fixture, moved three days later for television -- well inside a
+    # normal reschedule, nowhere near a real fixture months away.
+    client = FakeClient({
+        "fixtures": [{
+            "fixture": {"id": 300, "date": "2026-10-07T19:30:00+00:00", "status": {"short": "NS"}},
+            "teams": {"home": {"name": "Real Madrid"}, "away": {"name": "Arsenal"}},
+            "goals": {"home": None, "away": None},
+        }]
+    })
+    report = import_fixtures(db_session, client, league_id=140, season=2026)
+
+    assert report.inserted == 0
+    assert report.rescheduled == 1
+    assert db_session.query(Match).count() == 1
+
+    db_session.refresh(original)
+    assert original.date == dt.datetime(2026, 10, 7, 19, 30)
+
+
+def test_a_moved_kickoff_still_brings_its_score_if_already_played(db_session, clubs):
+    original = Match(
+        league="Spanish La Liga", season="2026", date=dt.datetime(2026, 10, 4, 15, 0),
+        home_team_id=clubs["Real Madrid CF"].id, away_team_id=clubs["Arsenal FC"].id, status="SCHEDULED",
+    )
+    db_session.add(original)
+    db_session.commit()
+
+    client = FakeClient({
+        "fixtures": [{
+            "fixture": {"id": 300, "date": "2026-10-07T19:30:00+00:00", "status": {"short": "FT"}},
+            "teams": {"home": {"name": "Real Madrid"}, "away": {"name": "Arsenal"}},
+            "goals": {"home": 3, "away": 1},
+        }]
+    })
+    import_fixtures(db_session, client, league_id=140, season=2026)
+
+    db_session.refresh(original)
+    assert (original.status, original.home_score, original.away_score) == ("FINISHED", 3, 1)
+
+
+def test_a_kickoff_far_outside_the_window_is_a_new_fixture_not_a_reschedule(db_session, clubs):
+    """A genuine second meeting -- the reverse fixture, months later -- must
+    never be folded into the first one just because it shares both clubs."""
+
+    original = Match(
+        league="Spanish La Liga", season="2026", date=dt.datetime(2026, 10, 4, 15, 0),
+        home_team_id=clubs["Real Madrid CF"].id, away_team_id=clubs["Arsenal FC"].id, status="SCHEDULED",
+    )
+    db_session.add(original)
+    db_session.commit()
+
+    client = FakeClient({
+        "fixtures": [{
+            "fixture": {"id": 301, "date": "2027-02-20T19:30:00+00:00", "status": {"short": "NS"}},
+            "teams": {"home": {"name": "Real Madrid"}, "away": {"name": "Arsenal"}},
+            "goals": {"home": None, "away": None},
+        }]
+    })
+    report = import_fixtures(db_session, client, league_id=140, season=2026)
+
+    assert report.inserted == 1
+    assert report.rescheduled == 0
+    assert db_session.query(Match).count() == 2
+
+
+def test_a_finished_fixtures_date_is_never_rewritten_by_a_reschedule_match(db_session, clubs):
+    """Only a still-SCHEDULED fixture can be a reschedule target -- a
+    FINISHED match's date is a fact of history, not something still moving,
+    and folding a later provider row onto it would corrupt Elo's chronology."""
+
+    finished = Match(
+        league="Spanish La Liga", season="2026", date=dt.datetime(2026, 10, 4, 15, 0),
+        home_team_id=clubs["Real Madrid CF"].id, away_team_id=clubs["Arsenal FC"].id,
+        status="FINISHED", home_score=2, away_score=0,
+    )
+    db_session.add(finished)
+    db_session.commit()
+
+    client = FakeClient({
+        "fixtures": [{
+            "fixture": {"id": 302, "date": "2026-10-06T19:30:00+00:00", "status": {"short": "NS"}},
+            "teams": {"home": {"name": "Real Madrid"}, "away": {"name": "Arsenal"}},
+            "goals": {"home": None, "away": None},
+        }]
+    })
+    report = import_fixtures(db_session, client, league_id=140, season=2026)
+
+    assert report.inserted == 1  # a new SCHEDULED row -- a genuine next meeting
+    db_session.refresh(finished)
+    assert finished.date == dt.datetime(2026, 10, 4, 15, 0)  # untouched
+
+
 def test_a_domestic_leagues_first_import_creates_its_clubs(db_session):
     """The opposite case from a European tie: a brand-new domestic league has
     no existing rows to resolve to. Skipping every fixture until someone
@@ -303,6 +409,98 @@ def test_odds_for_an_unknown_match_are_dropped(db_session, clubs):
     assert db_session.query(MatchOdds).count() == 0
 
 
+def test_odds_attach_by_fixture_id_with_no_teams_block_at_all(db_session, clubs):
+    """The real /odds response, confirmed against a live call: no ``teams``
+    key anywhere in a fixture row, only ``fixture.id``. Team-name matching
+    here was an unverified assumption and silently dropped every row --
+    this pins the shape that actually comes back."""
+
+    kickoff = "2026-10-01T19:00:00+00:00"
+    fixtures = FakeClient({
+        "fixtures": [{
+            "fixture": {"id": 555, "date": kickoff, "status": {"short": "NS"}},
+            "teams": {"home": {"name": "Real Madrid"}, "away": {"name": "Bayern Munich"}},
+            "goals": {"home": None, "away": None},
+        }]
+    })
+    import_fixtures(db_session, fixtures, league_id=2, season=2026)
+
+    odds_client = FakeClient({
+        "odds": [{
+            "fixture": {"id": 555, "date": kickoff},
+            "league": {"id": 2, "name": "UEFA Champions League"},
+            "bookmakers": [{
+                "name": "William Hill",
+                "bets": [{"name": "Match Winner", "values": [
+                    {"value": "Home", "odd": "2.10"}, {"value": "Draw", "odd": "3.40"}, {"value": "Away", "odd": "3.60"},
+                ]}],
+            }],
+        }]
+    })
+    report = import_odds(db_session, odds_client, league_id=2, season=2026)
+
+    assert report.inserted == 3
+    assert {r.selection for r in db_session.query(MatchOdds).all()} == {"Home Win", "Draw", "Away Win"}
+
+
+def test_odds_ignore_team_names_entirely_and_match_only_on_fixture_id(db_session, clubs):
+    """Even when a ``teams`` block is present, it must play no role --
+    proven by giving it names that don't exist anywhere and confirming the
+    price still attaches, purely on the shared fixture id."""
+
+    kickoff = "2026-10-01T19:00:00+00:00"
+    fixtures = FakeClient({
+        "fixtures": [{
+            "fixture": {"id": 777, "date": kickoff, "status": {"short": "NS"}},
+            "teams": {"home": {"name": "Real Madrid"}, "away": {"name": "Bayern Munich"}},
+            "goals": {"home": None, "away": None},
+        }]
+    })
+    import_fixtures(db_session, fixtures, league_id=2, season=2026)
+
+    odds_client = FakeClient({
+        "odds": [{
+            "fixture": {"id": 777, "date": kickoff},
+            "teams": {"home": {"name": "Nonexistent United"}, "away": {"name": "Not A Real Club FC"}},
+            "bookmakers": [{"name": "Bet365", "bets": [{"name": "Match Winner",
+                            "values": [{"value": "Home", "odd": "1.90"}]}]}],
+        }]
+    })
+    report = import_odds(db_session, odds_client, league_id=2, season=2026)
+
+    assert report.inserted == 1
+
+
+def test_a_fixture_id_not_yet_imported_is_dropped(db_session, clubs):
+    """Odds for a fixture this league's import hasn't seen yet -- not the
+    "wrong league" case, just not stored -- attach to nothing."""
+
+    client = FakeClient({
+        "odds": [{
+            "fixture": {"id": 999, "date": "2026-10-05T19:00:00+00:00"},
+            "bookmakers": [{"name": "Bet365", "bets": [{"name": "Match Winner",
+                            "values": [{"value": "Home", "odd": "2.0"}]}]}],
+        }]
+    })
+    report = import_odds(db_session, client, league_id=2, season=2026)
+    assert report.inserted == 0
+
+
+def test_import_fixtures_stores_the_provider_fixture_id(db_session, clubs):
+    kickoff = "2026-10-01T19:00:00+00:00"
+    fixtures = FakeClient({
+        "fixtures": [{
+            "fixture": {"id": 4242, "date": kickoff, "status": {"short": "NS"}},
+            "teams": {"home": {"name": "Real Madrid"}, "away": {"name": "Bayern Munich"}},
+            "goals": {"home": None, "away": None},
+        }]
+    })
+    import_fixtures(db_session, fixtures, league_id=2, season=2026)
+
+    match = db_session.query(Match).one()
+    assert match.api_fixture_id == 4242
+
+
 # --- the run's exit code ----------------------------------------------
 
 
@@ -362,6 +560,62 @@ def test_a_run_that_imported_something_succeeds(import_script, monkeypatch, db_s
 
     out = capsys.readouterr().out
     assert "4 fixtures added" in out
+
+
+def _run_with_odds(module, monkeypatch, db_session, *, days_ahead, odds):
+    monkeypatch.setattr(sys, "argv", [
+        "import_api_football.py", "--leagues", "UEFA Champions League",
+        "--odds", "--days-ahead", str(days_ahead),
+    ])
+    monkeypatch.setattr(module.app_settings, "all_values", lambda db: {"api_football_key": "test-key"})
+    monkeypatch.setattr(module, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(module, "init_db", lambda engine: None)
+    monkeypatch.setattr(db_session, "close", lambda: None)
+    monkeypatch.setattr(module, "import_fixtures", lambda db, client, *, league_id, season: ImportReport())
+    monkeypatch.setattr(module, "import_odds", odds)
+
+
+def test_odds_capture_asks_once_per_day_in_the_window(import_script, monkeypatch, db_session, capsys):
+    """The bug this replaces: a single unscoped league+season request, which
+    only ever reads page 1 of however a whole season's /odds response is
+    ordered -- not "the next few days", the only window a booking code ever
+    needs a price for."""
+
+    calls: list = []
+
+    def fake_odds(db, client, *, league_id, season, date):
+        calls.append(date)
+        return ImportReport(considered=1, inserted=1)
+
+    _run_with_odds(import_script, monkeypatch, db_session, days_ahead=3, odds=fake_odds)
+    import_script.main()
+
+    assert len(calls) == 3
+    assert calls == sorted(set(calls))  # three distinct, ascending dates
+    assert (calls[-1] - calls[0]).days == 2
+
+    out = capsys.readouterr().out
+    assert "3 price(s) stored across the next 3 day(s)" in out
+
+
+def test_odds_capture_stops_the_run_when_quota_runs_out_mid_window(import_script, monkeypatch, db_session, capsys):
+    calls: list = []
+
+    def fake_odds(db, client, *, league_id, season, date):
+        calls.append(date)
+        if len(calls) == 2:
+            raise QuotaExceeded("budget spent")
+        return ImportReport(considered=1, inserted=1)
+
+    _run_with_odds(import_script, monkeypatch, db_session, days_ahead=5, odds=fake_odds)
+
+    with pytest.raises(SystemExit) as exit_info:
+        import_script.main()
+
+    assert exit_info.value.code == 1
+    assert len(calls) == 2  # stopped mid-window, not all 5 days attempted
+    err = capsys.readouterr().err
+    assert "odds stopped after 1/5 day(s)" in err
 
 
 # --- ambiguity ---------------------------------------------------------
@@ -432,6 +686,59 @@ def test_a_name_that_fits_two_clubs_equally_is_refused(db_session):
     assert TeamIndex(db_session).resolve("Sporting") is None
 
 
+def test_a_promoted_clubs_old_division_row_no_longer_blocks_its_new_one(db_session):
+    """The bug this was found for: a club keeps its old division's Team row
+    (a real, separate history) alongside a new one for wherever it plays
+    now, so its own exact name is tied against itself across two leagues.
+    A caller resolving fixtures for one specific domestic league already
+    knows every club in them plays there -- that is not a guess, it is
+    the one piece of context a name score alone never has."""
+
+    lower, upper = _store(
+        db_session,
+        ("AFC Bournemouth", "English Championship"),
+        ("AFC Bournemouth", "English Premier League"),
+    )
+
+    index = TeamIndex(db_session)
+    assert index.resolve("Bournemouth") is None  # unchanged without that context
+    assert index.resolve("Bournemouth", prefer_league="English Premier League") is upper
+    assert index.resolve("Bournemouth", prefer_league="English Championship") is lower
+
+
+def test_prefer_league_settles_a_cross_league_tie_correctly_too(db_session):
+    """Sporting Gijon and Sporting Lisbon are two different clubs, not one
+    club in two divisions -- but a caller resolving names for a Spanish La
+    Liga fixture list still knows, as a hard fact rather than a guess, that
+    every club in it plays in Spanish La Liga. That is exactly the same
+    reasoning the promoted-club case relies on, so it resolves the same
+    way: to whichever tied candidate is actually in that league."""
+
+    gijon, _lisbon = _store(
+        db_session,
+        ("Sporting Gijon", "Spanish La Liga"),
+        ("Sporting Lisbon", "Portuguese Primeira Liga"),
+    )
+
+    assert TeamIndex(db_session).resolve("Sporting", prefer_league="Spanish La Liga") is gijon
+
+
+def test_prefer_league_does_not_rescue_a_tie_within_the_same_league(db_session):
+    """Narrowing by league still leaves more than one candidate when two
+    different, similarly-named clubs share the target league itself --
+    that is a real ambiguity prefer_league cannot and must not resolve.
+    Same tie as the cross-league case above, moved into one league to
+    isolate exactly what prefer_league does and does not settle."""
+
+    _store(
+        db_session,
+        ("Sporting Gijon", "Spanish La Liga"),
+        ("Sporting Lisbon", "Spanish La Liga"),
+    )
+
+    assert TeamIndex(db_session).resolve("Sporting", prefer_league="Spanish La Liga") is None
+
+
 def test_both_unmatched_clubs_are_reported_not_just_the_home_side(db_session):
     """A qualifying tie between two clubs from leagues we do not hold used to
     report only one of them, so the other never appeared in the list a human
@@ -444,3 +751,180 @@ def test_both_unmatched_clubs_are_reported_not_just_the_home_side(db_session):
         report.note_unresolved(name, candidate.name if candidate else None, score)
 
     assert sorted(report.unresolved_clubs) == ["Larne", "Tre Fiori"]
+
+
+# --- BTTS and Over/Under prices, named to match the outcome registry --------
+
+
+def test_btts_prices_are_captured(db_session, clubs):
+    kickoff = "2026-10-01T19:00:00+00:00"
+    fixtures = FakeClient({
+        "fixtures": [{
+            "fixture": {"id": 5, "date": kickoff, "status": {"short": "NS"}},
+            "teams": {"home": {"name": "Real Madrid"}, "away": {"name": "Bayern Munich"}},
+            "goals": {"home": None, "away": None},
+        }]
+    })
+    import_fixtures(db_session, fixtures, league_id=2, season=2026)
+
+    odds_client = FakeClient({
+        "odds": [{
+            "fixture": {"id": 5, "date": kickoff},
+            "teams": {"home": {"name": "Real Madrid"}, "away": {"name": "Bayern Munich"}},
+            "bookmakers": [{
+                "name": "Bet365",
+                "bets": [{
+                    "name": "Both Teams Score",
+                    "values": [{"value": "Yes", "odd": "1.65"}, {"value": "No", "odd": "2.20"}],
+                }],
+            }],
+        }]
+    })
+    import_odds(db_session, odds_client, league_id=2, season=2026)
+
+    rows = db_session.query(MatchOdds).all()
+    assert {(r.market, r.selection) for r in rows} == {
+        ("Both Teams To Score", "Yes"),
+        ("Both Teams To Score", "No"),
+    }
+
+
+def test_over_under_prices_are_captured_per_line(db_session, clubs):
+    kickoff = "2026-10-01T19:00:00+00:00"
+    fixtures = FakeClient({
+        "fixtures": [{
+            "fixture": {"id": 6, "date": kickoff, "status": {"short": "NS"}},
+            "teams": {"home": {"name": "Real Madrid"}, "away": {"name": "Bayern Munich"}},
+            "goals": {"home": None, "away": None},
+        }]
+    })
+    import_fixtures(db_session, fixtures, league_id=2, season=2026)
+
+    odds_client = FakeClient({
+        "odds": [{
+            "fixture": {"id": 6, "date": kickoff},
+            "teams": {"home": {"name": "Real Madrid"}, "away": {"name": "Bayern Munich"}},
+            "bookmakers": [{
+                "name": "Bet365",
+                "bets": [{
+                    "name": "Goals Over/Under",
+                    "values": [
+                        {"value": "Over 1.5", "odd": "1.25"},
+                        {"value": "Under 1.5", "odd": "3.75"},
+                        {"value": "Over 2.5", "odd": "1.90"},
+                        {"value": "Under 2.5", "odd": "1.90"},
+                    ],
+                }],
+            }],
+        }]
+    })
+    import_odds(db_session, odds_client, league_id=2, season=2026)
+
+    rows = db_session.query(MatchOdds).all()
+    assert {(r.market, r.selection) for r in rows} == {
+        ("Total Goals 1.5", "Over 1.5"),
+        ("Total Goals 1.5", "Under 1.5"),
+        ("Total Goals 2.5", "Over 2.5"),
+        ("Total Goals 2.5", "Under 2.5"),
+    }
+
+
+def test_an_unpriced_bet_type_is_skipped_not_guessed(db_session, clubs):
+    """A bet this project has no market for (corners, cards, ...) is dropped
+    rather than stored under an invented name."""
+
+    kickoff = "2026-10-01T19:00:00+00:00"
+    fixtures = FakeClient({
+        "fixtures": [{
+            "fixture": {"id": 7, "date": kickoff, "status": {"short": "NS"}},
+            "teams": {"home": {"name": "Real Madrid"}, "away": {"name": "Bayern Munich"}},
+            "goals": {"home": None, "away": None},
+        }]
+    })
+    import_fixtures(db_session, fixtures, league_id=2, season=2026)
+
+    odds_client = FakeClient({
+        "odds": [{
+            "fixture": {"id": 7, "date": kickoff},
+            "teams": {"home": {"name": "Real Madrid"}, "away": {"name": "Bayern Munich"}},
+            "bookmakers": [{
+                "name": "Bet365",
+                "bets": [{"name": "Corners Over/Under", "values": [{"value": "Over 9.5", "odd": "1.90"}]}],
+            }],
+        }]
+    })
+    report = import_odds(db_session, odds_client, league_id=2, season=2026)
+
+    assert report.inserted == 0
+    assert db_session.query(MatchOdds).count() == 0
+
+
+def test_a_bare_numeric_value_does_not_crash_the_import(db_session, clubs):
+    """Found against a live response: this project only recognises three
+    markets, but _parse_bet() runs for every bet a bookmaker offers, and
+    some unrelated markets (handicap lines, corner counts) hand back a
+    bare number rather than a string -- '2.5' the float, not "Over 2.5".
+    Before this crashed the whole run on .strip(); it must instead just
+    fail to match one of this project's three recognised markets, same as
+    any other bet type it doesn't price."""
+
+    kickoff = "2026-10-01T19:00:00+00:00"
+    fixtures = FakeClient({
+        "fixtures": [{
+            "fixture": {"id": 42, "date": kickoff, "status": {"short": "NS"}},
+            "teams": {"home": {"name": "Real Madrid"}, "away": {"name": "Bayern Munich"}},
+            "goals": {"home": None, "away": None},
+        }]
+    })
+    import_fixtures(db_session, fixtures, league_id=2, season=2026)
+
+    odds_client = FakeClient({
+        "odds": [{
+            "fixture": {"id": 42, "date": kickoff},
+            "bookmakers": [{
+                "name": "Pinnacle",
+                "bets": [
+                    {"name": "Asian Handicap", "values": [{"value": 2.5, "odd": "1.90"}]},
+                    {"name": "Match Winner", "values": [{"value": "Home", "odd": "2.10"}]},
+                ],
+            }],
+        }]
+    })
+    report = import_odds(db_session, odds_client, league_id=2, season=2026)
+
+    assert report.inserted == 1
+    assert db_session.query(MatchOdds).one().selection == "Home Win"
+
+
+def test_captured_market_names_match_the_outcome_registry_exactly():
+    """The whole point of naming odds this way: a booking-code leg is built
+    by joining a model outcome to a stored price on (market, selection). If
+    the two sides ever drifted apart that join would silently return
+    nothing. This pins both sides against the same real bet-provider shapes,
+    so a rename on either side breaks a test instead of breaking silently in
+    production."""
+
+    from app.data.api_football_ingest import _parse_bet
+    from app.outcomes.registry import build_outcome_registry
+
+    outcomes = build_outcome_registry(
+        home_win=0.4, draw=0.3, away_win=0.3,
+        over_probabilities={"1.5": 0.8, "2.5": 0.55},
+        btts_yes=0.6, btts_no=0.4,
+        correct_score_probabilities={},
+        matches_available=10,
+    )
+    registry_pairs = {(o.market, o.selection) for o in outcomes}
+
+    provider_pairs = set()
+    for bet_name, value in [
+        ("Match Winner", "Home"), ("Match Winner", "Draw"), ("Match Winner", "Away"),
+        ("Both Teams Score", "Yes"), ("Both Teams Score", "No"),
+        ("Goals Over/Under", "Over 1.5"), ("Goals Over/Under", "Under 1.5"),
+        ("Goals Over/Under", "Over 2.5"), ("Goals Over/Under", "Under 2.5"),
+    ]:
+        parsed = _parse_bet(bet_name, value)
+        assert parsed is not None, f"{bet_name}/{value} produced no market"
+        provider_pairs.add(parsed)
+
+    assert provider_pairs <= registry_pairs, provider_pairs - registry_pairs

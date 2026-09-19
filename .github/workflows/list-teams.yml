@@ -1,0 +1,37 @@
+# Read-only. Lists every stored Team row whose name matches a substring, so
+# a "same club, ambiguous name" report can be checked against the real rows
+# -- id, league, match count -- before anything is ever merged or deleted.
+name: List teams
+
+on:
+  workflow_dispatch:
+    inputs:
+      like:
+        description: "Substrings to search for, space-separated and quoted"
+        required: true
+        default: '"Coventry" "Hull City" "Ipswich" "Sunderland" "Nottingham Forest" "Leeds" "Bournemouth" "Fulham"'
+
+jobs:
+  list:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: List
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          LIKE: ${{ inputs.like }}
+        run: |
+          eval "python scripts/list_teams.py --like $LIKE"

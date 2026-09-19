@@ -39,6 +39,10 @@ TRIGGER_EVENTS = {
     "half_time",
     "match_restart",
     "kickoff",
+    # A recurring re-sync against a real provider's current state, rather
+    # than a discrete in-match event -- carries no red-card-style multiplier
+    # of its own, it just re-projects from wherever the score/minute now are.
+    "sync",
 }
 
 

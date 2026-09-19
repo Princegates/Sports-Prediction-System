@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from app.outcomes.engine import select_global_most_likely, top_n
+from app.outcomes.engine import secondary_outcomes, select_global_most_likely, top_n
 from app.outcomes.registry import build_outcome_registry, matrix_derived_outcomes, outcomes_from_prediction
 
 
@@ -60,6 +60,65 @@ def test_top_n_orders_descending():
     ranked = top_n(outcomes, n=3)
     assert len(ranked) == 3
     assert ranked[0].probability >= ranked[1].probability >= ranked[2].probability
+
+
+# --- secondary outcomes: "2 more" alongside the headline pick --------------
+
+
+def test_secondary_outcomes_never_repeats_the_headline_pick():
+    outcomes = _sample_registry()
+    winner = select_global_most_likely(outcomes)
+    also = secondary_outcomes(outcomes, exclude=(winner.market, winner.selection))
+    assert all((o.market, o.selection) != (winner.market, winner.selection) for o in also)
+
+
+def test_secondary_outcomes_excludes_double_chance():
+    """Double Chance is a union of the 1X2 pick it would sit beside -- always
+    at least as high, and therefore never a second opinion, only the first
+    one restated more loosely. Built so the 55%+25%=80% Home/Draw selection
+    would otherwise dominate this list every time."""
+
+    outcomes = _sample_registry()  # home_win=0.55, draw=0.25 -> Home/Draw=0.80
+    also = secondary_outcomes(outcomes, exclude=("Total Goals 0.5", "Over 0.5"))
+    assert all(o.mutually_exclusive_group != "double_chance" for o in also)
+
+
+def test_secondary_outcomes_are_the_next_highest_by_probability():
+    outcomes = _sample_registry()
+    winner = select_global_most_likely(outcomes)
+    also = secondary_outcomes(outcomes, exclude=(winner.market, winner.selection), n=2)
+
+    assert len(also) == 2
+    assert also[0].probability >= also[1].probability
+    # Nothing outside this pair -- excluding the headline and Double Chance
+    # -- may outrank what was chosen.
+    remaining = [
+        o for o in outcomes
+        if o.mutually_exclusive_group != "double_chance" and (o.market, o.selection) != (winner.market, winner.selection)
+    ]
+    top_remaining = sorted(remaining, key=lambda o: -o.probability)[:2]
+    assert [o.probability for o in also] == [o.probability for o in top_remaining]
+
+
+def test_secondary_outcomes_shrinks_gracefully_for_thin_data():
+    """A match too thin for Correct Score (min_data_requirement=10) never
+    surfaces one here -- never an error, never padding with something the
+    data-quality gate would have refused for the headline pick too."""
+
+    outcomes = build_outcome_registry(
+        home_win=0.5, draw=0.3, away_win=0.2,
+        over_probabilities={}, btts_yes=0.5, btts_no=0.5,
+        correct_score_probabilities={"1-0": 0.9},  # inflated and gated out at this data level
+        matches_available=5,  # enough for 1x2/BTTS (min 5), not Correct Score (min 10)
+    )
+    winner = select_global_most_likely(outcomes)
+    also = secondary_outcomes(outcomes, exclude=(winner.market, winner.selection))
+    assert len(also) <= 2
+    assert all(o.market != "Correct Score" for o in also)
+
+
+def test_secondary_outcomes_of_an_empty_registry_is_empty():
+    assert secondary_outcomes([], exclude=("Match Result", "Home Win")) == []
 
 
 # --- matrix-derived markets (winning margin, clean sheets, parity, etc.) ---

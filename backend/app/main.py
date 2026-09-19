@@ -11,6 +11,7 @@ from app.api.deps import get_current_user, require_active_access
 from app.api.routes_access import router as access_router
 from app.api.routes_admin import router as admin_router
 from app.api.routes_auth import router as auth_router
+from app.api.routes_betcodes import router as betcodes_router
 from app.api.routes_chat import router as chat_router
 from app.api.routes_matches import router as matches_router
 from app.api.routes_predictions import router as predictions_router
@@ -121,6 +122,7 @@ app.include_router(access_router)
 app.include_router(chat_router, dependencies=[Depends(require_active_access)])
 app.include_router(teams_router, dependencies=[Depends(require_active_access)])
 app.include_router(matches_router, dependencies=[Depends(require_active_access)])
+app.include_router(betcodes_router)
 app.include_router(predictions_router, dependencies=[Depends(get_current_user)])
 
 

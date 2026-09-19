@@ -77,8 +77,10 @@ def main() -> None:
         per_day: dict[tuple[str, object], list[int]] = defaultdict(list)
         appearances: Counter[str] = Counter()
         leagues: Counter[str] = Counter()
+        by_id = {}
 
         for match_id, date, h, hl, a, al in rows:
+            by_id[match_id] = (date, h, a)
             for club, league in ((h, hl), (a, al)):
                 per_day[(club, date.date())].append(match_id)
                 appearances[club] += 1
@@ -91,11 +93,33 @@ def main() -> None:
 
         doubled = {key: ids for key, ids in per_day.items() if len(ids) > 1}
         if doubled:
+            # Same two clubs on both colliding rows, kickoffs close together,
+            # is a different failure than the one this script was written
+            # for: not a name fitting the wrong club, but the same real match
+            # imported twice because its stored and provider kickoff times
+            # didn't match exactly. Detected here, not assumed, so the report
+            # says which one actually happened.
+            exact_duplicates = 0
             print(f"\nIMPOSSIBLE: {len(doubled)} club(s) play twice on one day.")
-            print("A name that fits two clubs is the usual cause -- one of them was")
-            print("given a tie it never played.")
             for (club, day), ids in sorted(doubled.items(), key=lambda kv: (kv[0][1], kv[0][0])):
-                print(f"  {club} on {day}: match ids {', '.join(str(i) for i in ids)}")
+                detail = ", ".join(
+                    f"{i} ({by_id[i][0]:%H:%M} vs {by_id[i][2] if by_id[i][1] == club else by_id[i][1]})"
+                    for i in ids
+                )
+                print(f"  {club} on {day}: {detail}")
+                opponents = {(by_id[i][2] if by_id[i][1] == club else by_id[i][1]) for i in ids}
+                if len(opponents) == 1:
+                    exact_duplicates += 1
+            if exact_duplicates:
+                print(f"\n  {exact_duplicates} of those are the same two clubs on both rows -- the same")
+                print("  real match stored twice under kickoffs that didn't match exactly, not a")
+                print("  name fitting the wrong club. repair_european_fixtures.py is NOT the fix for")
+                print("  this on a domestic league -- it wipes the whole competition, and this")
+                print("  league's history predates API-Football. The duplicate rows need removing")
+                print("  individually; nothing here does that automatically yet.")
+            if exact_duplicates < len(doubled):
+                print(f"\n  {len(doubled) - exact_duplicates} involve two different opponents -- a name")
+                print("  fitting the wrong club is the more likely cause for those.")
 
         counts = Counter(appearances.values())
         print("\nFixtures per club:")
