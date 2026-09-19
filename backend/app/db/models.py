@@ -366,6 +366,33 @@ class LivePrediction(Base):
     trigger_event: Mapped[str] = mapped_column(String(32))
 
 
+class FeaturedPick(Base):
+    """An admin-curated highlight on the "Guda Picks" dashboard section.
+
+    Deliberately a reference (match + market + selection), never a copied
+    probability -- the whole point is that this stays a real, current model
+    output an admin chose to promote, not a frozen number or a freely
+    authored claim. The probability shown to users is always recomputed
+    from the match's latest Prediction at read time (see
+    outcomes.registry.find_outcome); if that outcome ever stops existing
+    (e.g. the match finished and its live markets no longer apply), it
+    simply drops out of the list rather than showing something stale.
+    """
+
+    __tablename__ = "featured_picks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    match_id: Mapped[int] = mapped_column(ForeignKey("matches.id"), index=True)
+    market: Mapped[str] = mapped_column(String(64))
+    selection: Mapped[str] = mapped_column(String(64))
+    note: Mapped[str | None] = mapped_column(String(280), nullable=True)
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
+    # Self-cleaning rather than relying on an admin to remember to remove it
+    # -- a couple of days past kickoff, whatever it was celebrating is over.
+    expires_at: Mapped[dt.datetime] = mapped_column(DateTime, index=True)
+
+
 class ModelMetric(Base):
     """Backtest / production monitoring results (spec sections 41, 43)."""
 

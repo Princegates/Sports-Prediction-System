@@ -16,6 +16,7 @@ import type {
   AuditLogEntry,
   ChatAnswer,
   ChatMessage,
+  FeaturedPick,
   FreePick,
   HeadToHeadMatch,
   LivePrediction,
@@ -307,6 +308,28 @@ export function fetchAccessStatus(): Promise<AccessStatus> {
  * deliberately thinner than a full Prediction. */
 export function fetchFreePicks(): Promise<FreePick[]> {
   return get("/api/predictions/free-picks");
+}
+
+/** Outcomes a Super Admin has chosen to highlight -- whether a free-tier
+ * account sees this at all is the operator's call (guda_picks_free_tier_visible),
+ * but every probability shown is the match's current one, never a snapshot. */
+export function fetchGudaPicks(): Promise<FeaturedPick[]> {
+  return get("/api/predictions/guda-picks");
+}
+
+/** Superadmin only -- promotes one real outcome from a match's own Markets
+ * tab. Rejected if the market/selection pair isn't a real current outcome
+ * of that match, or is already featured. */
+export function featurePick(payload: { match_id: number; market: string; selection: string; note?: string }): Promise<FeaturedPick> {
+  return post("/api/admin/featured-picks", payload);
+}
+
+export function fetchFeaturedPicksAdmin(): Promise<FeaturedPick[]> {
+  return get("/api/admin/featured-picks");
+}
+
+export function unfeaturePick(pickId: number): Promise<void> {
+  return del(`/api/admin/featured-picks/${pickId}`);
 }
 
 export function redeemAccessCode(code: string): Promise<AccessGrant> {

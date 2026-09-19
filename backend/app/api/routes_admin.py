@@ -23,14 +23,17 @@ from app.api.schemas import (
     AdminUserOut,
     AuditLogOut,
     ExtendGrantIn,
+    FeaturedPickOut,
+    FeaturePickIn,
     MatchOut,
     RevokeCodeIn,
     RevokeGrantIn,
 )
-from app.api.serializers import access_code_to_schema, admin_user_to_schema, match_to_schema
+from app.api.serializers import access_code_to_schema, admin_user_to_schema, featured_pick_to_schema, match_to_schema
 from app.config import get_settings
 from app import mailer
-from app.db.models import AccessCode, AccessGrant, AuditLog, ChatMessage, LivePrediction, Match, Prediction, User
+from app.db.models import AccessCode, AccessGrant, AuditLog, ChatMessage, FeaturedPick, LivePrediction, Match, Prediction, User
+from app.outcomes.registry import find_outcome
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_superadmin)])
 
@@ -406,3 +409,102 @@ def clear_match_live_events(
     db.commit()
     db.refresh(match)
     return match_to_schema(match)
+
+
+# --- Guda Picks ---------------------------------------------------------------
+
+
+def _latest_prediction(db: Session, match_id: int) -> Prediction | None:
+    return db.execute(
+        select(Prediction).where(Prediction.match_id == match_id).order_by(Prediction.created_at.desc())
+    ).scalars().first()
+
+
+@router.post("/featured-picks", response_model=FeaturedPickOut)
+def create_featured_pick(
+    payload: FeaturePickIn,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> FeaturedPickOut:
+    """Promotes one real outcome from a match's own Markets tab onto every
+    Dashboard's Guda Picks section. Takes a reference (match + market +
+    selection), not a probability -- validated against the match's current
+    outcomes here so a typo or a market this match doesn't have enough data
+    for is rejected up front, rather than silently showing nothing later.
+    """
+
+    match = db.get(Match, payload.match_id)
+    if match is None:
+        raise HTTPException(status_code=404, detail=f"Match {payload.match_id} not found")
+
+    prediction = _latest_prediction(db, match.id)
+    if prediction is None:
+        raise HTTPException(status_code=400, detail="This match has no prediction yet, so there's nothing to feature.")
+
+    outcome = find_outcome(prediction, payload.market, payload.selection)
+    if outcome is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"\"{payload.selection}\" is not a real outcome of \"{payload.market}\" for this match right now.",
+        )
+
+    duplicate = db.execute(
+        select(FeaturedPick).where(
+            FeaturedPick.match_id == match.id,
+            FeaturedPick.market == payload.market,
+            FeaturedPick.selection == payload.selection,
+        )
+    ).scalars().first()
+    if duplicate is not None:
+        raise HTTPException(status_code=400, detail="That outcome is already featured.")
+
+    note = (payload.note or "").strip() or None
+    if note and len(note) > 280:
+        raise HTTPException(status_code=400, detail="Note must be 280 characters or fewer.")
+
+    pick = FeaturedPick(
+        match_id=match.id,
+        market=payload.market,
+        selection=payload.selection,
+        note=note,
+        created_by_user_id=admin.id,
+        expires_at=match.date + dt.timedelta(days=2),
+    )
+    db.add(pick)
+    _record(db, admin, "featured_pick.created", detail={"match_id": match.id, "market": payload.market, "selection": payload.selection})
+    db.commit()
+    db.refresh(pick)
+    return featured_pick_to_schema(pick, match, outcome.probability)
+
+
+@router.get("/featured-picks", response_model=list[FeaturedPickOut])
+def list_featured_picks(db: Session = Depends(get_db)) -> list[FeaturedPickOut]:
+    """Every currently-featured pick, including ones near expiry -- for the
+    admin panel's own management view. Skips one whose outcome no longer
+    resolves (match deleted, or a prediction that no longer carries it)
+    rather than erroring the whole list."""
+
+    picks = db.execute(select(FeaturedPick).order_by(FeaturedPick.created_at.desc())).scalars().all()
+    out: list[FeaturedPickOut] = []
+    for pick in picks:
+        match = db.get(Match, pick.match_id)
+        if match is None:
+            continue
+        prediction = _latest_prediction(db, match.id)
+        outcome = find_outcome(prediction, pick.market, pick.selection) if prediction else None
+        out.append(featured_pick_to_schema(pick, match, outcome.probability if outcome else 0.0))
+    return out
+
+
+@router.delete("/featured-picks/{pick_id}", status_code=204)
+def delete_featured_pick(
+    pick_id: int,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> None:
+    pick = db.get(FeaturedPick, pick_id)
+    if pick is None:
+        raise HTTPException(status_code=404, detail=f"Featured pick {pick_id} not found")
+    _record(db, admin, "featured_pick.removed", detail={"featured_pick_id": pick_id, "match_id": pick.match_id})
+    db.delete(pick)
+    db.commit()

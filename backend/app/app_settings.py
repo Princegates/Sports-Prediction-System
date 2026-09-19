@@ -180,6 +180,17 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 default=False),
     SettingSpec("notice_message", "str", "notice", "Notice message",
                 "Shown only while the notice above is turned on.", default=""),
+
+    # --- Guda Picks ----------------------------------------------------------
+    SettingSpec("guda_picks_enabled", "bool", "picks", "Show Guda Picks",
+                "A dashboard section for outcomes a Super Admin has chosen to highlight -- "
+                "always a real, currently-live model probability, never a frozen number or "
+                "a freely written claim.",
+                default=True),
+    SettingSpec("guda_picks_free_tier_visible", "bool", "picks", "Show it to the free tier too",
+                "Off restricts Guda Picks to accounts with redeemed access -- on shows it to "
+                "everyone, same as the rest of the Dashboard.",
+                default=True),
 )
 
 BY_KEY: dict[str, SettingSpec] = {spec.key: spec for spec in REGISTRY}
@@ -191,6 +202,7 @@ GROUP_LABELS = {
     "appearance": "Appearance",
     "model": "Model defaults",
     "notice": "Site notice",
+    "picks": "Guda Picks",
     "betcode": "Booking codes",
 }
 

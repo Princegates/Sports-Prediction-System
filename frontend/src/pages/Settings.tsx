@@ -8,7 +8,7 @@ type Draft = Record<string, string | number | boolean>;
 
 /** Groups in the order an operator actually needs them: turn email on, set
  *  how access works, make it look right, and only then touch the model. */
-const GROUP_ORDER = ["data", "email", "access", "appearance", "notice", "model", "betcode"];
+const GROUP_ORDER = ["data", "email", "access", "appearance", "notice", "picks", "model", "betcode"];
 
 const GROUP_NOTES: Record<string, string> = {
   data:
@@ -18,6 +18,7 @@ const GROUP_NOTES: Record<string, string> = {
   access: "Defaults for issuing codes, and whether new people can sign up at all.",
   appearance: "What visitors see before they've chosen anything of their own.",
   notice: "A dismissible banner shown on the Dashboard to every signed-in account — for an outage, a new league going live, or anything else worth a heads-up.",
+  picks: "Feature outcomes from a match's Markets tab to promote them on every Dashboard.",
   model:
     "Only a fallback. Once a league has been backtested, its weights are fitted from that league's own validation data and those are used instead — these apply to leagues that haven't been trained yet.",
   betcode:

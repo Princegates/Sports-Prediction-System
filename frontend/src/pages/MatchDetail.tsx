@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import {
+  featurePick,
+  fetchFeaturedPicksAdmin,
   fetchHeadToHead,
   fetchLive,
   fetchMatch,
@@ -10,6 +12,7 @@ import {
   fetchPredictionHistory,
   fetchStatistics,
   recordMatchView,
+  unfeaturePick,
 } from "../api";
 import { AiExplanationPanel } from "../components/AiExplanationPanel";
 import { AskAboutMatch } from "../components/AskAboutMatch";
@@ -33,6 +36,7 @@ import { TeamComparison } from "../components/TeamComparison";
 import { formatSelection } from "../lib/copySelections";
 import { useAuth } from "../lib/AuthContext";
 import type {
+  FeaturedPick,
   HeadToHeadMatch,
   LivePrediction,
   MatchStatistics,
@@ -64,6 +68,8 @@ export function MatchDetail() {
   const [error, setError] = useState<string | null>(null);
   const [goalTrigger, setGoalTrigger] = useState(0);
   const [goalTeam, setGoalTeam] = useState("");
+  const [featuredPicks, setFeaturedPicks] = useState<FeaturedPick[]>([]);
+  const [pickBusy, setPickBusy] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -108,6 +114,42 @@ export function MatchDetail() {
       cancelled = true;
     };
   }, [matchId]);
+
+  useEffect(() => {
+    if (user?.role !== "superadmin") return;
+    let cancelled = false;
+    fetchFeaturedPicksAdmin()
+      .then((picks) => !cancelled && setFeaturedPicks(picks))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.role, matchId]);
+
+  function findFeatured(market: string, selection: string): FeaturedPick | undefined {
+    return featuredPicks.find((p) => p.match.id === matchId && p.market === market && p.selection === selection);
+  }
+
+  async function handleToggleFeature(market: string, selection: string) {
+    const key = `${market}|${selection}`;
+    const existing = findFeatured(market, selection);
+    setPickBusy(key);
+    try {
+      if (existing) {
+        await unfeaturePick(existing.id);
+        setFeaturedPicks((prev) => prev.filter((p) => p.id !== existing.id));
+      } else {
+        const raw = window.prompt("Optional note for this pick (shown on every Dashboard) -- Cancel to skip featuring it:", "");
+        if (raw === null) return;
+        const created = await featurePick({ match_id: matchId, market, selection, note: raw || undefined });
+        setFeaturedPicks((prev) => [...prev, created]);
+      }
+    } catch (err) {
+      window.alert(String(err instanceof Error ? err.message : err));
+    } finally {
+      setPickBusy(null);
+    }
+  }
 
   const latestLive = live.length > 0 ? live[live.length - 1] : null;
 
@@ -362,14 +404,30 @@ export function MatchDetail() {
                       <tbody>
                         {[...rows]
                           .sort((a, b) => b.probability - a.probability)
-                          .map((o) => (
-                            <tr key={o.selection} title={o.definition}>
-                              <td>{o.selection}</td>
-                              <td className="tabular-nums" style={{ width: 80 }}>
-                                {(o.probability * 100).toFixed(0)}%
-                              </td>
-                            </tr>
-                          ))}
+                          .map((o) => {
+                            const featured = user?.role === "superadmin" ? findFeatured(o.market, o.selection) : undefined;
+                            const key = `${o.market}|${o.selection}`;
+                            return (
+                              <tr key={o.selection} title={o.definition}>
+                                <td>{o.selection}</td>
+                                <td className="tabular-nums" style={{ width: 80 }}>
+                                  {(o.probability * 100).toFixed(0)}%
+                                </td>
+                                {user?.role === "superadmin" && (
+                                  <td style={{ width: 90 }}>
+                                    <button
+                                      className="btn ghost"
+                                      style={{ padding: "2px 8px", fontSize: 12 }}
+                                      disabled={pickBusy === key}
+                                      onClick={() => handleToggleFeature(o.market, o.selection)}
+                                    >
+                                      {featured ? "★ Unfeature" : "☆ Feature"}
+                                    </button>
+                                  </td>
+                                )}
+                              </tr>
+                            );
+                          })}
                       </tbody>
                     </table>
                   </div>

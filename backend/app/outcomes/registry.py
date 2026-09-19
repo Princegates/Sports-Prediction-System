@@ -303,3 +303,21 @@ def outcomes_from_prediction(prediction) -> list[Outcome]:
         outcomes += matrix_derived_outcomes(lambda_home, lambda_away, matches_available)
 
     return outcomes
+
+
+def find_outcome(prediction, market: str, selection: str) -> Outcome | None:
+    """The one outcome, if any, matching this exact market/selection pair.
+
+    Used two ways: to validate a curated "Guda Pick" against a real model
+    output rather than trusting whatever an admin typed, and to recompute
+    its current probability at read time rather than storing a frozen
+    snapshot. Returns ``None`` for a pair that either never existed (a typo,
+    or a market that needs more data than this match currently has) or no
+    longer does (e.g. the match finished and its live markets changed) --
+    the caller's job is to treat that as "nothing to show", not an error.
+    """
+
+    for outcome in outcomes_from_prediction(prediction):
+        if outcome.market == market and outcome.selection == selection:
+            return outcome
+    return None

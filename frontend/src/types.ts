@@ -269,6 +269,20 @@ export interface FreePick {
   confidence: "HIGH" | "MEDIUM" | "LOW";
 }
 
+/** An outcome a Super Admin chose to promote -- probability is always the
+ * match's current recomputed value, never a snapshot from when it was
+ * featured. */
+export interface FeaturedPick {
+  id: number;
+  match: MatchSummary;
+  market: string;
+  selection: string;
+  probability: number;
+  note: string | null;
+  created_at: string;
+  expires_at: string;
+}
+
 // --- Admin ---------------------------------------------------------------
 
 export interface AdminOverview {

@@ -6,8 +6,11 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.api.deps import get_db, require_active_access
+from app import app_settings
+from app.access import current_grant
+from app.api.deps import get_current_user, get_db, require_active_access
 from app.api.schemas import (
+    FeaturedPickOut,
     FreePickOut,
     LeagueOutcomesOut,
     MarketOut,
@@ -15,9 +18,9 @@ from app.api.schemas import (
     OutcomesOut,
     PredictionOut,
 )
-from app.api.serializers import prediction_to_schema
-from app.db.models import Match, Prediction
-from app.outcomes.registry import outcomes_from_prediction
+from app.api.serializers import featured_pick_to_schema, prediction_to_schema
+from app.db.models import FeaturedPick, Match, Prediction, User
+from app.outcomes.registry import find_outcome, outcomes_from_prediction
 from app.prediction_models.ml_model import FeatureCachePool
 from app.prediction_service import build_prediction_for_match
 from app.quality import is_high_confidence
@@ -285,3 +288,45 @@ def free_picks(db: Session = Depends(get_db)) -> list[FreePickOut]:
     ]
     picks.sort(key=lambda p: -p.probability)
     return picks[:8]
+
+
+@router.get("/guda-picks", response_model=list[FeaturedPickOut])
+def guda_picks(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[FeaturedPickOut]:
+    """Outcomes a Super Admin has chosen to highlight, for the Dashboard's
+    Guda Picks section. Whether a free-tier account (rather than one with
+    redeemed access) sees this at all is the operator's call -- see the
+    guda_picks_enabled/guda_picks_free_tier_visible settings -- but the
+    outcome shown is always the match's current real probability, never a
+    frozen number, so it drops out on its own the moment it stops applying.
+    """
+
+    values = app_settings.all_values(db)
+    if not values.get("guda_picks_enabled", True):
+        return []
+
+    if user.role != "superadmin" and not values.get("guda_picks_free_tier_visible", True):
+        grant = current_grant(db, user)
+        has_access = grant is not None and grant.expires_at > dt.datetime.utcnow()
+        if not has_access:
+            return []
+
+    now = dt.datetime.utcnow()
+    picks = db.execute(
+        select(FeaturedPick).where(FeaturedPick.expires_at > now).order_by(FeaturedPick.created_at.desc())
+    ).scalars().all()
+
+    out: list[FeaturedPickOut] = []
+    for pick in picks:
+        match = db.get(Match, pick.match_id)
+        if match is None:
+            continue
+        prediction = db.execute(
+            select(Prediction).where(Prediction.match_id == match.id).order_by(Prediction.created_at.desc())
+        ).scalars().first()
+        if prediction is None:
+            continue
+        outcome = find_outcome(prediction, pick.market, pick.selection)
+        if outcome is None:
+            continue
+        out.append(featured_pick_to_schema(pick, match, outcome.probability))
+    return out

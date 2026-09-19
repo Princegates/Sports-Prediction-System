@@ -6,6 +6,7 @@ import { CardGridSkeleton } from "../components/LoadingSkeleton";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { FreePickCard } from "../components/FreePickCard";
+import { GudaPicksSection } from "../components/GudaPicksSection";
 import { Mascot } from "../components/Mascot";
 import { NoticeBanner } from "../components/NoticeBanner";
 import { PredictionCard } from "../components/PredictionCard";
@@ -138,6 +139,8 @@ export function Dashboard() {
           </>
         )}
       </section>
+
+      <GudaPicksSection />
 
       {!accessLoading && !hasAccess && (
         <>

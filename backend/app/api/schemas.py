@@ -520,6 +520,29 @@ class FreePickOut(BaseModel):
     confidence: str
 
 
+class FeaturePickIn(BaseModel):
+    """An admin's choice of which real outcome to promote -- a reference
+    into a match's own already-computed markets, never a typed-in claim."""
+
+    match_id: int
+    market: str
+    selection: str
+    note: str | None = None
+
+
+class FeaturedPickOut(BaseModel):
+    id: int
+    match: MatchOut
+    market: str
+    selection: str
+    # Recomputed from the match's latest Prediction at read time, never a
+    # stored snapshot -- see FeaturedPick's docstring for why.
+    probability: float
+    note: str | None
+    created_at: dt.datetime
+    expires_at: dt.datetime
+
+
 # --- Booking codes -----------------------------------------------------
 
 

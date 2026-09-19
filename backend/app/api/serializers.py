@@ -9,6 +9,7 @@ from app.api.schemas import (
     AccessCodeOut,
     AccessGrantOut,
     AdminUserOut,
+    FeaturedPickOut,
     GlobalOutcomeOut,
     LivePredictionOut,
     MatchHistoryOut,
@@ -17,7 +18,7 @@ from app.api.schemas import (
     TeamOut,
     UserOut,
 )
-from app.db.models import AccessCode, AccessGrant, LivePrediction, Match, MatchView, Prediction, Team, User
+from app.db.models import AccessCode, AccessGrant, FeaturedPick, LivePrediction, Match, MatchView, Prediction, Team, User
 from app.live_engine import is_genuinely_live
 from app.outcomes.engine import secondary_outcomes
 from app.outcomes.registry import outcomes_from_prediction
@@ -162,4 +163,17 @@ def live_prediction_to_schema(lp: LivePrediction) -> LivePredictionOut:
             probability=lp.global_outcome_probability,
         ),
         trigger_event=lp.trigger_event,
+    )
+
+
+def featured_pick_to_schema(pick: FeaturedPick, match: Match, probability: float) -> FeaturedPickOut:
+    return FeaturedPickOut(
+        id=pick.id,
+        match=match_to_schema(match),
+        market=pick.market,
+        selection=pick.selection,
+        probability=probability,
+        note=pick.note,
+        created_at=pick.created_at,
+        expires_at=pick.expires_at,
     )
