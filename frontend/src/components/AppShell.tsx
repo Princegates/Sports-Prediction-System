@@ -38,7 +38,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/app", label: "Dashboard", icon: "◆" },
   { to: "/app/predictions", label: "Predictions", icon: "▤" },
   { to: "/app/markets", label: "Markets", icon: "◈" },
-  { to: "/app/betcodes", label: "Booking codes", icon: "▦" },
+  { to: "/app/betcodes", label: "AI Generation", icon: "▦" },
   { to: "/app/live", label: "Live", icon: "●" },
 ];
 

@@ -444,20 +444,3 @@ export interface BetCodePreview {
   candidates_considered: number;
   warnings: string[];
 }
-
-export type BetCodeStatus = "selected" | "code_ready" | "provider_unavailable" | "provider_error";
-
-export interface BetCode {
-  id: number;
-  created_at: string;
-  bookmaker: string;
-  legs: BetCodeLeg[];
-  combined_odds: number;
-  combined_probability: number;
-  expires_at: string;
-  provider: string;
-  status: BetCodeStatus;
-  booking_code: string | null;
-  deep_link: string | null;
-  provider_message: string | null;
-}

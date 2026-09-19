@@ -3,10 +3,10 @@ import type { MatchSummary, Prediction } from "../types";
 /**
  * Plain-text description of the AI's call for one match, meant to be pasted
  * wherever a user tracks their own picks or places bets themselves. Just a
- * probability statement -- no bookmaker integration, no code, no deep link.
- * That combination lives in the booking-codes feature (see app/betcode/ on
- * the backend and pages/BetCodes.tsx here) for someone who wants it; this
- * function is for someone who doesn't, and stays that thin on purpose.
+ * probability statement for a single match's headline pick -- pages/BetCodes.tsx
+ * has its own copy formatter for a multi-match combo built from real, priced
+ * legs (see formatLegsForCopy there); this one is for a single match on its
+ * own and stays that thin on purpose.
  */
 export function formatSelection(match: MatchSummary, prediction: Prediction): string {
   const kickoff = new Date(match.date).toLocaleString(undefined, {

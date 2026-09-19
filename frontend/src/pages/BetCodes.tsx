@@ -1,34 +1,54 @@
-import { useEffect, useState } from "react";
-import { fetchBetCodeHistory, generateBetCode, previewBetCode } from "../api";
+import { useState } from "react";
+import { previewBetCode } from "../api";
 import { CopyButton } from "../components/CopyButton";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { LEAGUES } from "../components/AppShell";
-import type { BetCode, BetCodeCriteria, BetCodePreview } from "../types";
+import type { BetCodeCriteria, BetCodeLeg, BetCodePreview } from "../types";
+
+/** Plain-text description of one generated combo, meant to be pasted
+ * wherever the user places bets themselves. No bookmaker code, no deep
+ * link -- see this file's module docstring for why. */
+function formatLegsForCopy(legs: BetCodeLeg[], combinedOdds: number): string {
+  const header = `AI Generation -- ${legs.length} leg combo, ${combinedOdds.toFixed(2)} combined odds (copied ${new Date().toLocaleString()})`;
+  const lines = legs.map((leg) => {
+    const kickoff = new Date(leg.kickoff).toLocaleString(undefined, {
+      weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+    });
+    return (
+      `${leg.home_team} vs ${leg.away_team} (${leg.league}, ${kickoff})\n` +
+      `${leg.market}: ${leg.selection} -- ${(leg.model_probability * 100).toFixed(0)}% probability, ` +
+      `${leg.decimal_odds.toFixed(2)} odds (${leg.priced_by})`
+    );
+  });
+  return [header, "", ...lines].join("\n\n");
+}
 
 /**
- * Builds a multi-match selection toward a target combined price and, if an
- * aggregator is configured, turns it into a real bookmaker booking code.
+ * The "AI Generation" step: builds a multi-match selection toward a target
+ * combined price, priced entirely from real, stored bookmaker odds.
  *
- * Two steps on purpose. Preview only ever reads -- it costs nothing and can
- * be re-run freely while narrowing target odds or accuracy. Generate is the
- * one call that may spend an aggregator request, and it always sends back
- * exactly the legs preview showed, never a silently re-run selection that
- * could differ from what was on screen.
- *
- * No code is ever shown that this platform did not receive from a real
- * aggregator. When none is configured, the selections and combined price --
- * both real -- are still shown, with a plain explanation of what's missing
- * rather than a fabricated string that would fail the moment someone tried
- * to use it.
+ * There used to be a second step here that sent the result to a booking-code
+ * aggregator and handed back a redeemable bookmaker code. It's gone: every
+ * such service this project could find -- BetPaddi included -- only
+ * converts a code that already exists on one bookmaker to another, never
+ * mints a fresh one from a raw list of selections. That isn't a gap in this
+ * integration, it's what the whole market actually offers; no aggregator
+ * can place a bet on a bookmaker's platform on your behalf. So this page
+ * shows exactly what it can stand behind: real matches, real markets, real
+ * prices, and the combined number they add up to -- copyable, not a
+ * fabricated code that would fail the moment someone tried to redeem it.
  */
-
-const BOOKMAKERS = ["Bet9ja", "SportyBet", "1xBet", "Betway", "MSport", "Premier Bet"];
 
 const MARKET_OPTIONS = [
   { value: "Match Result", label: "Match result (1X2)" },
+  { value: "Double Chance", label: "Double chance" },
   { value: "Both Teams To Score", label: "Both teams to score" },
+  { value: "Draw No Bet", label: "Draw no bet" },
+  { value: "Total Goals 1.5", label: "Over/Under 1.5 goals" },
   { value: "Total Goals 2.5", label: "Over/Under 2.5 goals" },
+  { value: "Total Goals 3.5", label: "Over/Under 3.5 goals" },
+  { value: "Correct Score", label: "Correct score" },
 ];
 
 const ACCURACY_OPTIONS = [
@@ -38,21 +58,7 @@ const ACCURACY_OPTIONS = [
   { value: 0.85, label: "85%+" },
 ];
 
-function statusLabel(status: BetCode["status"]): string {
-  switch (status) {
-    case "code_ready":
-      return "Code generated";
-    case "provider_unavailable":
-      return "No aggregator configured";
-    case "provider_error":
-      return "Aggregator error";
-    default:
-      return "Selected";
-  }
-}
-
 export function BetCodes() {
-  const [bookmaker, setBookmaker] = useState(BOOKMAKERS[0]);
   const [targetOdds, setTargetOdds] = useState(3.0);
   const [markets, setMarkets] = useState<string[]>([]);
   const [minProbability, setMinProbability] = useState(0.65);
@@ -63,20 +69,13 @@ export function BetCodes() {
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
 
-  const [result, setResult] = useState<BetCode | null>(null);
-  const [generateError, setGenerateError] = useState<string | null>(null);
-  const [generating, setGenerating] = useState(false);
-
-  const [history, setHistory] = useState<BetCode[] | null>(null);
-
-  function loadHistory() {
-    fetchBetCodeHistory().then(setHistory).catch(() => setHistory([]));
-  }
-  useEffect(loadHistory, []);
-
   function criteria(): BetCodeCriteria {
     return {
-      bookmaker,
+      // Vestigial on the backend now that no aggregator is called -- kept
+      // only because the API still accepts a bookmaker field on the
+      // criteria payload; it has no bearing on which matches or prices
+      // are found.
+      bookmaker: "any",
       target_odds: targetOdds,
       markets,
       min_probability: minProbability,
@@ -88,7 +87,6 @@ export function BetCodes() {
   async function handlePreview() {
     setPreviewing(true);
     setPreviewError(null);
-    setResult(null);
     try {
       setPreview(await previewBetCode(criteria()));
     } catch (e) {
@@ -99,21 +97,6 @@ export function BetCodes() {
     }
   }
 
-  async function handleGenerate() {
-    if (!preview) return;
-    setGenerating(true);
-    setGenerateError(null);
-    try {
-      const slip = await generateBetCode(criteria(), preview.legs);
-      setResult(slip);
-      loadHistory();
-    } catch (e) {
-      setGenerateError(String(e instanceof Error ? e.message : e));
-    } finally {
-      setGenerating(false);
-    }
-  }
-
   function toggleMarket(value: string) {
     setMarkets((m) => (m.includes(value) ? m.filter((v) => v !== value) : [...m, value]));
   }
@@ -121,7 +104,7 @@ export function BetCodes() {
   return (
     <div>
       <div className="section-header">
-        <h2>Booking codes</h2>
+        <h2>AI Generation</h2>
         <span className="meta">Combine matches toward a target price, priced from real bookmaker odds</span>
       </div>
 
@@ -129,26 +112,12 @@ export function BetCodes() {
         Every leg here is priced from a real, stored bookmaker quote -- there is no estimated or synthetic
         price. Combining matches multiplies the risk as fast as it multiplies the price: three legs each
         70% likely land around a 34% chance of all three coming in, whatever the combined odds look like.
-        The number below is calculated, not softened.
+        The number below is calculated, not softened. No bookmaker booking code is generated -- paste the
+        selections into your betting app yourself, or use the "Copy selections" button below.
       </p>
 
       <div className="card card-pad" style={{ marginBottom: 20 }}>
         <div className="auth-form" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
-          <label>
-            Bookmaker
-            <select value={bookmaker} onChange={(e) => setBookmaker(e.target.value)}>
-              {BOOKMAKERS.map((b) => (
-                <option key={b} value={b}>
-                  {b}
-                </option>
-              ))}
-            </select>
-            <span className="sub" style={{ fontWeight: 400 }}>
-              Who the code is generated for. Prices come from whichever bookmaker this project has a
-              stored quote from -- see "Priced by" per leg below.
-            </span>
-          </label>
-
           <label>
             Target combined odds
             <input
@@ -203,7 +172,10 @@ export function BetCodes() {
 
         <div style={{ marginTop: 14 }}>
           <div className="meta" style={{ marginBottom: 6 }}>
-            Markets <span style={{ fontWeight: 400 }}>(none selected = any market)</span>
+            Markets{" "}
+            <span style={{ fontWeight: 400 }}>
+              (none selected = match result, double chance, BTTS, draw no bet, and the three main goal lines)
+            </span>
           </div>
           <div className="filter-bar">
             {MARKET_OPTIONS.map((m) => (
@@ -219,7 +191,7 @@ export function BetCodes() {
         </div>
 
         <button className="btn" style={{ marginTop: 16 }} onClick={handlePreview} disabled={previewing}>
-          {previewing ? "Finding selections…" : "Preview selections"}
+          {previewing ? "Finding selections…" : "Generate selections"}
         </button>
       </div>
 
@@ -292,85 +264,10 @@ export function BetCodes() {
           ))}
 
           {preview.legs.length > 0 && (
-            <button className="btn" style={{ marginTop: 14 }} onClick={handleGenerate} disabled={generating}>
-              {generating ? "Sending to " + bookmaker + "…" : `Generate ${bookmaker} booking code`}
-            </button>
-          )}
-        </div>
-      )}
-
-      {generateError && <ErrorState message={generateError} />}
-
-      {result && (
-        <div className="card card-pad" style={{ marginBottom: 20 }}>
-          <div className="section-header" style={{ marginBottom: 12 }}>
-            <h3 style={{ margin: 0 }}>{statusLabel(result.status)}</h3>
-            <span className="meta">{result.bookmaker}</span>
-          </div>
-
-          {result.status === "code_ready" && result.booking_code ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-              <code style={{ fontSize: 20, fontWeight: 700, letterSpacing: 1 }}>{result.booking_code}</code>
-              <CopyButton text={result.booking_code} label="Copy code" />
-              {result.deep_link && (
-                <a className="btn ghost" href={result.deep_link} target="_blank" rel="noreferrer">
-                  Open in {result.bookmaker}
-                </a>
-              )}
+            <div style={{ marginTop: 14 }}>
+              <CopyButton text={formatLegsForCopy(preview.legs, preview.combined_odds)} label="Copy selections" />
             </div>
-          ) : (
-            <p className="setting-note" style={{ margin: 0 }}>
-              {result.provider_message ??
-                "This code could not be generated, but the selections and combined price above are real."}
-            </p>
           )}
-
-          <p className="meta" style={{ marginTop: 10 }}>
-            Expires when the first leg kicks off:{" "}
-            {new Date(result.expires_at).toLocaleString(undefined, {
-              weekday: "short",
-              month: "short",
-              day: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
-          </p>
-        </div>
-      )}
-
-      {history && history.length > 0 && (
-        <div className="card card-pad">
-          <div className="section-header" style={{ marginBottom: 12 }}>
-            <h3 style={{ margin: 0 }}>Your history</h3>
-          </div>
-          <div className="predictions-table-wrapper">
-            <table className="predictions-table">
-              <thead>
-                <tr>
-                  <th>Created</th>
-                  <th>Bookmaker</th>
-                  <th>Legs</th>
-                  <th>Combined odds</th>
-                  <th>Status</th>
-                  <th>Code</th>
-                </tr>
-              </thead>
-              <tbody>
-                {history.map((slip) => (
-                  <tr key={slip.id}>
-                    <td className="sub">
-                      {new Date(slip.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-                    </td>
-                    <td>{slip.bookmaker}</td>
-                    <td className="tabular-nums">{slip.legs.length}</td>
-                    <td className="tabular-nums">{slip.combined_odds.toFixed(2)}</td>
-                    <td className="sub">{statusLabel(slip.status)}</td>
-                    <td>{slip.booking_code ?? "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
         </div>
       )}
     </div>

@@ -1,5 +1,4 @@
 import type {
-  BetCode,
   BetCodeCriteria,
   BetCodePreview,
   OutcomesResponse,
@@ -503,14 +502,6 @@ export function fetchNotice(): Promise<SiteNotice> {
 
 export function previewBetCode(criteria: BetCodeCriteria): Promise<BetCodePreview> {
   return post("/api/betcodes/preview", criteria);
-}
-
-export function generateBetCode(criteria: BetCodeCriteria, legs?: BetCodePreview["legs"]): Promise<BetCode> {
-  return post("/api/betcodes", { criteria, legs: legs ?? null });
-}
-
-export function fetchBetCodeHistory(limit = 20): Promise<BetCode[]> {
-  return get(`/api/betcodes?limit=${limit}`);
 }
 
 export function fetchOutcomes(params: {
