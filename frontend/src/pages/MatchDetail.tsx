@@ -12,6 +12,7 @@ import {
 } from "../api";
 import { AiExplanationPanel } from "../components/AiExplanationPanel";
 import { AskAboutMatch } from "../components/AskAboutMatch";
+import { CopyButton } from "../components/CopyButton";
 import { ErrorState } from "../components/ErrorState";
 import { FormStrip } from "../components/FormStrip";
 import { GoalCelebration } from "../components/GoalCelebration";
@@ -27,6 +28,7 @@ import { RadialGauge } from "../components/RadialGauge";
 import { ScoreHeatmap } from "../components/ScoreHeatmap";
 import { Tabs } from "../components/Tabs";
 import { TeamComparison } from "../components/TeamComparison";
+import { formatSelection } from "../lib/copySelections";
 import type { HeadToHeadMatch, LivePrediction, MatchStatistics, MatchSummary, ModelBreakdown, Prediction } from "../types";
 
 const TAB_NAMES = ["Overview", "AI Prediction", "Form", "H2H", "Live", "Explanation"];
@@ -146,6 +148,10 @@ export function MatchDetail() {
       )}
 
       <MostLikelyOutcome outcome={latestLive?.global_outcome ?? prediction.global_outcome} confidence={prediction.confidence} />
+
+      <div style={{ display: "flex", justifyContent: "flex-end", margin: "8px 0" }}>
+        <CopyButton text={formatSelection(match, prediction)} label="Copy this pick" />
+      </div>
 
       <div style={{ height: 8 }} />
       <Tabs tabs={TAB_NAMES} active={tab} onChange={changeTab} />

@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { fetchMatch, fetchMostLikely } from "../api";
 import { LEAGUES } from "../components/AppShell";
+import { CopyButton } from "../components/CopyButton";
 import { DateStrip, localDayKey } from "../components/DateStrip";
 import { ConfidenceTag } from "../components/MostLikelyOutcome";
 import { ErrorState } from "../components/ErrorState";
 import { EmptyState } from "../components/EmptyState";
+import { formatSelection, formatSelections } from "../lib/copySelections";
 import type { MatchSummary, Prediction } from "../types";
 
 interface Row {
@@ -91,7 +93,12 @@ export function Predictions() {
     <div>
       <div className="section-header">
         <h2>AI Predictions</h2>
-        <span className="meta">{visible ? `${visible.length} matches` : "Loading..."}</span>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+          <span className="meta">{visible ? `${visible.length} matches` : "Loading..."}</span>
+          {visible && visible.length > 0 && (
+            <CopyButton text={formatSelections(visible)} label="Copy all selections" />
+          )}
+        </div>
       </div>
 
       <div className="filter-bar" style={{ marginBottom: 20 }}>
@@ -128,6 +135,7 @@ export function Predictions() {
                 <th onClick={() => toggleSort("confidence")}>Confidence {sortKey === "confidence" ? (sortDir === 1 ? "↑" : "↓") : ""}</th>
                 <th onClick={() => toggleSort("kickoff")}>Kickoff {sortKey === "kickoff" ? (sortDir === 1 ? "↑" : "↓") : ""}</th>
                 <th>Status</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -146,6 +154,9 @@ export function Predictions() {
                   </td>
                   <td>{new Date(match.date).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
                   <td>{match.status}</td>
+                  <td>
+                    <CopyButton text={formatSelection(match, prediction)} />
+                  </td>
                 </tr>
               ))}
             </tbody>
