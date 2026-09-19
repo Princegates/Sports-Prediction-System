@@ -25,7 +25,7 @@ interface LeagueContextValue {
   setLeague: (l: string) => void;
 }
 
-const LeagueContext = createContext<LeagueContextValue>({ league: LEAGUES[0], setLeague: () => {} });
+const LeagueContext = createContext<LeagueContextValue>({ league: "", setLeague: () => {} });
 export const useLeague = () => useContext(LeagueContext);
 
 /** Display text for a `useLeague()` value, including the "all leagues" sentinel. */
@@ -73,7 +73,12 @@ function UserMenu() {
 }
 
 export function AppShell() {
-  const [league, setLeague] = useState(LEAGUES[0]);
+  // "" ("All leagues") on purpose, not LEAGUES[0] -- Dashboard and Live
+  // degrade to an unfiltered (cross-league) query just fine when league is
+  // falsy, and AI Generation previously defaulted to "any league" before it
+  // was wired to this shared selector, so defaulting here to one specific
+  // league would have silently narrowed what it searches on first load.
+  const [league, setLeague] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const { user, accessStatus } = useAuth();
   const needsAccess = user?.role !== "superadmin" && !accessStatus?.has_access;

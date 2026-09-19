@@ -58,9 +58,15 @@ const ACCURACY_OPTIONS = [
   { value: 0.85, label: "85%+" },
 ];
 
+// Matches the backend's own default (SlipCriteria.max_legs / the
+// betcode_max_legs setting) so leaving this untouched keeps prior behavior.
+const DEFAULT_MAX_LEGS = 8;
+const LEG_COUNT_OPTIONS = [2, 3, 4, 5, 6, 8, 10];
+
 export function BetCodes() {
   const { league } = useLeague();
   const [targetOdds, setTargetOdds] = useState(3.0);
+  const [maxLegs, setMaxLegs] = useState(DEFAULT_MAX_LEGS);
   const [markets, setMarkets] = useState<string[]>([]);
   const [minProbability, setMinProbability] = useState(0.65);
   const [daysAhead, setDaysAhead] = useState(7);
@@ -77,6 +83,7 @@ export function BetCodes() {
       // are found.
       bookmaker: "any",
       target_odds: targetOdds,
+      max_legs: maxLegs,
       markets,
       min_probability: minProbability,
       league: league || null,
@@ -146,6 +153,26 @@ export function BetCodes() {
 
         <div style={{ marginTop: 14 }}>
           <div className="meta" style={{ marginBottom: 6 }}>
+            Number of legs{" "}
+            <span style={{ fontWeight: 400 }}>
+              (selection stops at whichever comes first: this many legs, or the target odds above)
+            </span>
+          </div>
+          <div className="filter-bar">
+            {LEG_COUNT_OPTIONS.map((n) => (
+              <button
+                key={n}
+                className={`filter-chip${maxLegs === n ? " active" : ""}`}
+                onClick={() => setMaxLegs(n)}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ marginTop: 14 }}>
+          <div className="meta" style={{ marginBottom: 6 }}>
             Minimum accuracy per leg
           </div>
           <div className="filter-bar">
@@ -193,7 +220,11 @@ export function BetCodes() {
           <div className="section-header" style={{ marginBottom: 12 }}>
             <h3 style={{ margin: 0 }}>
               {preview.legs.length} leg{preview.legs.length === 1 ? "" : "s"}
-              {preview.met_target ? "" : " (short of target)"}
+              {/* Stopping at the leg count someone asked for isn't a
+                  shortfall -- only flag "short of target" when it fell short
+                  of *both* stopping conditions, i.e. ran out of qualifying
+                  matches before reaching either one. */}
+              {!preview.met_target && !(preview.legs.length > 0 && preview.legs.length === maxLegs) ? " (short of target)" : ""}
             </h3>
             <span className="meta tabular-nums">
               {preview.combined_odds.toFixed(2)} combined · {(preview.combined_probability * 100).toFixed(0)}%
