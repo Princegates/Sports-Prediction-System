@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { fetchOutcomes } from "../api";
 import { ConfidenceTag } from "../components/MostLikelyOutcome";
+import { CopyButton } from "../components/CopyButton";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { leagueLabel, useLeague } from "../components/AppShell";
-import type { OutcomesResponse } from "../types";
+import { formatPicksForCopy, readStoredPicks, storePicks } from "../lib/myPicks";
+import type { BettingOutcome, OutcomesResponse } from "../types";
 
 /**
  * Every available betting outcome, grouped by league.
@@ -33,7 +35,31 @@ export function Markets() {
   const [days, setDays] = useState(7);
   const [floor, setFloor] = useState(0);
   const [confidence, setConfidence] = useState<string>("");
+  const [picks, setPicks] = useState<BettingOutcome[]>(readStoredPicks);
   const navigate = useNavigate();
+
+  useEffect(() => storePicks(picks), [picks]);
+
+  function pickedFor(matchId: number): BettingOutcome | undefined {
+    return picks.find((p) => p.match_id === matchId);
+  }
+
+  /** At most one pick per match -- clicking the already-picked outcome
+   * removes it, clicking a different outcome from the same match swaps it
+   * in, see lib/myPicks.ts for why. */
+  function togglePick(o: BettingOutcome) {
+    setPicks((prev) => {
+      const existingIdx = prev.findIndex((p) => p.match_id === o.match_id);
+      if (existingIdx === -1) return [...prev, o];
+      const existing = prev[existingIdx];
+      if (existing.market === o.market && existing.selection === o.selection) {
+        return prev.filter((_, i) => i !== existingIdx);
+      }
+      const next = [...prev];
+      next[existingIdx] = o;
+      return next;
+    });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -118,6 +144,67 @@ export function Markets() {
         </p>
       )}
 
+      {picks.length > 0 && (
+        <div className="card card-pad" style={{ marginBottom: 20 }}>
+          <div className="section-header" style={{ marginBottom: 12 }}>
+            <h3 style={{ margin: 0 }}>
+              My picks — {picks.length} selection{picks.length === 1 ? "" : "s"}
+            </h3>
+            <span className="meta tabular-nums">
+              {(picks.reduce((p, o) => p * o.probability, 1) * 100).toFixed(0)}% combined probability
+            </span>
+          </div>
+
+          <p className="setting-note" style={{ marginBottom: 12 }}>
+            Picked while browsing, not priced -- this page has no bookmaker odds attached to it, only
+            the model's probability. Paste these into your own betting app yourself, or use{" "}
+            <strong>AI Generation</strong> instead for a combo priced from real, stored bookmaker odds.
+          </p>
+
+          <div className="predictions-table-wrapper">
+            <table className="predictions-table">
+              <tbody>
+                {picks.map((o) => (
+                  <tr key={o.match_id}>
+                    <td>
+                      <div className="match-cell">
+                        {o.home_team} vs {o.away_team}
+                      </div>
+                      <div className="sub">{o.league}</div>
+                    </td>
+                    <td className="sub">{o.market}</td>
+                    <td>
+                      <strong>{o.selection}</strong>
+                    </td>
+                    <td className="tabular-nums" style={{ width: 60 }}>
+                      {(o.probability * 100).toFixed(0)}%
+                    </td>
+                    <td style={{ width: 40 }}>
+                      <button
+                        type="button"
+                        className="btn ghost"
+                        style={{ padding: "2px 8px", fontSize: 12 }}
+                        onClick={() => togglePick(o)}
+                        aria-label="Remove"
+                      >
+                        ✕
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
+            <CopyButton text={formatPicksForCopy(picks)} label="Copy selections" />
+            <button type="button" className="btn ghost" onClick={() => setPicks([])}>
+              Clear all
+            </button>
+          </div>
+        </div>
+      )}
+
       {error && <ErrorState message={error} />}
       {!error && !data && <p className="badge-neutral">Loading outcomes…</p>}
       {!error && data && data.leagues.length === 0 && (
@@ -144,38 +231,61 @@ export function Markets() {
                     <th>Probability</th>
                     <th>Confidence</th>
                     <th>Kickoff</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {league.outcomes.map((o, i) => (
-                    <tr
-                      key={`${o.match_id}-${o.market}-${o.selection}-${i}`}
-                      onClick={() => navigate(`/app/match/${o.match_id}`)}
-                      title={o.definition}
-                    >
-                      <td>
-                        <div className="match-cell">
-                          {o.home_team} vs {o.away_team}
-                        </div>
-                      </td>
-                      <td className="sub">{o.market}</td>
-                      <td>
-                        <strong>{o.selection}</strong>
-                      </td>
-                      <td className="tabular-nums">{(o.probability * 100).toFixed(0)}%</td>
-                      <td>
-                        <ConfidenceTag confidence={o.confidence} />
-                      </td>
-                      <td className="sub">
-                        {new Date(o.kickoff).toLocaleString(undefined, {
-                          month: "short",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </td>
-                    </tr>
-                  ))}
+                  {league.outcomes.map((o, i) => {
+                    const picked = pickedFor(o.match_id);
+                    const isThisOne = picked?.market === o.market && picked?.selection === o.selection;
+                    return (
+                      <tr
+                        key={`${o.match_id}-${o.market}-${o.selection}-${i}`}
+                        onClick={() => navigate(`/app/match/${o.match_id}`)}
+                        title={o.definition}
+                      >
+                        <td>
+                          <div className="match-cell">
+                            {o.home_team} vs {o.away_team}
+                          </div>
+                        </td>
+                        <td className="sub">{o.market}</td>
+                        <td>
+                          <strong>{o.selection}</strong>
+                        </td>
+                        <td className="tabular-nums">{(o.probability * 100).toFixed(0)}%</td>
+                        <td>
+                          <ConfidenceTag confidence={o.confidence} />
+                        </td>
+                        <td className="sub">
+                          {new Date(o.kickoff).toLocaleString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </td>
+                        <td style={{ width: 90 }}>
+                          <button
+                            type="button"
+                            className="btn ghost"
+                            style={{ padding: "2px 8px", fontSize: 12 }}
+                            title={
+                              picked && !isThisOne
+                                ? `Replaces your ${picked.market}: ${picked.selection} pick for this match`
+                                : undefined
+                            }
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              togglePick(o);
+                            }}
+                          >
+                            {isThisOne ? "✓ Added" : "+ Add"}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
