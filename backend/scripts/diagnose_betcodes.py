@@ -24,6 +24,7 @@ from sqlalchemy import select
 from app.betcode.selection import SlipCriteria, build_candidate_legs, select_legs
 from app.db.models import Match, MatchOdds, Prediction
 from app.db.session import SessionLocal
+from app.outcomes.registry import outcomes_from_prediction
 
 
 def main() -> None:
@@ -74,6 +75,26 @@ def main() -> None:
             print("   *** Predictions and odds exist for DIFFERENT matches -- disjoint sets. ***")
             print("   Sample prediction-only match ids:", sorted(pred_match_ids - odds_match_ids)[:10])
             print("   Sample odds-only match ids:      ", sorted(odds_match_ids - pred_match_ids)[:10])
+
+        if both:
+            print("\n4b. Per-match (market, selection) comparison -- stored odds vs. model outcomes >= floor:")
+            pred_by_match = {p.match_id: p for p in pred_rows}
+            odds_by_match: dict[int, list[MatchOdds]] = {}
+            for o in odds_rows:
+                odds_by_match.setdefault(o.match_id, []).append(o)
+            for mid in sorted(both)[:8]:
+                stored_pairs = sorted({(o.market, o.selection) for o in odds_by_match[mid]})
+                prediction = pred_by_match[mid]
+                model_pairs = sorted(
+                    (o.market, o.selection, round(o.probability, 3))
+                    for o in outcomes_from_prediction(prediction)
+                    if o.probability >= args.min_probability
+                )
+                overlap = {(m, s) for (m, s) in stored_pairs} & {(m, s) for (m, s, _p) in model_pairs}
+                print(f"   match #{mid}:")
+                print(f"     stored odds markets:  {stored_pairs}")
+                print(f"     model outcomes >= {args.min_probability:.0%}: {model_pairs}")
+                print(f"     overlap: {sorted(overlap) or 'NONE'}")
 
         print(f"\n5. Running build_candidate_legs() with min_probability={args.min_probability:.0%}, any market, any price_bookmaker ...")
         criteria = SlipCriteria(
