@@ -296,6 +296,35 @@ export interface FeaturedPick {
   expires_at: string;
 }
 
+export interface AdminPickLeg {
+  match_id: number;
+  league: string;
+  home_team: string;
+  away_team: string;
+  kickoff: string;
+  market: string;
+  selection: string;
+  probability: number;
+  decimal_odds: number;
+  priced_by: string;
+}
+
+/** A whole multi-leg AI Generation slip a Super Admin chose to promote --
+ * distinct from FeaturedPick's single outcome. combined_odds/probability
+ * and risk_tier are always recomputed live from every leg's current
+ * Prediction/MatchOdds, never a stored snapshot. */
+export interface AdminPick {
+  id: number;
+  legs: AdminPickLeg[];
+  combined_odds: number;
+  combined_probability: number;
+  risk_tier: "low" | "medium" | "high";
+  label: string | null;
+  note: string | null;
+  created_at: string;
+  expires_at: string;
+}
+
 // --- Admin ---------------------------------------------------------------
 
 export interface AdminOverview {

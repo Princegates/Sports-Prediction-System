@@ -1,4 +1,5 @@
 import type {
+  AdminPick,
   BetCodeCriteria,
   BetCodePick,
   BetCodePreview,
@@ -326,6 +327,31 @@ export function fetchFeaturedPicksAdmin(): Promise<FeaturedPick[]> {
 
 export function unfeaturePick(pickId: number): Promise<void> {
   return del(`/api/admin/featured-picks/${pickId}`);
+}
+
+/** Whole multi-leg slips a Super Admin has chosen to highlight -- combined
+ * odds, combined probability and risk tier are all recomputed live, same
+ * "never a snapshot" reasoning as fetchGudaPicks. */
+export function fetchAdminPicks(): Promise<AdminPick[]> {
+  return get("/api/predictions/admin-picks");
+}
+
+/** Superadmin only -- promotes a whole AI Generation slip. Every leg is
+ * re-priced server-side; rejected if even one no longer prices. */
+export function createAdminPick(payload: {
+  legs: { match_id: number; market: string; selection: string }[];
+  label?: string;
+  note?: string;
+}): Promise<AdminPick> {
+  return post("/api/admin/admin-picks", payload);
+}
+
+export function fetchAdminPicksAdmin(): Promise<AdminPick[]> {
+  return get("/api/admin/admin-picks");
+}
+
+export function deleteAdminPick(pickId: number): Promise<void> {
+  return del(`/api/admin/admin-picks/${pickId}`);
 }
 
 export function redeemAccessCode(code: string): Promise<AccessGrant> {

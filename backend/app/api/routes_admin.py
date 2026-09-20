@@ -20,6 +20,8 @@ from app.api.schemas import (
     AccessCodeCreateIn,
     AccessCodeOut,
     AdminOverviewOut,
+    AdminPickIn,
+    AdminPickOut,
     AdminUserOut,
     AuditLogOut,
     ExtendGrantIn,
@@ -29,10 +31,11 @@ from app.api.schemas import (
     RevokeCodeIn,
     RevokeGrantIn,
 )
-from app.api.serializers import access_code_to_schema, admin_user_to_schema, featured_pick_to_schema, match_to_schema
+from app.api.serializers import access_code_to_schema, admin_pick_to_schema, admin_user_to_schema, featured_pick_to_schema, match_to_schema
+from app.betcode.selection import price_legs
 from app.config import get_settings
 from app import mailer
-from app.db.models import AccessCode, AccessGrant, AuditLog, ChatMessage, FeaturedPick, LivePrediction, Match, Prediction, User
+from app.db.models import AccessCode, AccessGrant, AdminPick, AuditLog, ChatMessage, FeaturedPick, LivePrediction, Match, Prediction, User
 from app.outcomes.registry import find_outcome
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_superadmin)])
@@ -506,5 +509,100 @@ def delete_featured_pick(
     if pick is None:
         raise HTTPException(status_code=404, detail=f"Featured pick {pick_id} not found")
     _record(db, admin, "featured_pick.removed", detail={"featured_pick_id": pick_id, "match_id": pick.match_id})
+    db.delete(pick)
+    db.commit()
+
+
+# --- Admin Picks (multi-leg slips) ---------------------------------------
+
+
+MAX_ADMIN_PICK_LEGS = 30
+
+
+@router.post("/admin-picks", response_model=AdminPickOut)
+def create_admin_pick(
+    payload: AdminPickIn,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> AdminPickOut:
+    """Promotes a whole AI Generation slip -- typically the legs of a
+    preview an admin just ran on that page -- onto every Dashboard's Admin
+    Picks section. Every leg is re-priced from scratch here rather than
+    trusting whatever probability/odds the client last saw, the same reason
+    create_featured_pick re-resolves its single outcome; if even one leg no
+    longer prices, the whole slip is rejected rather than silently featured
+    short of what was actually asked for.
+    """
+
+    if not payload.legs:
+        raise HTTPException(status_code=400, detail="At least one leg is required.")
+    if len(payload.legs) > MAX_ADMIN_PICK_LEGS:
+        raise HTTPException(status_code=400, detail=f"{MAX_ADMIN_PICK_LEGS} legs is the most a slip can carry.")
+
+    refs = [(leg.match_id, leg.market, leg.selection) for leg in payload.legs]
+    legs, warnings = price_legs(db, refs)
+    if len(legs) != len(refs):
+        raise HTTPException(
+            status_code=400,
+            detail="One or more legs couldn't be priced, so the slip wasn't featured: " + " ".join(warnings),
+        )
+
+    label = (payload.label or "").strip() or None
+    if label and len(label) > 120:
+        raise HTTPException(status_code=400, detail="Label must be 120 characters or fewer.")
+    note = (payload.note or "").strip() or None
+    if note and len(note) > 280:
+        raise HTTPException(status_code=400, detail="Note must be 280 characters or fewer.")
+
+    pick = AdminPick(
+        legs=[{"match_id": leg.match_id, "market": leg.market, "selection": leg.selection} for leg in legs],
+        label=label,
+        note=note,
+        created_by_user_id=admin.id,
+        expires_at=max(leg.kickoff for leg in legs) + dt.timedelta(days=2),
+    )
+    db.add(pick)
+    _record(db, admin, "admin_pick.created", detail={"legs": len(legs)})
+    db.commit()
+    db.refresh(pick)
+    return admin_pick_to_schema(pick, legs)
+
+
+def _resolve_admin_pick(db: Session, pick: AdminPick) -> AdminPickOut | None:
+    """Re-prices every leg live; ``None`` when even one no longer resolves,
+    so the whole combo drops out rather than showing a partial slip."""
+
+    refs = [(leg["match_id"], leg["market"], leg["selection"]) for leg in pick.legs]
+    legs, _warnings = price_legs(db, refs)
+    if len(legs) != len(refs):
+        return None
+    return admin_pick_to_schema(pick, legs)
+
+
+@router.get("/admin-picks", response_model=list[AdminPickOut])
+def list_admin_picks(db: Session = Depends(get_db)) -> list[AdminPickOut]:
+    """Every currently-featured slip, including ones near expiry -- for the
+    admin management view. Skips one that no longer fully resolves rather
+    than erroring the whole list."""
+
+    picks = db.execute(select(AdminPick).order_by(AdminPick.created_at.desc())).scalars().all()
+    out: list[AdminPickOut] = []
+    for pick in picks:
+        resolved = _resolve_admin_pick(db, pick)
+        if resolved is not None:
+            out.append(resolved)
+    return out
+
+
+@router.delete("/admin-picks/{pick_id}", status_code=204)
+def delete_admin_pick(
+    pick_id: int,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> None:
+    pick = db.get(AdminPick, pick_id)
+    if pick is None:
+        raise HTTPException(status_code=404, detail=f"Admin pick {pick_id} not found")
+    _record(db, admin, "admin_pick.removed", detail={"admin_pick_id": pick_id, "legs": len(pick.legs)})
     db.delete(pick)
     db.commit()

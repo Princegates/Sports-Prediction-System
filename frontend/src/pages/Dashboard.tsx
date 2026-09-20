@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchFreePicks, fetchMatch, fetchMatches, fetchMostLikely, fetchPrediction } from "../api";
 import { leagueLabel, useLeague } from "../components/AppShell";
+import { AdminPicksSection } from "../components/AdminPicksSection";
 import { CardGridSkeleton } from "../components/LoadingSkeleton";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
@@ -141,6 +142,8 @@ export function Dashboard() {
       </section>
 
       <GudaPicksSection />
+
+      <AdminPicksSection />
 
       {!accessLoading && !hasAccess && (
         <>

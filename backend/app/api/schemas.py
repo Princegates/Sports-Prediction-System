@@ -555,6 +555,50 @@ class FeaturedPickOut(BaseModel):
     expires_at: dt.datetime
 
 
+class AdminPickLegIn(BaseModel):
+    match_id: int
+    market: str
+    selection: str
+
+
+class AdminPickIn(BaseModel):
+    """A whole AI Generation slip an admin chose to promote -- a list of
+    (match, market, selection) references, same reasoning as FeaturePickIn:
+    never a typed-in probability or price, re-resolved and re-priced from
+    scratch server-side (app.betcode.selection.price_legs)."""
+
+    legs: list[AdminPickLegIn]
+    label: str | None = None
+    note: str | None = None
+
+
+class AdminPickLegOut(BaseModel):
+    match_id: int
+    league: str
+    home_team: str
+    away_team: str
+    kickoff: dt.datetime
+    market: str
+    selection: str
+    probability: float
+    decimal_odds: float
+    priced_by: str
+
+
+class AdminPickOut(BaseModel):
+    id: int
+    legs: list[AdminPickLegOut]
+    # Recomputed from every leg's current Prediction/MatchOdds at read time,
+    # never a stored snapshot -- see AdminPick's docstring for why.
+    combined_odds: float
+    combined_probability: float
+    risk_tier: str  # "low" | "medium" | "high" -- see betcode.selection.risk_tier
+    label: str | None
+    note: str | None
+    created_at: dt.datetime
+    expires_at: dt.datetime
+
+
 # --- Booking codes -----------------------------------------------------
 
 

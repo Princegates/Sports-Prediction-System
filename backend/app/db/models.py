@@ -403,6 +403,34 @@ class FeaturedPick(Base):
     expires_at: Mapped[dt.datetime] = mapped_column(DateTime, index=True)
 
 
+class AdminPick(Base):
+    """An admin-curated MULTI-LEG combo -- a whole AI Generation slip
+    promoted onto every Dashboard's "Admin Picks" section, distinct from
+    FeaturedPick's single (match, market, selection) "Guda Pick".
+
+    Same grounding rule as FeaturedPick, applied per leg: ``legs`` is a list
+    of ``{match_id, market, selection}`` references, never a stored
+    probability or price. The combined odds, combined probability and risk
+    tier shown to users are always recomputed live (see
+    app.betcode.selection.price_legs) from each leg's current Prediction and
+    MatchOdds -- if even one leg stops resolving (outcome no longer valid,
+    price pulled), the whole combo drops out rather than showing a stale or
+    partial slip that no longer matches what was actually promoted.
+    """
+
+    __tablename__ = "admin_picks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    legs: Mapped[list] = mapped_column(JSON)
+    label: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    note: Mapped[str | None] = mapped_column(String(280), nullable=True)
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
+    # Self-cleaning, same as FeaturedPick -- 2 days past the LATEST leg's
+    # kickoff, since a combo spans several matches rather than just one.
+    expires_at: Mapped[dt.datetime] = mapped_column(DateTime, index=True)
+
+
 class ModelMetric(Base):
     """Backtest / production monitoring results (spec sections 41, 43)."""
 

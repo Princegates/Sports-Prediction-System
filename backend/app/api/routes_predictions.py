@@ -10,6 +10,7 @@ from app import app_settings
 from app.access import current_grant
 from app.api.deps import get_current_user, get_db, require_active_access
 from app.api.schemas import (
+    AdminPickOut,
     FeaturedPickOut,
     FreePickOut,
     LeagueOutcomesOut,
@@ -18,8 +19,9 @@ from app.api.schemas import (
     OutcomesOut,
     PredictionOut,
 )
-from app.api.serializers import featured_pick_to_schema, prediction_to_schema
-from app.db.models import FeaturedPick, Match, Prediction, User
+from app.api.serializers import admin_pick_to_schema, featured_pick_to_schema, prediction_to_schema
+from app.betcode.selection import price_legs
+from app.db.models import AdminPick, FeaturedPick, Match, Prediction, User
 from app.outcomes.registry import find_outcome, outcomes_from_prediction
 from app.prediction_models.ml_model import FeatureCachePool
 from app.prediction_service import build_prediction_for_match
@@ -329,4 +331,39 @@ def guda_picks(user: User = Depends(get_current_user), db: Session = Depends(get
         if outcome is None:
             continue
         out.append(featured_pick_to_schema(pick, match, outcome.probability))
+    return out
+
+
+@router.get("/admin-picks", response_model=list[AdminPickOut])
+def admin_picks(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[AdminPickOut]:
+    """Whole multi-leg slips a Super Admin has chosen to highlight, for the
+    Dashboard's Admin Picks section -- same visibility rules as Guda Picks
+    (admin_picks_enabled/admin_picks_free_tier_visible), but for a combo
+    rather than one outcome. Every leg's price and probability, and the
+    resulting risk tier, are recomputed live; a slip drops out entirely the
+    moment even one leg stops resolving.
+    """
+
+    values = app_settings.all_values(db)
+    if not values.get("admin_picks_enabled", True):
+        return []
+
+    if user.role != "superadmin" and not values.get("admin_picks_free_tier_visible", True):
+        grant = current_grant(db, user)
+        has_access = grant is not None and grant.expires_at > dt.datetime.utcnow()
+        if not has_access:
+            return []
+
+    now = dt.datetime.utcnow()
+    picks = db.execute(
+        select(AdminPick).where(AdminPick.expires_at > now).order_by(AdminPick.created_at.desc())
+    ).scalars().all()
+
+    out: list[AdminPickOut] = []
+    for pick in picks:
+        refs = [(leg["match_id"], leg["market"], leg["selection"]) for leg in pick.legs]
+        legs, _warnings = price_legs(db, refs)
+        if len(legs) != len(refs):
+            continue
+        out.append(admin_pick_to_schema(pick, legs))
     return out

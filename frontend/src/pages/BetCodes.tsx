@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { previewBetCode, priceSelections } from "../api";
+import { createAdminPick, deleteAdminPick, fetchAdminPicksAdmin, previewBetCode, priceSelections } from "../api";
 import { CopyButton } from "../components/CopyButton";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { leagueLabel, useLeague } from "../components/AppShell";
-import type { BetCodeCriteria, BetCodeLeg, BetCodePick, BetCodePreview } from "../types";
+import { useAuth } from "../lib/AuthContext";
+import type { AdminPick, BetCodeCriteria, BetCodeLeg, BetCodePick, BetCodePreview } from "../types";
 
 /** Plain-text description of one generated combo, meant to be pasted
  * wherever the user places bets themselves. No bookmaker code, no deep
@@ -122,6 +123,7 @@ function resultRiskLabel(combinedProbability: number): { label: string; tone: "l
 
 export function BetCodes() {
   const { league } = useLeague();
+  const { user } = useAuth();
   const location = useLocation();
   const [targetOdds, setTargetOdds] = useState(3.0);
   const [maxLegs, setMaxLegs] = useState(DEFAULT_MAX_LEGS);
@@ -140,6 +142,23 @@ export function BetCodes() {
   // (or another page) rather than the criteria form below -- changes the
   // result card's framing, not how it's priced.
   const [fromExternalPicks, setFromExternalPicks] = useState(false);
+
+  // Superadmin-only: promoting the current preview as an "Admin Pick" onto
+  // every Dashboard (distinct from Guda Picks' single-outcome promotion).
+  const [adminPicks, setAdminPicks] = useState<AdminPick[]>([]);
+  const [featuring, setFeaturing] = useState(false);
+  const [pickBusy, setPickBusy] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (user?.role !== "superadmin") return;
+    let cancelled = false;
+    fetchAdminPicksAdmin()
+      .then((picks) => !cancelled && setAdminPicks(picks))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.role]);
 
   function criteria(overrides?: Partial<BetCodeCriteria>): BetCodeCriteria {
     return {
@@ -206,6 +225,42 @@ export function BetCodes() {
   function toggleMarket(value: string) {
     setActiveRisk(null);
     setMarkets((m) => (m.includes(value) ? m.filter((v) => v !== value) : [...m, value]));
+  }
+
+  // Promotes the current preview's legs onto every Dashboard's Admin Picks
+  // section. Legs are re-priced from scratch server-side, so what actually
+  // gets featured is always the current real price, not whatever the
+  // browser last saw -- same reasoning as MatchDetail's Guda Pick toggle.
+  async function handleFeatureSlip() {
+    if (!preview || preview.legs.length === 0) return;
+    const label = window.prompt("Optional label for this slip (e.g. \"Weekend Banker\") -- Cancel to skip featuring it:", "");
+    if (label === null) return;
+    const note = window.prompt("Optional note (shown on every Dashboard):", "") ?? undefined;
+    setFeaturing(true);
+    try {
+      const created = await createAdminPick({
+        legs: preview.legs.map((l) => ({ match_id: l.match_id, market: l.market, selection: l.selection })),
+        label: label || undefined,
+        note: note || undefined,
+      });
+      setAdminPicks((prev) => [created, ...prev]);
+    } catch (err) {
+      window.alert(String(err instanceof Error ? err.message : err));
+    } finally {
+      setFeaturing(false);
+    }
+  }
+
+  async function handleRemoveAdminPick(pickId: number) {
+    setPickBusy(pickId);
+    try {
+      await deleteAdminPick(pickId);
+      setAdminPicks((prev) => prev.filter((p) => p.id !== pickId));
+    } catch (err) {
+      window.alert(String(err instanceof Error ? err.message : err));
+    } finally {
+      setPickBusy(null);
+    }
   }
 
   return (
@@ -445,10 +500,50 @@ export function BetCodes() {
           ))}
 
           {preview.legs.length > 0 && (
-            <div style={{ marginTop: 14 }}>
+            <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
               <CopyButton text={formatLegsForCopy(preview.legs, preview.combined_odds)} label="Copy selections" />
+              {user?.role === "superadmin" && (
+                <button className="btn ghost" onClick={handleFeatureSlip} disabled={featuring}>
+                  {featuring ? "Featuring…" : "★ Feature this slip"}
+                </button>
+              )}
             </div>
           )}
+        </div>
+      )}
+
+      {user?.role === "superadmin" && adminPicks.length > 0 && (
+        <div className="card card-pad" style={{ marginTop: 20 }}>
+          <div className="section-header" style={{ marginBottom: 10 }}>
+            <h3 style={{ margin: 0 }}>Currently featured Admin Picks</h3>
+            <span className="meta">Live on every Dashboard right now</span>
+          </div>
+          {adminPicks.map((pick) => (
+            <div
+              key={pick.id}
+              className="match-meta-row"
+              style={{ justifyContent: "space-between", padding: "8px 0", borderTop: "1px solid var(--border)" }}
+            >
+              <span>
+                {pick.label ? <strong>{pick.label}</strong> : <span className="sub">Untitled slip</span>}{" "}
+                <span className="sub">
+                  {pick.legs.length} leg{pick.legs.length === 1 ? "" : "s"} · {pick.combined_odds.toFixed(2)} odds ·{" "}
+                  {(pick.combined_probability * 100).toFixed(0)}% probability
+                </span>
+                <span className={`risk-tag ${pick.risk_tier}`} style={{ marginLeft: 8 }}>
+                  {pick.risk_tier === "low" ? "Low risk" : pick.risk_tier === "medium" ? "Medium risk" : "High risk"}
+                </span>
+              </span>
+              <button
+                className="btn ghost"
+                style={{ padding: "2px 8px", fontSize: 12 }}
+                disabled={pickBusy === pick.id}
+                onClick={() => handleRemoveAdminPick(pick.id)}
+              >
+                Remove
+              </button>
+            </div>
+          ))}
         </div>
       )}
     </div>

@@ -212,6 +212,17 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 "Off restricts Guda Picks to accounts with redeemed access -- on shows it to "
                 "everyone, same as the rest of the Dashboard.",
                 default=True),
+
+    # --- Admin Picks -----------------------------------------------------
+    SettingSpec("admin_picks_enabled", "bool", "picks", "Show Admin Picks",
+                "A dashboard section for whole AI Generation slips a Super Admin has chosen "
+                "to highlight -- combined odds, combined probability and risk tier are all "
+                "recomputed live, never a frozen number.",
+                default=True),
+    SettingSpec("admin_picks_free_tier_visible", "bool", "picks", "Show it to the free tier too",
+                "Off restricts Admin Picks to accounts with redeemed access -- on shows it to "
+                "everyone, same as the rest of the Dashboard.",
+                default=True),
 )
 
 BY_KEY: dict[str, SettingSpec] = {spec.key: spec for spec in REGISTRY}

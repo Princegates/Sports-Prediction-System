@@ -461,3 +461,16 @@ def price_legs(
         priced_matches.add(match_id)
 
     return legs, warnings
+
+
+# Independent of which risk preset (if any) produced a slip -- labels the
+# *resulting* combined probability, the same "result, not input" reasoning
+# BetCodes.tsx's own resultRiskLabel uses on the frontend, mirrored here so
+# an Admin Pick's stored risk tier can never disagree with how the AI
+# Generation page would describe the same combined probability.
+def risk_tier(combined_probability: float) -> str:
+    if combined_probability >= 0.5:
+        return "low"
+    if combined_probability >= 0.2:
+        return "medium"
+    return "high"

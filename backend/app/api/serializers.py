@@ -8,6 +8,8 @@ from app.access import access_code_effective_status, access_grant_effective_stat
 from app.api.schemas import (
     AccessCodeOut,
     AccessGrantOut,
+    AdminPickLegOut,
+    AdminPickOut,
     AdminUserOut,
     FeaturedPickOut,
     GlobalOutcomeOut,
@@ -18,7 +20,8 @@ from app.api.schemas import (
     TeamOut,
     UserOut,
 )
-from app.db.models import AccessCode, AccessGrant, FeaturedPick, LivePrediction, Match, MatchView, Prediction, Team, User
+from app.betcode.selection import Leg, risk_tier
+from app.db.models import AccessCode, AccessGrant, AdminPick, FeaturedPick, LivePrediction, Match, MatchView, Prediction, Team, User
 from app.live_engine import is_genuinely_live
 from app.outcomes.engine import secondary_outcomes
 from app.outcomes.registry import outcomes_from_prediction
@@ -173,6 +176,46 @@ def featured_pick_to_schema(pick: FeaturedPick, match: Match, probability: float
         market=pick.market,
         selection=pick.selection,
         probability=probability,
+        note=pick.note,
+        created_at=pick.created_at,
+        expires_at=pick.expires_at,
+    )
+
+
+def admin_pick_to_schema(pick: AdminPick, legs: list[Leg]) -> AdminPickOut:
+    """``legs`` must already be freshly resolved (app.betcode.selection.
+    price_legs) against every leg AdminPick.legs references -- this function
+    only combines and formats them, it never re-reads the database itself,
+    so the combined odds/probability/risk tier are only ever as current as
+    what the caller just resolved."""
+
+    combined_odds = 1.0
+    combined_probability = 1.0
+    for leg in legs:
+        combined_odds *= leg.decimal_odds
+        combined_probability *= leg.model_probability
+
+    return AdminPickOut(
+        id=pick.id,
+        legs=[
+            AdminPickLegOut(
+                match_id=leg.match_id,
+                league=leg.league,
+                home_team=leg.home_team,
+                away_team=leg.away_team,
+                kickoff=leg.kickoff,
+                market=leg.market,
+                selection=leg.selection,
+                probability=leg.model_probability,
+                decimal_odds=leg.decimal_odds,
+                priced_by=leg.priced_by,
+            )
+            for leg in legs
+        ],
+        combined_odds=combined_odds,
+        combined_probability=combined_probability,
+        risk_tier=risk_tier(combined_probability),
+        label=pick.label,
         note=pick.note,
         created_at=pick.created_at,
         expires_at=pick.expires_at,
