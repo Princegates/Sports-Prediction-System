@@ -33,14 +33,21 @@
       Inter for body copy (a workhorse UI face built for small sizes and
       tabular figures -- this project's tables lean on it) and Manrope for
       headings (a geometric display face with enough contrast against Inter
-      to read as intentional, not just "the same font, bigger").
-      Preconnect first since the stylesheet itself blocks first paint until
-      it resolves.
+      to read as intentional, not just "the same font, bigger") power the
+      signed-in app.
+
+      The public marketing surface (landing page + doc pages) uses its own
+      pairing -- Space Grotesk for display type and Plus Jakarta Sans for
+      body copy -- so the storefront reads as a distinct, premium product
+      identity rather than "the app, but with an H1". JetBrains Mono dresses
+      the data readouts (stat figures, accuracy numbers) for a technical,
+      instrumented feel. Preconnect first since the stylesheet itself blocks
+      first paint until it resolves.
     -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap"
       rel="stylesheet"
     />
 

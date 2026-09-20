@@ -59,6 +59,14 @@
   --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.4);
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-display: "Manrope", var(--font-sans);
+
+  /* Public marketing surface only (see .public-shell below) -- a distinct
+     pairing so the storefront doesn't read as "the dashboard with a hero
+     glued on top". */
+  --font-public-display: "Space Grotesk", var(--font-display);
+  --font-public-body: "Plus Jakarta Sans", var(--font-sans);
+  --font-data: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
   --topbar-h: 64px;
   --sidebar-w: 232px;
 }
@@ -2640,7 +2648,18 @@ table.admin-table {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background: var(--bg-page);
+  background:
+    radial-gradient(ellipse 900px 520px at 12% -12%, var(--accent-soft), transparent 60%),
+    radial-gradient(ellipse 760px 520px at 104% 8%, var(--ai-violet-soft), transparent 55%),
+    var(--bg-page);
+  font-family: var(--font-public-body);
+}
+
+.public-shell h1,
+.public-shell h2,
+.public-shell h3,
+.public-shell h4 {
+  font-family: var(--font-public-display);
 }
 
 .public-topbar {
@@ -2655,6 +2674,7 @@ table.admin-table {
   background: var(--bg-topbar);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
+  box-shadow: 0 16px 32px -24px rgba(0, 0, 0, 0.7);
 }
 
 .public-nav {
@@ -2753,10 +2773,21 @@ table.admin-table {
 
 /* --- Footer --- */
 .public-footer {
+  position: relative;
   border-top: 1px solid var(--border);
   background: var(--bg-surface);
   margin-top: var(--space-7);
   padding: var(--space-6) var(--space-6) var(--space-5);
+}
+
+.public-footer::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent-soft) 25%, var(--ai-violet-soft) 75%, transparent);
 }
 
 .public-footer-grid {
@@ -2849,28 +2880,108 @@ table.admin-table {
   margin-bottom: var(--space-3);
 }
 
+.eyebrow-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.eyebrow-live::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--good);
+  box-shadow: 0 0 0 0 rgba(12, 163, 12, 0.5);
+  animation: pulse-live-dot 2.2s ease-in-out infinite;
+}
+
+@keyframes pulse-live-dot {
+  0% { box-shadow: 0 0 0 0 rgba(12, 163, 12, 0.45); }
+  70% { box-shadow: 0 0 0 8px rgba(12, 163, 12, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(12, 163, 12, 0); }
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .landing-hero {
+  position: relative;
   display: grid;
   grid-template-columns: 1.15fr 1fr;
   gap: var(--space-7);
   align-items: center;
   padding: var(--space-7) 0 var(--space-6);
+  overflow: hidden;
 }
 
+/* Faint centre-circle-and-halfway-line motif -- a pitch reference without
+   tipping the palette into green-turf/casino territory. */
+.landing-hero::before {
+  content: "";
+  position: absolute;
+  top: -10%;
+  right: -6%;
+  width: 420px;
+  height: 420px;
+  max-width: 60%;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.landing-hero::after {
+  content: "";
+  position: absolute;
+  top: -10%;
+  right: calc(-6% + 210px);
+  width: 1px;
+  height: 420px;
+  max-height: 60%;
+  background: var(--border);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.landing-hero-copy {
+  position: relative;
+  z-index: 1;
+}
+
+.landing-hero-copy > * {
+  animation: fade-up 0.7s cubic-bezier(0.16, 0.8, 0.3, 1) both;
+}
+
+.landing-hero-copy > *:nth-child(1) { animation-delay: 0s; }
+.landing-hero-copy > *:nth-child(2) { animation-delay: 0.08s; }
+.landing-hero-copy > *:nth-child(3) { animation-delay: 0.16s; }
+.landing-hero-copy > *:nth-child(4) { animation-delay: 0.24s; }
+.landing-hero-copy > *:nth-child(5) { animation-delay: 0.32s; }
+
 .landing-hero h1 {
-  font-size: clamp(32px, 4.4vw, 54px);
-  line-height: 1.08;
-  letter-spacing: -0.025em;
+  font-size: clamp(32px, 4.4vw, 56px);
+  line-height: 1.06;
+  letter-spacing: -0.02em;
   margin: 0 0 var(--space-4);
   font-weight: 700;
 }
 
 .hero-gradient {
-  background: linear-gradient(120deg, var(--accent-strong) 0%, var(--ai-violet) 90%);
+  background: linear-gradient(120deg, var(--accent-strong) 0%, var(--ai-violet) 55%, var(--accent-strong) 100%);
+  background-size: 200% auto;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
   color: transparent;
+  animation: hero-gradient-drift 6s ease-in-out infinite;
+}
+
+@keyframes hero-gradient-drift {
+  0%, 100% { background-position: 0% center; }
+  50% { background-position: 100% center; }
 }
 
 .lede {
@@ -2888,10 +2999,35 @@ table.admin-table {
 }
 
 .btn-lg {
-  padding: 13px 24px;
+  padding: 14px 26px;
   font-size: 14.5px;
+  font-weight: 650;
   text-decoration: none;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--radius-pill);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+}
+
+.btn-lg:not(.ghost) {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--ai-violet) 100%);
+  box-shadow: 0 10px 28px -10px rgba(57, 135, 229, 0.6);
+}
+
+.btn-lg:not(.ghost):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 34px -10px rgba(57, 135, 229, 0.75);
+}
+
+.btn-lg.ghost {
+  border-radius: var(--radius-pill);
+}
+
+.btn-lg.ghost:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent-strong);
+  box-shadow: 0 0 0 1px var(--accent-strong) inset;
 }
 
 .landing-cta-note {
@@ -2904,19 +3040,73 @@ table.admin-table {
 
 .landing-hero-visual {
   position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--space-3);
+  animation: fade-up 0.8s cubic-bezier(0.16, 0.8, 0.3, 1) 0.18s both;
+}
+
+/* Abstract, slowly-spinning ball -- an AI-analytics motif rather than a
+   literal photo, so it stays premium rather than reading as a casino badge.
+   ::after, not ::before -- .tilt-card (also applied to this element) already
+   owns ::before for its pointer-glare effect. */
+.landing-hero-visual::after {
+  content: "";
+  position: absolute;
+  top: -22px;
+  right: -6px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.04) 42%, transparent 60%),
+    conic-gradient(
+      from 0deg,
+      var(--bg-surface-3) 0deg 28deg, transparent 28deg 56deg,
+      var(--bg-surface-3) 56deg 84deg, transparent 84deg 112deg,
+      var(--bg-surface-3) 112deg 140deg, transparent 140deg 168deg,
+      var(--bg-surface-3) 168deg 196deg, transparent 196deg 224deg,
+      var(--bg-surface-3) 224deg 252deg, transparent 252deg 280deg,
+      var(--bg-surface-3) 280deg 308deg, transparent 308deg 360deg
+    ),
+    var(--bg-surface);
+  box-shadow: 0 10px 26px -8px rgba(0, 0, 0, 0.65), 0 0 0 1px var(--border);
+  animation: hero-ball-spin 16s linear infinite;
+  z-index: 2;
+}
+
+@keyframes hero-ball-spin {
+  to { transform: rotate(360deg); }
 }
 
 .hero-panel {
+  position: relative;
   width: 100%;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
+  background: linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-surface-2) 100%);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
   padding: var(--space-5);
   box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+/* A slow diagonal glint, like a scan pass over the panel -- reinforces
+   "this is a live analysis surface" without being distracting. */
+.hero-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, 0.07) 50%, transparent 60%);
+  transform: translateX(-120%);
+  animation: hero-panel-scan 6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes hero-panel-scan {
+  0%, 25% { transform: translateX(-120%); }
+  65%, 100% { transform: translateX(120%); }
 }
 
 .hero-panel-head {
@@ -2935,6 +3125,7 @@ table.admin-table {
 }
 
 .hero-panel-number {
+  font-family: var(--font-data);
   font-size: 40px;
   font-weight: 700;
   line-height: 1;
@@ -3024,9 +3215,17 @@ table.admin-table {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: var(--space-4);
+  transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
+}
+
+.stat-tile:hover {
+  transform: translateY(-3px);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-pop);
 }
 
 .stat-tile-value {
+  font-family: var(--font-data);
   font-size: 28px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
@@ -3062,14 +3261,32 @@ table.admin-table {
   background: var(--bg-surface-2);
   border: 1px solid var(--border);
   color: var(--text-secondary);
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.league-chip:hover {
+  border-color: var(--accent-strong);
+  color: var(--text-primary);
 }
 
 /* --- Accuracy panel --- */
 .accuracy-panel {
-  background: var(--bg-surface);
+  position: relative;
+  background: linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-surface-2) 100%);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: var(--space-5);
+  overflow: hidden;
+}
+
+.accuracy-panel::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--ai-violet));
 }
 
 .accuracy-headline {
@@ -3084,11 +3301,16 @@ table.admin-table {
 
 .accuracy-number {
   display: block;
+  font-family: var(--font-data);
   font-size: clamp(40px, 6vw, 62px);
   font-weight: 700;
   line-height: 1;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.02em;
+  background: linear-gradient(120deg, var(--accent-strong), var(--ai-violet));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .accuracy-caption {
@@ -3130,6 +3352,7 @@ table.admin-table {
 }
 
 .metric-value {
+  font-family: var(--font-data);
   font-size: 20px;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
@@ -3158,14 +3381,23 @@ table.admin-table {
 }
 
 .stack-card {
+  position: relative;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: var(--space-4);
+  transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
+}
+
+.stack-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-pop);
 }
 
 .stack-step {
   display: inline-block;
+  font-family: var(--font-data);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -3196,22 +3428,49 @@ table.admin-table {
 }
 
 .feature-card {
+  position: relative;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: var(--space-5);
+  overflow: hidden;
+  transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
+}
+
+.feature-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--ai-violet));
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.3s ease;
+}
+
+.feature-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-pop);
+}
+
+.feature-card:hover::before {
+  transform: scaleX(1);
 }
 
 .feature-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
-  border-radius: var(--radius-sm);
-  background: var(--ai-violet-soft);
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, var(--accent-soft), var(--ai-violet-soft));
+  box-shadow: inset 0 0 0 1px var(--border);
   color: var(--ai-violet);
-  font-size: 17px;
+  font-size: 18px;
   margin-bottom: var(--space-3);
 }
 
@@ -3231,6 +3490,12 @@ table.admin-table {
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
+  transition: border-color 0.18s ease, transform 0.18s ease;
+}
+
+.fixture-teaser:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
 }
 
 .fixture-teaser-main {
@@ -3269,6 +3534,13 @@ table.admin-table {
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
+  transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
+}
+
+.access-step:hover {
+  transform: translateY(-3px);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-pop);
 }
 
 .access-step-num {
@@ -3278,11 +3550,13 @@ table.admin-table {
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: var(--accent);
+  background: linear-gradient(135deg, var(--accent) 0%, var(--ai-violet) 100%);
   color: #fff;
+  font-family: var(--font-data);
   font-size: 13.5px;
   font-weight: 700;
   margin-bottom: var(--space-3);
+  box-shadow: 0 6px 16px -6px rgba(57, 135, 229, 0.55);
 }
 
 .access-step h3 {
@@ -3317,10 +3591,12 @@ table.admin-table {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   overflow: hidden;
+  transition: border-color 0.18s ease;
 }
 
 .faq-item.open {
-  border-color: var(--border-strong);
+  border-color: var(--accent-strong);
+  box-shadow: 0 0 0 1px var(--accent-soft);
 }
 
 .faq-question {
@@ -3366,6 +3642,7 @@ table.admin-table {
   border: 1px solid var(--warning);
   border-radius: var(--radius-lg);
   padding: var(--space-6);
+  box-shadow: var(--shadow-card);
 }
 
 .responsible-card h2 {
@@ -3530,9 +3807,16 @@ table.admin-table {
 }
 
 .doc-cta {
-  padding: var(--space-7) 0;
-  border-top: 1px solid var(--border);
+  position: relative;
+  padding: var(--space-7) var(--space-6);
+  margin: var(--space-7) 0;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background:
+    radial-gradient(ellipse 60% 100% at 50% 0%, var(--accent-soft), transparent 70%),
+    var(--bg-surface);
   text-align: center;
+  overflow: hidden;
 }
 
 .doc-cta h2 {
@@ -4109,6 +4393,11 @@ table.admin-table {
   .landing-hero {
     grid-template-columns: 1fr;
     gap: var(--space-6);
+  }
+
+  .landing-hero::before,
+  .landing-hero::after {
+    display: none;
   }
 
   .public-footer-grid {
