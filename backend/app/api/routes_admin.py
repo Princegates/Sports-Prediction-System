@@ -27,6 +27,7 @@ from app.api.schemas import (
     ExtendGrantIn,
     FeaturedPickOut,
     FeaturePickIn,
+    FeaturePickUpdateIn,
     MatchOut,
     RevokeCodeIn,
     RevokeGrantIn,
@@ -480,6 +481,39 @@ def create_featured_pick(
     return featured_pick_to_schema(pick, match, outcome.probability)
 
 
+@router.patch("/featured-picks/{pick_id}", response_model=FeaturedPickOut)
+def update_featured_pick(
+    pick_id: int,
+    payload: FeaturePickUpdateIn,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> FeaturedPickOut:
+    """Edits a Guda Pick's note without unfeaturing and recreating it. The
+    match/market/selection it references can't be changed here -- that's a
+    different outcome, which belongs behind its own feature/unfeature pair
+    so the audit log records it as the promotion it actually is."""
+
+    pick = db.get(FeaturedPick, pick_id)
+    if pick is None:
+        raise HTTPException(status_code=404, detail=f"Featured pick {pick_id} not found")
+
+    note = (payload.note or "").strip() or None
+    if note and len(note) > 280:
+        raise HTTPException(status_code=400, detail="Note must be 280 characters or fewer.")
+
+    pick.note = note
+    _record(db, admin, "featured_pick.updated", detail={"featured_pick_id": pick_id})
+    db.commit()
+    db.refresh(pick)
+
+    match = db.get(Match, pick.match_id)
+    if match is None:
+        raise HTTPException(status_code=404, detail="This pick's match no longer exists.")
+    prediction = _latest_prediction(db, match.id)
+    outcome = find_outcome(prediction, pick.market, pick.selection) if prediction else None
+    return featured_pick_to_schema(pick, match, outcome.probability if outcome else 0.0)
+
+
 @router.get("/featured-picks", response_model=list[FeaturedPickOut])
 def list_featured_picks(db: Session = Depends(get_db)) -> list[FeaturedPickOut]:
     """Every currently-featured pick, including ones near expiry -- for the
@@ -519,18 +553,13 @@ def delete_featured_pick(
 MAX_ADMIN_PICK_LEGS = 30
 
 
-@router.post("/admin-picks", response_model=AdminPickOut)
-def create_admin_pick(
-    payload: AdminPickIn,
-    admin: User = Depends(require_superadmin),
-    db: Session = Depends(get_db),
-) -> AdminPickOut:
-    """Promotes a whole AI Generation slip -- typically the legs of a
-    preview an admin just ran on that page -- onto every Dashboard's Admin
-    Picks section. Every leg is re-priced from scratch here rather than
-    trusting whatever probability/odds the client last saw, the same reason
-    create_featured_pick re-resolves its single outcome; if even one leg no
-    longer prices, the whole slip is rejected rather than silently featured
+def _validate_admin_pick_payload(payload: AdminPickIn, db: Session) -> tuple[list, str | None, str | None]:
+    """Shared by create and update: every leg is re-priced from scratch
+    here rather than trusting whatever probability/odds the client last
+    saw (the same reason create_featured_pick re-resolves its single
+    outcome), and label/note are re-validated the same way either time.
+    Raises HTTPException on any failure -- if even one leg no longer
+    prices, the whole slip is rejected rather than silently featured
     short of what was actually asked for.
     """
 
@@ -544,7 +573,7 @@ def create_admin_pick(
     if len(legs) != len(refs):
         raise HTTPException(
             status_code=400,
-            detail="One or more legs couldn't be priced, so the slip wasn't featured: " + " ".join(warnings),
+            detail="One or more legs couldn't be priced, so the slip wasn't saved: " + " ".join(warnings),
         )
 
     label = (payload.label or "").strip() or None
@@ -553,6 +582,21 @@ def create_admin_pick(
     note = (payload.note or "").strip() or None
     if note and len(note) > 280:
         raise HTTPException(status_code=400, detail="Note must be 280 characters or fewer.")
+
+    return legs, label, note
+
+
+@router.post("/admin-picks", response_model=AdminPickOut)
+def create_admin_pick(
+    payload: AdminPickIn,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> AdminPickOut:
+    """Promotes a whole AI Generation slip -- typically the legs of a
+    preview an admin just ran on that page -- onto every Dashboard's Admin
+    Picks section."""
+
+    legs, label, note = _validate_admin_pick_payload(payload, db)
 
     pick = AdminPick(
         legs=[{"match_id": leg.match_id, "market": leg.market, "selection": leg.selection} for leg in legs],
@@ -563,6 +607,36 @@ def create_admin_pick(
     )
     db.add(pick)
     _record(db, admin, "admin_pick.created", detail={"legs": len(legs)})
+    db.commit()
+    db.refresh(pick)
+    return admin_pick_to_schema(pick, legs)
+
+
+@router.patch("/admin-picks/{pick_id}", response_model=AdminPickOut)
+def update_admin_pick(
+    pick_id: int,
+    payload: AdminPickIn,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> AdminPickOut:
+    """Replaces an already-featured slip's legs/label/note in place -- same
+    validation as creating one (every leg re-priced from scratch), so an
+    edited slip can never end up showing something that no longer prices.
+    The pick keeps its id and created_at; only what it contains changes,
+    including expires_at, which is recomputed from the new legs' kickoffs.
+    """
+
+    pick = db.get(AdminPick, pick_id)
+    if pick is None:
+        raise HTTPException(status_code=404, detail=f"Admin pick {pick_id} not found")
+
+    legs, label, note = _validate_admin_pick_payload(payload, db)
+
+    pick.legs = [{"match_id": leg.match_id, "market": leg.market, "selection": leg.selection} for leg in legs]
+    pick.label = label
+    pick.note = note
+    pick.expires_at = max(leg.kickoff for leg in legs) + dt.timedelta(days=2)
+    _record(db, admin, "admin_pick.updated", detail={"admin_pick_id": pick_id, "legs": len(legs)})
     db.commit()
     db.refresh(pick)
     return admin_pick_to_schema(pick, legs)

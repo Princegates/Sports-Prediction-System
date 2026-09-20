@@ -542,6 +542,14 @@ class FeaturePickIn(BaseModel):
     note: str | None = None
 
 
+class FeaturePickUpdateIn(BaseModel):
+    """Edits an already-featured Guda Pick's note in place -- the match,
+    market and selection it references never change; to feature a
+    different outcome, unfeature this one and create a new one."""
+
+    note: str | None = None
+
+
 class FeaturedPickOut(BaseModel):
     id: int
     match: MatchOut

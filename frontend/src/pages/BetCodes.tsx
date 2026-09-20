@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { createAdminPick, deleteAdminPick, fetchAdminPicksAdmin, previewBetCode, priceSelections } from "../api";
+import {
+  createAdminPick,
+  deleteAdminPick,
+  fetchAdminPicksAdmin,
+  previewBetCode,
+  priceSelections,
+  updateAdminPick,
+} from "../api";
 import { CopyButton } from "../components/CopyButton";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
@@ -156,12 +163,32 @@ export function BetCodes() {
   // (or another page) rather than the criteria form below -- changes the
   // result card's framing, not how it's priced.
   const [fromExternalPicks, setFromExternalPicks] = useState(false);
+  // Legs manually removed from the current preview, keyed the same way a
+  // leg is (match_id|market|selection) -- cleared to empty every time
+  // `preview` itself is replaced (see runPreview and handleEditPick, the
+  // only two places that ever call setPreview). Removal is a client-side
+  // filter, not a fresh search: the combined odds/probability below are
+  // recomputed by simply dropping that leg's own contribution, since both
+  // are already just a running product across the legs kept.
+  const [removedLegKeys, setRemovedLegKeys] = useState<Set<string>>(new Set());
 
   // Superadmin-only: promoting the current preview as an "Admin Pick" onto
   // every Dashboard (distinct from Guda Picks' single-outcome promotion).
   const [adminPicks, setAdminPicks] = useState<AdminPick[]>([]);
   const [featuring, setFeaturing] = useState(false);
   const [pickBusy, setPickBusy] = useState<number | null>(null);
+  // Set while editing an already-featured Admin Pick (via its "Edit" button
+  // below) rather than building a brand-new one -- changes what the
+  // Feature/Save button does and label/note prompts pre-fill with.
+  const [editingPickId, setEditingPickId] = useState<number | null>(null);
+
+  function legKey(leg: { match_id: number; market: string; selection: string }): string {
+    return `${leg.match_id}|${leg.market}|${leg.selection}`;
+  }
+
+  const editedLegs = preview ? preview.legs.filter((l) => !removedLegKeys.has(legKey(l))) : [];
+  const editedCombinedOdds = editedLegs.reduce((acc, l) => acc * l.decimal_odds, 1);
+  const editedCombinedProbability = editedLegs.reduce((acc, l) => acc * l.model_probability, 1);
 
   useEffect(() => {
     if (user?.role !== "superadmin") return;
@@ -194,8 +221,10 @@ export function BetCodes() {
   async function runPreview(fetchPreview: () => Promise<BetCodePreview>) {
     setPreviewing(true);
     setPreviewError(null);
+    setEditingPickId(null); // a fresh search is never mid-edit of an existing pick
     try {
       setPreview(await fetchPreview());
+      setRemovedLegKeys(new Set());
     } catch (e) {
       setPreview(null);
       setPreviewError(String(e instanceof Error ? e.message : e));
@@ -241,23 +270,74 @@ export function BetCodes() {
     setMarkets((m) => (m.includes(value) ? m.filter((v) => v !== value) : [...m, value]));
   }
 
-  // Promotes the current preview's legs onto every Dashboard's Admin Picks
-  // section. Legs are re-priced from scratch server-side, so what actually
-  // gets featured is always the current real price, not whatever the
-  // browser last saw -- same reasoning as MatchDetail's Guda Pick toggle.
-  async function handleFeatureSlip() {
-    if (!preview || preview.legs.length === 0) return;
-    const label = window.prompt("Optional label for this slip (e.g. \"Weekend Banker\") -- Cancel to skip featuring it:", "");
+  // Drops one leg from the current preview -- client-side only, no new
+  // search. The result card's combined odds/probability and leg table
+  // reflect editedLegs immediately; nothing is saved until Feature/Save is
+  // clicked below.
+  function removeLeg(leg: BetCodeLeg) {
+    setRemovedLegKeys((prev) => new Set(prev).add(legKey(leg)));
+  }
+
+  // Loads an already-featured Admin Pick's legs into the results card as if
+  // they'd just been generated, so the same remove-a-leg UI above can edit
+  // it. Feature this slip becomes Save changes for as long as this stays set.
+  function handleEditPick(pick: AdminPick) {
+    setPreview({
+      legs: pick.legs.map((l) => ({
+        match_id: l.match_id, league: l.league, home_team: l.home_team, away_team: l.away_team,
+        kickoff: l.kickoff, market: l.market, selection: l.selection,
+        model_probability: l.probability, decimal_odds: l.decimal_odds, priced_by: l.priced_by,
+      })),
+      combined_odds: pick.combined_odds,
+      combined_probability: pick.combined_probability,
+      target_odds: pick.combined_odds,
+      met_target: true,
+      candidates_considered: pick.legs.length,
+      warnings: [],
+    });
+    setRemovedLegKeys(new Set());
+    setFromExternalPicks(false);
+    setPreviewError(null);
+    setEditingPickId(pick.id);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function handleCancelEdit() {
+    setEditingPickId(null);
+    setPreview(null);
+  }
+
+  // Promotes the current (possibly leg-edited) preview onto every
+  // Dashboard's Admin Picks section, or -- while editing an existing one --
+  // saves those same edits back onto it in place. Either way every leg is
+  // re-priced from scratch server-side, so what actually gets featured is
+  // always the current real price, not whatever the browser last saw --
+  // same reasoning as MatchDetail's Guda Pick toggle.
+  async function handleFeatureOrSave() {
+    if (editedLegs.length === 0) return;
+    const editing = editingPickId !== null;
+    const currentPick = editing ? adminPicks.find((p) => p.id === editingPickId) : undefined;
+
+    const label = window.prompt(
+      editing
+        ? "Label for this slip -- Cancel to stop editing without saving:"
+        : "Optional label for this slip (e.g. \"Weekend Banker\") -- Cancel to skip featuring it:",
+      currentPick?.label ?? "",
+    );
     if (label === null) return;
-    const note = window.prompt("Optional note (shown on every Dashboard):", "") ?? undefined;
+    const note = window.prompt("Optional note (shown on every Dashboard):", currentPick?.note ?? "") ?? undefined;
+
+    const legsPayload = editedLegs.map((l) => ({ match_id: l.match_id, market: l.market, selection: l.selection }));
     setFeaturing(true);
     try {
-      const created = await createAdminPick({
-        legs: preview.legs.map((l) => ({ match_id: l.match_id, market: l.market, selection: l.selection })),
-        label: label || undefined,
-        note: note || undefined,
-      });
-      setAdminPicks((prev) => [created, ...prev]);
+      if (editing && editingPickId !== null) {
+        const updated = await updateAdminPick(editingPickId, { legs: legsPayload, label: label || undefined, note: note || undefined });
+        setAdminPicks((prev) => prev.map((p) => (p.id === editingPickId ? updated : p)));
+        setEditingPickId(null);
+      } else {
+        const created = await createAdminPick({ legs: legsPayload, label: label || undefined, note: note || undefined });
+        setAdminPicks((prev) => [created, ...prev]);
+      }
     } catch (err) {
       window.alert(String(err instanceof Error ? err.message : err));
     } finally {
@@ -270,6 +350,7 @@ export function BetCodes() {
     try {
       await deleteAdminPick(pickId);
       setAdminPicks((prev) => prev.filter((p) => p.id !== pickId));
+      if (editingPickId === pickId) handleCancelEdit();
     } catch (err) {
       window.alert(String(err instanceof Error ? err.message : err));
     } finally {
@@ -451,33 +532,48 @@ export function BetCodes() {
               page, just not run through the criteria form below.
             </p>
           )}
+          {editingPickId !== null && (
+            <p className="setting-note" style={{ marginBottom: 12 }}>
+              Editing &ldquo;{adminPicks.find((p) => p.id === editingPickId)?.label || "this slip"}&rdquo; -- remove
+              legs below, then Save changes.{" "}
+              <button className="btn ghost" style={{ padding: "2px 8px", fontSize: 12 }} onClick={handleCancelEdit}>
+                Cancel
+              </button>
+            </p>
+          )}
           <div className="section-header" style={{ marginBottom: 12 }}>
             <h3 style={{ margin: 0 }}>
-              {preview.legs.length} leg{preview.legs.length === 1 ? "" : "s"}
+              {editedLegs.length} leg{editedLegs.length === 1 ? "" : "s"}
               {/* Stopping at the leg count someone asked for isn't a
                   shortfall -- only flag "short of target" when it fell short
                   of *both* stopping conditions, i.e. ran out of qualifying
-                  matches before reaching either one. */}
+                  matches before reaching either one. Judged against the
+                  original search result, not a manual edit -- removing a leg
+                  by hand is a deliberate choice, not the search falling
+                  short. */}
               {!preview.met_target && !(preview.legs.length > 0 && preview.legs.length === maxLegs) ? " (short of target)" : ""}
+              {editedLegs.length !== preview.legs.length ? ` -- edited from ${preview.legs.length}` : ""}
             </h3>
-            {preview.legs.length > 0 && (
+            {editedLegs.length > 0 && (
               <span className="meta tabular-nums" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                {preview.combined_odds.toFixed(2)} combined · {(preview.combined_probability * 100).toFixed(0)}%
+                {editedCombinedOdds.toFixed(2)} combined · {(editedCombinedProbability * 100).toFixed(0)}%
                 combined probability
-                <span className={`risk-tag ${resultRiskLabel(preview.combined_probability).tone}`}>
-                  {resultRiskLabel(preview.combined_probability).label}
+                <span className={`risk-tag ${resultRiskLabel(editedCombinedProbability).tone}`}>
+                  {resultRiskLabel(editedCombinedProbability).label}
                 </span>
               </span>
             )}
           </div>
 
-          {preview.legs.length === 0 ? (
+          {editedLegs.length === 0 ? (
             <EmptyState
               icon="◌"
               title={
-                fromExternalPicks
-                  ? "None of those picks have a real, stored bookmaker price -- see the warnings below."
-                  : "No matches qualify for these criteria."
+                preview.legs.length === 0
+                  ? fromExternalPicks
+                    ? "None of those picks have a real, stored bookmaker price -- see the warnings below."
+                    : "No matches qualify for these criteria."
+                  : "Every leg was removed -- generate again, or cancel editing, to start over."
               }
             />
           ) : (
@@ -492,10 +588,11 @@ export function BetCodes() {
                     <th>Odds</th>
                     <th>Priced by</th>
                     <th>Kickoff</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {preview.legs.map((leg) => (
+                  {editedLegs.map((leg) => (
                     <tr key={`${leg.match_id}-${leg.market}-${leg.selection}`}>
                       <td>
                         <div className="match-cell">
@@ -518,6 +615,16 @@ export function BetCodes() {
                           minute: "2-digit",
                         })}
                       </td>
+                      <td>
+                        <button
+                          className="btn ghost"
+                          title="Remove this leg"
+                          style={{ padding: "2px 8px", fontSize: 12 }}
+                          onClick={() => removeLeg(leg)}
+                        >
+                          ✕
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -531,12 +638,18 @@ export function BetCodes() {
             </p>
           ))}
 
-          {preview.legs.length > 0 && (
+          {editedLegs.length > 0 && (
             <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <CopyButton text={formatLegsForCopy(preview.legs, preview.combined_odds)} label="Copy selections" />
+              <CopyButton text={formatLegsForCopy(editedLegs, editedCombinedOdds)} label="Copy selections" />
               {user?.role === "superadmin" && (
-                <button className="btn ghost" onClick={handleFeatureSlip} disabled={featuring}>
-                  {featuring ? "Featuring…" : "★ Feature this slip"}
+                <button className="btn ghost" onClick={handleFeatureOrSave} disabled={featuring}>
+                  {featuring
+                    ? editingPickId !== null
+                      ? "Saving…"
+                      : "Featuring…"
+                    : editingPickId !== null
+                      ? "💾 Save changes"
+                      : "★ Feature this slip"}
                 </button>
               )}
             </div>
@@ -566,14 +679,24 @@ export function BetCodes() {
                   {pick.risk_tier === "low" ? "Low risk" : pick.risk_tier === "medium" ? "Medium risk" : "High risk"}
                 </span>
               </span>
-              <button
-                className="btn ghost"
-                style={{ padding: "2px 8px", fontSize: 12 }}
-                disabled={pickBusy === pick.id}
-                onClick={() => handleRemoveAdminPick(pick.id)}
-              >
-                Remove
-              </button>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  className="btn ghost"
+                  style={{ padding: "2px 8px", fontSize: 12 }}
+                  disabled={pickBusy === pick.id}
+                  onClick={() => handleEditPick(pick)}
+                >
+                  Edit
+                </button>
+                <button
+                  className="btn ghost"
+                  style={{ padding: "2px 8px", fontSize: 12 }}
+                  disabled={pickBusy === pick.id}
+                  onClick={() => handleRemoveAdminPick(pick.id)}
+                >
+                  Remove
+                </button>
+              </div>
             </div>
           ))}
         </div>

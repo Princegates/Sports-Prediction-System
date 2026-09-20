@@ -165,6 +165,65 @@ def test_creating_a_featured_pick_is_audit_logged(db_session, admin, upcoming_ma
     assert entry.detail["match_id"] == upcoming_match.id
 
 
+# --- Editing ---------------------------------------------------------------
+
+
+def test_admin_can_edit_a_featured_picks_note(db_session, admin, upcoming_match):
+    created = _feature(admin, upcoming_match.id, note="Original note")
+    response = client.patch(
+        f"/api/admin/featured-picks/{created['id']}", json={"note": "Updated note"}, headers=_headers(admin)
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["id"] == created["id"]  # same pick, not a new one
+    assert body["note"] == "Updated note"
+    # The match/market/selection it references never changes here.
+    assert body["market"] == created["market"]
+    assert body["selection"] == created["selection"]
+
+
+def test_editing_a_featured_pick_can_clear_its_note(db_session, admin, upcoming_match):
+    created = _feature(admin, upcoming_match.id, note="Has a note")
+    response = client.patch(f"/api/admin/featured-picks/{created['id']}", json={"note": ""}, headers=_headers(admin))
+    assert response.status_code == 200
+    assert response.json()["note"] is None
+
+
+def test_editing_a_featured_pick_still_recomputes_its_probability(db_session, admin, upcoming_match):
+    """Editing the note must not accidentally start returning a frozen
+    probability -- the whole point of a Guda Pick is that it never does."""
+
+    created = _feature(admin, upcoming_match.id, note="v1")
+    pred = db_session.query(Prediction).filter(Prediction.match_id == upcoming_match.id).order_by(Prediction.created_at.desc()).first()
+    pred.btts_yes = 0.81
+    pred.btts_no = 0.19
+    db_session.commit()
+
+    response = client.patch(f"/api/admin/featured-picks/{created['id']}", json={"note": "v2"}, headers=_headers(admin))
+    assert response.json()["probability"] == pytest.approx(0.81)
+
+
+def test_editing_a_nonexistent_featured_pick_is_a_404(db_session, admin):
+    response = client.patch("/api/admin/featured-picks/999999", json={"note": "x"}, headers=_headers(admin))
+    assert response.status_code == 404
+
+
+def test_editing_a_featured_pick_is_superadmin_only(db_session, admin, upcoming_match):
+    created = _feature(admin, upcoming_match.id)
+    plain = _make_user(db_session, "plain-edit-note@example.com")
+    response = client.patch(f"/api/admin/featured-picks/{created['id']}", json={"note": "hijack"}, headers=_headers(plain))
+    assert response.status_code == 403
+
+
+def test_editing_a_featured_pick_is_audit_logged(db_session, admin, upcoming_match):
+    created = _feature(admin, upcoming_match.id)
+    client.patch(f"/api/admin/featured-picks/{created['id']}", json={"note": "edited"}, headers=_headers(admin))
+    entry = db_session.query(AuditLog).filter(AuditLog.action == "featured_pick.updated").order_by(AuditLog.id.desc()).first()
+    assert entry is not None
+    assert entry.actor_user_id == admin.id
+    assert entry.detail["featured_pick_id"] == created["id"]
+
+
 # --- Admin list / remove -------------------------------------------------
 
 

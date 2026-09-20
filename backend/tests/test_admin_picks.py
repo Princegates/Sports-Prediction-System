@@ -112,6 +112,15 @@ def _legs(matches: list[Match]) -> list[dict]:
     return [{"match_id": m.id, "market": "Match Result", "selection": "Home Win"} for m in matches]
 
 
+def _update(admin: User, pick_id: int, legs: list[dict], label=None, note=None):
+    payload = {"legs": legs}
+    if label is not None:
+        payload["label"] = label
+    if note is not None:
+        payload["note"] = note
+    return client.patch(f"/api/admin/admin-picks/{pick_id}", json=payload, headers=_headers(admin))
+
+
 # --- Creation -------------------------------------------------------------
 
 
@@ -180,6 +189,98 @@ def test_creating_an_admin_pick_is_audit_logged(db_session, admin, two_matches):
     assert entry is not None
     assert entry.actor_user_id == admin.id
     assert entry.detail["legs"] == 2
+
+
+# --- Editing ----------------------------------------------------------------
+
+
+def test_admin_can_remove_a_leg_from_an_already_featured_slip(db_session, admin, two_matches):
+    """The core motivation for editing: an admin generates a slip, features
+    it, then decides one leg was a bad idea -- without deleting the whole
+    thing and starting over."""
+
+    created = _create(admin, _legs(two_matches))
+    assert len(created["legs"]) == 2
+
+    response = _update(admin, created["id"], _legs(two_matches[:1]))
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["id"] == created["id"]  # same pick, not a new one
+    assert len(body["legs"]) == 1
+    assert body["combined_odds"] == pytest.approx(1.80)
+
+
+def test_editing_an_admin_pick_can_change_its_label_and_note(db_session, admin, two_matches):
+    created = _create(admin, _legs(two_matches), label="Original", note="Original note")
+    response = _update(admin, created["id"], _legs(two_matches), label="Renamed", note="New note")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["label"] == "Renamed"
+    assert body["note"] == "New note"
+
+
+def test_editing_an_admin_pick_recomputes_expires_at(db_session, admin, two_matches):
+    """A slip trimmed down to a single, earlier-kicking-off leg should carry
+    that leg's own expiry, not the original two-leg set's later one."""
+
+    created = _create(admin, _legs(two_matches))
+    kept_leg_match = db_session.get(Match, two_matches[0].id)
+
+    response = _update(admin, created["id"], _legs(two_matches[:1]))
+    assert response.status_code == 200
+    body = response.json()
+    expected = (kept_leg_match.date + dt.timedelta(days=2)).isoformat()
+    assert body["expires_at"].startswith(expected[:19])
+
+
+def test_editing_an_admin_pick_to_zero_legs_is_rejected(db_session, admin, two_matches):
+    created = _create(admin, _legs(two_matches))
+    response = _update(admin, created["id"], [])
+    assert response.status_code == 400
+    # The original slip must still be intact -- a rejected edit is a no-op.
+    listed = client.get("/api/admin/admin-picks", headers=_headers(admin)).json()
+    matched = next(p for p in listed if p["id"] == created["id"])
+    assert len(matched["legs"]) == 2
+
+
+def test_editing_a_leg_to_one_with_no_price_is_rejected(db_session, admin, two_matches):
+    created = _create(admin, _legs(two_matches))
+    response = _update(
+        admin, created["id"],
+        [{"match_id": two_matches[0].id, "market": "Both Teams To Score", "selection": "Yes"}],
+    )
+    assert response.status_code == 400
+
+
+def test_editing_a_nonexistent_admin_pick_is_a_404(db_session, admin, two_matches):
+    response = _update(admin, 999999, _legs(two_matches))
+    assert response.status_code == 404
+
+
+def test_editing_an_admin_pick_is_superadmin_only(db_session, admin, two_matches):
+    created = _create(admin, _legs(two_matches))
+    plain = _make_user(db_session, "plain-edit-admin-pick@example.com")
+    response = _update(plain, created["id"], _legs(two_matches[:1]))
+    assert response.status_code == 403
+
+
+def test_editing_an_admin_pick_is_audit_logged(db_session, admin, two_matches):
+    created = _create(admin, _legs(two_matches))
+    _update(admin, created["id"], _legs(two_matches[:1]))
+    entry = db_session.query(AuditLog).filter(AuditLog.action == "admin_pick.updated").order_by(AuditLog.id.desc()).first()
+    assert entry is not None
+    assert entry.actor_user_id == admin.id
+    assert entry.detail["admin_pick_id"] == created["id"]
+    assert entry.detail["legs"] == 1
+
+
+def test_editing_an_admin_pick_is_reflected_in_the_public_feed(db_session, admin, two_matches, auth_headers):
+    created = _create(admin, _legs(two_matches))
+    _update(admin, created["id"], _legs(two_matches[:1]))
+
+    body = client.get("/api/predictions/admin-picks", headers=auth_headers).json()
+    assert len(body) == 1
+    assert len(body[0]["legs"]) == 1
 
 
 # --- Admin list / remove ---------------------------------------------------

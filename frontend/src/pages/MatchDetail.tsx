@@ -13,6 +13,7 @@ import {
   fetchStatistics,
   recordMatchView,
   unfeaturePick,
+  updateFeaturedPickNote,
 } from "../api";
 import { AiExplanationPanel } from "../components/AiExplanationPanel";
 import { AskAboutMatch } from "../components/AskAboutMatch";
@@ -144,6 +145,21 @@ export function MatchDetail() {
         const created = await featurePick({ match_id: matchId, market, selection, note: raw || undefined });
         setFeaturedPicks((prev) => [...prev, created]);
       }
+    } catch (err) {
+      window.alert(String(err instanceof Error ? err.message : err));
+    } finally {
+      setPickBusy(null);
+    }
+  }
+
+  async function handleEditFeaturedNote(pick: FeaturedPick) {
+    const key = `${pick.market}|${pick.selection}`;
+    const raw = window.prompt("Edit note for this pick (shown on every Dashboard):", pick.note ?? "");
+    if (raw === null) return;
+    setPickBusy(key);
+    try {
+      const updated = await updateFeaturedPickNote(pick.id, raw);
+      setFeaturedPicks((prev) => prev.map((p) => (p.id === pick.id ? updated : p)));
     } catch (err) {
       window.alert(String(err instanceof Error ? err.message : err));
     } finally {
@@ -414,15 +430,27 @@ export function MatchDetail() {
                                   {(o.probability * 100).toFixed(0)}%
                                 </td>
                                 {user?.role === "superadmin" && (
-                                  <td style={{ width: 90 }}>
-                                    <button
-                                      className="btn ghost"
-                                      style={{ padding: "2px 8px", fontSize: 12 }}
-                                      disabled={pickBusy === key}
-                                      onClick={() => handleToggleFeature(o.market, o.selection)}
-                                    >
-                                      {featured ? "★ Unfeature" : "☆ Feature"}
-                                    </button>
+                                  <td style={{ width: 140 }}>
+                                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                      {featured && (
+                                        <button
+                                          className="btn ghost"
+                                          style={{ padding: "2px 8px", fontSize: 12 }}
+                                          disabled={pickBusy === key}
+                                          onClick={() => handleEditFeaturedNote(featured)}
+                                        >
+                                          ✎ Edit note
+                                        </button>
+                                      )}
+                                      <button
+                                        className="btn ghost"
+                                        style={{ padding: "2px 8px", fontSize: 12 }}
+                                        disabled={pickBusy === key}
+                                        onClick={() => handleToggleFeature(o.market, o.selection)}
+                                      >
+                                        {featured ? "★ Unfeature" : "☆ Feature"}
+                                      </button>
+                                    </div>
                                   </td>
                                 )}
                               </tr>

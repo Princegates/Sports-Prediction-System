@@ -321,6 +321,12 @@ export function featurePick(payload: { match_id: number; market: string; selecti
   return post("/api/admin/featured-picks", payload);
 }
 
+/** Edits a Guda Pick's note in place -- the match/market/selection it
+ * references can't change here (see the backend route's own docstring). */
+export function updateFeaturedPickNote(pickId: number, note: string): Promise<FeaturedPick> {
+  return patch(`/api/admin/featured-picks/${pickId}`, { note });
+}
+
 export function fetchFeaturedPicksAdmin(): Promise<FeaturedPick[]> {
   return get("/api/admin/featured-picks");
 }
@@ -344,6 +350,16 @@ export function createAdminPick(payload: {
   note?: string;
 }): Promise<AdminPick> {
   return post("/api/admin/admin-picks", payload);
+}
+
+/** Replaces an already-featured slip's legs/label/note in place -- a full
+ * replace, same shape as createAdminPick, not a partial patch. Every leg is
+ * re-priced server-side; rejected if even one no longer prices. */
+export function updateAdminPick(
+  pickId: number,
+  payload: { legs: { match_id: number; market: string; selection: string }[]; label?: string; note?: string },
+): Promise<AdminPick> {
+  return patch(`/api/admin/admin-picks/${pickId}`, payload);
 }
 
 export function fetchAdminPicksAdmin(): Promise<AdminPick[]> {
