@@ -31,9 +31,10 @@ from app.api.schemas import (
     BetCodeLegOut,
     BetCodeOut,
     BetCodePreviewOut,
+    BetCodePriceIn,
 )
 from app.betcode.providers import BookingCodeError, ProviderNotConfigured, get_provider
-from app.betcode.selection import Leg, SlipCriteria, select_legs
+from app.betcode.selection import Leg, SlipCriteria, price_legs, select_legs
 from app.db.models import BookingSlip, User
 
 router = APIRouter(
@@ -105,6 +106,38 @@ def preview(payload: BetCodeCriteriaIn, db: Session = Depends(get_db)) -> BetCod
         met_target=result.met_target,
         candidates_considered=result.candidates_considered,
         warnings=result.warnings,
+    )
+
+
+@router.post("/price", response_model=BetCodePreviewOut)
+def price(payload: BetCodePriceIn, db: Session = Depends(get_db)) -> BetCodePreviewOut:
+    """Prices an explicit list of picks -- no search, no target odds, just
+    "what do these cost right now". This is what a chat answer's "send to
+    AI Generation" button or a Markets-page shortlist calls: the picks were
+    already chosen elsewhere, this only attaches real numbers to them.
+
+    Reuses BetCodePreviewOut so the same result UI (legs table, combined
+    odds/probability, warnings) renders it -- target_odds is set to
+    whatever combined_odds came out to and met_target is always True, since
+    there was never a target to fall short of here.
+    """
+
+    refs = [(p.match_id, p.market, p.selection) for p in payload.picks]
+    legs, warnings = price_legs(db, refs, price_bookmaker=payload.price_bookmaker)
+    combined_odds = 1.0
+    combined_probability = 1.0
+    for leg in legs:
+        combined_odds *= leg.decimal_odds
+        combined_probability *= leg.model_probability
+
+    return BetCodePreviewOut(
+        legs=_legs_to_out(legs),
+        combined_odds=combined_odds,
+        combined_probability=combined_probability,
+        target_odds=combined_odds,
+        met_target=True,
+        candidates_considered=len(payload.picks),
+        warnings=warnings,
     )
 
 

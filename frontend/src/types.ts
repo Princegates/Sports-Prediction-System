@@ -148,6 +148,12 @@ export interface ChatSource {
   ref: string | number | null;
 }
 
+export interface ChatPick {
+  match_id: number;
+  market: string;
+  selection: string;
+}
+
 export interface ChatAnswer {
   id: number | null;
   text: string;
@@ -156,6 +162,7 @@ export interface ChatAnswer {
   suggestions: string[];
   includes_probability: boolean;
   caveat: string | null;
+  picks: ChatPick[];
 }
 
 export interface ChatMessage {
@@ -166,6 +173,7 @@ export interface ChatMessage {
   context_match_id: number | null;
   sources: ChatSource[];
   suggestions: string[];
+  picks: ChatPick[];
   created_at: string;
 }
 
@@ -443,4 +451,13 @@ export interface BetCodePreview {
   met_target: boolean;
   candidates_considered: number;
   warnings: string[];
+}
+
+/** An explicit (match, market, selection) to price -- no search, just "what
+ * does this cost right now". What a chat answer's picks, or a Markets-page
+ * shortlist, sends to POST /api/betcodes/price. */
+export interface BetCodePick {
+  match_id: number;
+  market: string;
+  selection: string;
 }

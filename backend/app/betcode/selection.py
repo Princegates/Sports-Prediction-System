@@ -57,7 +57,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.db.models import Match, MatchOdds, Prediction
-from app.outcomes.registry import Outcome, outcomes_from_prediction
+from app.outcomes.registry import Outcome, find_outcome, outcomes_from_prediction
 
 DEFAULT_MIN_PROBABILITY = 0.65
 DEFAULT_MAX_LEGS = 8
@@ -370,3 +370,94 @@ def select_legs(db: Session, criteria: SlipCriteria) -> SelectionResult:
         met_target=met_target,
         warnings=warnings,
     )
+
+
+def price_legs(
+    db: Session,
+    refs: list[tuple[int, str, str]],
+    price_bookmaker: str | None = None,
+) -> tuple[list[Leg], list[str]]:
+    """Prices an explicit list of (match_id, market, selection) refs -- no
+    search, no target, just "what does this cost right now". For a caller
+    that already knows exactly which picks it wants (a chat answer's picks,
+    a Markets-page shortlist) and only needs real numbers attached to them.
+
+    A ref is skipped -- and explained in the returned warnings, never
+    silently dropped -- when its match doesn't exist, has no stored
+    prediction, the (market, selection) pair isn't one the current
+    prediction actually offers, there's no stored price for it, or a second
+    ref for an already-priced match arrives (one leg per match, same
+    reasoning as build_candidate_legs: two outcomes on the same fixture are
+    correlated, not independent, so only the first is kept).
+    """
+
+    if not refs:
+        return [], []
+
+    match_ids = list({match_id for match_id, _, _ in refs})
+    matches = {
+        m.id: m
+        for m in db.execute(
+            select(Match)
+            .where(Match.id.in_(match_ids))
+            .options(selectinload(Match.home_team), selectinload(Match.away_team))
+        ).scalars()
+    }
+    predictions: dict[int, Prediction] = {}
+    for p in db.execute(
+        select(Prediction).where(Prediction.match_id.in_(match_ids)).order_by(Prediction.created_at.asc())
+    ).scalars():
+        predictions[p.match_id] = p  # ascending order -- the last write per match wins
+
+    prices = _latest_odds(db, match_ids, price_bookmaker)
+
+    legs: list[Leg] = []
+    warnings: list[str] = []
+    priced_matches: set[int] = set()
+
+    for match_id, market, selection in refs:
+        match = matches.get(match_id)
+        if match is None:
+            warnings.append(f"Match {match_id}: not found, skipped.")
+            continue
+        label = f"{match.home_team.name} vs {match.away_team.name}"
+
+        if match_id in priced_matches:
+            warnings.append(f"{label}: already have a leg from this match, skipped {market} -- {selection}.")
+            continue
+
+        prediction = predictions.get(match_id)
+        if prediction is None:
+            warnings.append(f"{label}: no stored prediction, skipped.")
+            continue
+
+        outcome = find_outcome(prediction, market, selection)
+        if outcome is None:
+            warnings.append(
+                f"{label}: {market} -- {selection} isn't an outcome the current prediction offers, skipped."
+            )
+            continue
+
+        priced = prices.get((match_id, market, selection))
+        if priced is None:
+            warnings.append(f"{label}: no stored bookmaker price for {market} -- {selection}, skipped.")
+            continue
+        price, priced_by = priced
+
+        legs.append(
+            Leg(
+                match_id=match.id,
+                league=match.league,
+                home_team=match.home_team.name,
+                away_team=match.away_team.name,
+                kickoff=match.date,
+                market=outcome.market,
+                selection=outcome.selection,
+                model_probability=outcome.probability,
+                decimal_odds=price,
+                priced_by=priced_by,
+            )
+        )
+        priced_matches.add(match_id)
+
+    return legs, warnings

@@ -89,6 +89,10 @@ class ChatMessage(Base):
     context_match_id: Mapped[int | None] = mapped_column(ForeignKey("matches.id"), nullable=True)
     sources: Mapped[list | None] = mapped_column(JSON, nullable=True)
     suggestions: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # (match_id, market, selection) references for an answer that listed
+    # specific picks (best-picks style) -- lets the UI offer "send these to
+    # AI Generation" for real pricing, without re-parsing the prose reply.
+    picks: Mapped[list | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
 
 

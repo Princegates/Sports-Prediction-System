@@ -45,6 +45,9 @@ _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     # missing type on ALTER TABLE fails the whole schema migration, which
     # takes every data endpoint down with it (see main.py's _try_init_database).
     ("matches", "live_synced_at", "TIMESTAMP"),
+    # Structured (match_id, market, selection) refs for a best-picks-style
+    # answer, so the UI can offer to price them for real via AI Generation.
+    ("chat_messages", "picks", "JSON"),
 ]
 
 

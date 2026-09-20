@@ -331,6 +331,11 @@ def test_best_picks_ranks_by_stored_probability(db_session, auth_headers, fixtur
     assert "Over 0.5" in body["text"]
     # The honest caveat that high probability != high value must be present.
     assert "value" in body["text"].lower()
+    # Structured refs, so the client can offer "price these for real" via
+    # AI Generation without re-parsing the prose.
+    assert body["picks"] == [
+        {"match_id": fixture_data["upcoming"].id, "market": "Total Goals 0.5", "selection": "Over 0.5"}
+    ]
 
 
 def test_generate_selections_uses_the_real_priced_selection_engine(db_session, auth_headers, fixture_data):
@@ -376,6 +381,18 @@ def test_market_filtered_best_picks_ranks_by_that_markets_own_probability(db_ses
     assert "Both Teams To Score" in body["text"]
     assert "Yes" in body["text"]
     assert "61.0%" in body["text"]
+    assert body["picks"] == [
+        {"match_id": fixture_data["upcoming"].id, "market": "Both Teams To Score", "selection": "Yes"}
+    ]
+
+
+def test_picks_survive_a_reload_via_history(db_session, auth_headers, fixture_data):
+    _ask("what are the best picks?", auth_headers)
+    history = client.get("/api/chat/history", headers=auth_headers).json()
+    assistant_row = next(r for r in history if r["role"] == "assistant")
+    assert assistant_row["picks"] == [
+        {"match_id": fixture_data["upcoming"].id, "market": "Total Goals 0.5", "selection": "Over 0.5"}
+    ]
 
 
 def test_harmful_request_gets_the_responsible_use_answer(db_session, auth_headers, fixture_data):

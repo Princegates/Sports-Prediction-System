@@ -12,7 +12,7 @@ import datetime as dt
 
 import pytest
 
-from app.betcode.selection import SlipCriteria, build_candidate_legs, select_legs
+from app.betcode.selection import SlipCriteria, build_candidate_legs, price_legs, select_legs
 from app.db.models import Match, MatchOdds, Prediction, Team
 
 BASE = dt.datetime.utcnow() + dt.timedelta(hours=6)
@@ -330,3 +330,63 @@ def test_an_extreme_goal_line_is_still_reachable_if_asked_for_explicitly(db_sess
 
     assert len(legs) == 1
     assert (legs[0].market, legs[0].selection) == ("Total Goals 7.5", "Under 7.5")
+
+
+# --- price_legs: pricing an explicit, already-chosen list of picks --------
+
+
+def test_price_legs_prices_an_explicit_pick_from_a_real_stored_quote(db_session, three_matches):
+    legs, warnings = price_legs(db_session, [(three_matches[0].id, "Match Result", "Home Win")])
+    assert len(legs) == 1
+    assert legs[0].decimal_odds == pytest.approx(1.30, abs=0.001)
+    assert legs[0].priced_by == "Bet9ja"
+    assert warnings == []
+
+
+def test_price_legs_prices_several_picks_across_different_matches(db_session, three_matches):
+    refs = [(m.id, "Match Result", "Home Win") for m in three_matches]
+    legs, warnings = price_legs(db_session, refs)
+    assert len(legs) == 3
+    assert warnings == []
+
+
+def test_price_legs_skips_a_pick_with_no_stored_price_and_says_so(db_session, three_matches):
+    """Both Teams To Score is only priced for the first match -- asking for
+    it on the second must be skipped, not synthesized."""
+
+    legs, warnings = price_legs(db_session, [(three_matches[1].id, "Both Teams To Score", "Yes")])
+    assert legs == []
+    assert len(warnings) == 1
+    assert "no stored bookmaker price" in warnings[0].lower()
+
+
+def test_price_legs_keeps_only_the_first_pick_from_a_repeated_match(db_session, three_matches):
+    """One leg per match, same reasoning as the search engine: a second
+    outcome on an already-priced fixture is correlated, not independent."""
+
+    refs = [
+        (three_matches[0].id, "Match Result", "Home Win"),
+        (three_matches[0].id, "Both Teams To Score", "No"),
+    ]
+    legs, warnings = price_legs(db_session, refs)
+    assert len(legs) == 1
+    assert legs[0].market == "Match Result"
+    assert len(warnings) == 1
+    assert "already have a leg from this match" in warnings[0]
+
+
+def test_price_legs_skips_an_outcome_the_prediction_does_not_offer(db_session, three_matches):
+    legs, warnings = price_legs(db_session, [(three_matches[0].id, "Match Result", "Nonexistent Selection")])
+    assert legs == []
+    assert len(warnings) == 1
+    assert "isn't an outcome" in warnings[0]
+
+
+def test_price_legs_skips_an_unknown_match(db_session, three_matches):
+    legs, warnings = price_legs(db_session, [(999_999, "Match Result", "Home Win")])
+    assert legs == []
+    assert "not found" in warnings[0]
+
+
+def test_price_legs_with_no_refs_returns_nothing(db_session):
+    assert price_legs(db_session, []) == ([], [])

@@ -73,6 +73,41 @@ def test_preview_returns_legs_and_writes_nothing(auth_headers, db_session, price
     assert db_session.query(BookingSlip).count() == 0
 
 
+def test_price_requires_authentication():
+    assert client.post("/api/betcodes/price", json={"picks": []}).status_code == 401
+
+
+def test_price_requires_active_access(headers_no_access):
+    response = client.post("/api/betcodes/price", json={"picks": []}, headers=headers_no_access)
+    assert response.status_code == 403
+
+
+def test_price_attaches_the_real_stored_quote_to_an_explicit_pick(auth_headers, priced_match):
+    """The chat-picks / Markets-shortlist entry point: caller already knows
+    exactly which (match, market, selection) it wants, this just prices it."""
+
+    payload = {"picks": [{"match_id": priced_match.id, "market": "Match Result", "selection": "Home Win"}]}
+    response = client.post("/api/betcodes/price", json=payload, headers=auth_headers)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert len(body["legs"]) == 1
+    assert body["legs"][0]["decimal_odds"] == pytest.approx(1.30, abs=0.001)
+    assert body["legs"][0]["priced_by"] == "Bet9ja"
+    assert body["combined_odds"] == pytest.approx(1.30, abs=0.001)
+    assert body["met_target"] is True
+    assert body["warnings"] == []
+
+
+def test_price_reports_why_an_unpriceable_pick_was_skipped(auth_headers, priced_match):
+    payload = {"picks": [{"match_id": priced_match.id, "market": "Both Teams To Score", "selection": "Yes"}]}
+    response = client.post("/api/betcodes/price", json=payload, headers=auth_headers)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["legs"] == []
+    assert len(body["warnings"]) == 1
+    assert "no stored bookmaker price" in body["warnings"][0].lower()
+
+
 def test_generate_without_a_provider_still_saves_the_slip(auth_headers, db_session, priced_match):
     response = client.post("/api/betcodes", json={"criteria": CRITERIA}, headers=auth_headers)
     assert response.status_code == 200, response.text

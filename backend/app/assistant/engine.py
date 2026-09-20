@@ -90,6 +90,7 @@ def _persist(
         context_match_id=context_match_id,
         sources=[asdict(s) for s in result.sources],
         suggestions=list(result.suggestions),
+        picks=[asdict(p) for p in result.picks],
     )
     db.add(assistant_row)
     db.commit()

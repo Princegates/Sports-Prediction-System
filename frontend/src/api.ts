@@ -1,5 +1,6 @@
 import type {
   BetCodeCriteria,
+  BetCodePick,
   BetCodePreview,
   OutcomesResponse,
   Branding,
@@ -498,6 +499,13 @@ export function fetchNotice(): Promise<SiteNotice> {
 
 export function previewBetCode(criteria: BetCodeCriteria): Promise<BetCodePreview> {
   return post("/api/betcodes/preview", criteria);
+}
+
+/** Prices an explicit list of picks -- no search, just "what do these cost
+ * right now". What "send to AI Generation" (from a chat answer or a
+ * Markets-page shortlist) calls. */
+export function priceSelections(picks: BetCodePick[], priceBookmaker?: string | null): Promise<BetCodePreview> {
+  return post("/api/betcodes/price", { picks, price_bookmaker: priceBookmaker ?? null });
 }
 
 export function fetchOutcomes(params: {

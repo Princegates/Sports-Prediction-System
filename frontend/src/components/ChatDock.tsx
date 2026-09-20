@@ -4,7 +4,7 @@ import { clearChatHistory, fetchBranding, fetchChatHistory, streamChatMessage } 
 import { Mascot } from "../components/Mascot";
 import { useAuth } from "../lib/AuthContext";
 import { formatWhatsapp, whatsappLink } from "../lib/whatsapp";
-import type { ChatAnswer, ChatSource } from "../types";
+import type { ChatAnswer, ChatPick, ChatSource } from "../types";
 
 /**
  * The live AI chat dock: a floating assistant available on every signed-in
@@ -31,6 +31,7 @@ interface Turn {
   text: string;
   sources?: ChatSource[];
   suggestions?: string[];
+  picks?: ChatPick[];
   caveat?: string | null;
   streaming?: boolean;
   failed?: boolean;
@@ -131,6 +132,25 @@ function SourceChips({ sources }: { sources: ChatSource[] }) {
   );
 }
 
+/** Hands an answer's picks to AI Generation for real pricing -- Guda only
+ * ever ranks by model probability, never a bookmaker price (see the
+ * responder's own caveat text), so this is how a picks list actually gets
+ * priced rather than staying an estimate. */
+function SendToGenerationButton({ picks }: { picks: ChatPick[] }) {
+  const navigate = useNavigate();
+  if (picks.length === 0) return null;
+
+  return (
+    <button
+      className="btn ghost"
+      style={{ marginTop: 8 }}
+      onClick={() => navigate("/app/betcodes", { state: { picks } })}
+    >
+      Send {picks.length} pick{picks.length === 1 ? "" : "s"} to AI Generation for odds
+    </button>
+  );
+}
+
 export function ChatDock() {
   const { accessStatus } = useAuth();
   const hasAccess = accessStatus?.has_access ?? false;
@@ -183,6 +203,7 @@ export function ChatDock() {
             text: r.content,
             sources: r.sources,
             suggestions: r.suggestions,
+            picks: r.picks,
           })),
         );
       })
@@ -261,6 +282,7 @@ export function ChatDock() {
             text: answer.text,
             sources: answer.sources,
             suggestions: answer.suggestions,
+            picks: answer.picks,
             caveat: answer.caveat,
             streaming: false,
           })),
@@ -399,6 +421,7 @@ export function ChatDock() {
                     <p className="chat-caveat">{turn.caveat}</p>
                   )}
                   {!turn.streaming && turn.sources && <SourceChips sources={turn.sources} />}
+                  {!turn.streaming && turn.picks && <SendToGenerationButton picks={turn.picks} />}
                   {turn.whatsapp && (
                     <a
                       className="btn"

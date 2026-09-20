@@ -39,6 +39,19 @@ class Source:
 
 
 @dataclass
+class PickRef:
+    """A (match, market, selection) an answer named specifically enough to
+    act on -- lets the client offer "price these for real" via AI
+    Generation without re-parsing the prose reply. Probability-only here,
+    same as everywhere else a best-picks-style answer is built: this reads
+    from stored predictions, never a bookmaker quote."""
+
+    match_id: int
+    market: str
+    selection: str
+
+
+@dataclass
 class Answer:
     text: str
     intent: Intent
@@ -48,6 +61,7 @@ class Answer:
     # can render the caveat as a distinct visual element rather than prose
     # the user skims past.
     includes_probability: bool = False
+    picks: list[PickRef] = field(default_factory=list)
 
 
 def _pct(value: float, places: int = 0) -> str:
@@ -505,6 +519,7 @@ def _best_picks_for_market(db: Session, q: ParsedQuery, now: dt.datetime) -> Ans
         text="\n".join(lines),
         intent=q.intent,
         sources=[Source("match", f"{h.home_team} vs {h.away_team}", h.match_id) for h in hits],
+        picks=[PickRef(h.match_id, h.market, h.selection) for h in hits],
         suggestions=["What are today's best picks?", "What fixtures are on today?"],
         includes_probability=True,
     )
@@ -556,6 +571,7 @@ def _best_picks(db: Session, q: ParsedQuery, now: dt.datetime) -> Answer:
         text="\n".join(lines),
         intent=q.intent,
         sources=[Source("match", f"{c.home_team} vs {c.away_team}", c.match_id) for c in cards],
+        picks=[PickRef(c.match_id, c.prediction.global_outcome_market, c.prediction.global_outcome_selection) for c in cards],
         suggestions=[
             f"Why is {cards[0].prediction.global_outcome_selection} favored?",
             "What fixtures are on today?",

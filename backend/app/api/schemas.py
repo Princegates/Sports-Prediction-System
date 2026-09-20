@@ -166,6 +166,12 @@ class ChatSourceOut(BaseModel):
     ref: str | int | None = None
 
 
+class ChatPickOut(BaseModel):
+    match_id: int
+    market: str
+    selection: str
+
+
 class ChatAnswerOut(BaseModel):
     id: int | None = None
     text: str
@@ -174,6 +180,7 @@ class ChatAnswerOut(BaseModel):
     suggestions: list[str] = []
     includes_probability: bool = False
     caveat: str | None = None
+    picks: list[ChatPickOut] = []
 
 
 class ChatMessageOut(BaseModel):
@@ -184,6 +191,7 @@ class ChatMessageOut(BaseModel):
     context_match_id: int | None = None
     sources: list[ChatSourceOut] = []
     suggestions: list[str] = []
+    picks: list[ChatPickOut] = []
     created_at: dt.datetime
 
 
@@ -585,6 +593,24 @@ class BetCodePreviewOut(BaseModel):
     met_target: bool
     candidates_considered: int
     warnings: list[str]
+
+
+class BetCodePickIn(BaseModel):
+    """An explicit (match, market, selection) to price -- no search, no
+    criteria, just "what does this exact selection cost right now". This is
+    what a chat picks list or the Markets page's own shortlist sends over;
+    see app.betcode.selection.price_legs."""
+
+    match_id: int
+    market: str
+    selection: str
+
+
+class BetCodePriceIn(BaseModel):
+    picks: list[BetCodePickIn]
+    # Same meaning as BetCodeCriteriaIn.price_bookmaker: unset = any
+    # bookmaker this project has a real quote from.
+    price_bookmaker: str | None = None
 
 
 class BetCodeGenerateIn(BaseModel):

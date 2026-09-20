@@ -1,10 +1,11 @@
-import { useState } from "react";
-import { previewBetCode } from "../api";
+import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
+import { previewBetCode, priceSelections } from "../api";
 import { CopyButton } from "../components/CopyButton";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { leagueLabel, useLeague } from "../components/AppShell";
-import type { BetCodeCriteria, BetCodeLeg, BetCodePreview } from "../types";
+import type { BetCodeCriteria, BetCodeLeg, BetCodePick, BetCodePreview } from "../types";
 
 /** Plain-text description of one generated combo, meant to be pasted
  * wherever the user places bets themselves. No bookmaker code, no deep
@@ -121,6 +122,7 @@ function resultRiskLabel(combinedProbability: number): { label: string; tone: "l
 
 export function BetCodes() {
   const { league } = useLeague();
+  const location = useLocation();
   const [targetOdds, setTargetOdds] = useState(3.0);
   const [maxLegs, setMaxLegs] = useState(DEFAULT_MAX_LEGS);
   const [markets, setMarkets] = useState<string[]>([]);
@@ -134,6 +136,10 @@ export function BetCodes() {
   const [preview, setPreview] = useState<BetCodePreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
+  // Set only when the current preview came from picks handed over by Guda
+  // (or another page) rather than the criteria form below -- changes the
+  // result card's framing, not how it's priced.
+  const [fromExternalPicks, setFromExternalPicks] = useState(false);
 
   function criteria(overrides?: Partial<BetCodeCriteria>): BetCodeCriteria {
     return {
@@ -152,11 +158,11 @@ export function BetCodes() {
     };
   }
 
-  async function runPreview(c: BetCodeCriteria) {
+  async function runPreview(fetchPreview: () => Promise<BetCodePreview>) {
     setPreviewing(true);
     setPreviewError(null);
     try {
-      setPreview(await previewBetCode(c));
+      setPreview(await fetchPreview());
     } catch (e) {
       setPreview(null);
       setPreviewError(String(e instanceof Error ? e.message : e));
@@ -165,8 +171,20 @@ export function BetCodes() {
     }
   }
 
+  // A pick list handed over via navigation (Guda's "Send to AI Generation",
+  // or any future source) prices immediately on arrival -- once per
+  // navigation, not on every re-render.
+  useEffect(() => {
+    const picks = (location.state as { picks?: BetCodePick[] } | null)?.picks;
+    if (!picks || picks.length === 0) return;
+    setFromExternalPicks(true);
+    runPreview(() => priceSelections(picks));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state]);
+
   function handlePreview() {
-    return runPreview(criteria());
+    setFromExternalPicks(false);
+    return runPreview(() => previewBetCode(criteria()));
   }
 
   // Fills in the preset's values (so the form reflects what actually ran,
@@ -179,7 +197,10 @@ export function BetCodes() {
     setMinProbability(p.minProbability);
     setMarkets(p.markets);
     setActiveRisk(risk);
-    return runPreview(criteria({ target_odds: p.targetOdds, max_legs: p.maxLegs, min_probability: p.minProbability, markets: p.markets }));
+    setFromExternalPicks(false);
+    return runPreview(() =>
+      previewBetCode(criteria({ target_odds: p.targetOdds, max_legs: p.maxLegs, min_probability: p.minProbability, markets: p.markets })),
+    );
   }
 
   function toggleMarket(value: string) {
@@ -337,6 +358,12 @@ export function BetCodes() {
 
       {preview && (
         <div className="card card-pad" style={{ marginBottom: 20 }}>
+          {fromExternalPicks && (
+            <p className="setting-note" style={{ marginBottom: 12 }}>
+              Priced from Guda's picks -- same real, stored bookmaker quotes as everything else on this
+              page, just not run through the criteria form below.
+            </p>
+          )}
           <div className="section-header" style={{ marginBottom: 12 }}>
             <h3 style={{ margin: 0 }}>
               {preview.legs.length} leg{preview.legs.length === 1 ? "" : "s"}
@@ -358,7 +385,14 @@ export function BetCodes() {
           </div>
 
           {preview.legs.length === 0 ? (
-            <EmptyState icon="◌" title="No matches qualify for these criteria." />
+            <EmptyState
+              icon="◌"
+              title={
+                fromExternalPicks
+                  ? "None of those picks have a real, stored bookmaker price -- see the warnings below."
+                  : "No matches qualify for these criteria."
+              }
+            />
           ) : (
             <div className="predictions-table-wrapper">
               <table className="predictions-table">

@@ -30,7 +30,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
 from app.api.rate_limit import enforce
-from app.api.schemas import ChatAnswerOut, ChatMessageIn, ChatMessageOut, ChatSourceOut
+from app.api.schemas import ChatAnswerOut, ChatMessageIn, ChatMessageOut, ChatPickOut, ChatSourceOut
 from app.assistant import engine
 from app.assistant.responder import PROBABILITY_CAVEAT, Answer
 from app.config import get_settings
@@ -58,6 +58,7 @@ def _answer_to_schema(result: Answer, message_id: int | None = None) -> ChatAnsw
         suggestions=result.suggestions,
         includes_probability=result.includes_probability,
         caveat=PROBABILITY_CAVEAT if result.includes_probability else None,
+        picks=[ChatPickOut(**asdict(p)) for p in result.picks],
     )
 
 
@@ -70,6 +71,7 @@ def _row_to_schema(row: ChatMessage) -> ChatMessageOut:
         context_match_id=row.context_match_id,
         sources=[ChatSourceOut(**s) for s in (row.sources or [])],
         suggestions=row.suggestions or [],
+        picks=[ChatPickOut(**p) for p in (row.picks or [])],
         created_at=row.created_at,
     )
 
