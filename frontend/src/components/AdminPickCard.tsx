@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { AdminPick } from "../types";
 import { useTilt } from "../lib/useTilt";
 
@@ -7,12 +8,27 @@ const RISK_LABELS: Record<AdminPick["risk_tier"], string> = {
   high: "High risk",
 };
 
+// Legs shown before the list is collapsed behind a "Show all" toggle -- a
+// slip can carry up to 30 (MAX_ADMIN_PICK_LEGS on the backend), which is
+// unreadable as one uninterrupted block.
+const COLLAPSED_LEG_COUNT = 4;
+
+function formatKickoff(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+}
+
 /** A whole multi-leg slip, not a single outcome -- see GudaPickCard for the
  * single-pick equivalent. Not clickable, same reasoning as GudaPickCard: a
  * leg's own match may still be premium-gated, and the combined number is
  * what's being shown off here, not a doorway into any one leg's page. */
 export function AdminPickCard({ pick }: { pick: AdminPick }) {
   const tilt = useTilt<HTMLDivElement>();
+  const [expanded, setExpanded] = useState(false);
+
+  const hiddenCount = pick.legs.length - COLLAPSED_LEG_COUNT;
+  const visibleLegs = expanded || hiddenCount <= 0 ? pick.legs : pick.legs.slice(0, COLLAPSED_LEG_COUNT);
 
   return (
     <div className="card match-card tilt-card" ref={tilt.ref} onMouseMove={tilt.onMouseMove} onMouseLeave={tilt.onMouseLeave}>
@@ -23,18 +39,32 @@ export function AdminPickCard({ pick }: { pick: AdminPick }) {
         <span className={`risk-tag ${pick.risk_tier}`}>{RISK_LABELS[pick.risk_tier]}</span>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 6, margin: "8px 0" }}>
-        {pick.legs.map((leg) => (
-          <div key={`${leg.match_id}-${leg.market}-${leg.selection}`} className="match-meta-row" style={{ justifyContent: "space-between" }}>
+      <ol style={{ display: "flex", flexDirection: "column", gap: 8, margin: "8px 0", padding: 0, listStyle: "none" }}>
+        {visibleLegs.map((leg, i) => (
+          <li key={`${leg.match_id}-${leg.market}-${leg.selection}`} style={{ display: "flex", gap: 8 }}>
+            <span className="tabular-nums" style={{ color: "var(--text-muted)", fontSize: 13 }}>
+              {i + 1}.
+            </span>
             <span>
               {leg.home_team} vs {leg.away_team}
-              <span className="sub" style={{ marginLeft: 6 }}>
-                {leg.market}: {leg.selection}
-              </span>
+              <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
+                {leg.market}: {leg.selection} · {formatKickoff(leg.kickoff)}
+              </div>
             </span>
-          </div>
+          </li>
         ))}
-      </div>
+      </ol>
+
+      {hiddenCount > 0 && (
+        <button
+          type="button"
+          className="btn ghost"
+          style={{ padding: "2px 8px", fontSize: 12, marginBottom: 8 }}
+          onClick={() => setExpanded((e) => !e)}
+        >
+          {expanded ? "Show fewer" : `Show all ${pick.legs.length} legs (${hiddenCount} more)`}
+        </button>
+      )}
 
       <div className="match-meta-row tabular-nums" style={{ fontWeight: 600 }}>
         {pick.priced && pick.combined_odds !== null ? `${pick.combined_odds.toFixed(2)} combined odds · ` : ""}
