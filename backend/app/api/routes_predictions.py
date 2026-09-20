@@ -22,7 +22,7 @@ from app.api.schemas import (
 from app.api.serializers import admin_pick_to_schema, featured_pick_to_schema, prediction_to_schema
 from app.betcode.selection import price_legs, resolve_legs_unpriced
 from app.db.models import AdminPick, FeaturedPick, Match, Prediction, User
-from app.outcomes.registry import find_outcome, outcomes_from_prediction
+from app.outcomes.registry import NOT_A_FULL_PARTITION_GROUPS, find_outcome, outcomes_from_prediction
 from app.prediction_models.ml_model import FeatureCachePool
 from app.prediction_service import build_prediction_for_match
 from app.quality import is_high_confidence
@@ -215,14 +215,16 @@ def browse_outcomes(
 
     # A group appearing on more than one market name -- "Total Goals 2.5" and
     # "Total Goals 3.5" are different markets -- is still mutually exclusive
-    # within each. Correct Score is the one group whose members are many.
+    # within each. See NOT_A_FULL_PARTITION_GROUPS for which groups' selections
+    # don't actually add up to 100% (Correct Score's truncated top-N, and
+    # every Double-Chance-flavored union).
     markets = [
         MarketOut(
             market=name,
             group=market_groups[name],
             selections=sorted(market_selections[name]),
             outcomes=sum(1 for rows in per_league.values() for o in rows if o.market == name),
-            mutually_exclusive=market_groups[name] != "correct_score",
+            mutually_exclusive=market_groups[name] not in NOT_A_FULL_PARTITION_GROUPS,
         )
         for name in sorted(market_selections)
     ]
