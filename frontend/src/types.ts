@@ -328,6 +328,12 @@ export interface AdminPick {
   risk_tier: "low" | "medium" | "high";
   label: string | null;
   note: string | null;
+  // Whether a booking code exists on this pick at all, regardless of
+  // whether this viewer is allowed to see it -- true with booking_code
+  // still null means "premium members only, subscribe to see it".
+  has_booking_code: boolean;
+  booking_code: string | null;
+  booking_code_bookmaker: string | null;
   created_at: string;
   expires_at: string;
 }

@@ -580,12 +580,20 @@ class AdminPickIn(BaseModel):
     resolves legs by model probability alone (resolve_legs_unpriced), no
     quote required -- for a slip built from outcomes that were never priced,
     like Markets' "My picks" panel.
+
+    ``booking_code``/``booking_code_bookmaker`` are never generated or
+    verified by this platform -- see AdminPick's own docstring. Leaving both
+    blank is the normal case; if either is set, both must be, since a code
+    with no named bookmaker is unusable and a bookmaker with no code is
+    just noise.
     """
 
     legs: list[AdminPickLegIn]
     label: str | None = None
     note: str | None = None
     priced: bool = True
+    booking_code: str | None = None
+    booking_code_bookmaker: str | None = None
 
 
 class AdminPickLegOut(BaseModel):
@@ -616,6 +624,15 @@ class AdminPickOut(BaseModel):
     risk_tier: str  # "low" | "medium" | "high" -- see betcode.selection.risk_tier
     label: str | None
     note: str | None
+    # Whether a booking code exists on this pick at all, regardless of
+    # whether *this viewer* is allowed to see it -- lets a free-tier viewer
+    # be shown "a code is available, subscribe to see it" instead of no
+    # signal at all. booking_code/booking_code_bookmaker are populated only
+    # for a viewer with active premium access; null for everyone else even
+    # when has_booking_code is True.
+    has_booking_code: bool
+    booking_code: str | None
+    booking_code_bookmaker: str | None
     created_at: dt.datetime
     expires_at: dt.datetime
 

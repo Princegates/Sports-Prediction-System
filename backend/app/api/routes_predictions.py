@@ -350,10 +350,14 @@ def admin_picks(user: User = Depends(get_current_user), db: Session = Depends(ge
     if not values.get("admin_picks_enabled", True):
         return []
 
+    # Computed unconditionally, not just when the free-tier-visibility
+    # setting requires it -- a booking code is premium-gated regardless of
+    # whether the pick itself is visible to everyone.
+    grant = current_grant(db, user)
+    viewer_has_premium = user.role == "superadmin" or (grant is not None and grant.expires_at > dt.datetime.utcnow())
+
     if user.role != "superadmin" and not values.get("admin_picks_free_tier_visible", True):
-        grant = current_grant(db, user)
-        has_access = grant is not None and grant.expires_at > dt.datetime.utcnow()
-        if not has_access:
+        if not viewer_has_premium:
             return []
 
     now = dt.datetime.utcnow()
@@ -367,5 +371,5 @@ def admin_picks(user: User = Depends(get_current_user), db: Session = Depends(ge
         legs, _warnings = price_legs(db, refs) if pick.priced else resolve_legs_unpriced(db, refs)
         if len(legs) != len(refs):
             continue
-        out.append(admin_pick_to_schema(pick, legs))
+        out.append(admin_pick_to_schema(pick, legs, viewer_has_premium=viewer_has_premium))
     return out

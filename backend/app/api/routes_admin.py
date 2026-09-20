@@ -553,7 +553,9 @@ def delete_featured_pick(
 MAX_ADMIN_PICK_LEGS = 30
 
 
-def _validate_admin_pick_payload(payload: AdminPickIn, db: Session) -> tuple[list, str | None, str | None]:
+def _validate_admin_pick_payload(
+    payload: AdminPickIn, db: Session
+) -> tuple[list, str | None, str | None, str | None, str | None]:
     """Shared by create and update: every leg is re-resolved from scratch
     here rather than trusting whatever probability/odds the client last
     saw (the same reason create_featured_pick re-resolves its single
@@ -589,7 +591,19 @@ def _validate_admin_pick_payload(payload: AdminPickIn, db: Session) -> tuple[lis
     if note and len(note) > 280:
         raise HTTPException(status_code=400, detail="Note must be 280 characters or fewer.")
 
-    return legs, label, note
+    booking_code = (payload.booking_code or "").strip() or None
+    if booking_code and len(booking_code) > 64:
+        raise HTTPException(status_code=400, detail="Booking code must be 64 characters or fewer.")
+    booking_code_bookmaker = (payload.booking_code_bookmaker or "").strip() or None
+    if booking_code_bookmaker and len(booking_code_bookmaker) > 64:
+        raise HTTPException(status_code=400, detail="Bookmaker name must be 64 characters or fewer.")
+    if bool(booking_code) != bool(booking_code_bookmaker):
+        raise HTTPException(
+            status_code=400,
+            detail="A booking code needs the bookmaker it's for, and a bookmaker needs a code -- set both or neither.",
+        )
+
+    return legs, label, note, booking_code, booking_code_bookmaker
 
 
 @router.post("/admin-picks", response_model=AdminPickOut)
@@ -602,13 +616,15 @@ def create_admin_pick(
     preview an admin just ran on that page -- onto every Dashboard's Admin
     Picks section."""
 
-    legs, label, note = _validate_admin_pick_payload(payload, db)
+    legs, label, note, booking_code, booking_code_bookmaker = _validate_admin_pick_payload(payload, db)
 
     pick = AdminPick(
         legs=[{"match_id": leg.match_id, "market": leg.market, "selection": leg.selection} for leg in legs],
         priced=payload.priced,
         label=label,
         note=note,
+        booking_code=booking_code,
+        booking_code_bookmaker=booking_code_bookmaker,
         created_by_user_id=admin.id,
         expires_at=max(leg.kickoff for leg in legs) + dt.timedelta(days=2),
     )
@@ -637,12 +653,14 @@ def update_admin_pick(
     if pick is None:
         raise HTTPException(status_code=404, detail=f"Admin pick {pick_id} not found")
 
-    legs, label, note = _validate_admin_pick_payload(payload, db)
+    legs, label, note, booking_code, booking_code_bookmaker = _validate_admin_pick_payload(payload, db)
 
     pick.legs = [{"match_id": leg.match_id, "market": leg.market, "selection": leg.selection} for leg in legs]
     pick.priced = payload.priced
     pick.label = label
     pick.note = note
+    pick.booking_code = booking_code
+    pick.booking_code_bookmaker = booking_code_bookmaker
     pick.expires_at = max(leg.kickoff for leg in legs) + dt.timedelta(days=2)
     _record(db, admin, "admin_pick.updated", detail={"admin_pick_id": pick_id, "legs": len(legs)})
     db.commit()
