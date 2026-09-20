@@ -366,6 +366,37 @@ def test_assistant_llm_a_failed_call_falls_back_to_none_not_an_exception(db_sess
     assert llm.rewrite(db_session, "The grounded answer.", "a question") is None
 
 
+def test_assistant_llm_failure_logs_the_providers_own_error_body(db_session, admin, monkeypatch, caplog):
+    """The status line alone ("400 Bad Request") doesn't say *why* -- the
+    provider's JSON error body does, and that's what an operator actually
+    needs to fix a misconfiguration. This pins down that it reaches the log,
+    not just the status line."""
+
+    client.patch(
+        "/api/admin/settings",
+        json={
+            "values": {
+                "assistant_llm_enabled": True,
+                "assistant_llm_base_url": "https://example-llm.test/v1",
+            }
+        },
+        headers=_headers(admin),
+    )
+
+    class FakeResponse:
+        text = '{"error": {"message": "Invalid value at messages[0]"}}'
+
+        def raise_for_status(self):
+            raise llm.requests.HTTPError("400 Client Error: Bad Request", response=self)
+
+    monkeypatch.setattr(llm.requests, "post", lambda *a, **k: FakeResponse())
+
+    with caplog.at_level("WARNING", logger=llm.logger.name):
+        assert llm.rewrite(db_session, "The grounded answer.", "a question") is None
+
+    assert "Invalid value at messages[0]" in caplog.text
+
+
 def test_assistant_llm_api_key_is_masked_like_other_secrets(db_session, admin):
     client.patch(
         "/api/admin/settings",

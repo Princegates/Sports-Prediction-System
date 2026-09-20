@@ -101,8 +101,15 @@ def rewrite(db: Session, grounded_text: str, user_message: str) -> str | None:
         response.raise_for_status()
         content = response.json()["choices"][0]["message"]["content"]
     except (requests.RequestException, KeyError, IndexError, ValueError) as exc:
-        # A rewrite is cosmetic; never fail the user's question over it.
-        logger.warning("Assistant LLM rewrite unavailable (%s) -- serving grounded text", exc)
+        # A rewrite is cosmetic; never fail the user's question over it. The
+        # status line alone (e.g. "400 Bad Request") doesn't say *why* --
+        # the provider's own error body does, so log it too, truncated in
+        # case it's ever unexpectedly large.
+        detail = str(exc)
+        error_response = getattr(exc, "response", None)
+        if error_response is not None:
+            detail = f"{detail} -- body: {error_response.text[:500]}"
+        logger.warning("Assistant LLM rewrite unavailable (%s) -- serving grounded text", detail)
         return None
 
     text = (content or "").strip()
