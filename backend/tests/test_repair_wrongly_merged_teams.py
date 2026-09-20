@@ -24,8 +24,9 @@ from pathlib import Path
 
 import pytest
 
+from app.auth.passwords import hash_password
 from app.data.providers.openfootball import OpenFootballMatch
-from app.db.models import Match, Team
+from app.db.models import ChatMessage, EloHistory, Match, MatchOdds, Prediction, Team, User
 
 LEAGUE = "Italian Serie A"
 SEASON = "2024-25"
@@ -207,6 +208,51 @@ def test_delete_creates_correct_rows_and_removes_only_the_wrong_ones(db_session,
     assert (away_leg.home_score, away_leg.away_score) == (0, 2)
 
     assert db_session.query(Match).filter(Match.league == LEAGUE).count() == 5
+
+
+def test_dependents_of_a_deleted_match_are_cleaned_up_first(db_session, script, corrupted_state):
+    """The real production run of this script failed here: Postgres refused
+    to delete a wrongly-attributed match while an elo_history row still
+    pointed at it (matches.id is a live foreign key for predictions, odds,
+    Elo history and match views too). None of that data is valid to keep --
+    it was computed against the wrong team -- so it must be deleted right
+    along with the match, while a chat message referencing it is preserved
+    with its context_match_id cleared rather than deleted outright."""
+
+    wrong_home_id = corrupted_state["wrong_home"].id
+
+    user = User(email="chat@example.com", name="Chat User", password_hash=hash_password("x"), role="user", status="active")
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+
+    db_session.add(EloHistory(
+        team_id=corrupted_state["survivor"].id, match_id=wrong_home_id,
+        date=D3, rating_before=1500, rating_after=1510,
+    ))
+    db_session.add(MatchOdds(match_id=wrong_home_id, bookmaker="Bet365", market="Match Result", selection="Home Win", decimal_odds=1.8))
+    db_session.add(Prediction(
+        match_id=wrong_home_id, model_version="test", home_win=0.5, draw=0.3, away_win=0.2,
+        over_probabilities={}, btts_yes=0.5, btts_no=0.5, correct_score_probabilities={},
+        most_likely_score="1-0", most_likely_score_probability=0.1,
+        global_outcome_market="Match Result", global_outcome_selection="Home Win", global_outcome_probability=0.5,
+        confidence="LOW", data_quality_score=0.5, model_agreement_score=0.5,
+        explanation={"positive": [], "negative": []}, model_breakdown={},
+    ))
+    db_session.add(ChatMessage(user_id=user.id, role="user", content="tell me about this match", context_match_id=wrong_home_id))
+    db_session.commit()
+
+    sys.argv = ["repair_wrongly_merged_teams.py", "--delete"]
+    script.main()
+
+    db_session.expire_all()
+    assert db_session.get(Match, wrong_home_id) is None
+    assert db_session.query(EloHistory).filter(EloHistory.match_id == wrong_home_id).count() == 0
+    assert db_session.query(MatchOdds).filter(MatchOdds.match_id == wrong_home_id).count() == 0
+    assert db_session.query(Prediction).filter(Prediction.match_id == wrong_home_id).count() == 0
+
+    message = db_session.query(ChatMessage).one()
+    assert message.context_match_id is None
 
 
 def test_missing_survivor_is_skipped_not_errored(db_session, script, capsys):

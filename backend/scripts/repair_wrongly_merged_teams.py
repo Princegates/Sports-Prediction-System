@@ -39,6 +39,14 @@ Three-step repair, safe to re-run:
    rather than delete real data on a guess" rule this project applies
    everywhere else.
 
+   Before a wrong match itself is deleted, every row this project keys off
+   Match.id for it (predictions, live predictions, odds snapshots, Elo
+   history, match views, featured picks -- MATCH_DEPENDENTS) is deleted
+   too, and any chat message's context_match_id pointing at it is cleared.
+   Postgres refuses the match deletion outright otherwise (matches.id is a
+   live foreign key for every one of them), and none of that data would be
+   valid to keep anyway -- it was computed against the wrong team.
+
 Dry run by default. import_openfootball_season commits internally, so a
 real dry run needs Session.commit swapped for a flush for the duration of
 this script -- otherwise "dry run" would still write the re-imported rows
@@ -62,12 +70,22 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 
 from app.data.ingest import import_openfootball_season
 from app.db.migrate import init_db
-from app.db.models import Match, Team
+from app.db.models import ChatMessage, EloHistory, FeaturedPick, LivePrediction, Match, MatchOdds, MatchView, Prediction, Team
 from app.db.session import SessionLocal, engine
+
+# Every row keyed off a Match this project stores, other than the Match
+# itself. Each one was computed from -- or points at -- a wrongly-attributed
+# fixture, so it is deleted right along with it rather than kept as an
+# orphan (which Postgres refuses outright: matches.id is a live foreign key
+# for every one of these) or reattributed -- a prediction or odds snapshot
+# computed against the wrong team is not valid data for any other match
+# either. Same table list repair_rescheduled_duplicates.py already uses for
+# the same reason.
+MATCH_DEPENDENTS = [Prediction, LivePrediction, MatchOdds, EloHistory, MatchView, FeaturedPick]
 
 # openfootball's own season-folder naming; matches every season this
 # project has ever imported (see scripts/bootstrap.py's DEFAULT_SEASONS).
@@ -222,6 +240,15 @@ def main() -> None:
                 print(f"    ... and {len(wrong) - 10} more")
 
             if args.delete:
+                wrong_ids = [m.id for m in wrong]
+                if wrong_ids:
+                    for model in MATCH_DEPENDENTS:
+                        db.execute(delete(model).where(model.match_id.in_(wrong_ids)))
+                    db.execute(
+                        update(ChatMessage)
+                        .where(ChatMessage.context_match_id.in_(wrong_ids))
+                        .values(context_match_id=None)
+                    )
                 for m in wrong:
                     db.delete(m)
 
