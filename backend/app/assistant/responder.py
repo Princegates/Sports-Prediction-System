@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from app.assistant import retrieval
 from app.assistant.nlu import Intent, ParsedQuery
 from app.assistant.retrieval import MatchCard
-from app.betcode.selection import DEFAULT_MIN_PROBABILITY, SlipCriteria, select_legs
+from app.betcode.selection import DEFAULT_MARKETS, DEFAULT_MIN_PROBABILITY, SlipCriteria, select_legs
 from app.db.models import Prediction
 
 # Never phrase a probability as a certainty. This line is appended to any
@@ -586,24 +586,97 @@ def _best_picks(db: Session, q: ParsedQuery, now: dt.datetime) -> Answer:
     )
 
 
+# Chat's own mirror of AI Generation's one-click risk presets (frontend
+# BetCodes.tsx RISK_PRESETS), plus a fourth "higher" tier the page doesn't
+# expose as a single button yet -- for someone in chat explicitly asking for
+# the most aggressive odds accumulation this engine can honestly produce.
+# Each tier sets a floor, a leg cap, a market set, and a price ceiling (the
+# same "whichever is hit first" shape select_legs already gives the page's
+# own presets) -- see _generate_selections for when an explicit leg count
+# or market overrides a tier's own default instead of stacking with it.
+_RISK_TIERS: dict[str, dict] = {
+    "low": {
+        "label": "Low risk",
+        "min_probability": 0.85,
+        "max_legs": 3,
+        "markets": (),
+        "target_odds": 3.0,
+        "caution": None,
+    },
+    "medium": {
+        "label": "Medium risk",
+        "min_probability": 0.65,
+        "max_legs": 5,
+        "markets": (),
+        "target_odds": 10.0,
+        "caution": None,
+    },
+    "high": {
+        "label": "High risk",
+        "min_probability": 0.5,
+        "max_legs": 8,
+        "markets": DEFAULT_MARKETS + ("Correct Score",),
+        "target_odds": 50.0,
+        "caution": (
+            "**Caution:** each leg individually clears the floor, but stacking this many at this "
+            "price compounds fast -- the combined probability below, not the leg count, is what "
+            "actually says how likely this is to land."
+        ),
+    },
+    "higher": {
+        "label": "Higher risk",
+        "min_probability": 0.35,
+        "max_legs": 15,
+        "markets": DEFAULT_MARKETS + ("Correct Score",),
+        "target_odds": 250.0,
+        "caution": (
+            "**Caution:** at this floor and leg count, a slip like this is realistically more "
+            "likely to lose than win, even though every leg cleared the accuracy bar on its own. "
+            "Stake only what you can afford to lose. Ghana's free, confidential helpline is "
+            "**0800 678 678**, any hour."
+        ),
+    },
+}
+
+
 def _generate_selections(db: Session, q: ParsedQuery) -> Answer:
-    """"Give me 20 selections with at least 50% chance" and its variants --
-    the chat entry point to the same engine AI Generation's page uses
+    """"Give me 20 selections with at least 50% chance", "build me a high
+    risk accumulator for the premier league", and their variants -- the
+    chat entry point to the same engine AI Generation's page uses
     (app.betcode.selection.select_legs), so a chat answer and a page preview
     can never disagree about what counts as a real, priced pick.
 
-    Target odds is set effectively unreachable rather than left to a
-    default: a count and a floor were what the user actually asked for, and
-    a target price stopping the search early would silently hand back fewer
-    legs than requested without saying why.
+    A named risk tier (_RISK_TIERS) supplies the floor, leg cap, market set
+    and price ceiling when the message doesn't state its own -- an explicit
+    count or floor in the message always wins over the tier's default for
+    that one field, the same way a manual edit overrides a preset on the
+    page itself. An explicit count also clears the tier's own price
+    ceiling: a count is a firm ask for that many legs, and a target price
+    stopping the search early would silently hand back fewer than that
+    without saying why (the same reasoning that already applied with no
+    tier involved).
     """
 
-    count = q.selection_count or 10
-    floor = q.probability_floor if q.probability_floor is not None else DEFAULT_MIN_PROBABILITY
+    tier = _RISK_TIERS.get(q.risk_level) if q.risk_level else None
+
+    count = q.selection_count or (tier["max_legs"] if tier else 10)
+    floor = (
+        q.probability_floor
+        if q.probability_floor is not None
+        else (tier["min_probability"] if tier else DEFAULT_MIN_PROBABILITY)
+    )
+    markets = (
+        retrieval.MARKET_CATEGORY_NAMES.get(q.market, ())
+        if q.market
+        else (tier["markets"] if tier else ())
+    )
+    target_odds = 1_000_000.0 if q.selection_count else (tier["target_odds"] if tier else 1_000_000.0)
+    market_label = _MARKET_LABELS.get(q.market, q.market) if q.market else None
 
     criteria = SlipCriteria(
         bookmaker="any",
-        target_odds=1_000_000.0,
+        target_odds=target_odds,
+        markets=markets,
         min_probability=floor,
         max_legs=count,
         league=q.league,
@@ -611,22 +684,26 @@ def _generate_selections(db: Session, q: ParsedQuery) -> Answer:
     )
     result = select_legs(db, criteria)
 
+    scope = f"{f' in {q.league}' if q.league else ''}{f' for {market_label}' if market_label else ''}"
+
     if not result.legs:
         return Answer(
             text=(
-                f"No scheduled match in the next 7 days{f' in {q.league}' if q.league else ''} both clears "
+                f"No scheduled match in the next 7 days{scope} both clears "
                 f"{_pct(floor)} model probability and has a real, stored bookmaker price -- so there's "
-                f"nothing I can put together honestly. Try a lower floor, a different league, or capture "
-                f"more odds first (Settings -> Data sources)."
+                f"nothing I can put together honestly. Try a lower floor, a different league or market, "
+                f"or capture more odds first (Settings -> Data sources)."
             ),
             intent=q.intent,
             sources=[Source("page", "AI Generation", "/app/betcodes")],
             suggestions=["What are today's best picks?", "How accurate is the model?"],
         )
 
+    header = f"**{tier['label']} slip** -- " if tier else ""
     lines = [
-        f"**{len(result.legs)} selection{'s' if len(result.legs) != 1 else ''}**, each priced from a real, "
-        f"stored bookmaker quote, {_pct(floor)}+ model probability:",
+        f"{header}**{len(result.legs)} selection{'s' if len(result.legs) != 1 else ''}**, each priced "
+        f"from a real, stored bookmaker quote, {_pct(floor)}+ model probability"
+        f"{f', {market_label} only' if market_label else ''}:",
         "",
     ]
     for i, leg in enumerate(result.legs, start=1):
@@ -639,15 +716,18 @@ def _generate_selections(db: Session, q: ParsedQuery) -> Answer:
     lines.append("")
     if len(result.legs) < count:
         lines.append(
-            f"That's every match in the next 7 days{f' in {q.league}' if q.league else ''} that clears "
-            f"{_pct(floor)} with a real price -- short of the {count} you asked for. A lower floor or a "
-            f"wider league would surface more."
+            f"That's every match in the next 7 days{scope} that clears "
+            f"{_pct(floor)} with a real price -- short of the {count} you asked for. A lower floor, a "
+            f"wider league, or a different market would surface more."
         )
         lines.append("")
     lines.append(
         f"Combined: {result.combined_odds:.2f} odds, {_pct(result.combined_probability)} probability -- "
         f"stacking {len(result.legs)} legs multiplies the risk, it doesn't add the confidence."
     )
+    if tier and tier["caution"]:
+        lines.append("")
+        lines.append(tier["caution"])
 
     return Answer(
         text="\n".join(lines),
@@ -945,6 +1025,8 @@ I read those rows and report them; I don't improvise numbers.
 - "What are the best picks?" -- ranked by model probability
 - "Best BTTS picks" / "top double chance picks" -- ranked within one market
 - "Give me 10 selections with at least 60% chance" -- a combo priced from real bookmaker odds
+- "Build me a high risk accumulator" / "low risk la liga combo" -- low, medium, high or
+  higher risk, up to 30 legs, any league or market this system has data for
 - "Why is this favored?" / "what are the risks?" -- the reasoning behind a call
 - "Liverpool form" -- recent results and goal rates
 - "Head to head Arsenal vs Spurs"

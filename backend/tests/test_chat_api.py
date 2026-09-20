@@ -373,6 +373,143 @@ def test_generate_selections_with_no_priced_match_says_so_honestly(db_session, a
     assert "nothing" in body["text"].lower()
 
 
+def test_generate_selections_a_named_market_overrides_the_higher_probability_default(
+    db_session, auth_headers, fixture_data
+):
+    """Regression test: a named market used to be parsed by the NLU and then
+    silently dropped before it ever reached SlipCriteria, so it had zero
+    effect on what got picked. With both Match Result (52%) and BTTS (61%)
+    priced, the default (no market named) picks BTTS for being the higher
+    probability -- asking for "match result" specifically must still return
+    the Match Result leg, proving the request actually reaches the engine."""
+
+    db_session.add_all(
+        [
+            MatchOdds(
+                match_id=fixture_data["upcoming"].id, bookmaker="Bet365",
+                market="Match Result", selection="Home Win", decimal_odds=1.85,
+            ),
+            MatchOdds(
+                match_id=fixture_data["upcoming"].id, bookmaker="Bet365",
+                market="Both Teams To Score", selection="Yes", decimal_odds=1.60,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    unfiltered = _ask("build me an accumulator with at least 50% chance", auth_headers)
+    assert "Both Teams To Score" in unfiltered["text"]
+
+    filtered = _ask("build me a match result accumulator with at least 50% chance", auth_headers)
+    assert filtered["intent"] == "generate_selections"
+    assert "Home Win" in filtered["text"]
+    assert "Both Teams To Score" not in filtered["text"]
+
+
+def test_generate_selections_a_named_league_filters_without_naming_a_team(db_session, auth_headers, fixture_data):
+    """A league named by text alone ("la liga"), no team involved, must
+    filter the search the same way a named team's league already did."""
+
+    home = Team(name="Real Madrid", league="Spanish La Liga", country="Spain", aliases=[])
+    away = Team(name="Barcelona", league="Spanish La Liga", country="Spain", aliases=[])
+    db_session.add_all([home, away])
+    db_session.commit()
+    db_session.refresh(home)
+    db_session.refresh(away)
+
+    kickoff = dt.datetime.utcnow() + dt.timedelta(minutes=5)
+    la_liga_match = Match(
+        league="Spanish La Liga", season="2025-26", date=kickoff,
+        home_team_id=home.id, away_team_id=away.id, status="SCHEDULED",
+    )
+    db_session.add(la_liga_match)
+    db_session.commit()
+    db_session.refresh(la_liga_match)
+
+    la_liga_prediction = Prediction(
+        match_id=la_liga_match.id, model_version="ensemble-v1",
+        home_win=0.70, draw=0.18, away_win=0.12,
+        over_probabilities={"2.5": 0.5}, btts_yes=0.4, btts_no=0.6,
+        correct_score_probabilities={"2-0": 0.1},
+        most_likely_score="2-0", most_likely_score_probability=0.1,
+        global_outcome_market="Match Result", global_outcome_selection="Home Win",
+        global_outcome_probability=0.70, confidence="HIGH",
+        data_quality_score=0.9, model_agreement_score=0.88,
+        explanation={"positive": [], "negative": []}, model_breakdown={},
+    )
+    db_session.add(la_liga_prediction)
+    db_session.add_all(
+        [
+            MatchOdds(
+                match_id=la_liga_match.id, bookmaker="Bet365",
+                market="Match Result", selection="Home Win", decimal_odds=1.40,
+            ),
+            MatchOdds(
+                match_id=fixture_data["upcoming"].id, bookmaker="Bet365",
+                market="Match Result", selection="Home Win", decimal_odds=1.85,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    body = _ask("give me a la liga accumulator", auth_headers)
+    assert body["intent"] == "generate_selections"
+    assert "Real Madrid" in body["text"]
+    assert "Arsenal" not in body["text"]
+
+
+def test_generate_selections_high_risk_tier_supplies_its_own_defaults_and_a_caution(
+    db_session, auth_headers, fixture_data
+):
+    db_session.add(
+        MatchOdds(
+            match_id=fixture_data["upcoming"].id, bookmaker="Bet365",
+            market="Match Result", selection="Home Win", decimal_odds=1.85,
+        )
+    )
+    db_session.commit()
+
+    body = _ask("give me a high risk accumulator", auth_headers)
+    assert body["intent"] == "generate_selections"
+    assert "High risk slip" in body["text"]
+    assert "50%" in body["text"]  # the tier's own floor, not the plain 65% default
+    assert "Caution:" in body["text"]
+
+
+def test_generate_selections_low_risk_tier_has_no_caution(db_session, auth_headers, fixture_data):
+    prediction = fixture_data["prediction"]
+    prediction.home_win = 0.90
+    db_session.commit()
+    db_session.add(
+        MatchOdds(
+            match_id=fixture_data["upcoming"].id, bookmaker="Bet365",
+            market="Match Result", selection="Home Win", decimal_odds=1.20,
+        )
+    )
+    db_session.commit()
+
+    body = _ask("give me a low risk combo", auth_headers)
+    assert body["intent"] == "generate_selections"
+    assert "Low risk slip" in body["text"]
+    assert "Caution:" not in body["text"]
+
+
+def test_generate_selections_higher_risk_tier_mentions_the_ghana_helpline(db_session, auth_headers, fixture_data):
+    db_session.add(
+        MatchOdds(
+            match_id=fixture_data["upcoming"].id, bookmaker="Bet365",
+            market="Match Result", selection="Home Win", decimal_odds=1.85,
+        )
+    )
+    db_session.commit()
+
+    body = _ask("give me the maximum risk combo", auth_headers)
+    assert body["intent"] == "generate_selections"
+    assert "Higher risk slip" in body["text"]
+    assert "0800 678 678" in body["text"]
+    assert "Caution:" in body["text"]
+
+
 def test_market_filtered_best_picks_ranks_by_that_markets_own_probability(db_session, auth_headers, fixture_data):
     """"btts" alone must rank by the BTTS outcome's own probability (61%),
     not by the match's unrelated global most-likely outcome (Over 0.5,

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import datetime as dt
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -61,6 +62,24 @@ _STOPWORDS = {
 # "fc" can't anchor a match on their own.
 _MIN_TOKEN_LEN = 3
 
+# A named risk tier for a GENERATE_SELECTIONS request. Grouped separately
+# from _INTENT_PATTERNS (rather than only living inside it) because these
+# needles are also compiled into their own matcher, _detect_risk_level --
+# the same phrase both selects the intent and reports which tier it named.
+# Checked in this order so "higher risk" (a distinct phrase, not a suffix of
+# "high risk") never gets shadowed by a broader synonym.
+_RISK_LEVEL_PATTERNS: list[tuple[str, tuple[str, ...]]] = [
+    ("higher", ("higher risk", "very high risk", "max risk", "maximum risk",
+                "extreme risk", "highest risk")),
+    ("high", ("high risk", "aggressive slip", "aggressive combo",
+              "aggressive accumulator", "risky slip", "risky combo",
+              "risky accumulator")),
+    ("medium", ("medium risk", "moderate risk", "moderate slip", "balanced risk")),
+    ("low", ("low risk", "safe slip", "safe combo", "safe accumulator",
+             "safest slip", "conservative slip", "conservative combo")),
+]
+_RISK_LEVEL_NEEDLES: tuple[str, ...] = tuple(n for _, needles in _RISK_LEVEL_PATTERNS for n in needles)
+
 
 class Intent(str, Enum):
     GREETING = "greeting"
@@ -101,6 +120,10 @@ class ParsedQuery:
     # with the same defaults AI Generation itself uses.
     selection_count: int | None = None
     probability_floor: float | None = None
+    # A named risk tier ("give me a high risk accumulator") -- None when the
+    # message didn't name one, in which case the responder's own default (or
+    # the count/floor above, if those were stated instead) applies.
+    risk_level: str | None = None
     raw: str = ""
 
 
@@ -129,7 +152,7 @@ _INTENT_PATTERNS: list[tuple[Intent, tuple[str, ...]]] = [
                                   "generate a slip", "build a slip", "build me a combo",
                                   "combo", "combination bet", "accumulator", "acca",
                                   "betting slip", "selections with", "selection with",
-                                  "picks with", "legs with")),
+                                  "picks with", "legs with") + _RISK_LEVEL_NEEDLES),
     (Intent.BEST_PICKS, ("best pick", "best bet", "top pick", "top bet", "best selection",
                          "highest confidence", "high confidence", "safest", "strongest",
                          "most confident", "best value", "what should i back",
@@ -235,10 +258,22 @@ _PERCENT_PATTERN = re.compile(r"(\d{1,3}(?:\.\d+)?)\s*(?:%|percent\b)")
 # Capped at 3 digits so a 4-digit year is never mistaken for it.
 _COUNT_PATTERN = re.compile(r"\b(\d{1,3})\b")
 
-# Hard ceiling on how many legs a chat request can ask for -- generous
-# enough for any real use, small enough that "give me 500 selections"
-# doesn't try to walk the entire fixture list into one reply.
-MAX_SELECTION_COUNT = 20
+# Hard ceiling on how many legs a chat request can ask for -- matches AI
+# Generation's own accepted range (see BetCodeCriteriaIn.max_legs), small
+# enough that "give me 500 selections" doesn't try to walk the entire
+# fixture list into one reply.
+MAX_SELECTION_COUNT = 30
+
+_COMPILED_RISK_LEVELS: list[tuple[str, tuple[re.Pattern[str], ...]]] = [
+    (level, tuple(_needle_pattern(n) for n in needles)) for level, needles in _RISK_LEVEL_PATTERNS
+]
+
+
+def _detect_risk_level(text: str) -> str | None:
+    for level, patterns in _COMPILED_RISK_LEVELS:
+        if _matches_any(text, patterns):
+            return level
+    return None
 
 
 def _detect_selection_request(text: str) -> tuple[int | None, float | None]:
@@ -350,6 +385,60 @@ def resolve_teams(db: Session, text: str, limit: int = 2) -> list[Team]:
     return chosen
 
 
+def _fold_accents(text: str) -> str:
+    """Strip accents so "Süper Lig" and "super lig" tokenize the same way --
+    same technique as app.data.team_matching, applied here to league names
+    rather than club names."""
+
+    decomposed = unicodedata.normalize("NFKD", text)
+    return "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+
+
+# League names in this project's data are consistently "<nationality/body>
+# <competition>" ("English Premier League", "UEFA Champions League"), and
+# people routinely drop that leading word in speech ("premier league",
+# "champions league"). Treating it as optional -- rather than requiring
+# every token in the stored name, the way resolve_teams does for club
+# names -- is what makes those common phrasings resolve at all; the
+# competition word(s) after it are still required, so "league" alone can't
+# match anything.
+_LEAGUE_LEADING_QUALIFIERS = {
+    "english", "spanish", "german", "italian", "french", "dutch",
+    "portuguese", "turkish", "uefa",
+}
+
+
+def resolve_league(db: Session, text: str) -> str | None:
+    """Find a league the user named directly ("premier league picks",
+    "la liga slip"), grounded against the real, distinct Team.league values
+    this deployment actually has data for, never a hardcoded list that
+    could claim a league with nothing behind it.
+    """
+
+    tokens = set(_candidate_tokens(text))
+    if not tokens:
+        return None
+
+    leagues = {row[0] for row in db.execute(select(Team.league).distinct()) if row[0]}
+    best: tuple[int, str] | None = None
+    for league in leagues:
+        name_tokens = [
+            t for t in re.findall(r"[a-z0-9']+", _fold_accents(league.lower()))
+            if len(t) >= _MIN_TOKEN_LEN
+        ]
+        required = name_tokens
+        if len(name_tokens) > 1 and name_tokens[0] in _LEAGUE_LEADING_QUALIFIERS:
+            required = name_tokens[1:]
+        if not required or not all(t in tokens for t in required):
+            continue
+        # Prefer the more specific (more-token) match should more than one
+        # league's tokens all be present at once.
+        if best is None or len(name_tokens) > best[0]:
+            best = (len(name_tokens), league)
+
+    return best[1] if best else None
+
+
 def _classify(text: str, has_two_teams: bool, has_one_team: bool, has_context: bool) -> Intent:
     stripped = text.strip().strip("!?.").lower()
     if stripped in _GREETING_EXACT:
@@ -429,11 +518,16 @@ def parse(
     if intent == Intent.UNKNOWN and market not in (None, "1x2") and not teams:
         intent = Intent.BEST_PICKS
 
-    league = teams[0].league if teams else None
+    # An explicitly named league ("premier league picks") wins over one
+    # implied by a resolved team -- naming a team already implies its
+    # league, so the two only ever disagree if the message contradicts
+    # itself, and the explicit statement is the more deliberate one.
+    league = resolve_league(db, text) or (teams[0].league if teams else None)
 
-    selection_count = probability_floor = None
+    selection_count = probability_floor = risk_level = None
     if intent == Intent.GENERATE_SELECTIONS:
         selection_count, probability_floor = _detect_selection_request(text)
+        risk_level = _detect_risk_level(text)
 
     return ParsedQuery(
         intent=intent,
@@ -445,5 +539,6 @@ def parse(
         context_match_id=context_match_id,
         selection_count=selection_count,
         probability_floor=probability_floor,
+        risk_level=risk_level,
         raw=message.strip(),
     )

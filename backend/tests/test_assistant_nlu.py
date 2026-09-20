@@ -12,7 +12,7 @@ import datetime as dt
 
 import pytest
 
-from app.assistant.nlu import Intent, parse, resolve_teams
+from app.assistant.nlu import Intent, parse, resolve_league, resolve_teams
 from app.db.models import Team
 
 LEAGUE = "English Premier League"
@@ -212,12 +212,83 @@ def test_generate_selections_defaults_are_none_when_unstated(db_session, teams):
 
 def test_generate_selections_count_is_capped(db_session, teams):
     parsed = parse(db_session, "give me 500 selections with at least 50% chance")
-    assert parsed.selection_count == 20  # MAX_SELECTION_COUNT, not 500
+    assert parsed.selection_count == 30  # MAX_SELECTION_COUNT, not 500
 
 
 def test_generate_selections_recognizes_accumulator_phrasing(db_session, teams):
     for message in ["build me an accumulator", "give me an acca", "generate a betting slip"]:
         assert parse(db_session, message).intent == Intent.GENERATE_SELECTIONS, message
+
+
+@pytest.mark.parametrize(
+    "message,expected",
+    [
+        ("give me a low risk accumulator", "low"),
+        ("build me a safe combo", "low"),
+        ("medium risk selections please", "medium"),
+        ("give me a moderate risk slip", "medium"),
+        ("give me a high risk accumulator", "high"),
+        ("build me a risky slip", "high"),
+        ("give me a higher risk combo", "higher"),
+        ("build me the maximum risk slip", "higher"),
+    ],
+)
+def test_generate_selections_detects_the_named_risk_tier(db_session, teams, message, expected):
+    parsed = parse(db_session, message)
+    assert parsed.intent == Intent.GENERATE_SELECTIONS, message
+    assert parsed.risk_level == expected
+
+
+def test_generate_selections_risk_level_is_none_when_unstated(db_session, teams):
+    parsed = parse(db_session, "build me a combo")
+    assert parsed.risk_level is None
+
+
+def test_higher_risk_is_not_shadowed_by_the_plain_high_needle(db_session, teams):
+    """"higher risk" must resolve to the "higher" tier, not fall through to
+    "high" just because "high" is a prefix of "higher"."""
+
+    assert parse(db_session, "give me a higher risk combo").risk_level == "higher"
+
+
+# --- League resolution ------------------------------------------------------
+
+
+@pytest.fixture()
+def multi_league_teams(db_session):
+    rows = [
+        Team(name="Arsenal", league="English Premier League", country="England", aliases=[]),
+        Team(name="Real Madrid", league="Spanish La Liga", country="Spain", aliases=[]),
+        Team(name="Galatasaray", league="Turkish Süper Lig", country="Turkey", aliases=[]),
+    ]
+    db_session.add_all(rows)
+    db_session.commit()
+    for row in rows:
+        db_session.refresh(row)
+    return {row.name: row for row in rows}
+
+
+def test_resolve_league_matches_a_named_league_with_no_team(db_session, multi_league_teams):
+    assert resolve_league(db_session, "give me a combo from the premier league") == "English Premier League"
+    assert resolve_league(db_session, "la liga picks") == "Spanish La Liga"
+
+
+def test_resolve_league_folds_accents(db_session, multi_league_teams):
+    """"Süper Lig" is stored with an umlaut -- a plain-ASCII "super lig" in
+    the message must still resolve it."""
+
+    assert resolve_league(db_session, "super lig accumulator") == "Turkish Süper Lig"
+
+
+def test_resolve_league_is_none_for_a_league_this_deployment_has_no_data_for(db_session, multi_league_teams):
+    assert resolve_league(db_session, "give me a bundesliga combo") is None
+
+
+def test_generate_selections_league_comes_from_the_name_not_only_a_team(db_session, multi_league_teams):
+    parsed = parse(db_session, "give me a 5 leg la liga accumulator")
+    assert parsed.intent == Intent.GENERATE_SELECTIONS
+    assert parsed.league == "Spanish La Liga"
+    assert parsed.selection_count == 5
 
 
 # --- Market-filtered best-picks fallback -----------------------------------
