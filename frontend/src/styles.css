@@ -1452,6 +1452,106 @@ table.predictions-table.odds-grid tbody tr:hover {
   border-style: dashed;
 }
 
+/* Markets page fixture calendar -- browsing every scheduled fixture by
+   date instead of only a rolling "N days ahead" window, see
+   components/FixtureCalendar.tsx. */
+.fixture-calendar {
+  max-width: 320px;
+}
+
+.fixture-calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+
+.fixture-calendar-header strong {
+  font-size: 14px;
+}
+
+.fixture-calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  margin-bottom: var(--space-1);
+}
+
+.fixture-calendar-weekdays span {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.fixture-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+}
+
+.fixture-calendar-cell {
+  position: relative;
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.fixture-calendar-cell.empty {
+  cursor: default;
+  visibility: hidden;
+}
+
+.fixture-calendar-cell:not(:disabled):hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.fixture-calendar-cell.today .day-number {
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+
+.fixture-calendar-cell.selected {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  color: #fff;
+}
+
+.fixture-calendar-cell.selected .day-number {
+  color: #fff;
+}
+
+.fixture-calendar-cell:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.fixture-calendar-cell.no-fixtures:not(.selected) {
+  color: var(--text-muted);
+}
+
+.fixture-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent-strong);
+}
+
+.fixture-calendar-cell.selected .fixture-dot {
+  background: #fff;
+}
+
 /* ==========================================================================
    SEARCH COMMAND PALETTE
    ========================================================================== */

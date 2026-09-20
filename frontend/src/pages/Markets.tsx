@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { createAdminPick, fetchBranding, fetchOutcomes } from "../api";
+import { createAdminPick, fetchBranding, fetchMatches, fetchOutcomes } from "../api";
 import { ConfidenceTag } from "../components/MostLikelyOutcome";
 import { CopyButton } from "../components/CopyButton";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
+import { dateKeyFromIso, FixtureCalendar } from "../components/FixtureCalendar";
 import { useLeague } from "../components/AppShell";
 import { formatPicksForCopy, readStoredPicks, storePicks } from "../lib/myPicks";
 import { useAuth } from "../lib/AuthContext";
-import type { BettingOutcome, OutcomesResponse } from "../types";
+import type { BettingOutcome, MatchSummary, OutcomesResponse } from "../types";
 
 /**
  * Every available betting outcome, grouped by league -- laid out as a
@@ -31,6 +32,13 @@ import type { BettingOutcome, OutcomesResponse } from "../types";
  * Winning Margin, and so on) -- building fixed columns for every one of
  * those would be a lot of layout for markets few people compare side by
  * side across matches anyway.
+ *
+ * The 3/7/14-day chips are a rolling window from today -- fine for "what's
+ * coming up", useless for "what's on the 14th". FixtureCalendar answers
+ * that: it's seeded from every SCHEDULED match this league has (no
+ * days-ahead cap), so it can show fixture density a season out, and
+ * picking a date there computes just enough days_ahead to reach it and
+ * filters both coupon views down to that one day.
  */
 
 const DAY_OPTIONS = [3, 7, 14];
@@ -157,7 +165,36 @@ export function Markets() {
   const [featuring, setFeaturing] = useState(false);
   const tabTouchedByUser = useRef(false);
 
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [calendarMatches, setCalendarMatches] = useState<MatchSummary[]>([]);
+
   useEffect(() => storePicks(picks), [picks]);
+
+  // Every SCHEDULED fixture this league has, regardless of how far out --
+  // just for the calendar's dots, never rendered as rows itself.
+  useEffect(() => {
+    let cancelled = false;
+    fetchMatches({ league: league || undefined, status: "SCHEDULED" })
+      .then((m) => !cancelled && setCalendarMatches(m))
+      .catch(() => !cancelled && setCalendarMatches([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [league]);
+
+  // A picked calendar date overrides the day-range chips: just enough
+  // days_ahead to include that date, then the coupon views below filter
+  // down to it exactly (a date past the chips' own 14-day ceiling still
+  // needs to reach the fetch).
+  const effectiveDays = useMemo(() => {
+    if (!selectedDate) return days;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const target = new Date(`${selectedDate}T00:00:00`);
+    const diff = Math.round((target.getTime() - today.getTime()) / 86_400_000);
+    return Math.max(diff + 1, 1);
+  }, [selectedDate, days]);
 
   // Superadmin-configured default (Settings -> Betting markets -> Default
   // tab), applied once -- and only if this visitor hasn't already clicked a
@@ -254,7 +291,7 @@ export function Markets() {
     setGridError(null);
     Promise.all(
       gridMarkets.map((market) =>
-        fetchOutcomes({ market, league: league || undefined, days_ahead: days, min_probability: 0, limit_per_league: 500 }),
+        fetchOutcomes({ market, league: league || undefined, days_ahead: effectiveDays, min_probability: 0, limit_per_league: 500 }),
       ),
     )
       .then((results) => !cancelled && setGridData(results))
@@ -262,7 +299,7 @@ export function Markets() {
     return () => {
       cancelled = true;
     };
-  }, [tab, gridMarkets, league, days]);
+  }, [tab, gridMarkets, league, effectiveDays]);
 
   const columns: GridColumn[] = useMemo(() => {
     if (tab === "match_result") {
@@ -290,13 +327,14 @@ export function Markets() {
   const rowsByLeague = useMemo(() => {
     if (!gridData) return [];
     const allOutcomes = gridData.flatMap((d) => d.leagues.flatMap((l) => l.outcomes));
-    const rows = buildMatchRows([allOutcomes]);
+    let rows = buildMatchRows([allOutcomes]);
+    if (selectedDate) rows = rows.filter((r) => dateKeyFromIso(r.kickoff) === selectedDate);
     const byLeague = groupBy(rows, (r) => r.league).sort(([a], [b]) => a.localeCompare(b));
     return byLeague.map(([leagueName, leagueRows]) => {
       leagueRows.sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime());
       return { league: leagueName, dates: groupBy(leagueRows, (r) => formatDateHeading(r.kickoff)) };
     });
-  }, [gridData]);
+  }, [gridData, selectedDate]);
 
   // -- "Other Markets" tab: the original market-dropdown-driven flat table -
 
@@ -312,7 +350,7 @@ export function Markets() {
     setOtherData(null);
     setOtherError(null);
     fetchOutcomes({
-      league: league || undefined, market: otherMarket || undefined, days_ahead: days,
+      league: league || undefined, market: otherMarket || undefined, days_ahead: effectiveDays,
       min_probability: otherFloor, confidence: otherConfidence || undefined,
     })
       .then((d) => !cancelled && setOtherData(d))
@@ -320,7 +358,7 @@ export function Markets() {
     return () => {
       cancelled = true;
     };
-  }, [tab, league, otherMarket, days, otherFloor, otherConfidence]);
+  }, [tab, league, otherMarket, effectiveDays, otherFloor, otherConfidence]);
 
   const [knownOtherMarkets, setKnownOtherMarkets] = useState<OutcomesResponse["markets"]>([]);
   useEffect(() => {
@@ -331,6 +369,14 @@ export function Markets() {
     [knownOtherMarkets, otherData],
   );
   const selectedOtherMarket = otherMarketOptions.find((m) => m.market === otherMarket);
+
+  const otherLeagues = useMemo(() => {
+    if (!otherData) return [];
+    if (!selectedDate) return otherData.leagues;
+    return otherData.leagues
+      .map((g) => ({ ...g, outcomes: g.outcomes.filter((o) => dateKeyFromIso(o.kickoff) === selectedDate) }))
+      .filter((g) => g.outcomes.length > 0);
+  }, [otherData, selectedDate]);
 
   return (
     <div>
@@ -352,11 +398,33 @@ export function Markets() {
       </div>
 
       <div className="filter-bar" style={{ marginBottom: 14 }}>
-        {DAY_OPTIONS.map((d) => (
-          <button key={d} className={`filter-chip${days === d ? " active" : ""}`} onClick={() => setDays(d)}>
-            {d} days
+        <button
+          type="button"
+          className={`filter-chip${calendarOpen ? " active" : ""}`}
+          onClick={() => setCalendarOpen((v) => !v)}
+        >
+          📅 {selectedDate ? formatDateHeading(`${selectedDate}T00:00:00`) : "Browse by date"}
+        </button>
+        {selectedDate && (
+          <button
+            type="button"
+            className="filter-chip"
+            onClick={() => {
+              setSelectedDate(null);
+              setCalendarOpen(false);
+            }}
+          >
+            ✕ Clear date
           </button>
-        ))}
+        )}
+
+        {!selectedDate &&
+          DAY_OPTIONS.map((d) => (
+            <button key={d} className={`filter-chip${days === d ? " active" : ""}`} onClick={() => setDays(d)}>
+              {d} days
+            </button>
+          ))}
+
         {tab === "match_result" && (
           <>
             <span className="sub" style={{ marginLeft: 8 }}>
@@ -370,6 +438,19 @@ export function Markets() {
           </>
         )}
       </div>
+
+      {calendarOpen && (
+        <div className="card card-pad" style={{ marginBottom: 14, display: "inline-block" }}>
+          <FixtureCalendar
+            matches={calendarMatches}
+            selectedDate={selectedDate}
+            onSelectDate={(d) => {
+              setSelectedDate(d);
+              setCalendarOpen(false);
+            }}
+          />
+        </div>
+      )}
 
       {picks.length > 0 && (
         <div className="card card-pad" style={{ marginBottom: 20 }}>
@@ -458,7 +539,14 @@ export function Markets() {
           {gridError && <ErrorState message={gridError} />}
           {!gridError && !gridData && <p className="badge-neutral">Loading outcomes…</p>}
           {!gridError && gridData && rowsByLeague.length === 0 && (
-            <EmptyState icon="◌" title="No scheduled matches with a prediction in this window." />
+            <EmptyState
+              icon="◌"
+              title={
+                selectedDate
+                  ? `No scheduled matches with a prediction on ${formatDateHeading(`${selectedDate}T00:00:00`)}.`
+                  : "No scheduled matches with a prediction in this window."
+              }
+            />
           )}
 
           {!gridError &&
@@ -570,12 +658,12 @@ export function Markets() {
 
           {otherError && <ErrorState message={otherError} />}
           {!otherError && !otherData && <p className="badge-neutral">Loading outcomes…</p>}
-          {!otherError && otherData && otherData.leagues.length === 0 && (
+          {!otherError && otherData && otherLeagues.length === 0 && (
             <EmptyState icon="◌" title="Nothing matches these filters." />
           )}
 
           {!otherError &&
-            otherData?.leagues.map((leagueGroup) => (
+            otherLeagues.map((leagueGroup) => (
               <div className="card card-pad" style={{ marginBottom: 20 }} key={leagueGroup.league}>
                 <div className="section-header" style={{ marginBottom: 12 }}>
                   <h3 style={{ margin: 0 }}>{leagueGroup.league}</h3>
