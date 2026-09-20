@@ -234,8 +234,8 @@ export function BetCodes() {
   }
 
   // A pick list handed over via navigation (Guda's "Send to AI Generation",
-  // or any future source) prices immediately on arrival -- once per
-  // navigation, not on every re-render.
+  // Markets' "My picks" panel, or any future source) prices immediately on
+  // arrival -- once per navigation, not on every re-render.
   useEffect(() => {
     const picks = (location.state as { picks?: BetCodePick[] } | null)?.picks;
     if (!picks || picks.length === 0) return;
@@ -528,8 +528,8 @@ export function BetCodes() {
         <div className="card card-pad" style={{ marginBottom: 20 }}>
           {fromExternalPicks && (
             <p className="setting-note" style={{ marginBottom: 12 }}>
-              Priced from Guda's picks -- same real, stored bookmaker quotes as everything else on this
-              page, just not run through the criteria form below.
+              Priced from your selected picks -- same real, stored bookmaker quotes as everything else on
+              this page, just not run through the criteria form below.
             </p>
           )}
           {editingPickId !== null && (

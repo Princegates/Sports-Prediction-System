@@ -7,6 +7,7 @@ import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { leagueLabel, useLeague } from "../components/AppShell";
 import { formatPicksForCopy, readStoredPicks, storePicks } from "../lib/myPicks";
+import { useAuth } from "../lib/AuthContext";
 import type { BettingOutcome, OutcomesResponse } from "../types";
 
 /**
@@ -29,6 +30,7 @@ const FLOORS = [
 
 export function Markets() {
   const { league } = useLeague();
+  const { user } = useAuth();
   const [data, setData] = useState<OutcomesResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [market, setMarket] = useState<string>("");
@@ -196,8 +198,21 @@ export function Markets() {
             </table>
           </div>
 
-          <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
+          <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
             <CopyButton text={formatPicksForCopy(picks)} label="Copy selections" />
+            <button
+              type="button"
+              className="btn ghost"
+              onClick={() =>
+                navigate("/app/betcodes", {
+                  state: { picks: picks.map((p) => ({ match_id: p.match_id, market: p.market, selection: p.selection })) },
+                })
+              }
+            >
+              {user?.role === "superadmin"
+                ? "★ Feature these picks"
+                : `Send ${picks.length} pick${picks.length === 1 ? "" : "s"} to AI Generation for odds`}
+            </button>
             <button type="button" className="btn ghost" onClick={() => setPicks([])}>
               Clear all
             </button>
