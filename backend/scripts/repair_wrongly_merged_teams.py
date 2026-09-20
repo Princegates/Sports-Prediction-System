@@ -190,8 +190,18 @@ def main() -> None:
             _reimport_league(db, league)
 
         print("\nStep 3: sweeping each survivor for now-duplicate wrong matches")
-        total_wrong = 0
+        # Grouped by (league, survivor) rather than iterated straight off
+        # BAD_MERGES: Real Madrid CF absorbed two victims (Atletico and
+        # Rayo), and _survivor_fingerprint_plan depends only on the
+        # survivor, not which victim -- iterating BAD_MERGES directly would
+        # run the identical sweep twice for it and double-count its matches
+        # into total_wrong.
+        survivors: dict[tuple[str, str], list[str]] = {}
         for league, survivor_name, victim_name in BAD_MERGES:
+            survivors.setdefault((league, survivor_name), []).append(victim_name)
+
+        total_wrong = 0
+        for (league, survivor_name), victim_names in survivors.items():
             survivor = db.execute(
                 select(Team).where(Team.name == survivor_name, Team.league == league)
             ).scalar_one_or_none()
@@ -202,8 +212,9 @@ def main() -> None:
             wrong, unresolved = _survivor_fingerprint_plan(db, league, survivor)
             total_wrong += len(wrong)
             print(f"\n  [{league}] {survivor_name!r} (id {survivor.id}): "
-                  f"{len(wrong)} match(es) belong to {victim_name!r}, {len(unresolved)} left alone "
-                  f"(no confirmed fresh replacement -- includes the survivor's own real fixtures)")
+                  f"{len(wrong)} match(es) belong to {' / '.join(map(repr, victim_names))}, "
+                  f"{len(unresolved)} left alone (no confirmed fresh replacement -- includes the "
+                  "survivor's own real fixtures)")
             for m in wrong[:10]:
                 print(f"    #{m.id}  {m.season}  {m.date.date()}  {m.home_score}-{m.away_score}  "
                       f"(home_team_id={m.home_team_id}, away_team_id={m.away_team_id})")

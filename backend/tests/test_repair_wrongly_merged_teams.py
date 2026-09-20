@@ -46,17 +46,30 @@ def script():
     return module
 
 
+LA_LIGA = "Spanish La Liga"
+E1 = dt.datetime(2024, 9, 1, 20, 0)  # Atletico (wrongly attributed to Real Madrid CF)
+E2 = dt.datetime(2024, 9, 8, 20, 0)  # Rayo (wrongly attributed to the same survivor)
+
+
 @pytest.fixture(autouse=True)
 def fake_openfootball(monkeypatch):
     def fetch_season(league_name: str, season: str, timeout: int = 30):
-        if league_name != LEAGUE or season != SEASON:
+        if season != SEASON:
             return []
-        rows = [
-            ("AC Milan", "FC Internazionale Milano", D1, 2, 1),
-            ("FC Internazionale Milano", "US Lecce", D2, 1, 1),
-            ("AC Milan", "US Lecce", D3, 3, 0),
-            ("US Lecce", "AC Milan", D4, 0, 2),
-        ]
+        if league_name == LEAGUE:
+            rows = [
+                ("AC Milan", "FC Internazionale Milano", D1, 2, 1),
+                ("FC Internazionale Milano", "US Lecce", D2, 1, 1),
+                ("AC Milan", "US Lecce", D3, 3, 0),
+                ("US Lecce", "AC Milan", D4, 0, 2),
+            ]
+        elif league_name == LA_LIGA:
+            rows = [
+                ("Club Atlético de Madrid", "Sevilla FC", E1, 1, 1),
+                ("Rayo Vallecano de Madrid", "Sevilla FC", E2, 2, 2),
+            ]
+        else:
+            return []
         return [
             OpenFootballMatch(
                 league=league_name, season=season, date=date,
@@ -206,3 +219,44 @@ def test_missing_survivor_is_skipped_not_errored(db_session, script, capsys):
 
     out = capsys.readouterr().out
     assert "not found -- skipping" in out
+
+
+def test_a_survivor_with_two_victims_is_not_double_counted(db_session, script, capsys):
+    """Real Madrid CF appears twice in BAD_MERGES -- once for Atletico, once
+    for Rayo -- because it absorbed both. _survivor_fingerprint_plan depends
+    only on the survivor, so both entries compute the identical wrong-match
+    list; summing len(wrong) once per BAD_MERGES row (as the very first
+    version of this script did) double-counts every one of Real Madrid's
+    wrongly-attributed matches into the reported total. The real production
+    dry run surfaced exactly this: 425 matches reported once per victim,
+    inflating the total by 425 extra."""
+
+    sevilla = Team(name="Sevilla FC", league=LA_LIGA, aliases=[])
+    real_madrid = Team(
+        name="Real Madrid CF", league=LA_LIGA,
+        aliases=["Club Atlético de Madrid", "Rayo Vallecano de Madrid"],
+    )
+    db_session.add_all([sevilla, real_madrid])
+    db_session.commit()
+    db_session.refresh(sevilla)
+    db_session.refresh(real_madrid)
+
+    db_session.add_all([
+        Match(
+            league=LA_LIGA, season=SEASON, date=E1, status="FINISHED",
+            home_team_id=real_madrid.id, away_team_id=sevilla.id, home_score=1, away_score=1,
+        ),
+        Match(
+            league=LA_LIGA, season=SEASON, date=E2, status="FINISHED",
+            home_team_id=real_madrid.id, away_team_id=sevilla.id, home_score=2, away_score=2,
+        ),
+    ])
+    db_session.commit()
+
+    sys.argv = ["repair_wrongly_merged_teams.py"]
+    script.main()
+
+    out = capsys.readouterr().out
+    assert out.count("'Real Madrid CF'") == 1
+    assert "2 match(es) belong to 'Club Atlético de Madrid' / 'Rayo Vallecano de Madrid'" in out
+    assert "Dry run -- nothing written. 2 match(es) would be deleted" in out
