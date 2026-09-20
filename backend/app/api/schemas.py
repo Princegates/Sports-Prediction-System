@@ -646,7 +646,14 @@ class BetCodeCriteriaIn(BaseModel):
     markets: list[str] = []
     min_probability: float | None = None
     max_legs: int | None = None
+    # Kept for older callers that only ever meant one league; ignored
+    # whenever `leagues` below is non-empty.
     league: str | None = None
+    # Empty = every league this deployment has data for; non-empty = any one
+    # of these (a match only has one league, so this is a union, not an
+    # intersection) -- lets AI Generation search several leagues at once
+    # without also having to mean "all of them".
+    leagues: list[str] = []
     days_ahead: int = 7
     # Whose captured prices to build legs from. Unset = any bookmaker this
     # project has a real quote from -- see app.betcode.selection's module

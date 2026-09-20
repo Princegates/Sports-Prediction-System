@@ -57,6 +57,7 @@ def _criteria_from_in(db: Session, payload: BetCodeCriteriaIn) -> SlipCriteria:
             payload.max_legs if payload.max_legs is not None else int(defaults.get("betcode_max_legs") or 8)
         ),
         league=payload.league,
+        leagues=tuple(payload.leagues),
         days_ahead=payload.days_ahead,
         price_bookmaker=payload.price_bookmaker,
     )

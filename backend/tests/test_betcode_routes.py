@@ -73,6 +73,49 @@ def test_preview_returns_legs_and_writes_nothing(auth_headers, db_session, price
     assert db_session.query(BookingSlip).count() == 0
 
 
+def test_preview_leagues_plural_reaches_the_engine(auth_headers, db_session, priced_match):
+    """The multi-select league field on the API payload must actually reach
+    SlipCriteria.leagues, not just parse -- a La Liga fixture only shows up
+    when La Liga is one of the leagues asked for."""
+
+    home = Team(name="Real Madrid", league="Spanish La Liga", aliases=[])
+    away = Team(name="Barcelona", league="Spanish La Liga", aliases=[])
+    db_session.add_all([home, away])
+    db_session.commit()
+    for t in (home, away):
+        db_session.refresh(t)
+    m = Match(
+        league="Spanish La Liga", season="2025-26", date=BASE + dt.timedelta(days=1),
+        home_team_id=home.id, away_team_id=away.id, status="SCHEDULED",
+    )
+    db_session.add(m)
+    db_session.commit()
+    db_session.refresh(m)
+    db_session.add(_prediction(m.id))
+    db_session.add(MatchOdds(
+        match_id=m.id, bookmaker="Bet9ja", market="Match Result", selection="Home Win", decimal_odds=1.40,
+    ))
+    db_session.commit()
+
+    # target_odds high enough that the search never stops early -- otherwise
+    # a single 1.30-odds EPL leg alone would already clear CRITERIA's own
+    # 1.2 target and mask whether La Liga was even in the candidate pool.
+    overrides = {"max_legs": 10, "target_odds": 1_000_000.0}
+
+    only_epl = client.post(
+        "/api/betcodes/preview", json=CRITERIA | overrides | {"leagues": ["English Premier League"]},
+        headers=auth_headers,
+    ).json()
+    assert {leg["league"] for leg in only_epl["legs"]} == {"English Premier League"}
+
+    both = client.post(
+        "/api/betcodes/preview",
+        json=CRITERIA | overrides | {"leagues": ["English Premier League", "Spanish La Liga"]},
+        headers=auth_headers,
+    ).json()
+    assert {leg["league"] for leg in both["legs"]} == {"English Premier League", "Spanish La Liga"}
+
+
 def test_price_requires_authentication():
     assert client.post("/api/betcodes/price", json={"picks": []}).status_code == 401
 
