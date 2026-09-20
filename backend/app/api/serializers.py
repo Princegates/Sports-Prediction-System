@@ -183,17 +183,23 @@ def featured_pick_to_schema(pick: FeaturedPick, match: Match, probability: float
 
 
 def admin_pick_to_schema(pick: AdminPick, legs: list[Leg]) -> AdminPickOut:
-    """``legs`` must already be freshly resolved (app.betcode.selection.
-    price_legs) against every leg AdminPick.legs references -- this function
-    only combines and formats them, it never re-reads the database itself,
-    so the combined odds/probability/risk tier are only ever as current as
-    what the caller just resolved."""
+    """``legs`` must already be freshly resolved against every leg
+    AdminPick.legs references -- by app.betcode.selection.price_legs when
+    ``pick.priced``, or resolve_legs_unpriced otherwise -- this function only
+    combines and formats them, it never re-reads the database itself, so the
+    combined odds/probability/risk tier are only ever as current as what the
+    caller just resolved."""
 
-    combined_odds = 1.0
     combined_probability = 1.0
     for leg in legs:
-        combined_odds *= leg.decimal_odds
         combined_probability *= leg.model_probability
+
+    combined_odds: float | None = None
+    if pick.priced:
+        combined_odds = 1.0
+        for leg in legs:
+            assert leg.decimal_odds is not None  # guaranteed by price_legs
+            combined_odds *= leg.decimal_odds
 
     return AdminPickOut(
         id=pick.id,
@@ -212,6 +218,7 @@ def admin_pick_to_schema(pick: AdminPick, legs: list[Leg]) -> AdminPickOut:
             )
             for leg in legs
         ],
+        priced=pick.priced,
         combined_odds=combined_odds,
         combined_probability=combined_probability,
         risk_tier=risk_tier(combined_probability),

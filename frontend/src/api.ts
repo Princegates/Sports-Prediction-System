@@ -342,22 +342,32 @@ export function fetchAdminPicks(): Promise<AdminPick[]> {
   return get("/api/predictions/admin-picks");
 }
 
-/** Superadmin only -- promotes a whole AI Generation slip. Every leg is
- * re-priced server-side; rejected if even one no longer prices. */
+/** Superadmin only -- promotes a whole slip. Every leg is re-resolved
+ * server-side; rejected if even one no longer resolves. `priced` (default
+ * true) picks how: re-priced from real bookmaker quotes (an AI Generation
+ * slip), or false for model-probability-only, no bookmaker quote required --
+ * for a slip built from outcomes that were never priced, like Markets' "My
+ * picks" panel. */
 export function createAdminPick(payload: {
   legs: { match_id: number; market: string; selection: string }[];
   label?: string;
   note?: string;
+  priced?: boolean;
 }): Promise<AdminPick> {
   return post("/api/admin/admin-picks", payload);
 }
 
-/** Replaces an already-featured slip's legs/label/note in place -- a full
- * replace, same shape as createAdminPick, not a partial patch. Every leg is
- * re-priced server-side; rejected if even one no longer prices. */
+/** Replaces an already-featured slip's legs/label/note/priced in place -- a
+ * full replace, same shape as createAdminPick, not a partial patch. Every
+ * leg is re-resolved server-side; rejected if even one no longer resolves. */
 export function updateAdminPick(
   pickId: number,
-  payload: { legs: { match_id: number; market: string; selection: string }[]; label?: string; note?: string },
+  payload: {
+    legs: { match_id: number; market: string; selection: string }[];
+    label?: string;
+    note?: string;
+    priced?: boolean;
+  },
 ): Promise<AdminPick> {
   return patch(`/api/admin/admin-picks/${pickId}`, payload);
 }

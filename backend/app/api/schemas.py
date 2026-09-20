@@ -570,14 +570,22 @@ class AdminPickLegIn(BaseModel):
 
 
 class AdminPickIn(BaseModel):
-    """A whole AI Generation slip an admin chose to promote -- a list of
-    (match, market, selection) references, same reasoning as FeaturePickIn:
-    never a typed-in probability or price, re-resolved and re-priced from
-    scratch server-side (app.betcode.selection.price_legs)."""
+    """A whole slip an admin chose to promote -- a list of (match, market,
+    selection) references, same reasoning as FeaturePickIn: never a typed-in
+    probability or price, re-resolved from scratch server-side.
+
+    ``priced`` picks a resolver: True (the default, an AI Generation slip)
+    re-prices every leg from MatchOdds via app.betcode.selection.price_legs,
+    rejecting the slip if even one leg has no stored bookmaker quote. False
+    resolves legs by model probability alone (resolve_legs_unpriced), no
+    quote required -- for a slip built from outcomes that were never priced,
+    like Markets' "My picks" panel.
+    """
 
     legs: list[AdminPickLegIn]
     label: str | None = None
     note: str | None = None
+    priced: bool = True
 
 
 class AdminPickLegOut(BaseModel):
@@ -589,16 +597,21 @@ class AdminPickLegOut(BaseModel):
     market: str
     selection: str
     probability: float
-    decimal_odds: float
-    priced_by: str
+    # Both None together on an unpriced pick's leg -- see AdminPickOut.priced.
+    decimal_odds: float | None
+    priced_by: str | None
 
 
 class AdminPickOut(BaseModel):
     id: int
     legs: list[AdminPickLegOut]
+    # Whether this slip was priced from real bookmaker quotes at all --
+    # combined_odds is only ever present when this is True.
+    priced: bool
     # Recomputed from every leg's current Prediction/MatchOdds at read time,
-    # never a stored snapshot -- see AdminPick's docstring for why.
-    combined_odds: float
+    # never a stored snapshot -- see AdminPick's docstring for why. None on
+    # an unpriced slip -- there is no combined price to show.
+    combined_odds: float | None
     combined_probability: float
     risk_tier: str  # "low" | "medium" | "high" -- see betcode.selection.risk_tier
     label: str | None

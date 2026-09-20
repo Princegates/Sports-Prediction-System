@@ -33,7 +33,7 @@ from app.api.schemas import (
     RevokeGrantIn,
 )
 from app.api.serializers import access_code_to_schema, admin_pick_to_schema, admin_user_to_schema, featured_pick_to_schema, match_to_schema
-from app.betcode.selection import price_legs
+from app.betcode.selection import price_legs, resolve_legs_unpriced
 from app.config import get_settings
 from app import mailer
 from app.db.models import AccessCode, AccessGrant, AdminPick, AuditLog, ChatMessage, FeaturedPick, LivePrediction, Match, Prediction, User
@@ -554,13 +554,17 @@ MAX_ADMIN_PICK_LEGS = 30
 
 
 def _validate_admin_pick_payload(payload: AdminPickIn, db: Session) -> tuple[list, str | None, str | None]:
-    """Shared by create and update: every leg is re-priced from scratch
+    """Shared by create and update: every leg is re-resolved from scratch
     here rather than trusting whatever probability/odds the client last
     saw (the same reason create_featured_pick re-resolves its single
     outcome), and label/note are re-validated the same way either time.
     Raises HTTPException on any failure -- if even one leg no longer
-    prices, the whole slip is rejected rather than silently featured
+    resolves, the whole slip is rejected rather than silently featured
     short of what was actually asked for.
+
+    ``payload.priced`` picks which resolver runs: price_legs (requires a
+    real MatchOdds row per leg) or resolve_legs_unpriced (model probability
+    only, no bookmaker quote required) -- see AdminPickIn's docstring.
     """
 
     if not payload.legs:
@@ -569,12 +573,14 @@ def _validate_admin_pick_payload(payload: AdminPickIn, db: Session) -> tuple[lis
         raise HTTPException(status_code=400, detail=f"{MAX_ADMIN_PICK_LEGS} legs is the most a slip can carry.")
 
     refs = [(leg.match_id, leg.market, leg.selection) for leg in payload.legs]
-    legs, warnings = price_legs(db, refs)
+    if payload.priced:
+        legs, warnings = price_legs(db, refs)
+        failure = "One or more legs couldn't be priced, so the slip wasn't saved: "
+    else:
+        legs, warnings = resolve_legs_unpriced(db, refs)
+        failure = "One or more legs couldn't be resolved, so the slip wasn't saved: "
     if len(legs) != len(refs):
-        raise HTTPException(
-            status_code=400,
-            detail="One or more legs couldn't be priced, so the slip wasn't saved: " + " ".join(warnings),
-        )
+        raise HTTPException(status_code=400, detail=failure + " ".join(warnings))
 
     label = (payload.label or "").strip() or None
     if label and len(label) > 120:
@@ -600,6 +606,7 @@ def create_admin_pick(
 
     pick = AdminPick(
         legs=[{"match_id": leg.match_id, "market": leg.market, "selection": leg.selection} for leg in legs],
+        priced=payload.priced,
         label=label,
         note=note,
         created_by_user_id=admin.id,
@@ -633,6 +640,7 @@ def update_admin_pick(
     legs, label, note = _validate_admin_pick_payload(payload, db)
 
     pick.legs = [{"match_id": leg.match_id, "market": leg.market, "selection": leg.selection} for leg in legs]
+    pick.priced = payload.priced
     pick.label = label
     pick.note = note
     pick.expires_at = max(leg.kickoff for leg in legs) + dt.timedelta(days=2)
@@ -643,11 +651,13 @@ def update_admin_pick(
 
 
 def _resolve_admin_pick(db: Session, pick: AdminPick) -> AdminPickOut | None:
-    """Re-prices every leg live; ``None`` when even one no longer resolves,
-    so the whole combo drops out rather than showing a partial slip."""
+    """Re-resolves every leg live -- priced from MatchOdds when
+    ``pick.priced``, by model probability alone otherwise; ``None`` when
+    even one no longer resolves, so the whole combo drops out rather than
+    showing a partial slip."""
 
     refs = [(leg["match_id"], leg["market"], leg["selection"]) for leg in pick.legs]
-    legs, _warnings = price_legs(db, refs)
+    legs, _warnings = price_legs(db, refs) if pick.priced else resolve_legs_unpriced(db, refs)
     if len(legs) != len(refs):
         return None
     return admin_pick_to_schema(pick, legs)

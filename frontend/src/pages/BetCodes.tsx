@@ -282,11 +282,15 @@ export function BetCodes() {
   // they'd just been generated, so the same remove-a-leg UI above can edit
   // it. Feature this slip becomes Save changes for as long as this stays set.
   function handleEditPick(pick: AdminPick) {
+    // This edit UI is built entirely around real prices (removing a leg
+    // recomputes combined odds) -- only reachable for a priced pick, whose
+    // every leg is guaranteed a real decimal_odds/priced_by by the backend.
+    if (!pick.priced || pick.combined_odds === null) return;
     setPreview({
       legs: pick.legs.map((l) => ({
         match_id: l.match_id, league: l.league, home_team: l.home_team, away_team: l.away_team,
         kickoff: l.kickoff, market: l.market, selection: l.selection,
-        model_probability: l.probability, decimal_odds: l.decimal_odds, priced_by: l.priced_by,
+        model_probability: l.probability, decimal_odds: l.decimal_odds!, priced_by: l.priced_by!,
       })),
       combined_odds: pick.combined_odds,
       combined_probability: pick.combined_probability,
@@ -672,7 +676,8 @@ export function BetCodes() {
               <span>
                 {pick.label ? <strong>{pick.label}</strong> : <span className="sub">Untitled slip</span>}{" "}
                 <span className="sub">
-                  {pick.legs.length} leg{pick.legs.length === 1 ? "" : "s"} · {pick.combined_odds.toFixed(2)} odds ·{" "}
+                  {pick.legs.length} leg{pick.legs.length === 1 ? "" : "s"} ·{" "}
+                  {pick.priced && pick.combined_odds !== null ? `${pick.combined_odds.toFixed(2)} odds · ` : "no odds · "}
                   {(pick.combined_probability * 100).toFixed(0)}% probability
                 </span>
                 <span className={`risk-tag ${pick.risk_tier}`} style={{ marginLeft: 8 }}>
@@ -680,14 +685,16 @@ export function BetCodes() {
                 </span>
               </span>
               <div style={{ display: "flex", gap: 6 }}>
-                <button
-                  className="btn ghost"
-                  style={{ padding: "2px 8px", fontSize: 12 }}
-                  disabled={pickBusy === pick.id}
-                  onClick={() => handleEditPick(pick)}
-                >
-                  Edit
-                </button>
+                {pick.priced && (
+                  <button
+                    className="btn ghost"
+                    style={{ padding: "2px 8px", fontSize: 12 }}
+                    disabled={pickBusy === pick.id}
+                    onClick={() => handleEditPick(pick)}
+                  >
+                    Edit
+                  </button>
+                )}
                 <button
                   className="btn ghost"
                   style={{ padding: "2px 8px", fontSize: 12 }}

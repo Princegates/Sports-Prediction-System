@@ -20,7 +20,7 @@ from app.api.schemas import (
     PredictionOut,
 )
 from app.api.serializers import admin_pick_to_schema, featured_pick_to_schema, prediction_to_schema
-from app.betcode.selection import price_legs
+from app.betcode.selection import price_legs, resolve_legs_unpriced
 from app.db.models import AdminPick, FeaturedPick, Match, Prediction, User
 from app.outcomes.registry import find_outcome, outcomes_from_prediction
 from app.prediction_models.ml_model import FeatureCachePool
@@ -362,7 +362,7 @@ def admin_picks(user: User = Depends(get_current_user), db: Session = Depends(ge
     out: list[AdminPickOut] = []
     for pick in picks:
         refs = [(leg["match_id"], leg["market"], leg["selection"]) for leg in pick.legs]
-        legs, _warnings = price_legs(db, refs)
+        legs, _warnings = price_legs(db, refs) if pick.priced else resolve_legs_unpriced(db, refs)
         if len(legs) != len(refs):
             continue
         out.append(admin_pick_to_schema(pick, legs))

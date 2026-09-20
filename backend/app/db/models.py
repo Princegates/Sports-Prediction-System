@@ -415,18 +415,27 @@ class AdminPick(Base):
 
     Same grounding rule as FeaturedPick, applied per leg: ``legs`` is a list
     of ``{match_id, market, selection}`` references, never a stored
-    probability or price. The combined odds, combined probability and risk
-    tier shown to users are always recomputed live (see
-    app.betcode.selection.price_legs) from each leg's current Prediction and
-    MatchOdds -- if even one leg stops resolving (outcome no longer valid,
-    price pulled), the whole combo drops out rather than showing a stale or
-    partial slip that no longer matches what was actually promoted.
+    probability or price. The combined probability (and, when ``priced``,
+    the combined odds and risk tier) shown to users are always recomputed
+    live from each leg's current Prediction and -- when ``priced`` -- its
+    MatchOdds (see app.betcode.selection.price_legs /
+    resolve_legs_unpriced) -- if even one leg stops resolving (outcome no
+    longer valid, price pulled), the whole combo drops out rather than
+    showing a stale or partial slip that no longer matches what was
+    actually promoted.
     """
 
     __tablename__ = "admin_picks"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     legs: Mapped[list] = mapped_column(JSON)
+    # False for a slip an operator chose to show by model probability alone,
+    # with no bookmaker quote required per leg (see resolve_legs_unpriced) --
+    # the path Markets' "My picks" panel uses, since most browsed outcomes
+    # never get a captured price. True (the original, still-default shape)
+    # means every leg is re-priced live from MatchOdds, same as an AI
+    # Generation slip.
+    priced: Mapped[bool] = mapped_column(Boolean, default=True)
     label: Mapped[str | None] = mapped_column(String(120), nullable=True)
     note: Mapped[str | None] = mapped_column(String(280), nullable=True)
     created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)

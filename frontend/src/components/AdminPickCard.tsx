@@ -37,8 +37,8 @@ export function AdminPickCard({ pick }: { pick: AdminPick }) {
       </div>
 
       <div className="match-meta-row tabular-nums" style={{ fontWeight: 600 }}>
-        {pick.combined_odds.toFixed(2)} combined odds · {(pick.combined_probability * 100).toFixed(0)}% combined
-        probability
+        {pick.priced && pick.combined_odds !== null ? `${pick.combined_odds.toFixed(2)} combined odds · ` : ""}
+        {(pick.combined_probability * 100).toFixed(0)}% combined probability
       </div>
 
       {pick.note && (

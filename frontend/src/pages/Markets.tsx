@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { fetchOutcomes } from "../api";
+import { createAdminPick, fetchOutcomes } from "../api";
 import { ConfidenceTag } from "../components/MostLikelyOutcome";
 import { CopyButton } from "../components/CopyButton";
 import { EmptyState } from "../components/EmptyState";
@@ -38,9 +38,35 @@ export function Markets() {
   const [floor, setFloor] = useState(0);
   const [confidence, setConfidence] = useState<string>("");
   const [picks, setPicks] = useState<BettingOutcome[]>(readStoredPicks);
+  const [featuring, setFeaturing] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => storePicks(picks), [picks]);
+
+  // Superadmin only -- promotes My picks straight onto every Dashboard's
+  // Admin Picks section by model probability alone, no bookmaker quote
+  // required per leg (AdminPick.priced=false). Most outcomes browsed here
+  // never get a captured price, so routing through AI Generation's pricing
+  // first would reject or gut a slip built from exactly these picks.
+  async function handleFeatureAsAdminPick() {
+    const label = window.prompt("Optional label for this slip (shown on every Dashboard):", "");
+    if (label === null) return;
+    const note = window.prompt("Optional note (shown on every Dashboard):", "") ?? undefined;
+    setFeaturing(true);
+    try {
+      await createAdminPick({
+        legs: picks.map((p) => ({ match_id: p.match_id, market: p.market, selection: p.selection })),
+        label: label || undefined,
+        note: note || undefined,
+        priced: false,
+      });
+      window.alert("Featured on every Dashboard's Admin Picks section.");
+    } catch (err) {
+      window.alert(String(err instanceof Error ? err.message : err));
+    } finally {
+      setFeaturing(false);
+    }
+  }
 
   function pickedFor(matchId: number): BettingOutcome | undefined {
     return picks.find((p) => p.match_id === matchId);
@@ -200,6 +226,16 @@ export function Markets() {
 
           <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
             <CopyButton text={formatPicksForCopy(picks)} label="Copy selections" />
+            {user?.role === "superadmin" && (
+              <button
+                type="button"
+                className="btn ghost"
+                onClick={handleFeatureAsAdminPick}
+                disabled={featuring}
+              >
+                {featuring ? "Featuring…" : "★ Feature as Admin Pick (no odds)"}
+              </button>
+            )}
             <button
               type="button"
               className="btn ghost"
@@ -209,9 +245,7 @@ export function Markets() {
                 })
               }
             >
-              {user?.role === "superadmin"
-                ? "★ Feature these picks"
-                : `Send ${picks.length} pick${picks.length === 1 ? "" : "s"} to AI Generation for odds`}
+              Send {picks.length} pick{picks.length === 1 ? "" : "s"} to AI Generation for odds
             </button>
             <button type="button" className="btn ghost" onClick={() => setPicks([])}>
               Clear all
