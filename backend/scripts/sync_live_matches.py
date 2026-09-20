@@ -20,9 +20,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app import app_settings
-from app.data.api_football_ingest import sync_live_matches
-from app.data.providers.api_football import ApiFootballClient, ApiFootballError, QuotaExceeded
+from app.data.api_football_ingest import run_live_sync_from_settings
+from app.data.providers.api_football import ApiFootballError, QuotaExceeded
 from app.db.migrate import init_db
 from app.db.session import SessionLocal, engine
 
@@ -41,32 +40,22 @@ def main() -> None:
     init_db(engine)
     db = SessionLocal()
     try:
-        values = app_settings.all_values(db)
-        key = str(values.get("api_football_key") or "")
-        if not key:
-            # Unlike import_api_football.py, this runs unconditionally on a
-            # schedule whether or not anyone opted in to a paid key -- so an
-            # unset key is "nothing to do" here, not a misconfiguration to
-            # fail loudly over every five minutes.
-            print("No API-Football key saved -- live sync has nothing to do.")
-            return
-
-        daily_budget = int(values.get("api_football_daily_budget") or 7500)
-        client = ApiFootballClient(
-            key,
-            host=str(values.get("api_football_host") or "v3.football.api-sports.io"),
-            daily_budget=daily_budget,
-            per_minute=int(values.get("api_football_per_minute") or 300),
-        )
-
         try:
-            report = sync_live_matches(db, client)
+            report = run_live_sync_from_settings(db)
         except QuotaExceeded as exc:
             print(f"stopped: {exc}", file=sys.stderr)
             raise SystemExit(1)
         except ApiFootballError as exc:
             print(f"failed: {exc}", file=sys.stderr)
             raise SystemExit(1)
+
+        if report is None:
+            # Unlike import_api_football.py, this runs unconditionally on a
+            # schedule whether or not anyone opted in to a paid key -- so an
+            # unset key is "nothing to do" here, not a misconfiguration to
+            # fail loudly over every five minutes.
+            print("No API-Football key saved -- live sync has nothing to do.")
+            return
 
         print(f"{report.considered} live fixture(s) seen worldwide")
         print(f"  updated    : {report.updated}")

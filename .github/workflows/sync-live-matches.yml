@@ -1,26 +1,27 @@
-# Polls API-Football's live board every few minutes so a match actually in
-# progress shows up in the Live Match Center on its own, instead of needing
-# someone to open its Live tab and push a simulated event by hand.
+# Polls API-Football's live board so a match actually in progress shows up
+# in the Live Match Center on its own, instead of needing someone to open
+# its Live tab and push a simulated event by hand.
 #
 # fixtures?live=all is not scoped per league or season -- one request covers
 # every match live anywhere, so this costs exactly 1 request per run
-# regardless of how many matches are on. At 5-minute intervals that is
-# ~288 requests/day: negligible against a Pro plan's 7,500/day, but more
-# than the *entire* daily allowance on API-Football's free tier (100/day).
-# If the saved key is a free-tier key, either raise the cron interval below
-# or delete the schedule trigger and rely on workflow_dispatch only.
+# regardless of how many matches are on.
 #
-# GitHub's schedule trigger is best-effort and commonly lands a few minutes
-# late, especially on a public repo under load. That is fine here: a few
-# minutes of staleness on an in-play probability is not the same failure
-# mode as a wrong prediction.
+# No schedule trigger here anymore: GitHub's "every 5 minutes" cron turned
+# out to be best-effort in name only. In production this fired every 1-5
+# *hours*, not every 5 minutes -- high-frequency schedule triggers are
+# heavily throttled on GitHub's infrastructure, which is a platform limit
+# no amount of retrying from this workflow can fix. The backend (a
+# persistent web process, not serverless) now runs the same sync loop
+# in-process every 5 minutes on its own -- see app.main's
+# `_live_sync_loop` / `run_live_sync_from_settings`. This workflow stays
+# only as a manual fallback (e.g. to force a sync without waiting on the
+# backend's own timer, or to run it against a database the deployed
+# backend isn't pointed at).
 #
 # Set DATABASE_URL under Settings -> Secrets and variables -> Actions.
 name: Sync live matches
 
 on:
-  schedule:
-    - cron: "*/5 * * * *"
   workflow_dispatch: {}
 
 jobs:

@@ -16,7 +16,9 @@ import datetime as dt
 
 import pytest
 
-from app.data.api_football_ingest import sync_live_matches
+from app import app_settings
+from app.data import api_football_ingest
+from app.data.api_football_ingest import run_live_sync_from_settings, sync_live_matches
 from app.data.providers.api_football import ApiFootballClient
 from app.db.models import LivePrediction, Match, Team
 
@@ -197,6 +199,41 @@ def test_extra_time_does_not_get_mistaken_for_full_time(db_session, scheduled_ma
     client = FakeClient([_live_row(short="2H", elapsed=93, home_goals=2)])
     report = sync_live_matches(db_session, client)
 
+    assert report.updated == 1
+    db_session.refresh(scheduled_match)
+    assert scheduled_match.status == "LIVE"
+
+
+# --- run_live_sync_from_settings: the settings-to-client wiring shared by --
+# scripts/sync_live_matches.py and app.main's own in-process scheduler -----
+
+
+def test_run_live_sync_from_settings_is_a_noop_with_no_key(db_session, monkeypatch):
+    monkeypatch.setattr(app_settings, "all_values", lambda db: {"api_football_key": ""})
+    assert run_live_sync_from_settings(db_session) is None
+
+
+def test_run_live_sync_from_settings_builds_a_client_and_syncs(db_session, scheduled_match, monkeypatch):
+    monkeypatch.setattr(
+        app_settings,
+        "all_values",
+        lambda db: {
+            "api_football_key": "test-key",
+            "api_football_host": "v3.football.api-sports.io",
+            "api_football_daily_budget": 7500,
+            "api_football_per_minute": 300,
+        },
+    )
+    monkeypatch.setattr(
+        api_football_ingest,
+        "ApiFootballClient",
+        lambda key, **kwargs: FakeClient([_live_row()], **kwargs),
+    )
+
+    report = run_live_sync_from_settings(db_session)
+
+    assert report is not None
+    assert report.considered == 1
     assert report.updated == 1
     db_session.refresh(scheduled_match)
     assert scheduled_match.status == "LIVE"

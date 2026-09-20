@@ -636,3 +636,34 @@ def sync_live_matches(db: Session, client: ApiFootballClient) -> LiveSyncReport:
 
     db.commit()
     return report
+
+
+def run_live_sync_from_settings(db: Session) -> LiveSyncReport | None:
+    """Builds an ``ApiFootballClient`` from stored settings and runs one
+    live-match poll -- the "given a DB session, do the current poll" shape
+    both ``scripts/sync_live_matches.py`` (the GitHub Actions cron, kept as
+    a manual fallback) and the backend's own in-process scheduler need, so
+    neither re-derives the settings-to-client wiring on its own.
+
+    Returns ``None``, not an empty report, when no API-Football key is
+    configured -- the same "nothing to do, not a misconfiguration" call
+    ``scripts/sync_live_matches.py`` made on its own before this existed.
+    Raises ``ApiFootballError``/``QuotaExceeded`` same as ``sync_live_matches``;
+    callers decide how to log or report those.
+    """
+
+    from app import app_settings  # local import: this module has no other reason to depend on settings
+
+    values = app_settings.all_values(db)
+    key = str(values.get("api_football_key") or "")
+    if not key:
+        return None
+
+    daily_budget = int(values.get("api_football_daily_budget") or 7500)
+    client = ApiFootballClient(
+        key,
+        host=str(values.get("api_football_host") or "v3.football.api-sports.io"),
+        daily_budget=daily_budget,
+        per_minute=int(values.get("api_football_per_minute") or 300),
+    )
+    return sync_live_matches(db, client)

@@ -1,3 +1,5 @@
+import asyncio
+import contextlib
 import logging
 import threading
 import time
@@ -19,10 +21,50 @@ from app.api.routes_public import router as public_router
 from app.api.routes_settings import router as settings_router
 from app.api.routes_teams import router as teams_router
 from app.config import get_settings
+from app.data.api_football_ingest import run_live_sync_from_settings
+from app.data.providers.api_football import ApiFootballError, QuotaExceeded
 from app.db.migrate import init_db
-from app.db.session import engine
+from app.db.session import SessionLocal, engine
 
 logger = logging.getLogger(__name__)
+
+# GitHub Actions' every-5-minute cron for sync-live-matches.yml is
+# best-effort in name only: in production this project saw it actually fire
+# every 1-5 *hours*, not every 5 minutes -- high-frequency schedule
+# triggers are heavily throttled on GitHub's infrastructure, which is a
+# platform limit, not something the workflow's own retry logic can fix. A
+# web process that is already running continuously can just do this
+# itself, so live scores no longer depend on GitHub's scheduler at all;
+# the workflow stays only as a manual (workflow_dispatch) fallback.
+LIVE_SYNC_INTERVAL_SECONDS = 300.0
+
+
+def _run_live_sync_once() -> None:
+    db = SessionLocal()
+    try:
+        report = run_live_sync_from_settings(db)
+    except (ApiFootballError, QuotaExceeded) as exc:
+        logger.warning("Live match sync skipped: %s", exc)
+        return
+    finally:
+        db.close()
+
+    if report is not None and (report.updated or report.finished):
+        logger.info(
+            "Live sync: %d fixture(s) seen, %d updated, %d finished",
+            report.considered, report.updated, report.finished,
+        )
+
+
+async def _live_sync_loop() -> None:
+    while True:
+        try:
+            # Synchronous DB + HTTP work, off the event loop so it never
+            # blocks requests being served concurrently.
+            await asyncio.to_thread(_run_live_sync_once)
+        except Exception:  # noqa: BLE001 -- one bad poll must not kill the loop
+            logger.exception("Live match sync loop hit an unexpected error")
+        await asyncio.sleep(LIVE_SYNC_INTERVAL_SECONDS)
 
 # Schema state, reported by /api/health.
 _DB_LOCK = threading.Lock()
@@ -87,6 +129,17 @@ if settings.secret_key_is_default:
         "who has read this repository. Set SECRET_KEY in .env before exposing this API to a network."
     )
 
+@contextlib.asynccontextmanager
+async def lifespan(app: FastAPI):
+    task = asyncio.create_task(_live_sync_loop())
+    try:
+        yield
+    finally:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+
 app = FastAPI(
     title="AI Football Prediction & Analytics System",
     description=(
@@ -96,6 +149,7 @@ app = FastAPI(
         "as guarantees."
     ),
     version="0.2.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
