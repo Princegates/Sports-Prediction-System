@@ -44,7 +44,10 @@ export function AccountStatus() {
   if (status) {
     const copy = STATUS_COPY[status.status];
     return (
-      <PublicShell>
+      <PublicShell
+        title="Check Access Status — Socca Intelligence"
+        description="Check whether your Socca Intelligence access code has been redeemed and how long your access lasts."
+      >
         <section className="status-result-shell">
           <div className={`card card-pad status-result ${copy.tone}`}>
             <Mascot pose={copy.pose} size={80} />
@@ -89,7 +92,10 @@ export function AccountStatus() {
   }
 
   return (
-    <PublicShell>
+    <PublicShell
+      title="Check Access Status — Socca Intelligence"
+      description="Check whether your Socca Intelligence access code has been redeemed and how long your access lasts."
+    >
       <section className="status-result-shell">
         <div className="card card-pad auth-card">
           <Mascot pose="idle" size={64} className="auth-mascot" />

@@ -1,6 +1,8 @@
 import { useState, type ReactNode } from "react";
 import { Link, NavLink } from "react-router-dom";
 import { useAuth } from "../lib/AuthContext";
+import { ThemeToggle } from "./ThemeToggle";
+import { usePageMeta } from "../lib/pageMeta";
 
 /**
  * Chrome for the public marketing pages.
@@ -10,8 +12,16 @@ import { useAuth } from "../lib/AuthContext";
  * when anonymous" through all of that would make both harder to read than
  * two components are.
  *
- * Theme/accent are admin-controlled site-wide (applied in main.tsx before
- * either shell mounts) -- there's no toggle here.
+ * Accent is admin-controlled site-wide, with no toggle here. Theme
+ * (day/night) is admin-controlled by default but a visitor can override it
+ * for themselves with ThemeToggle in the header -- see main.tsx for how
+ * that choice is persisted and kept from being overwritten by the
+ * site-wide default.
+ *
+ * ``title``/``description`` set this page's document title and meta
+ * description (see lib/pageMeta) -- required, since every page using this
+ * shell is one of the ones public/sitemap.xml lists for indexing, and each
+ * needs its own specific search-result snippet rather than sharing one.
  */
 
 const PUBLIC_NAV = [
@@ -20,7 +30,14 @@ const PUBLIC_NAV = [
   { to: "/responsible", label: "Responsible use" },
 ];
 
-export function PublicShell({ children }: { children: ReactNode }) {
+export function PublicShell({
+  children, title, description,
+}: {
+  children: ReactNode;
+  title: string;
+  description: string;
+}) {
+  usePageMeta(title, description);
   const { user } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -47,6 +64,8 @@ export function PublicShell({ children }: { children: ReactNode }) {
             </NavLink>
           ))}
         </nav>
+
+        <ThemeToggle />
 
         <div className="public-actions">
           {user ? (

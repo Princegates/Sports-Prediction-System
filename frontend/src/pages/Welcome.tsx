@@ -140,7 +140,10 @@ export function Welcome() {
   const nf = new Intl.NumberFormat();
 
   return (
-    <PublicShell>
+    <PublicShell
+      title="Socca Intelligence — Calibrated Football Predictions"
+      description="Ensemble football prediction across 18 markets per fixture: Elo, Dixon-Coles Poisson and gradient boosting, blended and calibrated on held-out history. Model probabilities, never guarantees."
+    >
       {/* ---------------- Hero ---------------- */}
       <section className="landing-hero">
         <div className="landing-hero-copy">

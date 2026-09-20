@@ -4,16 +4,22 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-    <title>AI Match Intelligence — Calibrated Football Predictions</title>
+    <!--
+      Matches what Welcome.tsx sets via usePageMeta once React mounts (see
+      lib/pageMeta.ts) -- kept identical so a crawler or link-preview bot
+      that never executes JS sees the same title/description as one that
+      does, instead of this placeholder value.
+    -->
+    <title>Socca Intelligence — Calibrated Football Predictions</title>
     <meta
       name="description"
-      content="Ensemble football prediction across 18 markets per fixture: Elo, Dixon-Coles Poisson and gradient boosting, blended and calibrated on held-out history. Every output carries a confidence band and the factors behind it. Model probabilities, never guarantees."
+      content="Ensemble football prediction across 18 markets per fixture: Elo, Dixon-Coles Poisson and gradient boosting, blended and calibrated on held-out history. Model probabilities, never guarantees."
     />
     <meta name="theme-color" content="#0b0c0e" />
 
     <!-- Open Graph, so a shared link renders as something other than a bare URL. -->
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="AI Match Intelligence — Calibrated Football Predictions" />
+    <meta property="og:title" content="Socca Intelligence — Calibrated Football Predictions" />
     <meta
       property="og:description"
       content="Three statistical models, blended and calibrated, scored across 18 markets per match — with the reasoning and the confidence shown. Probabilities, never guarantees."

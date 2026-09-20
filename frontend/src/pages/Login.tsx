@@ -34,7 +34,10 @@ export function Login() {
   }
 
   return (
-    <PublicShell>
+    <PublicShell
+      title="Sign In — Socca Intelligence"
+      description="Sign in to your Socca Intelligence account to see calibrated football predictions and manage your access."
+    >
       <div className="auth-shell">
       <div className="card card-pad auth-card">
         <Mascot pose="idle" size={64} className="auth-mascot" />

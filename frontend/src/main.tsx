@@ -4,16 +4,24 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import { AuthProvider } from "./lib/AuthContext";
 import { fetchBranding } from "./api";
+import { isPageTitleActive } from "./lib/pageMeta";
+import { THEME_OVERRIDE_KEY } from "./components/ThemeToggle";
 import "./styles.css";
 
-// Theme and accent are admin-controlled, site-wide -- there is no personal
-// override. A cached copy of the last-fetched branding applies immediately
+// Accent is admin-controlled, site-wide, with no personal override. Theme
+// (day/night) is: a visitor's own choice, made with ThemeToggle on any
+// public page, is stored under THEME_OVERRIDE_KEY and always wins over the
+// admin's site-wide default once set -- checked first here, and again
+// after the branding fetch below so a slow response can't clobber it.
+//
+// A cached copy of the last-fetched branding applies immediately regardless
 // (avoids a flash of the compiled-in default on repeat visits, and covers a
 // hard reload landing directly on /login before the fetch below resolves);
-// the live fetch then always wins, since it may have changed since the cache
-// was written.
+// the live fetch then wins over *that*, since the admin default may have
+// changed since the cache was written -- but never over a personal choice.
 try {
-  const cachedTheme = localStorage.getItem("site_theme");
+  const personalTheme = localStorage.getItem(THEME_OVERRIDE_KEY);
+  const cachedTheme = personalTheme || localStorage.getItem("site_theme");
   if (cachedTheme) document.documentElement.setAttribute("data-theme", cachedTheme);
   const cachedAccent = localStorage.getItem("site_accent");
   if (cachedAccent) document.documentElement.setAttribute("data-accent", cachedAccent);
@@ -26,9 +34,17 @@ try {
 // until this resolves.
 fetchBranding()
   .then((branding) => {
-    document.documentElement.setAttribute("data-theme", branding.default_theme);
+    let personalTheme: string | null = null;
+    try {
+      personalTheme = localStorage.getItem(THEME_OVERRIDE_KEY);
+    } catch {
+      // private-browsing / storage-disabled -- nothing to honor
+    }
+    document.documentElement.setAttribute("data-theme", personalTheme || branding.default_theme);
     document.documentElement.setAttribute("data-accent", branding.default_accent);
-    if (branding.site_name) document.title = branding.site_name;
+    // A page's own, more specific title (set via usePageMeta) must not be
+    // overwritten by this generic one if it already applied.
+    if (branding.site_name && !isPageTitleActive()) document.title = branding.site_name;
     try {
       localStorage.setItem("site_theme", branding.default_theme);
       localStorage.setItem("site_accent", branding.default_accent);

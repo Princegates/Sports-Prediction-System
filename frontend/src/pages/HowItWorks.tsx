@@ -26,7 +26,10 @@ export function HowItWorks() {
   const nf = new Intl.NumberFormat();
 
   return (
-    <PublicShell>
+    <PublicShell
+      title="How It Works — Socca Intelligence"
+      description="How Socca Intelligence predicts football matches: Elo ratings, Dixon-Coles Poisson and gradient boosting, blended and calibrated against held-out history, with every figure checkable against a real backtest."
+    >
       <section className="doc-hero">
         <span className="eyebrow">Methodology</span>
         <h1>How the predictions are made</h1>

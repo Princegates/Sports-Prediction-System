@@ -37,7 +37,10 @@ export function Register() {
 
   if (done) {
     return (
-      <PublicShell>
+      <PublicShell
+        title="Create an Account — Socca Intelligence"
+        description="Create a Socca Intelligence account for calibrated football predictions across every major competition, with a free trial to start."
+      >
         <div className="auth-shell">
           <div className="card card-pad auth-card">
             <Mascot pose="celebrating" size={72} className="auth-mascot" />
@@ -77,7 +80,10 @@ export function Register() {
   }
 
   return (
-    <PublicShell>
+    <PublicShell
+      title="Create an Account — Socca Intelligence"
+      description="Create a Socca Intelligence account for calibrated football predictions across every major competition, with a free trial to start."
+    >
       <div className="auth-shell">
       <div className="card card-pad auth-card">
         <div className="brand" style={{ marginBottom: 24 }}>

@@ -59,7 +59,10 @@ const WARNING_SIGNS = [
 
 export function Responsible() {
   return (
-    <PublicShell>
+    <PublicShell
+      title="Responsible Use — Socca Intelligence"
+      description="Predictions are model probabilities, never guarantees or financial advice. Guidance and helplines for using Socca Intelligence responsibly."
+    >
       <section className="doc-hero">
         <span className="eyebrow">Responsible use</span>
         <h1>What this system is, and what it isn't</h1>
