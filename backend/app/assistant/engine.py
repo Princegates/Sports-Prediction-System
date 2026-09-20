@@ -11,7 +11,7 @@ boundaries keeps it readable mid-stream.
 from __future__ import annotations
 
 import datetime as dt
-from dataclasses import asdict
+from dataclasses import asdict, replace
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -53,17 +53,14 @@ def compose(
     result = responder.respond(db, parsed, now=now)
 
     if allow_rewrite and llm.is_enabled(db):
-        rewritten = llm.rewrite(db, result.text, text)
-        if rewritten:
+        rewritten_text = llm.rewrite(db, result.text, text)
+        if rewritten_text:
             # The grounded text stays the source of truth for storage; only
-            # the delivered prose changes.
-            result = Answer(
-                text=rewritten,
-                intent=result.intent,
-                sources=result.sources,
-                suggestions=result.suggestions,
-                includes_probability=result.includes_probability,
-            )
+            # the delivered prose changes. dataclasses.replace() rather than
+            # rebuilding Answer(...) field by field, so a field added to
+            # Answer later (picks, sources, ...) can't be silently dropped
+            # here the way one already was.
+            result = replace(result, text=rewritten_text, rewritten=True)
     return result
 
 
@@ -91,6 +88,7 @@ def _persist(
         sources=[asdict(s) for s in result.sources],
         suggestions=list(result.suggestions),
         picks=[asdict(p) for p in result.picks],
+        rewritten=result.rewritten,
     )
     db.add(assistant_row)
     db.commit()

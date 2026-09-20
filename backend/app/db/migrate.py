@@ -48,6 +48,9 @@ _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     # Structured (match_id, market, selection) refs for a best-picks-style
     # answer, so the UI can offer to price them for real via AI Generation.
     ("chat_messages", "picks", "JSON"),
+    # True only when the optional LLM rewriter actually replaced this row's
+    # content -- see app/assistant/llm.py.
+    ("chat_messages", "rewritten", "BOOLEAN"),
 ]
 
 

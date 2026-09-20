@@ -14,7 +14,9 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
+from app import app_settings
 from app.api import rate_limit
+from app.assistant import llm
 from app.auth.passwords import hash_password
 from app.auth.tokens import create_token
 from app.config import get_settings
@@ -393,6 +395,50 @@ def test_picks_survive_a_reload_via_history(db_session, auth_headers, fixture_da
     assert assistant_row["picks"] == [
         {"match_id": fixture_data["upcoming"].id, "market": "Total Goals 0.5", "selection": "Over 0.5"}
     ]
+
+
+def test_answers_are_not_marked_rewritten_when_the_llm_rewriter_is_off(db_session, auth_headers, fixture_data):
+    body = _ask("what are the best picks?", auth_headers)
+    assert body["rewritten"] is False
+
+
+def test_picks_and_the_rewritten_flag_survive_an_llm_rewrite(db_session, auth_headers, fixture_data, monkeypatch):
+    """Regression test: engine.compose() used to rebuild the Answer dataclass
+    field by field after a rewrite, which silently dropped `picks` the moment
+    the rewriter was turned on. dataclasses.replace() fixed that -- this pins
+    it down end-to-end, through the real API, the way a user would hit it."""
+
+    app_settings.set_values(
+        db_session,
+        {
+            "assistant_llm_enabled": True,
+            "assistant_llm_base_url": "https://example-llm.test/v1",
+            "assistant_llm_model": "test-model",
+        },
+    )
+
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"choices": [{"message": {"content": "Here's the top pick, rephrased."}}]}
+
+    monkeypatch.setattr(llm.requests, "post", lambda *a, **k: FakeResponse())
+
+    body = _ask("what are the best picks?", auth_headers)
+
+    assert body["text"] == "Here's the top pick, rephrased."
+    assert body["rewritten"] is True
+    assert body["picks"] == [
+        {"match_id": fixture_data["upcoming"].id, "market": "Total Goals 0.5", "selection": "Over 0.5"}
+    ]
+
+    # And a reload via history must keep both, not just what /message returned.
+    history = client.get("/api/chat/history", headers=auth_headers).json()
+    assistant_row = next(r for r in history if r["role"] == "assistant")
+    assert assistant_row["rewritten"] is True
+    assert assistant_row["picks"] == body["picks"]
 
 
 def test_harmful_request_gets_the_responsible_use_answer(db_session, auth_headers, fixture_data):

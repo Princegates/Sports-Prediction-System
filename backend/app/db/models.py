@@ -4,6 +4,7 @@ import datetime as dt
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     DateTime,
     Float,
     ForeignKey,
@@ -93,6 +94,11 @@ class ChatMessage(Base):
     # specific picks (best-picks style) -- lets the UI offer "send these to
     # AI Generation" for real pricing, without re-parsing the prose reply.
     picks: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # True only when the optional LLM rewriter (app/assistant/llm.py)
+    # actually replaced this row's content -- always False on a user row,
+    # and on an assistant row whenever the rewriter is off, unconfigured,
+    # or the call failed and the grounded text was kept instead.
+    rewritten: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
 
 

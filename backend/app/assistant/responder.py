@@ -62,6 +62,11 @@ class Answer:
     # the user skims past.
     includes_probability: bool = False
     picks: list[PickRef] = field(default_factory=list)
+    # Set by engine.compose() when the optional LLM rewriter actually
+    # replaced this text -- lets the UI show that it's looking at phrased
+    # prose, not just the template. Never set here; every handler in this
+    # module always produces the grounded, un-rewritten answer.
+    rewritten: bool = False
 
 
 def _pct(value: float, places: int = 0) -> str:

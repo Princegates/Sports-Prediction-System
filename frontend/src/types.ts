@@ -163,6 +163,10 @@ export interface ChatAnswer {
   includes_probability: boolean;
   caveat: string | null;
   picks: ChatPick[];
+  /** True when the optional LLM rewriter actually replaced the grounded
+   * text (Settings -> AI assistant) -- false whenever it's off, unset, or
+   * the call failed and the grounded text was kept instead. */
+  rewritten: boolean;
 }
 
 export interface ChatMessage {
@@ -174,6 +178,7 @@ export interface ChatMessage {
   sources: ChatSource[];
   suggestions: string[];
   picks: ChatPick[];
+  rewritten: boolean;
   created_at: string;
 }
 

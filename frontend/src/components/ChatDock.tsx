@@ -32,6 +32,7 @@ interface Turn {
   sources?: ChatSource[];
   suggestions?: string[];
   picks?: ChatPick[];
+  rewritten?: boolean;
   caveat?: string | null;
   streaming?: boolean;
   failed?: boolean;
@@ -204,6 +205,7 @@ export function ChatDock() {
             sources: r.sources,
             suggestions: r.suggestions,
             picks: r.picks,
+            rewritten: r.rewritten,
           })),
         );
       })
@@ -283,6 +285,7 @@ export function ChatDock() {
             sources: answer.sources,
             suggestions: answer.suggestions,
             picks: answer.picks,
+            rewritten: answer.rewritten,
             caveat: answer.caveat,
             streaming: false,
           })),
@@ -410,7 +413,17 @@ export function ChatDock() {
         {turns.map((turn) => (
           <div key={turn.id} className={`chat-turn ${turn.role}`}>
             {turn.role === "assistant" && (
-              <span className="chat-turn-badge">{turn.failed ? "Unavailable" : "Guda"}</span>
+              <span className="chat-turn-badge">
+                {turn.failed ? "Unavailable" : "Guda"}
+                {turn.rewritten && (
+                  <span
+                    className="chat-rewritten-badge"
+                    title="Phrasing polished by the configured AI model -- every fact still comes from this system's own data, unchanged"
+                  >
+                    ✨ phrased by AI
+                  </span>
+                )}
+              </span>
             )}
             <div className={`chat-bubble ${turn.role}${turn.failed ? " failed" : ""}`}>
               {turn.role === "assistant" ? (

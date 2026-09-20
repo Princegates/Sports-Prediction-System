@@ -181,6 +181,9 @@ class ChatAnswerOut(BaseModel):
     includes_probability: bool = False
     caveat: str | None = None
     picks: list[ChatPickOut] = []
+    # True when the optional LLM rewriter actually replaced the grounded
+    # text -- lets the UI show that it's looking at phrased prose.
+    rewritten: bool = False
 
 
 class ChatMessageOut(BaseModel):
@@ -192,6 +195,7 @@ class ChatMessageOut(BaseModel):
     sources: list[ChatSourceOut] = []
     suggestions: list[str] = []
     picks: list[ChatPickOut] = []
+    rewritten: bool = False
     created_at: dt.datetime
 
 
