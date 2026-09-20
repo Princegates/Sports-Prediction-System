@@ -95,7 +95,16 @@ class SlipCriteria:
     markets: tuple[str, ...] = ()           # empty = DEFAULT_MARKETS; see its own comment for why
     min_probability: float = DEFAULT_MIN_PROBABILITY
     max_legs: int = DEFAULT_MAX_LEGS
+    # Kept for existing single-league callers (the chat assistant resolves
+    # exactly one league from text, never several) -- ignored whenever
+    # `leagues` below is non-empty. New multi-league UI should set `leagues`
+    # and leave this at its default.
     league: str | None = None
+    # Empty = no league filter (every league this deployment has data for).
+    # Non-empty = any one of these, same "empty means unfiltered" convention
+    # `markets` already uses -- a match qualifies by being in ANY of the
+    # leagues listed, not all of them (a match only has one league anyway).
+    leagues: tuple[str, ...] = ()
     days_ahead: int = DEFAULT_DAYS_AHEAD
     # Whose captured prices to price legs from. None/blank = any bookmaker
     # this project has a real quote from -- see the module docstring for why
@@ -113,6 +122,7 @@ class SlipCriteria:
             "min_probability": self.min_probability,
             "max_legs": self.max_legs,
             "league": self.league,
+            "leagues": list(self.leagues),
             "days_ahead": self.days_ahead,
             "price_bookmaker": self.price_bookmaker,
         }
@@ -238,7 +248,9 @@ def build_candidate_legs(db: Session, criteria: SlipCriteria) -> list[Leg]:
         .where(Match.date >= now, Match.date < cutoff, Match.status == "SCHEDULED")
         .options(selectinload(Match.home_team), selectinload(Match.away_team))
     )
-    if criteria.league:
+    if criteria.leagues:
+        match_query = match_query.where(Match.league.in_(criteria.leagues))
+    elif criteria.league:
         match_query = match_query.where(Match.league == criteria.league)
     matches = list(db.execute(match_query).scalars())
     if not matches:

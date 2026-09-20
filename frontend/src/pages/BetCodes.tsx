@@ -11,7 +11,7 @@ import {
 import { CopyButton } from "../components/CopyButton";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
-import { leagueLabel, useLeague } from "../components/AppShell";
+import { LEAGUES, useLeague } from "../components/AppShell";
 import { useAuth } from "../lib/AuthContext";
 import type { AdminPick, BetCodeCriteria, BetCodeLeg, BetCodePick, BetCodePreview } from "../types";
 
@@ -151,6 +151,11 @@ export function BetCodes() {
   const [markets, setMarkets] = useState<string[]>([]);
   const [minProbability, setMinProbability] = useState(0.65);
   const [daysAhead, setDaysAhead] = useState(7);
+  // Which leagues to search -- initialized from the top bar's single-league
+  // context (so this page starts scoped the same way it always has), but
+  // from here on this list, not the top bar, is what actually drives the
+  // search: empty means every league, and any number can be picked at once.
+  const [selectedLeagues, setSelectedLeagues] = useState<string[]>(league ? [league] : []);
   // Which risk preset (if any) exactly matches the form's current values --
   // cleared the moment any control is touched by hand, so the highlighted
   // chip never claims a match that no longer holds.
@@ -212,10 +217,15 @@ export function BetCodes() {
       max_legs: maxLegs,
       markets,
       min_probability: minProbability,
-      league: league || null,
+      leagues: selectedLeagues,
       days_ahead: daysAhead,
       ...overrides,
     };
+  }
+
+  function toggleLeague(l: string) {
+    setActiveRisk(null);
+    setSelectedLeagues((prev) => (prev.includes(l) ? prev.filter((v) => v !== l) : [...prev, l]));
   }
 
   async function runPreview(fetchPreview: () => Promise<BetCodePreview>) {
@@ -364,7 +374,14 @@ export function BetCodes() {
         <h2>AI Generation</h2>
         <span className="meta">
           Combine matches toward a target price, priced from real bookmaker odds -- scoped to{" "}
-          <strong>{leagueLabel(league)}</strong> (change league in the top bar)
+          <strong>
+            {selectedLeagues.length === 0
+              ? "all leagues"
+              : selectedLeagues.length === 1
+                ? selectedLeagues[0]
+                : `${selectedLeagues.length} leagues`}
+          </strong>{" "}
+          (pick leagues below)
         </span>
       </div>
 
@@ -434,6 +451,33 @@ export function BetCodes() {
               ))}
             </select>
           </label>
+        </div>
+
+        <div style={{ marginTop: 14 }}>
+          <div className="meta" style={{ marginBottom: 6 }}>
+            Leagues{" "}
+            <span style={{ fontWeight: 400 }}>(none selected = every league; pick as many as you like)</span>
+          </div>
+          <div className="filter-bar">
+            <button
+              className={`filter-chip${selectedLeagues.length === 0 ? " active" : ""}`}
+              onClick={() => {
+                setActiveRisk(null);
+                setSelectedLeagues([]);
+              }}
+            >
+              All leagues
+            </button>
+            {LEAGUES.map((l) => (
+              <button
+                key={l}
+                className={`filter-chip${selectedLeagues.includes(l) ? " active" : ""}`}
+                onClick={() => toggleLeague(l)}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div style={{ marginTop: 14 }}>

@@ -455,7 +455,12 @@ export interface BetCodeCriteria {
   markets: string[];
   min_probability?: number | null;
   max_legs?: number | null;
+  /** Kept for older callers that only ever meant one league; ignored
+   * whenever `leagues` below is non-empty. */
   league?: string | null;
+  /** Empty = every league this deployment has data for; non-empty = any
+   * one of these (a match only has one league, so this is a union). */
+  leagues?: string[];
   days_ahead: number;
   /** Whose captured prices to price legs from. Omitted/null = any bookmaker
    * this project has a real quote from. */

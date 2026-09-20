@@ -252,6 +252,76 @@ def test_league_filter_excludes_other_leagues(db_session, three_matches):
     assert result.legs == []
 
 
+def _add_la_liga_match(db_session) -> Match:
+    home = Team(name="Real Madrid", league="Spanish La Liga", aliases=[])
+    away = Team(name="Barcelona", league="Spanish La Liga", aliases=[])
+    db_session.add_all([home, away])
+    db_session.commit()
+    for t in (home, away):
+        db_session.refresh(t)
+
+    match = Match(
+        league="Spanish La Liga", season="2025-26", date=BASE + dt.timedelta(days=1),
+        home_team_id=home.id, away_team_id=away.id, status="SCHEDULED",
+    )
+    db_session.add(match)
+    db_session.commit()
+    db_session.refresh(match)
+    db_session.add(_prediction(match.id, home=0.85, draw=0.10, away=0.05))
+    db_session.add(MatchOdds(
+        match_id=match.id, bookmaker="Bet9ja", market="Match Result", selection="Home Win", decimal_odds=1.20,
+    ))
+    db_session.commit()
+    return match
+
+
+def test_leagues_plural_includes_matches_from_any_of_the_listed_leagues(db_session, three_matches):
+    """Multi-league search: a match qualifies by being in ANY of the leagues
+    listed, not all of them -- three EPL matches plus one La Liga match, all
+    should come back when both leagues are named."""
+
+    la_liga_match = _add_la_liga_match(db_session)
+
+    result = select_legs(
+        db_session,
+        SlipCriteria(
+            bookmaker="Bet9ja", target_odds=1_000_000.0, min_probability=0.5, max_legs=10,
+            leagues=("English Premier League", "Spanish La Liga"),
+        ),
+    )
+    match_ids = {leg.match_id for leg in result.legs}
+    assert match_ids == {m.id for m in three_matches} | {la_liga_match.id}
+
+
+def test_leagues_plural_still_excludes_leagues_not_listed(db_session, three_matches):
+    _add_la_liga_match(db_session)
+
+    result = select_legs(
+        db_session,
+        SlipCriteria(bookmaker="Bet9ja", target_odds=1_000_000.0, min_probability=0.5, leagues=("Spanish La Liga",)),
+    )
+    assert all(leg.league == "Spanish La Liga" for leg in result.legs)
+    assert len(result.legs) == 1
+
+
+def test_leagues_plural_takes_precedence_over_singular_league(db_session, three_matches):
+    """Both fields set at once shouldn't happen from any real caller, but if
+    it does, the newer multi-select field wins -- it's the one an actual UI
+    control drives."""
+
+    _add_la_liga_match(db_session)
+
+    result = select_legs(
+        db_session,
+        SlipCriteria(
+            bookmaker="Bet9ja", target_odds=1_000_000.0, min_probability=0.5,
+            league="Spanish La Liga", leagues=("English Premier League",),
+        ),
+    )
+    assert all(leg.league == "English Premier League" for leg in result.legs)
+    assert len(result.legs) == 3
+
+
 def test_default_markets_skip_a_trivial_near_certain_goal_line(db_session):
     """A bookmaker prices a Total Goals line for nearly every half/quarter
     line up to 8.5+, and one that far out clears well above 99% for almost
