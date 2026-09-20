@@ -39,7 +39,7 @@ export function Login() {
       <div className="card card-pad auth-card">
         <Mascot pose="idle" size={64} className="auth-mascot" />
         <div className="brand" style={{ marginBottom: 24, justifyContent: "center" }}>
-          <span className="brand-mark">AI</span>
+          <span className="brand-mark">SI</span>
           <span className="brand-text">
             <strong>Socca Intelligence</strong>
             <span>Football prediction AI</span>

@@ -28,7 +28,7 @@ export function PublicShell({ children }: { children: ReactNode }) {
     <div className="public-shell">
       <header className="public-topbar">
         <Link to="/" className="brand" onClick={() => setMenuOpen(false)}>
-          <span className="brand-mark">AI</span>
+          <span className="brand-mark">SI</span>
           <span className="brand-text">
             <strong>Socca Intelligence</strong>
             <span>Football prediction AI</span>
@@ -114,7 +114,7 @@ export function PublicShell({ children }: { children: ReactNode }) {
       <footer className="public-footer">
         <div className="public-footer-grid">
           <div className="public-footer-brand">
-            <span className="brand-mark">AI</span>
+            <span className="brand-mark">SI</span>
             <div>
               <strong>Socca Intelligence</strong>
               <p>

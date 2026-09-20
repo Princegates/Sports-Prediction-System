@@ -112,7 +112,7 @@ export function AppShell() {
       <div className="app-shell">
         <aside className="app-sidebar">
           <Link to="/app" className="brand">
-            <span className="brand-mark">AI</span>
+            <span className="brand-mark">SI</span>
             <span className="brand-text">
               <strong>Socca Intelligence</strong>
               <span>Football prediction AI</span>
@@ -164,7 +164,7 @@ export function AppShell() {
 
           <header className="mobile-topbar">
             <Link to="/app" className="brand">
-              <span className="brand-mark">AI</span>
+              <span className="brand-mark">SI</span>
               <span className="brand-text">
                 <strong>Socca Intelligence</strong>
               </span>
