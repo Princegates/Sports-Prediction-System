@@ -17,6 +17,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import app_settings, mailer
+from app.assistant import llm
 from app.auth.passwords import hash_password
 from app.auth.tokens import create_token
 from app.config import get_settings
@@ -293,6 +294,87 @@ def test_model_weight_override_reaches_the_ensemble(db_session, admin):
 
 
 # --- test email and status ---------------------------------------------
+
+
+def test_assistant_llm_disabled_by_default_and_skips_the_call(db_session, admin, monkeypatch):
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("The rewriter must not call out while disabled")
+
+    monkeypatch.setattr(llm.requests, "post", fail_if_called)
+
+    assert llm.is_enabled(db_session) is False
+    assert llm.rewrite(db_session, "The grounded answer.", "a question") is None
+
+
+def test_assistant_llm_settings_reach_the_rewriter(db_session, admin, monkeypatch):
+    client.patch(
+        "/api/admin/settings",
+        json={
+            "values": {
+                "assistant_llm_enabled": True,
+                "assistant_llm_base_url": "https://example-llm.test/v1",
+                "assistant_llm_model": "test-model",
+                "assistant_llm_api_key": "sk-test-key",
+            }
+        },
+        headers=_headers(admin),
+    )
+
+    calls: list[dict] = []
+
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"choices": [{"message": {"content": "A friendlier version."}}]}
+
+    def fake_post(url, json=None, headers=None, timeout=None):
+        calls.append({"url": url, "json": json, "headers": headers, "timeout": timeout})
+        return FakeResponse()
+
+    monkeypatch.setattr(llm.requests, "post", fake_post)
+
+    assert llm.is_enabled(db_session) is True
+    result = llm.rewrite(db_session, "The grounded answer.", "the user's question")
+
+    assert result == "A friendlier version."
+    assert len(calls) == 1
+    assert calls[0]["url"] == "https://example-llm.test/v1/chat/completions"
+    assert calls[0]["headers"]["Authorization"] == "Bearer sk-test-key"
+    assert calls[0]["json"]["model"] == "test-model"
+
+
+def test_assistant_llm_a_failed_call_falls_back_to_none_not_an_exception(db_session, admin, monkeypatch):
+    client.patch(
+        "/api/admin/settings",
+        json={
+            "values": {
+                "assistant_llm_enabled": True,
+                "assistant_llm_base_url": "https://example-llm.test/v1",
+            }
+        },
+        headers=_headers(admin),
+    )
+
+    class FakeResponse:
+        def raise_for_status(self):
+            raise llm.requests.HTTPError("500 Server Error")
+
+    monkeypatch.setattr(llm.requests, "post", lambda *a, **k: FakeResponse())
+
+    assert llm.rewrite(db_session, "The grounded answer.", "a question") is None
+
+
+def test_assistant_llm_api_key_is_masked_like_other_secrets(db_session, admin):
+    client.patch(
+        "/api/admin/settings",
+        json={"values": {"assistant_llm_api_key": "sk-super-secret"}},
+        headers=_headers(admin),
+    )
+    body = client.get("/api/admin/settings", headers=_headers(admin)).json()
+    assert "sk-super-secret" not in str(body)
+    assert body["secrets_set"]["assistant_llm_api_key"] is True
 
 
 def test_test_email_says_why_it_cannot_send(db_session, admin):

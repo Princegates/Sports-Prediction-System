@@ -57,10 +57,18 @@ class Settings(BaseSettings):
     # --- Optional AI assistant rewriter (see app/assistant/llm.py) --------
     # Left disabled so the assistant runs entirely locally at zero cost. The
     # grounded pipeline produces the answer either way; this only affects
-    # phrasing.
+    # phrasing. All five are also editable in the admin Settings panel
+    # (group "assistant"), which overrides these -- a key rotation or
+    # provider swap is then a setting, not a redeploy.
+    #
+    # The base_url/model defaults point at Google AI Studio's Gemini API,
+    # the one mainstream option with a real, no-credit-card free tier
+    # (1,500 requests/day on Gemini 2.5 Flash as of when this was set) that
+    # also happens to speak the OpenAI-compatible /chat/completions shape
+    # this module expects. Still fully inert without an API key.
     assistant_llm_enabled: bool = False
-    assistant_llm_base_url: str = ""
-    assistant_llm_model: str = "llama3.2"
+    assistant_llm_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
+    assistant_llm_model: str = "gemini-2.5-flash"
     assistant_llm_api_key: str = ""
     assistant_llm_timeout: float = 20.0
 

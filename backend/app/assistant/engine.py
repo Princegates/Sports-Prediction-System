@@ -52,8 +52,8 @@ def compose(
     parsed = nlu.parse(db, text, context_match_id=context_match_id, now=now)
     result = responder.respond(db, parsed, now=now)
 
-    if allow_rewrite and llm.is_enabled():
-        rewritten = llm.rewrite(result.text, text)
+    if allow_rewrite and llm.is_enabled(db):
+        rewritten = llm.rewrite(db, result.text, text)
         if rewritten:
             # The grounded text stays the source of truth for storage; only
             # the delivered prose changes.

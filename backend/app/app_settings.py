@@ -181,6 +181,27 @@ REGISTRY: tuple[SettingSpec, ...] = (
     SettingSpec("notice_message", "str", "notice", "Notice message",
                 "Shown only while the notice above is turned on.", default=""),
 
+    # --- AI assistant rewriter --------------------------------------------
+    SettingSpec("assistant_llm_enabled", "bool", "assistant", "Enable the rewriter",
+                "Off by default -- Guda's answers are already complete without this. On, an LLM "
+                "rewrites the grounded reply for phrasing only; it is never shown a fact it wasn't "
+                "already given, and a failed or slow call just keeps the unrewritten text.",
+                env_attr="assistant_llm_enabled"),
+    SettingSpec("assistant_llm_base_url", "str", "assistant", "API base URL",
+                "Any OpenAI-compatible /chat/completions endpoint. Defaults to Google AI Studio's "
+                "Gemini API, which has a genuine free tier (no card needed) -- get a key at "
+                "aistudio.google.com/apikey and paste it below.",
+                env_attr="assistant_llm_base_url"),
+    SettingSpec("assistant_llm_model", "str", "assistant", "Model name",
+                "Must match the base URL's provider -- e.g. gemini-2.5-flash for the Gemini default "
+                "above.",
+                env_attr="assistant_llm_model"),
+    SettingSpec("assistant_llm_api_key", "str", "assistant", "API key",
+                "Left blank for a local server (Ollama and similar) that doesn't check one.",
+                secret=True, env_attr="assistant_llm_api_key"),
+    SettingSpec("assistant_llm_timeout", "float", "assistant", "Request timeout (seconds)",
+                env_attr="assistant_llm_timeout", minimum=1, maximum=120),
+
     # --- Guda Picks ----------------------------------------------------------
     SettingSpec("guda_picks_enabled", "bool", "picks", "Show Guda Picks",
                 "A dashboard section for outcomes a Super Admin has chosen to highlight -- "
@@ -204,6 +225,7 @@ GROUP_LABELS = {
     "notice": "Site notice",
     "picks": "Guda Picks",
     "betcode": "Booking codes",
+    "assistant": "AI assistant",
 }
 
 
