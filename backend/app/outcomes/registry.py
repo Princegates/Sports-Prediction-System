@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.prediction_models.poisson_model import build_score_matrix
+from app.prediction_models.poisson_model import HT_MAX_GOALS, build_score_matrix, markets_from_matrix
 
 
 @dataclass(frozen=True)
@@ -74,17 +74,17 @@ _TEAM_GOAL_LINES = ("0.5", "1.5", "2.5", "3.5", "4.5")
 
 
 def matrix_derived_outcomes(lambda_home: float, lambda_away: float, matches_available: int) -> list[Outcome]:
-    """Every outcome that is pure arithmetic over the model's own scoreline
-    matrix -- no new statistics collected, no new model fit, just a different
-    slice of a distribution the Poisson component already computes for
-    Correct Score.
+    """Every full-time outcome that is pure arithmetic over the model's own
+    scoreline matrix -- no new statistics collected, no new model fit, just a
+    different slice of a distribution the Poisson component already computes
+    for Correct Score. Half-time markets are the same idea applied to a
+    half-time-scaled matrix -- see ht_matrix_derived_outcomes below.
 
-    Deliberately does not attempt half-time markets (no first-half/second-half
-    split is modelled), cards/corners/fouls (no predictive model exists for
-    them, though the raw historical counts are stored), player markets (no
-    player-level data source), or goal-timing / first-to-score markets (no
-    minute-level event model). Inventing numbers for those would look like
-    analysis and be a guess.
+    Deliberately does not attempt cards/corners/fouls (no predictive model
+    exists for them, though the raw historical counts are stored), player
+    markets (no player-level data source), or goal-timing / first-to-score
+    markets (no minute-level event model). Inventing numbers for those would
+    look like analysis and be a guess.
     """
 
     matrix = build_score_matrix(lambda_home, lambda_away)
@@ -261,6 +261,98 @@ def matrix_derived_outcomes(lambda_home: float, lambda_away: float, matches_avai
     return [o for o in outcomes if matches_available >= o.min_data_requirement]
 
 
+def ht_matrix_derived_outcomes(lambda_home_ht: float, lambda_away_ht: float, matches_available: int) -> list[Outcome]:
+    """Half-time markets: the identical Dixon-Coles machinery as
+    matrix_derived_outcomes above, just built from half-time-scaled lambdas
+    (app.prediction_models.poisson_model.ht_goal_fraction) and a smaller
+    max_goals, since more than a handful of goals inside 45 minutes is
+    vanishingly rare.
+
+    Reuses markets_from_matrix wholesale for HT Result, the HT goal lines,
+    HT BTTS and HT Correct Score -- it already computes exactly those from
+    any two lambdas, home_win/draw/away_win just mean "ahead at the break"
+    instead of "ahead at full time" here. Only HT Double Chance, HT Exact
+    Goals, HT Odd/Even and HT Multigoals need the raw matrix directly, the
+    same way FT's own odd/even and goals-range markets do above.
+
+    HT Multigoals bands are non-overlapping (0-1 / 2-3 / 4+) rather than the
+    overlapping bands a bookmaker's own "Multigoals" market advertises (1-2,
+    1-3, 2-3, ...) -- every market in this registry is required to belong to
+    a mutually_exclusive_group that sums to 1 (see this module's docstring),
+    and overlapping bands can't satisfy that.
+    """
+
+    matrix = build_score_matrix(lambda_home_ht, lambda_away_ht, max_goals=HT_MAX_GOALS)
+    max_goals = len(matrix) - 1
+    ht = markets_from_matrix(matrix, lambda_home_ht, lambda_away_ht)
+
+    outcomes: list[Outcome] = [
+        Outcome("HT Result", "Home", ht.home_win, "ht_1x2", 5, "Home team is ahead at half-time."),
+        Outcome("HT Result", "Draw", ht.draw, "ht_1x2", 5, "Scores are level at half-time."),
+        Outcome("HT Result", "Away", ht.away_win, "ht_1x2", 5, "Away team is ahead at half-time."),
+        Outcome("HT Double Chance", "Home/Draw", ht.home_win + ht.draw, "ht_double_chance", 5,
+                "Home team is ahead or level at half-time."),
+        Outcome("HT Double Chance", "Home/Away", ht.home_win + ht.away_win, "ht_double_chance", 5,
+                "Either team is ahead at half-time (not level)."),
+        Outcome("HT Double Chance", "Draw/Away", ht.draw + ht.away_win, "ht_double_chance", 5,
+                "Scores are level or the away team is ahead at half-time."),
+        Outcome("HT Both Teams To Score", "Yes", ht.btts_yes, "ht_btts", 5, "Both teams have scored by half-time."),
+        Outcome("HT Both Teams To Score", "No", ht.btts_no, "ht_btts", 5, "At least one team has not scored by half-time."),
+    ]
+
+    for line, over_p in ht.over_probabilities.items():
+        outcomes += [
+            Outcome(f"HT Total Goals {line}", f"Over {line}", over_p, f"ht_ou_{line}", 5,
+                    f"Total goals at half-time are greater than {line}."),
+            Outcome(f"HT Total Goals {line}", f"Under {line}", 1 - over_p, f"ht_ou_{line}", 5,
+                    f"Total goals at half-time are less than {line}."),
+        ]
+
+    for score, prob in ht.correct_score_probabilities.items():
+        outcomes.append(
+            Outcome("HT Correct Score", score, prob, "ht_correct_score", 10, f"Score at half-time is exactly {score}.")
+        )
+
+    def parity(pairs) -> tuple[float, float]:
+        even = sum(p for n, p in pairs if n % 2 == 0)
+        return even, 1 - even
+
+    total_even, total_odd = parity(
+        (h + a, matrix[h][a]) for h in range(max_goals + 1) for a in range(max_goals + 1)
+    )
+    outcomes += [
+        Outcome("HT Total Goals Odd/Even", "Even", total_even, "ht_goals_parity", 5,
+                "Total goals at half-time are an even number (0 counts as even)."),
+        Outcome("HT Total Goals Odd/Even", "Odd", total_odd, "ht_goals_parity", 5,
+                "Total goals at half-time are an odd number."),
+    ]
+
+    exact = {"0": 0.0, "1": 0.0, "2": 0.0, "3+": 0.0}
+    for h in range(max_goals + 1):
+        for a in range(max_goals + 1):
+            total = h + a
+            key = str(total) if total < 3 else "3+"
+            exact[key] += matrix[h][a]
+    outcomes += [
+        Outcome("HT Exact Goals", k, v, "ht_exact_goals", 5,
+                f"Total goals at half-time is {'3 or more' if k == '3+' else k}.")
+        for k, v in exact.items()
+    ]
+
+    multi = {"0-1": 0.0, "2-3": 0.0, "4+": 0.0}
+    for h in range(max_goals + 1):
+        for a in range(max_goals + 1):
+            total = h + a
+            key = "0-1" if total <= 1 else ("2-3" if total <= 3 else "4+")
+            multi[key] += matrix[h][a]
+    outcomes += [
+        Outcome("HT Multigoals", k, v, "ht_multigoals", 5, f"Total goals at half-time fall within the {k} range.")
+        for k, v in multi.items()
+    ]
+
+    return [o for o in outcomes if matches_available >= o.min_data_requirement]
+
+
 def outcomes_from_prediction(prediction) -> list[Outcome]:
     """Rebuild the full registry from a stored ``Prediction`` row.
 
@@ -301,6 +393,10 @@ def outcomes_from_prediction(prediction) -> list[Outcome]:
     lambda_home, lambda_away = poisson.get("lambda_home"), poisson.get("lambda_away")
     if lambda_home is not None and lambda_away is not None:
         outcomes += matrix_derived_outcomes(lambda_home, lambda_away, matches_available)
+
+    lambda_home_ht, lambda_away_ht = poisson.get("lambda_home_ht"), poisson.get("lambda_away_ht")
+    if lambda_home_ht is not None and lambda_away_ht is not None:
+        outcomes += ht_matrix_derived_outcomes(lambda_home_ht, lambda_away_ht, matches_available)
 
     return outcomes
 

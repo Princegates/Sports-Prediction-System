@@ -1,7 +1,14 @@
 from types import SimpleNamespace
 
+import pytest
+
 from app.outcomes.engine import secondary_outcomes, select_global_most_likely, top_n
-from app.outcomes.registry import build_outcome_registry, matrix_derived_outcomes, outcomes_from_prediction
+from app.outcomes.registry import (
+    build_outcome_registry,
+    ht_matrix_derived_outcomes,
+    matrix_derived_outcomes,
+    outcomes_from_prediction,
+)
 
 
 def _sample_registry(matches_available=20):
@@ -183,3 +190,90 @@ def test_outcomes_from_prediction_skips_matrix_markets_without_lambdas():
     outcomes = outcomes_from_prediction(prediction)
     assert not any(o.market == "Winning Margin" for o in outcomes)
     assert any(o.market == "Match Result" for o in outcomes)  # the base registry still works
+
+
+# --- half-time markets -------------------------------------------------
+
+
+def test_every_ht_matrix_derived_group_sums_to_one():
+    """Same correctness property as the full-time matrix markets: every HT
+    group is a genuine partition, not a cherry-picked subset -- except
+    ht_double_chance, three overlapping unions of HT Result that by
+    construction sum to 2 (same as FT Double Chance always has), and
+    ht_correct_score, which is only the top-8 scorelines by design (same as
+    FT Correct Score) rather than every possible one."""
+
+    outcomes = ht_matrix_derived_outcomes(lambda_home_ht=0.7, lambda_away_ht=0.5, matches_available=20)
+    assert outcomes, "expected a non-empty HT registry"
+
+    groups: dict[str, float] = {}
+    for o in outcomes:
+        groups[o.mutually_exclusive_group] = groups.get(o.mutually_exclusive_group, 0.0) + o.probability
+    for group, total in groups.items():
+        if group == "ht_double_chance":
+            assert abs(total - 2.0) < 1e-9, f"group {group!r} summed to {total}, not 2.0"
+            continue
+        if group == "ht_correct_score":
+            assert 0.0 < total <= 1.0, f"group {group!r} summed to {total}, outside (0, 1]"
+            continue
+        assert abs(total - 1.0) < 1e-9, f"group {group!r} summed to {total}, not 1.0"
+
+
+def test_ht_double_chance_is_a_union_of_ht_result():
+    outcomes = ht_matrix_derived_outcomes(lambda_home_ht=0.7, lambda_away_ht=0.5, matches_available=20)
+    by_key = {(o.market, o.selection): o.probability for o in outcomes}
+
+    home = by_key[("HT Result", "Home")]
+    draw = by_key[("HT Result", "Draw")]
+    away = by_key[("HT Result", "Away")]
+    assert by_key[("HT Double Chance", "Home/Draw")] == pytest.approx(home + draw)
+    assert by_key[("HT Double Chance", "Home/Away")] == pytest.approx(home + away)
+    assert by_key[("HT Double Chance", "Draw/Away")] == pytest.approx(draw + away)
+
+
+def test_ht_lambdas_are_lower_than_ft_lambdas_would_produce_more_goals():
+    """A sanity check on the whole premise: a match with a modest HT
+    expectation should draw the bulk of its correct-score mass toward
+    low-scoring half-time lines, not the higher totals a full 90-minute
+    lambda of the same size would produce."""
+
+    low = ht_matrix_derived_outcomes(lambda_home_ht=0.4, lambda_away_ht=0.3, matches_available=20)
+    by_key = {(o.market, o.selection): o.probability for o in low}
+    assert by_key[("HT Correct Score", "0-0")] > by_key.get(("HT Correct Score", "2-2"), 0.0)
+
+
+def test_ht_matrix_derived_outcomes_respects_the_data_gate():
+    assert ht_matrix_derived_outcomes(lambda_home_ht=0.6, lambda_away_ht=0.5, matches_available=3) == []
+
+
+def test_outcomes_from_prediction_adds_ht_markets_when_ht_lambdas_are_present():
+    prediction = _prediction_stub(
+        model_breakdown={
+            "poisson": {"lambda_home": 1.6, "lambda_away": 1.1, "lambda_home_ht": 0.7, "lambda_away_ht": 0.5}
+        }
+    )
+    outcomes = outcomes_from_prediction(prediction)
+    assert any(o.market == "HT Result" for o in outcomes)
+    assert any(o.market == "HT Correct Score" for o in outcomes)
+
+
+def test_outcomes_from_prediction_skips_ht_markets_without_ht_lambdas():
+    """A prediction generated before this feature shipped has FT lambdas but
+    no HT ones -- it must keep working exactly as before, not error."""
+
+    prediction = _prediction_stub(model_breakdown={"poisson": {"lambda_home": 1.6, "lambda_away": 1.1}})
+    outcomes = outcomes_from_prediction(prediction)
+    assert not any(o.market == "HT Result" for o in outcomes)
+    assert any(o.market == "Winning Margin" for o in outcomes)  # FT matrix markets still work
+
+
+def test_secondary_outcomes_excludes_ht_double_chance():
+    prediction = _prediction_stub(
+        model_breakdown={
+            "poisson": {"lambda_home": 1.6, "lambda_away": 1.1, "lambda_home_ht": 0.7, "lambda_away_ht": 0.5}
+        }
+    )
+    outcomes = outcomes_from_prediction(prediction)
+    winner = select_global_most_likely(outcomes)
+    also = secondary_outcomes(outcomes, exclude=(winner.market, winner.selection), n=len(outcomes))
+    assert all(o.mutually_exclusive_group != "ht_double_chance" for o in also)

@@ -20,6 +20,18 @@ from app.db.models import Match
 
 MAX_GOALS = 8
 
+# Half-time score grids stay much smaller than full-time ones -- more than a
+# handful of goals inside 45 minutes is vanishingly rare, and Poisson decay
+# already makes anything past this contribute effectively nothing.
+HT_MAX_GOALS = 6
+
+# Historically, a bit under half of a match's total goals have already gone
+# in by half-time -- second halves run slightly higher-scoring than first
+# halves (fatigue, subs, more direct play as the game opens up). This is
+# only the fallback for a league with no recorded half-time scores yet;
+# ht_goal_fraction fits the real figure from history whenever it can.
+DEFAULT_HT_GOAL_FRACTION = 0.45
+
 
 @dataclass
 class GoalMarkets:
@@ -116,6 +128,37 @@ def expected_goals(
 
     # Keep expectations in a sane range even for teams with almost no history.
     return max(min(lambda_home, 6.0), 0.1), max(min(lambda_away, 6.0), 0.1)
+
+
+def ht_goal_fraction(db: Session, league: str, as_of) -> float:
+    """What share of a match's full-time goals have typically gone in by
+    half-time, fit from this league's own history rather than assumed --
+    some leagues genuinely start slower or faster than others. Only matches
+    with a recorded half-time score count -- not every provider/season
+    captures it (see Match.ht_home_score) -- one missing it is excluded
+    rather than treated as 0-0 at the break, which would bias the fraction
+    downward for no real reason.
+    """
+
+    ht_goals, ft_goals = db.execute(
+        select(
+            func.sum(Match.ht_home_score + Match.ht_away_score),
+            func.sum(Match.home_score + Match.away_score),
+        ).where(
+            _finished_before(league, as_of),
+            Match.ht_home_score.is_not(None),
+            Match.ht_away_score.is_not(None),
+        )
+    ).one()
+
+    if not ft_goals:
+        return DEFAULT_HT_GOAL_FRACTION
+
+    fraction = float(ht_goals) / float(ft_goals)
+    # A handful of rows with a data-entry slip (an HT score exceeding the FT
+    # one, say) must not swing the whole league's split to something
+    # implausible -- keep it within a sane real-football range.
+    return min(max(fraction, 0.25), 0.65)
 
 
 def _poisson_pmf(k: int, lam: float) -> float:

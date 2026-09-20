@@ -21,7 +21,7 @@ import datetime as dt
 import pytest
 
 from app.db.models import Match, Team
-from app.prediction_models.poisson_model import league_goal_averages, team_attack_defense
+from app.prediction_models.poisson_model import DEFAULT_HT_GOAL_FRACTION, ht_goal_fraction, league_goal_averages, team_attack_defense
 
 LEAGUE = "Aggregate Test League"
 BASE = dt.datetime(2025, 1, 1, 15, 0)
@@ -202,3 +202,75 @@ def test_ratio_floor_is_preserved(db_session, teams):
 
     home_attack, _, _, _ = team_attack_defense(db_session, a.id, LEAGUE, AS_OF, 2.0, 1.0)
     assert home_attack == 0.05
+
+
+# --- half-time goal-rate split ----------------------------------------------
+
+
+def _add_with_ht(db, home, away, day, hs, as_, ht_hs, ht_as):
+    db.add(
+        Match(
+            league=LEAGUE, season="2024-25", date=BASE + dt.timedelta(days=day),
+            home_team_id=home.id, away_team_id=away.id,
+            home_score=hs, away_score=as_, ht_home_score=ht_hs, ht_away_score=ht_as,
+            status="FINISHED",
+        )
+    )
+
+
+def test_ht_goal_fraction_is_fit_from_recorded_half_time_scores(db_session, teams):
+    a, b = teams["alpha"], teams["beta"]
+    # 10 total goals, 4 of them by half-time -- a clean, unambiguous 0.4 split.
+    _add_with_ht(db_session, a, b, 1, 3, 1, 1, 1)  # 4 FT, 2 HT
+    _add_with_ht(db_session, b, a, 2, 2, 4, 1, 1)  # 6 FT, 2 HT
+
+    db_session.commit()
+    assert ht_goal_fraction(db_session, LEAGUE, AS_OF) == pytest.approx(4 / 10)
+
+
+def test_ht_goal_fraction_falls_back_to_the_default_with_no_recorded_ht_scores(db_session, teams):
+    a, b = teams["alpha"], teams["beta"]
+    _add(db_session, a, b, 1, 2, 1)  # no ht_home_score/ht_away_score set
+    db_session.commit()
+
+    assert ht_goal_fraction(db_session, LEAGUE, AS_OF) == DEFAULT_HT_GOAL_FRACTION
+
+
+def test_ht_goal_fraction_ignores_matches_missing_either_half_time_score(db_session, teams):
+    """A match with only one of the two HT columns recorded is excluded
+    entirely, not treated as 0 for the missing side -- half a data-entry
+    error is still an error."""
+
+    a, b = teams["alpha"], teams["beta"]
+    _add_with_ht(db_session, a, b, 1, 3, 1, 1, 1)  # complete: 4 FT, 2 HT
+    db_session.add(
+        Match(
+            league=LEAGUE, season="2024-25", date=BASE + dt.timedelta(days=2),
+            home_team_id=b.id, away_team_id=a.id,
+            home_score=5, away_score=5, ht_home_score=3, ht_away_score=None,
+            status="FINISHED",
+        )
+    )
+    db_session.commit()
+
+    assert ht_goal_fraction(db_session, LEAGUE, AS_OF) == pytest.approx(2 / 4)
+
+
+def test_ht_goal_fraction_is_clamped_to_a_plausible_range(db_session, teams):
+    a, b = teams["alpha"], teams["beta"]
+    # Every goal arrived by half-time -- implausible as a league-wide split,
+    # must not be taken at face value.
+    _add_with_ht(db_session, a, b, 1, 4, 0, 4, 0)
+    db_session.commit()
+
+    assert ht_goal_fraction(db_session, LEAGUE, AS_OF) == 0.65
+
+
+def test_ht_goal_fraction_only_considers_matches_before_as_of(db_session, teams):
+    a, b = teams["alpha"], teams["beta"]
+    _add_with_ht(db_session, a, b, 1, 4, 0, 2, 0)  # 0.5 split, before cutoff
+    _add_with_ht(db_session, b, a, 50, 4, 0, 0, 0)  # 0.0 split, after cutoff
+
+    db_session.commit()
+    cutoff = BASE + dt.timedelta(days=10)
+    assert ht_goal_fraction(db_session, LEAGUE, cutoff) == pytest.approx(0.5)

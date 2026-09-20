@@ -253,6 +253,15 @@ def generate_prediction(
     goal_markets = poisson_model.predict(db, home_team_id, away_team_id, league, as_of)
     poisson_probs = {"H": goal_markets.home_win, "D": goal_markets.draw, "A": goal_markets.away_win}
 
+    # Half-time lambdas: this league's own fitted goal-rate split (see
+    # ht_goal_fraction) scaled onto the same two full-time lambdas, not a
+    # separately estimated model. Only the two floats are persisted below --
+    # app.outcomes.registry.ht_matrix_derived_outcomes rebuilds the actual
+    # HT markets from them at read time, same pattern as the FT lambdas.
+    ht_fraction = poisson_model.ht_goal_fraction(db, league, as_of)
+    lambda_home_ht = goal_markets.lambda_home * ht_fraction
+    lambda_away_ht = goal_markets.lambda_away * ht_fraction
+
     # --- Model 4: Gradient boosting (optional -- needs a trained model) --
     ml_probs: dict[str, float] | None = None
     ml_over25 = ml_btts = None
@@ -314,6 +323,8 @@ def generate_prediction(
                 "away_win": poisson_probs["A"],
                 "lambda_home": goal_markets.lambda_home,
                 "lambda_away": goal_markets.lambda_away,
+                "lambda_home_ht": lambda_home_ht,
+                "lambda_away_ht": lambda_away_ht,
             },
             "ml": ml_probs,
         },

@@ -157,3 +157,40 @@ def test_fit_ensemble_weights_accepts_a_real_generated_breakdown(db_session):
 
     weights = fit_ensemble_weights([result.model_breakdown], ["H"], step=0.5)
     assert abs(weights.elo + weights.poisson + weights.ml - 1.0) < 1e-6
+
+
+def test_generate_prediction_persists_half_time_lambdas(db_session):
+    """model_breakdown["poisson"] must carry lambda_home_ht/lambda_away_ht
+    alongside the existing full-time ones -- app.outcomes.registry rebuilds
+    every HT market from exactly these two numbers at read time, so if this
+    silently stopped being populated, HT markets would silently vanish
+    everywhere without a single test failing there."""
+
+    home = Team(name="Gamma FC", league=LEAGUE, aliases=[])
+    away = Team(name="Delta FC", league=LEAGUE, aliases=[])
+    db_session.add_all([home, away])
+    db_session.commit()
+    db_session.refresh(home)
+    db_session.refresh(away)
+
+    for day in range(10):
+        db_session.add(
+            Match(
+                league=LEAGUE, season="2024-25", date=BASE + dt.timedelta(days=day),
+                home_team_id=home.id if day % 2 == 0 else away.id,
+                away_team_id=away.id if day % 2 == 0 else home.id,
+                home_score=2, away_score=1, ht_home_score=1, ht_away_score=0,
+                status="FINISHED",
+            )
+        )
+    db_session.commit()
+
+    as_of = BASE + dt.timedelta(days=30)
+    result = generate_prediction(db_session, home.id, away.id, LEAGUE, as_of)
+
+    poisson = result.model_breakdown["poisson"]
+    assert "lambda_home_ht" in poisson and "lambda_away_ht" in poisson
+    # A fraction strictly between 0 and 1 of the full-time lambda -- never
+    # the full 90-minute expectation, never zero.
+    assert 0 < poisson["lambda_home_ht"] < poisson["lambda_home"]
+    assert 0 < poisson["lambda_away_ht"] < poisson["lambda_away"]

@@ -53,6 +53,20 @@ const MARKET_OPTIONS = [
   { value: "Correct Score", label: "Correct score" },
 ];
 
+// A separate list (and its own filter row below) rather than folded into
+// MARKET_OPTIONS on purpose: the "High risk" preset spreads every entry of
+// MARKET_OPTIONS into its own market filter, and half-time markets being
+// swept into that by simply appending here would silently change what an
+// existing preset generates.
+const HT_MARKET_OPTIONS = [
+  { value: "HT Result", label: "Half-time result (1X2)" },
+  { value: "HT Double Chance", label: "Half-time double chance" },
+  { value: "HT Both Teams To Score", label: "Half-time BTTS" },
+  { value: "HT Total Goals 0.5", label: "HT Over/Under 0.5 goals" },
+  { value: "HT Total Goals 1.5", label: "HT Over/Under 1.5 goals" },
+  { value: "HT Correct Score", label: "Half-time correct score" },
+];
+
 const ACCURACY_OPTIONS = [
   { value: 0.5, label: "50%+" },
   { value: 0.65, label: "65%+" },
@@ -393,6 +407,24 @@ export function BetCodes() {
           </div>
           <div className="filter-bar">
             {MARKET_OPTIONS.map((m) => (
+              <button
+                key={m.value}
+                className={`filter-chip${markets.includes(m.value) ? " active" : ""}`}
+                onClick={() => toggleMarket(m.value)}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ marginTop: 14 }}>
+          <div className="meta" style={{ marginBottom: 6 }}>
+            Half-time markets{" "}
+            <span style={{ fontWeight: 400 }}>(selecting any of these searches half-time outcomes instead)</span>
+          </div>
+          <div className="filter-bar">
+            {HT_MARKET_OPTIONS.map((m) => (
               <button
                 key={m.value}
                 className={`filter-chip${markets.includes(m.value) ? " active" : ""}`}

@@ -243,6 +243,11 @@ class Match(Base):
 
     home_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     away_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Not every provider/season captures these even for a finished match
+    # (see the ingest providers' own docstrings) -- NULL means "not
+    # recorded", never "0-0 at the break". app.prediction_models.poisson_
+    # model.ht_goal_fraction skips rows missing either one rather than
+    # treating them as a scoreless first half.
     ht_home_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     ht_away_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
