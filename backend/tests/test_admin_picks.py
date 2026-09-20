@@ -97,27 +97,60 @@ def two_matches(db_session):
     ]
 
 
-def _create(admin: User, legs: list[dict], label=None, note=None) -> dict:
+def _create(admin: User, legs: list[dict], label=None, note=None, priced=None, booking_code=None, booking_code_bookmaker=None) -> dict:
     payload = {"legs": legs}
     if label is not None:
         payload["label"] = label
     if note is not None:
         payload["note"] = note
+    if priced is not None:
+        payload["priced"] = priced
+    if booking_code is not None:
+        payload["booking_code"] = booking_code
+    if booking_code_bookmaker is not None:
+        payload["booking_code_bookmaker"] = booking_code_bookmaker
     response = client.post("/api/admin/admin-picks", json=payload, headers=_headers(admin))
     assert response.status_code == 200, response.text
     return response.json()
+
+
+def _match_without_odds(db, name_prefix: str, league="League One", **prediction_kwargs) -> Match:
+    """Same as _match_with_odds but with no MatchOdds row -- most outcomes
+    browsed on the Markets page never get a captured price, which is exactly
+    the case an unpriced (priced=False) Admin Pick exists to cover."""
+
+    home = Team(name=f"{name_prefix} Home", league=league, aliases=[])
+    away = Team(name=f"{name_prefix} Away", league=league, aliases=[])
+    db.add_all([home, away])
+    db.commit()
+    for t in (home, away):
+        db.refresh(t)
+
+    match = Match(
+        league=league, season="2324", date=dt.datetime.utcnow() + dt.timedelta(hours=6),
+        home_team_id=home.id, away_team_id=away.id, status="SCHEDULED",
+    )
+    db.add(match)
+    db.commit()
+    db.refresh(match)
+
+    db.add(_prediction(match.id, **prediction_kwargs))
+    db.commit()
+    return match
 
 
 def _legs(matches: list[Match]) -> list[dict]:
     return [{"match_id": m.id, "market": "Match Result", "selection": "Home Win"} for m in matches]
 
 
-def _update(admin: User, pick_id: int, legs: list[dict], label=None, note=None):
+def _update(admin: User, pick_id: int, legs: list[dict], label=None, note=None, priced=None):
     payload = {"legs": legs}
     if label is not None:
         payload["label"] = label
     if note is not None:
         payload["note"] = note
+    if priced is not None:
+        payload["priced"] = priced
     return client.patch(f"/api/admin/admin-picks/{pick_id}", json=payload, headers=_headers(admin))
 
 
@@ -375,3 +408,147 @@ def test_a_slip_drops_out_entirely_once_one_leg_stops_resolving(db_session, admi
     assert client.get("/api/predictions/admin-picks", headers=auth_headers).json() == []
     # And the admin management view drops it too, not just the public feed.
     assert client.get("/api/admin/admin-picks", headers=_headers(admin)).json() == []
+
+
+# --- Unpriced picks (model probability only, no bookmaker quote) -----------
+
+
+def test_admin_can_feature_an_unpriced_slip_with_no_stored_price(db_session, admin):
+    """The whole point of priced=False: a match with a prediction but no
+    MatchOdds row -- which price_legs alone would reject outright -- can
+    still be featured, just without a combined price."""
+
+    matches = [
+        _match_without_odds(db_session, "Foxtrot", home=0.60),
+        _match_without_odds(db_session, "Golf", home=0.55),
+    ]
+    body = _create(admin, _legs(matches), priced=False)
+    assert body["priced"] is False
+    assert body["combined_odds"] is None
+    assert body["combined_probability"] == pytest.approx(0.60 * 0.55)
+    assert all(leg["decimal_odds"] is None and leg["priced_by"] is None for leg in body["legs"])
+
+
+def test_an_unpriced_slip_still_requires_a_real_outcome(db_session, admin):
+    """No bookmaker quote required, but the grounding rule still applies --
+    a market/selection the prediction doesn't actually offer is rejected."""
+
+    match = _match_without_odds(db_session, "Hotel")
+    response = client.post(
+        "/api/admin/admin-picks",
+        json={
+            "legs": [{"match_id": match.id, "market": "Not A Real Market", "selection": "Yes"}],
+            "priced": False,
+        },
+        headers=_headers(admin),
+    )
+    assert response.status_code == 400
+
+
+def test_an_unpriced_admin_pick_still_defaults_to_priced_true(db_session, admin, two_matches):
+    """Omitting `priced` entirely keeps the original AI Generation behavior
+    -- existing callers that never send the field must not change shape."""
+
+    body = _create(admin, _legs(two_matches))
+    assert body["priced"] is True
+    assert body["combined_odds"] is not None
+
+
+def test_unpriced_admin_pick_shown_in_public_feed_without_odds(db_session, admin, auth_headers):
+    matches = [_match_without_odds(db_session, "India", home=0.70)]
+    _create(admin, _legs(matches), priced=False)
+
+    body = client.get("/api/predictions/admin-picks", headers=auth_headers).json()
+    assert len(body) == 1
+    assert body[0]["priced"] is False
+    assert body[0]["combined_odds"] is None
+    assert body[0]["combined_probability"] == pytest.approx(0.70)
+
+
+def test_editing_an_unpriced_admin_pick_can_switch_it_to_priced(db_session, admin, two_matches):
+    """Toggling priced back to True on an edit re-validates every leg against
+    price_legs -- two_matches both carry real quotes, so this succeeds."""
+
+    unpriced_match = _match_without_odds(db_session, "Juliet")
+    created = _create(admin, _legs([unpriced_match]), priced=False)
+    assert created["priced"] is False
+
+    response = _update(admin, created["id"], _legs(two_matches), priced=True)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["priced"] is True
+    assert body["combined_odds"] == pytest.approx(1.80 * 1.80)
+
+
+# --- Booking codes (admin-typed, never generated by this platform) ---------
+
+
+def test_booking_code_requires_a_bookmaker_and_vice_versa(db_session, admin, two_matches):
+    only_code = client.post(
+        "/api/admin/admin-picks",
+        json={"legs": _legs(two_matches), "booking_code": "ABC123"},
+        headers=_headers(admin),
+    )
+    assert only_code.status_code == 400
+
+    only_bookmaker = client.post(
+        "/api/admin/admin-picks",
+        json={"legs": _legs(two_matches), "booking_code_bookmaker": "Bet9ja"},
+        headers=_headers(admin),
+    )
+    assert only_bookmaker.status_code == 400
+
+
+def test_admin_can_attach_a_booking_code(db_session, admin, two_matches):
+    body = _create(admin, _legs(two_matches), booking_code="ABC123", booking_code_bookmaker="Bet9ja")
+    assert body["has_booking_code"] is True
+    assert body["booking_code"] == "ABC123"
+    assert body["booking_code_bookmaker"] == "Bet9ja"
+
+
+def test_no_booking_code_means_has_booking_code_is_false(db_session, admin, two_matches):
+    body = _create(admin, _legs(two_matches))
+    assert body["has_booking_code"] is False
+    assert body["booking_code"] is None
+    assert body["booking_code_bookmaker"] is None
+
+
+def test_booking_code_is_hidden_from_free_tier_but_flagged_as_available(db_session, admin, two_matches, headers_no_access):
+    """The whole commercial point: a free-tier account sees that a code
+    exists (so it knows to upgrade) but never the code itself."""
+
+    _create(admin, _legs(two_matches), booking_code="ABC123", booking_code_bookmaker="Bet9ja")
+
+    body = client.get("/api/predictions/admin-picks", headers=headers_no_access).json()
+    assert len(body) == 1
+    assert body[0]["has_booking_code"] is True
+    assert body[0]["booking_code"] is None
+    assert body[0]["booking_code_bookmaker"] is None
+
+
+def test_booking_code_is_shown_to_premium_viewers(db_session, admin, two_matches, auth_headers):
+    _create(admin, _legs(two_matches), booking_code="ABC123", booking_code_bookmaker="Bet9ja")
+
+    body = client.get("/api/predictions/admin-picks", headers=auth_headers).json()
+    assert body[0]["has_booking_code"] is True
+    assert body[0]["booking_code"] == "ABC123"
+    assert body[0]["booking_code_bookmaker"] == "Bet9ja"
+
+
+def test_booking_code_is_shown_to_superadmin_regardless_of_grant(db_session, admin, two_matches):
+    """A superadmin never redeems a code themselves (require_active_access's
+    own carve-out) -- the booking-code gate must not require one either."""
+
+    _create(admin, _legs(two_matches), booking_code="ABC123", booking_code_bookmaker="Bet9ja")
+
+    body = client.get("/api/predictions/admin-picks", headers=_headers(admin)).json()
+    assert body[0]["booking_code"] == "ABC123"
+
+
+def test_editing_can_remove_a_booking_code(db_session, admin, two_matches):
+    created = _create(admin, _legs(two_matches), booking_code="ABC123", booking_code_bookmaker="Bet9ja")
+    response = _update(admin, created["id"], _legs(two_matches))
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["has_booking_code"] is False
+    assert body["booking_code"] is None

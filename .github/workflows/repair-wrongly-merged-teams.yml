@@ -1,0 +1,48 @@
+# Undoes the five real clubs a Sep 19 run of merge_duplicate_teams.py wrongly
+# fused into a rival or same-city club's row (AC Milan into Internazionale,
+# Atletico Madrid and Rayo Vallecano into Real Madrid, Espanyol into
+# Barcelona, Paris FC into PSG) -- see scripts/repair_wrongly_merged_teams.py
+# for exactly what this does and why.
+#
+# Dry run unless "confirm" is set to REPAIR. The default only lists what
+# would be created and deleted.
+name: Repair wrongly merged teams
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type REPAIR to actually write. Anything else is a dry run.'
+        required: false
+        default: ""
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Repair
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          FLAGS=""
+          if [ "$CONFIRM" = "REPAIR" ]; then
+            FLAGS="--delete"
+          else
+            echo "Dry run: 'confirm' is not REPAIR, so nothing will change."
+          fi
+          python scripts/repair_wrongly_merged_teams.py $FLAGS

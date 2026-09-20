@@ -30,6 +30,23 @@ class Outcome:
     definition: str
 
 
+# Groups whose members are unions built from another group's own outcomes --
+# e.g. Double Chance's Home/Draw = P(Home) + P(Draw) -- so a member is
+# always at least as likely as what it's built from. Letting one of these
+# compete for the headline "most likely outcome" or a "what else does the
+# model like" slot would just restate a real pick more loosely, never add
+# one; see app.outcomes.engine.secondary_outcomes.
+DOMINANT_UNION_GROUPS = frozenset({"double_chance", "ht_double_chance", "ht_ft_double_chance", "ht_double_chance_btts"})
+
+# Groups whose displayed selections do not actually partition 100% of
+# probability between them -- either because they're unions of each other
+# (DOMINANT_UNION_GROUPS) or because only a truncated top-N of many possible
+# scorelines is kept (Correct Score, HT Correct Score). The Markets page's
+# "exactly one of these happens, adding up to 100%" framing is only true
+# outside this set -- see routes_predictions.py's `outcomes` endpoint.
+NOT_A_FULL_PARTITION_GROUPS = DOMINANT_UNION_GROUPS | frozenset({"correct_score", "ht_correct_score"})
+
+
 def build_outcome_registry(
     home_win: float,
     draw: float,
@@ -353,6 +370,272 @@ def ht_matrix_derived_outcomes(lambda_home_ht: float, lambda_away_ht: float, mat
     return [o for o in outcomes if matches_available >= o.min_data_requirement]
 
 
+_RESULT_SHORT = {"Home": "1", "Draw": "X", "Away": "2"}
+_RESULT_PHRASE = {
+    "Home": "the home team is ahead",
+    "Draw": "the scores are level",
+    "Away": "the away team is ahead",
+}
+_DOUBLE_CHANCE_MEMBERS = {
+    "Home": ("Home/Draw", "Home/Away"),
+    "Draw": ("Home/Draw", "Draw/Away"),
+    "Away": ("Home/Away", "Draw/Away"),
+}
+_DOUBLE_CHANCE_PHRASE = {
+    "Home/Draw": "the home team is not losing",
+    "Home/Away": "the match is not drawn",
+    "Draw/Away": "the away team is not losing",
+}
+_SECOND_HALF_PHRASE = {
+    "Home": "the home team scores more goals than the away team",
+    "Draw": "both teams score the same number of goals",
+    "Away": "the away team scores more goals than the home team",
+}
+
+# Single, standard lines for the combos below -- multiplying every combo by
+# every goal line this project already tracks would bury a handful of useful
+# markets in dozens of near-duplicates. Each is the one a bookmaker would
+# actually quote for this exact combo.
+_HT_RESULT_GOALS_LINES = ("1.5", "2.5")  # mirrors matrix_derived_outcomes' own Result & Total Goals lines
+_HT_FT_GOALS_LINE = "2.5"
+_HT_VS_2H_GOALS_LINE = "1.5"
+
+
+def ht_ft_joint_outcomes(
+    lambda_home: float,
+    lambda_away: float,
+    lambda_home_ht: float,
+    lambda_away_ht: float,
+    matches_available: int,
+) -> list[Outcome]:
+    """Every market that needs BOTH halves at once: the classic HT/FT grid,
+    every combo built on top of it, half-time-result-plus-full-time-stat
+    combos, first-half-vs-second-half markets, and "which half had more
+    goals".
+
+    Built from exactly the two pieces every other half-time market here
+    already uses -- nothing new is estimated. The second half's own lambda
+    is simply the remainder, ``lambda - lambda_ht``: goals in two
+    non-overlapping stretches of an independent Poisson process add up the
+    same way the whole match's scoring rate does, which is the identical
+    arithmetic that produced ``lambda_home_ht`` in the first place (see
+    ``ensemble.py``'s use of ``ht_goal_fraction``). No new statistic is fit
+    and no minute-level event data is required -- see this module's
+    docstring, and ``matrix_derived_outcomes``'s, for why that line isn't
+    crossed elsewhere either.
+
+    The full joint (HT scoreline, 2H scoreline) distribution is walked once,
+    in a single pass, and every combo below reads off that same walk rather
+    than five separate approximations of it.
+
+    Two of the resulting groups -- HT/FT combined with Double Chance, either
+    half's -- are unions of each other the same way plain Double Chance is
+    (see ``DOMINANT_UNION_GROUPS``): each event satisfies more than one of a
+    group's own selections, so those groups don't sum to 1 and are excluded
+    from headline/secondary-outcome ranking the same way.
+
+    Deliberately not included: "HT + FT Result" (identical to HT/FT itself --
+    same joint distribution, same numbers, so it isn't built a second time
+    under a second name).
+    """
+
+    ht_matrix = build_score_matrix(lambda_home_ht, lambda_away_ht, max_goals=HT_MAX_GOALS)
+    # Floored, not left to go non-positive -- ht_goal_fraction is clamped to
+    # [0.25, 0.65] so lambda_ht should never reach lambda itself, but a
+    # second half needs some scoring rate to build a matrix from regardless.
+    lambda_home_2h = max(lambda_home - lambda_home_ht, 0.05)
+    lambda_away_2h = max(lambda_away - lambda_away_ht, 0.05)
+    h2_matrix = build_score_matrix(lambda_home_2h, lambda_away_2h, max_goals=HT_MAX_GOALS)
+    ht_max = len(ht_matrix) - 1
+    h2_max = len(h2_matrix) - 1
+
+    def result_of(h: int, a: int) -> str:
+        return "Home" if h > a else ("Away" if h < a else "Draw")
+
+    def goals_bucket(total: int) -> str:
+        return str(total) if total < 5 else "5+"
+
+    ht_ft_p: dict[tuple[str, str], float] = {}
+    ht_ft_dc_p: dict[tuple[str, str], float] = {}
+    ht_result_goals_p: dict[tuple[str, str, bool], float] = {}
+    ht_result_btts_p: dict[tuple[str, bool], float] = {}
+    ht_dc_btts_p: dict[tuple[str, bool], float] = {}
+    ht_ft_goals_p: dict[tuple[str, str, bool], float] = {}
+    ht_ft_btts_p: dict[tuple[str, str, bool], float] = {}
+    ht_ft_exact_p: dict[tuple[str, str, str], float] = {}
+    ht_2h_result_p: dict[tuple[str, str], float] = {}
+    ht_2h_goals_p: dict[tuple[bool, bool], float] = {}
+    half_most_goals_p = {"1st Half": 0.0, "2nd Half": 0.0, "Equal": 0.0}
+
+    for h1 in range(ht_max + 1):
+        for a1 in range(ht_max + 1):
+            p_ht = ht_matrix[h1][a1]
+            if p_ht <= 0:
+                continue
+            ht_result = result_of(h1, a1)
+            ht_total = h1 + a1
+
+            for h2 in range(h2_max + 1):
+                for a2 in range(h2_max + 1):
+                    p = p_ht * h2_matrix[h2][a2]
+                    if p <= 0:
+                        continue
+
+                    h2_total = h2 + a2
+                    ft_h, ft_a = h1 + h2, a1 + a2
+                    ft_result = result_of(ft_h, ft_a)
+                    ft_total = ft_h + ft_a
+                    ft_btts = ft_h >= 1 and ft_a >= 1
+
+                    key2 = (ht_result, ft_result)
+                    ht_ft_p[key2] = ht_ft_p.get(key2, 0.0) + p
+
+                    for ht_dc in _DOUBLE_CHANCE_MEMBERS[ht_result]:
+                        for ft_dc in _DOUBLE_CHANCE_MEMBERS[ft_result]:
+                            k = (ht_dc, ft_dc)
+                            ht_ft_dc_p[k] = ht_ft_dc_p.get(k, 0.0) + p
+                        k = (ht_dc, ft_btts)
+                        ht_dc_btts_p[k] = ht_dc_btts_p.get(k, 0.0) + p
+
+                    for line in _HT_RESULT_GOALS_LINES:
+                        k = (ht_result, line, ft_total > float(line))
+                        ht_result_goals_p[k] = ht_result_goals_p.get(k, 0.0) + p
+
+                    k = (ht_result, ft_btts)
+                    ht_result_btts_p[k] = ht_result_btts_p.get(k, 0.0) + p
+
+                    k = (ht_result, ft_result, ft_total > float(_HT_FT_GOALS_LINE))
+                    ht_ft_goals_p[k] = ht_ft_goals_p.get(k, 0.0) + p
+
+                    k = (ht_result, ft_result, ft_btts)
+                    ht_ft_btts_p[k] = ht_ft_btts_p.get(k, 0.0) + p
+
+                    k = (ht_result, ft_result, goals_bucket(ft_total))
+                    ht_ft_exact_p[k] = ht_ft_exact_p.get(k, 0.0) + p
+
+                    k = (ht_result, result_of(h2, a2))
+                    ht_2h_result_p[k] = ht_2h_result_p.get(k, 0.0) + p
+
+                    k = (ht_total > float(_HT_VS_2H_GOALS_LINE), h2_total > float(_HT_VS_2H_GOALS_LINE))
+                    ht_2h_goals_p[k] = ht_2h_goals_p.get(k, 0.0) + p
+
+                    if ht_total > h2_total:
+                        half_most_goals_p["1st Half"] += p
+                    elif ht_total < h2_total:
+                        half_most_goals_p["2nd Half"] += p
+                    else:
+                        half_most_goals_p["Equal"] += p
+
+    outcomes: list[Outcome] = []
+
+    outcomes += [
+        Outcome(
+            "HT/FT", f"{_RESULT_SHORT[h]}/{_RESULT_SHORT[f]}", p, "ht_ft", 5,
+            f"At half-time {_RESULT_PHRASE[h]}; at full-time {_RESULT_PHRASE[f]}.",
+        )
+        for (h, f), p in ht_ft_p.items()
+    ]
+
+    outcomes += [
+        Outcome(
+            "HT + FT Double Chance", f"{ht_dc} & {ft_dc}", p, "ht_ft_double_chance", 5,
+            f"At half-time {_DOUBLE_CHANCE_PHRASE[ht_dc]}; at full-time {_DOUBLE_CHANCE_PHRASE[ft_dc]}.",
+        )
+        for (ht_dc, ft_dc), p in ht_ft_dc_p.items()
+    ]
+
+    outcomes += [
+        Outcome(
+            f"HT Result & Total Goals {line}", f"{h} & {'Over' if over else 'Under'} {line}", p,
+            f"ht_result_goals_{line}", 5,
+            f"At half-time {_RESULT_PHRASE[h]}, combined with full-time total goals "
+            f"{'over' if over else 'under'} {line}.",
+        )
+        for (h, line, over), p in ht_result_goals_p.items()
+    ]
+
+    outcomes += [
+        Outcome(
+            "HT Result & BTTS", f"{h} & BTTS {'Yes' if btts else 'No'}", p, "ht_result_btts", 5,
+            f"At half-time {_RESULT_PHRASE[h]}, combined with both teams to score "
+            f"{'yes' if btts else 'no'} by full-time.",
+        )
+        for (h, btts), p in ht_result_btts_p.items()
+    ]
+
+    outcomes += [
+        Outcome(
+            "HT Double Chance & BTTS", f"{ht_dc} & BTTS {'Yes' if btts else 'No'}", p, "ht_double_chance_btts", 5,
+            f"At half-time {_DOUBLE_CHANCE_PHRASE[ht_dc]}, combined with both teams to score "
+            f"{'yes' if btts else 'no'} by full-time.",
+        )
+        for (ht_dc, btts), p in ht_dc_btts_p.items()
+    ]
+
+    outcomes += [
+        Outcome(
+            f"HT/FT & Total Goals {_HT_FT_GOALS_LINE}",
+            f"{_RESULT_SHORT[h]}/{_RESULT_SHORT[f]} & {'Over' if over else 'Under'} {_HT_FT_GOALS_LINE}", p,
+            f"ht_ft_goals_{_HT_FT_GOALS_LINE}", 10,
+            f"At half-time {_RESULT_PHRASE[h]} and at full-time {_RESULT_PHRASE[f]}, combined with full-time "
+            f"total goals {'over' if over else 'under'} {_HT_FT_GOALS_LINE}.",
+        )
+        for (h, f, over), p in ht_ft_goals_p.items()
+    ]
+
+    outcomes += [
+        Outcome(
+            "HT/FT & BTTS", f"{_RESULT_SHORT[h]}/{_RESULT_SHORT[f]} & BTTS {'Yes' if btts else 'No'}", p,
+            "ht_ft_btts", 10,
+            f"At half-time {_RESULT_PHRASE[h]} and at full-time {_RESULT_PHRASE[f]}, combined with both teams "
+            f"to score {'yes' if btts else 'no'} by full-time.",
+        )
+        for (h, f, btts), p in ht_ft_btts_p.items()
+    ]
+
+    outcomes += [
+        Outcome(
+            "HT/FT & Exact Goals",
+            f"{_RESULT_SHORT[h]}/{_RESULT_SHORT[f]} & " + ("5+ goals" if bucket == "5+" else f"{bucket} goal" + ("" if bucket == "1" else "s")),
+            p, "ht_ft_exact_goals", 10,
+            f"At half-time {_RESULT_PHRASE[h]} and at full-time {_RESULT_PHRASE[f]}, with total match goals "
+            f"{'5 or more' if bucket == '5+' else bucket}.",
+        )
+        for (h, f, bucket), p in ht_ft_exact_p.items()
+    ]
+
+    outcomes += [
+        Outcome(
+            "HT + 2H Result", f"{h} & {s}", p, "ht_2h_result", 5,
+            f"At half-time {_RESULT_PHRASE[h]}; in the second half alone, {_SECOND_HALF_PHRASE[s]}.",
+        )
+        for (h, s), p in ht_2h_result_p.items()
+    ]
+
+    outcomes += [
+        Outcome(
+            f"HT & 2H Total Goals {_HT_VS_2H_GOALS_LINE}",
+            f"{'Over' if ht_over else 'Under'} {_HT_VS_2H_GOALS_LINE} HT & {'Over' if h2_over else 'Under'} {_HT_VS_2H_GOALS_LINE} 2H",
+            p, f"ht_2h_goals_{_HT_VS_2H_GOALS_LINE}", 5,
+            f"Half-time goals {'over' if ht_over else 'under'} {_HT_VS_2H_GOALS_LINE}, combined with second-half-"
+            f"only goals {'over' if h2_over else 'under'} {_HT_VS_2H_GOALS_LINE}.",
+        )
+        for (ht_over, h2_over), p in ht_2h_goals_p.items()
+    ]
+
+    outcomes += [
+        Outcome(
+            "Half With Most Goals", k, v, "half_most_goals", 5,
+            "The first half has more total goals than the second."
+            if k == "1st Half" else "The second half has more total goals than the first."
+            if k == "2nd Half" else "Both halves have the same total goals.",
+        )
+        for k, v in half_most_goals_p.items()
+    ]
+
+    return [o for o in outcomes if matches_available >= o.min_data_requirement]
+
+
 def outcomes_from_prediction(prediction) -> list[Outcome]:
     """Rebuild the full registry from a stored ``Prediction`` row.
 
@@ -397,6 +680,9 @@ def outcomes_from_prediction(prediction) -> list[Outcome]:
     lambda_home_ht, lambda_away_ht = poisson.get("lambda_home_ht"), poisson.get("lambda_away_ht")
     if lambda_home_ht is not None and lambda_away_ht is not None:
         outcomes += ht_matrix_derived_outcomes(lambda_home_ht, lambda_away_ht, matches_available)
+
+    if lambda_home is not None and lambda_away is not None and lambda_home_ht is not None and lambda_away_ht is not None:
+        outcomes += ht_ft_joint_outcomes(lambda_home, lambda_away, lambda_home_ht, lambda_away_ht, matches_available)
 
     return outcomes
 

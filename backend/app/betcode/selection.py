@@ -138,11 +138,16 @@ class Leg:
     market: str
     selection: str
     model_probability: float
-    decimal_odds: float
+    # None on a leg resolved by resolve_legs_unpriced -- an Admin Pick an
+    # operator chose to show as model-probability-only, no bookmaker quote
+    # attached (AdminPick.priced=False). Every other producer of a Leg
+    # (build_candidate_legs, price_legs) always sets a real price.
+    decimal_odds: float | None = None
     # Which bookmaker's stored quote this price came from -- always a real
     # name, never "any" or blank, so a leg never hides where its number came
-    # from behind the criteria's own (possibly unset) price_bookmaker.
-    priced_by: str
+    # from behind the criteria's own (possibly unset) price_bookmaker. None
+    # exactly when decimal_odds is None.
+    priced_by: str | None = None
 
     def as_json(self) -> dict:
         return {
@@ -471,6 +476,83 @@ def price_legs(
             )
         )
         priced_matches.add(match_id)
+
+    return legs, warnings
+
+
+def resolve_legs_unpriced(
+    db: Session,
+    refs: list[tuple[int, str, str]],
+) -> tuple[list[Leg], list[str]]:
+    """Resolves an explicit list of (match_id, market, selection) refs
+    against each match's current Prediction only -- same grounding as
+    ``price_legs`` (a real match, a real stored prediction, an outcome that
+    prediction actually offers, one leg per match), just without requiring a
+    ``MatchOdds`` row. For an Admin Pick an operator wants to show as a
+    model-probability-only combo (``AdminPick.priced=False``) -- most
+    outcomes browsed on the Markets page never get a bookmaker quote
+    captured for them, and requiring one here would make most of what
+    someone actually picks unfeaturable.
+    """
+
+    if not refs:
+        return [], []
+
+    match_ids = list({match_id for match_id, _, _ in refs})
+    matches = {
+        m.id: m
+        for m in db.execute(
+            select(Match)
+            .where(Match.id.in_(match_ids))
+            .options(selectinload(Match.home_team), selectinload(Match.away_team))
+        ).scalars()
+    }
+    predictions: dict[int, Prediction] = {}
+    for p in db.execute(
+        select(Prediction).where(Prediction.match_id.in_(match_ids)).order_by(Prediction.created_at.asc())
+    ).scalars():
+        predictions[p.match_id] = p  # ascending order -- the last write per match wins
+
+    legs: list[Leg] = []
+    warnings: list[str] = []
+    resolved_matches: set[int] = set()
+
+    for match_id, market, selection in refs:
+        match = matches.get(match_id)
+        if match is None:
+            warnings.append(f"Match {match_id}: not found, skipped.")
+            continue
+        label = f"{match.home_team.name} vs {match.away_team.name}"
+
+        if match_id in resolved_matches:
+            warnings.append(f"{label}: already have a leg from this match, skipped {market} -- {selection}.")
+            continue
+
+        prediction = predictions.get(match_id)
+        if prediction is None:
+            warnings.append(f"{label}: no stored prediction, skipped.")
+            continue
+
+        outcome = find_outcome(prediction, market, selection)
+        if outcome is None:
+            warnings.append(
+                f"{label}: {market} -- {selection} isn't an outcome the current prediction offers, skipped."
+            )
+            continue
+
+        legs.append(
+            Leg(
+                match_id=match.id,
+                league=match.league,
+                home_team=match.home_team.name,
+                away_team=match.away_team.name,
+                kickoff=match.date,
+                market=outcome.market,
+                selection=outcome.selection,
+                model_probability=outcome.probability,
+            )
+        )
+        resolved_matches.add(match_id)
 
     return legs, warnings
 

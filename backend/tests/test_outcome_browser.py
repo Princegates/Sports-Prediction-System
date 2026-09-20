@@ -144,6 +144,16 @@ def test_mutually_exclusive_selections_sum_to_one(db_session, auth_headers, fixt
     assert scores["markets"][0]["mutually_exclusive"] is False
 
 
+def test_double_chance_is_flagged_as_not_summing_to_100_percent(db_session, auth_headers, fixtures):
+    """Double Chance's three selections are unions of Match Result (Home/Draw
+    = P(Home) + P(Draw)) -- they sum to 2, not 1 -- so the flag that drives
+    the Markets page's "these add up to 100%" copy must be False here, the
+    same as it already is for Correct Score's truncated top-N."""
+
+    body = _get(auth_headers, days_ahead=7, market="Double Chance")
+    assert body["markets"][0]["mutually_exclusive"] is False
+
+
 def test_filters_narrow_the_result(db_session, auth_headers, fixtures):
     one_league = _get(auth_headers, days_ahead=7, league="Spanish La Liga")
     assert [lg["league"] for lg in one_league["leagues"]] == ["Spanish La Liga"]

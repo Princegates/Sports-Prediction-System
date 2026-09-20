@@ -305,22 +305,35 @@ export interface AdminPickLeg {
   market: string;
   selection: string;
   probability: number;
-  decimal_odds: number;
-  priced_by: string;
+  // Both null together on an unpriced pick's leg -- see AdminPick.priced.
+  decimal_odds: number | null;
+  priced_by: string | null;
 }
 
-/** A whole multi-leg AI Generation slip a Super Admin chose to promote --
- * distinct from FeaturedPick's single outcome. combined_odds/probability
- * and risk_tier are always recomputed live from every leg's current
- * Prediction/MatchOdds, never a stored snapshot. */
+/** A whole multi-leg slip a Super Admin chose to promote -- distinct from
+ * FeaturedPick's single outcome. combined_probability and risk_tier are
+ * always recomputed live from every leg's current Prediction, never a
+ * stored snapshot.
+ *
+ * `priced` is true for an AI Generation slip (combined_odds recomputed live
+ * from every leg's current MatchOdds, same "never a snapshot" rule) or
+ * false for a slip shown by model probability alone, no bookmaker quote
+ * required per leg -- combined_odds is then always null. */
 export interface AdminPick {
   id: number;
   legs: AdminPickLeg[];
-  combined_odds: number;
+  priced: boolean;
+  combined_odds: number | null;
   combined_probability: number;
   risk_tier: "low" | "medium" | "high";
   label: string | null;
   note: string | null;
+  // Whether a booking code exists on this pick at all, regardless of
+  // whether this viewer is allowed to see it -- true with booking_code
+  // still null means "premium members only, subscribe to see it".
+  has_booking_code: boolean;
+  booking_code: string | null;
+  booking_code_bookmaker: string | null;
   created_at: string;
   expires_at: string;
 }

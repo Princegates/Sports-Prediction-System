@@ -4,7 +4,9 @@ import pytest
 
 from app.outcomes.engine import secondary_outcomes, select_global_most_likely, top_n
 from app.outcomes.registry import (
+    DOMINANT_UNION_GROUPS,
     build_outcome_registry,
+    ht_ft_joint_outcomes,
     ht_matrix_derived_outcomes,
     matrix_derived_outcomes,
     outcomes_from_prediction,
@@ -277,3 +279,112 @@ def test_secondary_outcomes_excludes_ht_double_chance():
     winner = select_global_most_likely(outcomes)
     also = secondary_outcomes(outcomes, exclude=(winner.market, winner.selection), n=len(outcomes))
     assert all(o.mutually_exclusive_group != "ht_double_chance" for o in also)
+
+
+# --- HT/FT and every combo built on top of it ----------------------------
+
+
+def _ht_ft(**overrides) -> list:
+    params = dict(lambda_home=1.6, lambda_away=1.1, lambda_home_ht=0.7, lambda_away_ht=0.5, matches_available=20)
+    params.update(overrides)
+    return ht_ft_joint_outcomes(**params)
+
+
+def test_every_ht_ft_group_is_a_genuine_partition_except_the_dc_unions():
+    """Same property test_every_ht_matrix_derived_group_sums_to_one already
+    runs for the plain HT markets, extended to every joint HT+FT combo:
+    each one must be a real partition of probability (sums to 1) unless it's
+    built from a Double Chance union, which by construction does not."""
+
+    outcomes = _ht_ft()
+    assert outcomes, "expected a non-empty HT/FT registry"
+
+    groups: dict[str, float] = {}
+    counts: dict[str, int] = {}
+    for o in outcomes:
+        groups[o.mutually_exclusive_group] = groups.get(o.mutually_exclusive_group, 0.0) + o.probability
+        counts[o.mutually_exclusive_group] = counts.get(o.mutually_exclusive_group, 0) + 1
+
+    for group, total in groups.items():
+        if group in DOMINANT_UNION_GROUPS:
+            assert total > 1.0, f"union group {group!r} summed to {total}, expected > 1.0"
+            continue
+        assert abs(total - 1.0) < 1e-9, f"group {group!r} summed to {total}, not 1.0"
+
+    assert counts["ht_ft"] <= 9
+    assert counts["half_most_goals"] <= 3
+
+
+def test_ht_ft_is_a_nine_way_grid_of_ht_result_by_ft_result():
+    outcomes = _ht_ft()
+    by_selection = {o.selection: o.probability for o in outcomes if o.market == "HT/FT"}
+    assert set(by_selection) <= {f"{h}/{f}" for h in "1X2" for f in "1X2"}
+    assert abs(sum(by_selection.values()) - 1.0) < 1e-9
+
+
+def test_ht_ft_double_chance_is_a_union_and_excluded_from_secondary_outcomes():
+    prediction = _prediction_stub(
+        model_breakdown={
+            "poisson": {"lambda_home": 1.6, "lambda_away": 1.1, "lambda_home_ht": 0.7, "lambda_away_ht": 0.5}
+        }
+    )
+    outcomes = outcomes_from_prediction(prediction)
+    assert any(o.mutually_exclusive_group == "ht_ft_double_chance" for o in outcomes)
+    assert any(o.mutually_exclusive_group == "ht_double_chance_btts" for o in outcomes)
+
+    winner = select_global_most_likely(outcomes)
+    also = secondary_outcomes(outcomes, exclude=(winner.market, winner.selection), n=len(outcomes))
+    assert all(o.mutually_exclusive_group != "ht_ft_double_chance" for o in also)
+    assert all(o.mutually_exclusive_group != "ht_double_chance_btts" for o in also)
+
+
+def test_half_with_most_goals_matches_a_direct_comparison():
+    """Cross-check against a hand-computed answer for a lopsided case: a
+    much higher first-half rate than second-half rate should make "1st
+    Half" the clear favorite, not "2nd Half" or "Equal"."""
+
+    outcomes = _ht_ft(lambda_home=1.2, lambda_away=0.9, lambda_home_ht=1.0, lambda_away_ht=0.8)
+    by_key = {o.selection: o.probability for o in outcomes if o.market == "Half With Most Goals"}
+    assert by_key["1st Half"] > by_key["2nd Half"]
+    assert by_key["1st Half"] > by_key["Equal"]
+
+
+def test_ht_2h_result_marginals_match_ht_result_and_2h_result():
+    """The joint HT+2H Result grid's own marginals must agree with the plain
+    HT Result outcomes already produced elsewhere -- same underlying HT
+    matrix, so summing out the second half must reproduce it exactly."""
+
+    ht_outcomes = ht_matrix_derived_outcomes(lambda_home_ht=0.7, lambda_away_ht=0.5, matches_available=20)
+    ht_result = {o.selection: o.probability for o in ht_outcomes if o.market == "HT Result"}
+
+    joint = [o for o in _ht_ft() if o.market == "HT + 2H Result"]
+    marginal: dict[str, float] = {}
+    for o in joint:
+        ht_side = o.selection.split(" & ")[0]
+        marginal[ht_side] = marginal.get(ht_side, 0.0) + o.probability
+
+    for side in ("Home", "Draw", "Away"):
+        assert marginal[side] == pytest.approx(ht_result[side], abs=1e-9)
+
+
+def test_ht_ft_joint_outcomes_respects_the_data_gate():
+    assert ht_ft_joint_outcomes(
+        lambda_home=1.6, lambda_away=1.1, lambda_home_ht=0.7, lambda_away_ht=0.5, matches_available=3,
+    ) == []
+
+
+def test_outcomes_from_prediction_adds_ht_ft_markets_when_all_lambdas_are_present():
+    prediction = _prediction_stub(
+        model_breakdown={
+            "poisson": {"lambda_home": 1.6, "lambda_away": 1.1, "lambda_home_ht": 0.7, "lambda_away_ht": 0.5}
+        }
+    )
+    outcomes = outcomes_from_prediction(prediction)
+    assert any(o.market == "HT/FT" for o in outcomes)
+    assert any(o.market == "Half With Most Goals" for o in outcomes)
+
+
+def test_outcomes_from_prediction_skips_ht_ft_markets_without_ht_lambdas():
+    prediction = _prediction_stub(model_breakdown={"poisson": {"lambda_home": 1.6, "lambda_away": 1.1}})
+    outcomes = outcomes_from_prediction(prediction)
+    assert not any(o.market == "HT/FT" for o in outcomes)

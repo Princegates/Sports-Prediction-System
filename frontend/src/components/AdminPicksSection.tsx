@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fetchAdminPicks } from "../api";
+import { fetchAdminPicks, fetchBranding } from "../api";
 import { AdminPickCard } from "./AdminPickCard";
 import type { AdminPick } from "../types";
 
@@ -8,6 +8,7 @@ import type { AdminPick } from "../types";
  * turned the whole thing off) is a normal, unremarkable state. */
 export function AdminPicksSection() {
   const [picks, setPicks] = useState<AdminPick[] | null>(null);
+  const [whatsapp, setWhatsapp] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -19,6 +20,17 @@ export function AdminPicksSection() {
     };
   }, []);
 
+  // Only fetched once some pick actually needs the "subscribe to see this
+  // code" CTA (has_booking_code true, booking_code still null -- a
+  // free-tier viewer) -- most picks never carry a booking code at all.
+  const needsWhatsapp = picks?.some((p) => p.has_booking_code && !p.booking_code) ?? false;
+  useEffect(() => {
+    if (!needsWhatsapp || whatsapp) return;
+    fetchBranding()
+      .then((b) => setWhatsapp(b.contact_whatsapp || null))
+      .catch(() => {});
+  }, [needsWhatsapp, whatsapp]);
+
   if (!picks || picks.length === 0) return null;
 
   return (
@@ -29,7 +41,7 @@ export function AdminPicksSection() {
       </div>
       <div className="grid">
         {picks.map((pick) => (
-          <AdminPickCard key={pick.id} pick={pick} />
+          <AdminPickCard key={pick.id} pick={pick} whatsapp={whatsapp} />
         ))}
       </div>
     </>

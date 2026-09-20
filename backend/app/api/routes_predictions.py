@@ -20,9 +20,9 @@ from app.api.schemas import (
     PredictionOut,
 )
 from app.api.serializers import admin_pick_to_schema, featured_pick_to_schema, prediction_to_schema
-from app.betcode.selection import price_legs
+from app.betcode.selection import price_legs, resolve_legs_unpriced
 from app.db.models import AdminPick, FeaturedPick, Match, Prediction, User
-from app.outcomes.registry import find_outcome, outcomes_from_prediction
+from app.outcomes.registry import NOT_A_FULL_PARTITION_GROUPS, find_outcome, outcomes_from_prediction
 from app.prediction_models.ml_model import FeatureCachePool
 from app.prediction_service import build_prediction_for_match
 from app.quality import is_high_confidence
@@ -215,14 +215,16 @@ def browse_outcomes(
 
     # A group appearing on more than one market name -- "Total Goals 2.5" and
     # "Total Goals 3.5" are different markets -- is still mutually exclusive
-    # within each. Correct Score is the one group whose members are many.
+    # within each. See NOT_A_FULL_PARTITION_GROUPS for which groups' selections
+    # don't actually add up to 100% (Correct Score's truncated top-N, and
+    # every Double-Chance-flavored union).
     markets = [
         MarketOut(
             market=name,
             group=market_groups[name],
             selections=sorted(market_selections[name]),
             outcomes=sum(1 for rows in per_league.values() for o in rows if o.market == name),
-            mutually_exclusive=market_groups[name] != "correct_score",
+            mutually_exclusive=market_groups[name] not in NOT_A_FULL_PARTITION_GROUPS,
         )
         for name in sorted(market_selections)
     ]
@@ -348,10 +350,14 @@ def admin_picks(user: User = Depends(get_current_user), db: Session = Depends(ge
     if not values.get("admin_picks_enabled", True):
         return []
 
+    # Computed unconditionally, not just when the free-tier-visibility
+    # setting requires it -- a booking code is premium-gated regardless of
+    # whether the pick itself is visible to everyone.
+    grant = current_grant(db, user)
+    viewer_has_premium = user.role == "superadmin" or (grant is not None and grant.expires_at > dt.datetime.utcnow())
+
     if user.role != "superadmin" and not values.get("admin_picks_free_tier_visible", True):
-        grant = current_grant(db, user)
-        has_access = grant is not None and grant.expires_at > dt.datetime.utcnow()
-        if not has_access:
+        if not viewer_has_premium:
             return []
 
     now = dt.datetime.utcnow()
@@ -362,8 +368,8 @@ def admin_picks(user: User = Depends(get_current_user), db: Session = Depends(ge
     out: list[AdminPickOut] = []
     for pick in picks:
         refs = [(leg["match_id"], leg["market"], leg["selection"]) for leg in pick.legs]
-        legs, _warnings = price_legs(db, refs)
+        legs, _warnings = price_legs(db, refs) if pick.priced else resolve_legs_unpriced(db, refs)
         if len(legs) != len(refs):
             continue
-        out.append(admin_pick_to_schema(pick, legs))
+        out.append(admin_pick_to_schema(pick, legs, viewer_has_premium=viewer_has_premium))
     return out

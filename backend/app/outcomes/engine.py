@@ -9,7 +9,7 @@ wrong.
 
 from __future__ import annotations
 
-from app.outcomes.registry import Outcome
+from app.outcomes.registry import DOMINANT_UNION_GROUPS, Outcome
 
 
 def select_global_most_likely(outcomes: list[Outcome]) -> Outcome | None:
@@ -31,14 +31,14 @@ def secondary_outcomes(outcomes: list[Outcome], *, exclude: tuple[str, str], n: 
     to (Home/Draw = P(home win) + P(draw)), so it is *always* at least as
     high as the 1X2 pick beneath it and would otherwise fill this list every
     time without adding anything -- a second opinion that is really the
-    first one restated more loosely. HT Double Chance is the identical
-    construction one level down (a union of HT Result) and is excluded for
-    the same reason.
+    first one restated more loosely. HT Double Chance, and every combo
+    market built on top of either Double Chance (see
+    ``registry.DOMINANT_UNION_GROUPS``), are the identical construction one
+    level down or sideways and are excluded for the same reason.
     """
 
-    excluded_groups = ("double_chance", "ht_double_chance")
     candidates = [
         o for o in outcomes
-        if o.mutually_exclusive_group not in excluded_groups and (o.market, o.selection) != exclude
+        if o.mutually_exclusive_group not in DOMINANT_UNION_GROUPS and (o.market, o.selection) != exclude
     ]
     return top_n(candidates, n)

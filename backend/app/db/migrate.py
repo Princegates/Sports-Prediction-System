@@ -51,6 +51,16 @@ _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     # True only when the optional LLM rewriter actually replaced this row's
     # content -- see app/assistant/llm.py.
     ("chat_messages", "rewritten", "BOOLEAN"),
+    # DEFAULT TRUE, unlike every column above -- every Admin Pick that
+    # existed before this column did was a bookmaker-priced AI Generation
+    # slip, never the new probability-only kind, so a backfilled NULL would
+    # misclassify every one of them as unpriced. TRUE/FALSE is a valid
+    # boolean-column default in both SQLite (3.23+) and Postgres.
+    ("admin_picks", "priced", "BOOLEAN DEFAULT TRUE"),
+    # A booking code the admin typed in by hand after generating it on a
+    # real bookmaker's site -- see AdminPick's own docstring.
+    ("admin_picks", "booking_code", "VARCHAR(64)"),
+    ("admin_picks", "booking_code_bookmaker", "VARCHAR(64)"),
 ]
 
 
