@@ -255,10 +255,11 @@ def main() -> None:
         if args.delete:
             db.commit()
             print(f"\nDeleted {total_wrong} wrongly-attributed match(es) across {len(leagues)} league(s).")
-            print("\nNext steps:")
-            for league in leagues:
-                print(f'  python scripts/backtest.py --league "{league}"  # rebuilds Elo history for this league')
-            print("  Refresh predictions for the affected leagues afterward.")
+            quoted_leagues = " ".join(f'"{league}"' for league in leagues)
+            print("\nNext step: retrain, which rebuilds Elo history from scratch and refreshes")
+            print('predictions -- run the "Refresh predictions" workflow with mode=retrain,')
+            print(f"leagues={quoted_leagues}")
+            print(f"  (or locally: python scripts/bootstrap.py --skip-data --leagues {quoted_leagues})")
         else:
             db.rollback()
             print(f"\nDry run -- nothing written. {total_wrong} match(es) would be deleted, and fresh, "
