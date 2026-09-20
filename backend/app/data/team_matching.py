@@ -31,6 +31,27 @@ def normalize_team_name(name: str) -> str:
     return re.sub(r"\s+", " ", stripped).strip().lower()
 
 
+# Used only by the fuzzy cross-source scorer below (_tokens/name_match_score),
+# never by normalize_team_name. "Real" is a genuine identity-bearing word for
+# a Spanish club, not a legal-entity marker like "CF" or "Club" -- stripping
+# it collapses "Real Madrid" down to the single token "madrid", which then
+# scores a false perfect match against any other club that merely plays in
+# Madrid too ("Atletico Madrid", "Rayo Vallecano de Madrid"). Every known
+# "Real X" pair this project reconciles spells "Real" in both variants being
+# compared (see test_known_alias_pairs_normalize_the_same), so
+# normalize_team_name's own exact-key equivalence for those pairs is
+# unaffected by keeping "Real" out of this stricter list; a source that
+# drops "Real" entirely (bare "Sociedad") is reconciled via the explicit
+# EXPLICIT_ALIASES entry for it instead, not this generic strip.
+_FUZZY_STRIP_TOKENS = [t for t in _STRIP_TOKENS if t != "Real"]
+_FUZZY_STRIP_PATTERN = re.compile(r"\b(" + "|".join(re.escape(t) for t in _FUZZY_STRIP_TOKENS) + r")\b", re.IGNORECASE)
+
+
+def _fuzzy_normalize(name: str) -> str:
+    stripped = _FUZZY_STRIP_PATTERN.sub("", name)
+    return re.sub(r"\s+", " ", stripped).strip().lower()
+
+
 # --- Cross-source name reconciliation ------------------------------------
 #
 # The same club is spelled differently by different providers, and the
@@ -62,17 +83,48 @@ def _strip_accents(text: str) -> str:
 
 
 def _tokens(name: str) -> list[str]:
-    normalized = normalize_team_name(_strip_accents(name.lower()))
+    normalized = _fuzzy_normalize(_strip_accents(name.lower()))
     return [t for t in re.findall(r"[a-z0-9]+", normalized) if len(t) >= 2]
+
+
+# Token pairs that satisfy the prefix-abbreviation shape below (one is a
+# literal prefix of the other, long enough to clear _MIN_PREFIX_LEN) but are
+# not an abbreviation of each other at all. "Milan" (AC Milan's own identity,
+# reachable via EXPLICIT_ALIASES) and "Milano" (the Italian spelling
+# embedded in Internazionale's full legal name, "FC Internazionale Milano")
+# are the same word in two languages for the same city, not a shortened/full
+# pair for the same club -- exactly the "Munich"/"Munchen" exonym problem
+# this module already calls out in EXPLICIT_ALIASES, just producing a false
+# match instead of a missed one. Add here, not to EXPLICIT_ALIASES: an alias
+# entry would need to know every spelling of Inter's full name in advance,
+# while this blocks the collision for any of them at the token level.
+_FALSE_COGNATE_PAIRS: frozenset[frozenset[str]] = frozenset({frozenset({"milan", "milano"})})
 
 
 def _tokens_match(a: str, b: str) -> bool:
     if a == b:
         return True
+    if frozenset({a, b}) in _FALSE_COGNATE_PAIRS:
+        return False
     shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
     # An abbreviation must still be distinctive: "st" should not match
     # "stoke" and "sunderland" both.
     return len(shorter) >= _MIN_PREFIX_LEN and longer.startswith(shorter)
+
+
+# City names shared by more than one real club in this project's data, none
+# of which is itself a club identity. A match built ENTIRELY from tokens in
+# this set is not evidence the two names denote the same club -- "Real
+# Madrid" and "Atletico Madrid" both contain "madrid", and "FC Barcelona"
+# and "RCD Espanyol de Barcelona" both contain "barcelona", but sharing a
+# home city is not sharing an identity. A club genuinely resolved by one of
+# these words alone (an exact spelling match, or a real EXPLICIT_ALIASES
+# entry) is unaffected -- this only blocks the coincidental, partial-token
+# route to the same wrong conclusion that name_match_score's own docstring
+# describes. See scripts/merge_duplicate_teams.py, whose dry run against
+# this project's real data proposed merging exactly these pairs (plus
+# Inter into AC Milan) before this guard existed.
+_CITY_ONLY_TOKENS = frozenset({"madrid", "milan", "milano", "barcelona"})
 
 
 # Clubs whose short form is not a prefix of their full name, so the scoring
@@ -153,17 +205,23 @@ def name_match_score(a: str, b: str) -> tuple[float, float]:
     """How much of each name the other accounts for, shorter name first.
 
     Two numbers rather than one, because the first cannot tell two clubs
-    apart on its own. "Real Madrid CF" reduces to the single token "madrid"
-    -- "Real" and "CF" are both stripped as club-name furniture -- so
-    "Atletico Madrid" accounts for all of it and scores a perfect 1.0
-    against the wrong club. It scores 1.0 against the right one too, and a
-    caller with one number has no way to prefer it.
+    apart on its own. "Leeds" leaves "united" over in "Leeds United" and is
+    still Leeds -- coverage below 1.0 is normal for a genuine abbreviation,
+    not a rejection signal. It is a tie-break for ranking candidates, not a
+    threshold: see ``TeamIndex._ranked`` in app.data.api_football_ingest for
+    where that ranking actually happens.
 
-    The second number is the share of the *longer* name that was matched,
-    and it separates them: 1.0 for Atletico Madrid, 0.5 for Real Madrid,
-    whose "atletico" is left over. It is a tie-break, not a threshold --
-    "Leeds" leaves "united" over in "Leeds United" and is still Leeds -- so
-    it ranks candidates rather than rejecting them.
+    One case coverage cannot fix on its own: a name that reduces to nothing
+    but a shared city -- "FC Barcelona" and "RCD Espanyol de Barcelona" both
+    contain "barcelona", two entirely different, rival clubs. Coverage does
+    separate them (0.5, since "espanyol" is left over) -- but a legitimate
+    abbreviation pair can land at exactly the same 0.5 (see
+    test_team_matching.py), so no fixed coverage threshold reliably tells
+    the two apart. ``_CITY_ONLY_TOKENS`` handles this case directly: when
+    the *shorter* name's tokens are entirely a shared-city word and
+    something in the longer name is left unaccounted for, this is refused
+    outright (0.0, 0.0) rather than scored as a plausible partial match --
+    sharing a home city is not sharing an identity.
     """
 
     ta, tb = _tokens(canonical_alias(a)), _tokens(canonical_alias(b))
@@ -179,6 +237,9 @@ def name_match_score(a: str, b: str) -> tuple[float, float]:
                 matched += 1
                 remaining.pop(i)
                 break
+
+    if matched < len(longer) and set(shorter) <= _CITY_ONLY_TOKENS:
+        return 0.0, 0.0
 
     return matched / len(shorter), matched / len(longer)
 
