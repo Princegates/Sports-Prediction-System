@@ -322,7 +322,7 @@ def guda_picks(user: User = Depends(get_current_user), db: Session = Depends(get
     out: list[FeaturedPickOut] = []
     for pick in picks:
         match = db.get(Match, pick.match_id)
-        if match is None:
+        if match is None or match.status == "FINISHED":
             continue
         prediction = db.execute(
             select(Prediction).where(Prediction.match_id == match.id).order_by(Prediction.created_at.desc())

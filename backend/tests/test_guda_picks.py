@@ -312,3 +312,13 @@ def test_a_pick_drops_out_once_its_match_has_no_prediction(db_session, admin, up
     db_session.commit()
 
     assert client.get("/api/predictions/guda-picks", headers=auth_headers).json() == []
+
+
+def test_a_pick_drops_out_the_moment_its_match_finishes(db_session, admin, upcoming_match, auth_headers):
+    _feature(admin, upcoming_match.id)
+    assert len(client.get("/api/predictions/guda-picks", headers=auth_headers).json()) == 1
+
+    upcoming_match.status = "FINISHED"
+    db_session.commit()
+
+    assert client.get("/api/predictions/guda-picks", headers=auth_headers).json() == []

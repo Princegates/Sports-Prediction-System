@@ -70,13 +70,20 @@ export function Dashboard() {
     setRows(null);
     setError(null);
 
-    const loader =
-      range === "today" ? loadForDate(league, dateOffset(0)) : range === "tomorrow" ? loadForDate(league, dateOffset(1)) : loadForWeek(league);
+    function load() {
+      const loader =
+        range === "today" ? loadForDate(league, dateOffset(0)) : range === "tomorrow" ? loadForDate(league, dateOffset(1)) : loadForWeek(league);
+      loader.then((r) => !cancelled && setRows(r)).catch((err) => !cancelled && setError(String(err)));
+    }
 
-    loader.then((r) => !cancelled && setRows(r)).catch((err) => !cancelled && setError(String(err)));
+    load();
+    // Re-fetch periodically so a card for a match that just finished drops
+    // off during an open session, not only on the next full page load.
+    const interval = setInterval(load, 60_000);
 
     return () => {
       cancelled = true;
+      clearInterval(interval);
     };
   }, [accessLoading, hasAccess, league, range]);
 

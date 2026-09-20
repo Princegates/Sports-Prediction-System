@@ -12,14 +12,24 @@ export function AdminPicksSection() {
 
   useEffect(() => {
     let cancelled = false;
-    fetchAdminPicks()
-      // The three weekly system accumulators live in this same list --
-      // see WeeklyPicksSection, which fetches it again for its own,
-      // distinctly-labeled section, so they aren't duplicated here.
-      .then((p) => !cancelled && setPicks(p.filter((pick) => !pick.source)))
-      .catch(() => !cancelled && setPicks([]));
+
+    function load() {
+      fetchAdminPicks()
+        // The three weekly system accumulators live in this same list --
+        // see WeeklyPicksSection, which fetches it again for its own,
+        // distinctly-labeled section, so they aren't duplicated here.
+        .then((p) => !cancelled && setPicks(p.filter((pick) => !pick.source)))
+        .catch(() => !cancelled && setPicks([]));
+    }
+
+    load();
+    // Re-fetch periodically so a slip drops off (or loses a leg) the moment
+    // one of its matches finishes, not only on the next page load.
+    const interval = setInterval(load, 60_000);
+
     return () => {
       cancelled = true;
+      clearInterval(interval);
     };
   }, []);
 

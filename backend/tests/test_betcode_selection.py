@@ -13,7 +13,14 @@ import math
 
 import pytest
 
-from app.betcode.selection import SlipCriteria, build_candidate_legs, price_legs, select_legs, select_ranged_leg_slip
+from app.betcode.selection import (
+    SlipCriteria,
+    build_candidate_legs,
+    price_legs,
+    resolve_legs_unpriced,
+    select_legs,
+    select_ranged_leg_slip,
+)
 from app.db.models import Match, MatchOdds, Prediction, Team
 
 BASE = dt.datetime.utcnow() + dt.timedelta(hours=6)
@@ -461,6 +468,37 @@ def test_price_legs_skips_an_unknown_match(db_session, three_matches):
 
 def test_price_legs_with_no_refs_returns_nothing(db_session):
     assert price_legs(db_session, []) == ([], [])
+
+
+def test_price_legs_skips_a_finished_match(db_session, three_matches):
+    """A leg on a match that has already ended must never resolve, even
+    though its stored Prediction and MatchOdds rows are still present and
+    would otherwise resolve cleanly."""
+
+    three_matches[0].status = "FINISHED"
+    db_session.commit()
+
+    legs, warnings = price_legs(db_session, [(three_matches[0].id, "Match Result", "Home Win")])
+    assert legs == []
+    assert len(warnings) == 1
+    assert "finished" in warnings[0].lower()
+
+
+def test_resolve_legs_unpriced_skips_a_finished_match(db_session, three_matches):
+    three_matches[0].status = "FINISHED"
+    db_session.commit()
+
+    legs, warnings = resolve_legs_unpriced(db_session, [(three_matches[0].id, "Match Result", "Home Win")])
+    assert legs == []
+    assert len(warnings) == 1
+    assert "finished" in warnings[0].lower()
+
+
+def test_resolve_legs_unpriced_resolves_a_scheduled_match(db_session, three_matches):
+    legs, warnings = resolve_legs_unpriced(db_session, [(three_matches[0].id, "Match Result", "Home Win")])
+    assert len(legs) == 1
+    assert legs[0].decimal_odds is None
+    assert warnings == []
 
 
 # --- select_ranged_leg_slip: fixed leg count, ranged target ---------------

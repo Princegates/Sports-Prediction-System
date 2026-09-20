@@ -12,11 +12,21 @@ export function GudaPicksSection() {
 
   useEffect(() => {
     let cancelled = false;
-    fetchGudaPicks()
-      .then((p) => !cancelled && setPicks(p))
-      .catch(() => !cancelled && setPicks([]));
+
+    function load() {
+      fetchGudaPicks()
+        .then((p) => !cancelled && setPicks(p))
+        .catch(() => !cancelled && setPicks([]));
+    }
+
+    load();
+    // Re-fetch periodically so a pick drops off as soon as its match
+    // finishes, not only on the next page load.
+    const interval = setInterval(load, 60_000);
+
     return () => {
       cancelled = true;
+      clearInterval(interval);
     };
   }, []);
 

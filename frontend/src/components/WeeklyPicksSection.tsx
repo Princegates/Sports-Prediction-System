@@ -25,16 +25,26 @@ export function WeeklyPicksSection() {
 
   useEffect(() => {
     let cancelled = false;
-    fetchAdminPicks()
-      .then((p) => {
-        if (cancelled) return;
-        const weekly = p.filter((pick) => tierOf(pick) !== null);
-        weekly.sort((a, b) => TIER_ORDER.indexOf(tierOf(a)!) - TIER_ORDER.indexOf(tierOf(b)!));
-        setPicks(weekly);
-      })
-      .catch(() => !cancelled && setPicks([]));
+
+    function load() {
+      fetchAdminPicks()
+        .then((p) => {
+          if (cancelled) return;
+          const weekly = p.filter((pick) => tierOf(pick) !== null);
+          weekly.sort((a, b) => TIER_ORDER.indexOf(tierOf(a)!) - TIER_ORDER.indexOf(tierOf(b)!));
+          setPicks(weekly);
+        })
+        .catch(() => !cancelled && setPicks([]));
+    }
+
+    load();
+    // Re-fetch periodically so a tier drops off (or loses a leg) the moment
+    // one of its matches finishes, not only on the next page load.
+    const interval = setInterval(load, 60_000);
+
     return () => {
       cancelled = true;
+      clearInterval(interval);
     };
   }, []);
 

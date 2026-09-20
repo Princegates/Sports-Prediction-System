@@ -400,10 +400,10 @@ def price_legs(
     a Markets-page shortlist) and only needs real numbers attached to them.
 
     A ref is skipped -- and explained in the returned warnings, never
-    silently dropped -- when its match doesn't exist, has no stored
-    prediction, the (market, selection) pair isn't one the current
-    prediction actually offers, there's no stored price for it, or a second
-    ref for an already-priced match arrives (one leg per match, same
+    silently dropped -- when its match doesn't exist, has already finished,
+    has no stored prediction, the (market, selection) pair isn't one the
+    current prediction actually offers, there's no stored price for it, or a
+    second ref for an already-priced match arrives (one leg per match, same
     reasoning as build_candidate_legs: two outcomes on the same fixture are
     correlated, not independent, so only the first is kept).
     """
@@ -438,6 +438,10 @@ def price_legs(
             warnings.append(f"Match {match_id}: not found, skipped.")
             continue
         label = f"{match.home_team.name} vs {match.away_team.name}"
+
+        if match.status == "FINISHED":
+            warnings.append(f"{label}: match has finished, skipped {market} -- {selection}.")
+            continue
 
         if match_id in priced_matches:
             warnings.append(f"{label}: already have a leg from this match, skipped {market} -- {selection}.")
@@ -486,9 +490,10 @@ def resolve_legs_unpriced(
 ) -> tuple[list[Leg], list[str]]:
     """Resolves an explicit list of (match_id, market, selection) refs
     against each match's current Prediction only -- same grounding as
-    ``price_legs`` (a real match, a real stored prediction, an outcome that
-    prediction actually offers, one leg per match), just without requiring a
-    ``MatchOdds`` row. For an Admin Pick an operator wants to show as a
+    ``price_legs`` (a real match that hasn't finished, a real stored
+    prediction, an outcome that prediction actually offers, one leg per
+    match), just without requiring a ``MatchOdds`` row. For an Admin Pick an
+    operator wants to show as a
     model-probability-only combo (``AdminPick.priced=False``) -- most
     outcomes browsed on the Markets page never get a bookmaker quote
     captured for them, and requiring one here would make most of what
@@ -523,6 +528,10 @@ def resolve_legs_unpriced(
             warnings.append(f"Match {match_id}: not found, skipped.")
             continue
         label = f"{match.home_team.name} vs {match.away_team.name}"
+
+        if match.status == "FINISHED":
+            warnings.append(f"{label}: match has finished, skipped {market} -- {selection}.")
+            continue
 
         if match_id in resolved_matches:
             warnings.append(f"{label}: already have a leg from this match, skipped {market} -- {selection}.")
