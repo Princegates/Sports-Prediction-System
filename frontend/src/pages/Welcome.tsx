@@ -147,7 +147,7 @@ export function Welcome() {
       {/* ---------------- Hero ---------------- */}
       <section className="landing-hero">
         <div className="landing-hero-copy">
-          <span className="eyebrow">Ensemble football intelligence</span>
+          <span className="eyebrow eyebrow-live">Ensemble football intelligence</span>
           <h1>
             Calibrated football predictions,
             <span className="hero-gradient"> with the reasoning shown</span>
