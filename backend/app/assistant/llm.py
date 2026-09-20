@@ -31,9 +31,12 @@ rotation or provider swap is a setting, not a redeploy:
                    to Google AI Studio's Gemini API, the one mainstream option
                    with a genuine no-card free tier -- get a key at
                    aistudio.google.com/apikey
-    model       -- must match the provider, e.g. "gemini-2.5-flash" for the
-                   default above, or a local model name for Ollama/llama.cpp/
-                   LM Studio if you point base_url at one of those instead
+    model       -- must match the provider, e.g. "gemini-3.5-flash-lite" for
+                   the default above (Flash-Lite over the flagship Flash
+                   model: 500 free requests/day vs ~20/day, and rephrasing
+                   doesn't need the flagship's extra reasoning), or a local
+                   model name for Ollama/llama.cpp/LM Studio if you point
+                   base_url at one of those instead
     api_key     -- blank is fine for a local server that doesn't check one
     timeout     -- seconds before a rewrite call gives up (falls back to the
                    grounded text either way)

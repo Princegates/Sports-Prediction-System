@@ -193,8 +193,8 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 "aistudio.google.com/apikey and paste it below.",
                 env_attr="assistant_llm_base_url"),
     SettingSpec("assistant_llm_model", "str", "assistant", "Model name",
-                "Must match the base URL's provider -- e.g. gemini-2.5-flash for the Gemini default "
-                "above.",
+                "Must match the base URL's provider -- e.g. gemini-3.5-flash-lite for the Gemini "
+                "default above (500 free requests/day, vs ~20/day for the flagship Flash model).",
                 env_attr="assistant_llm_model"),
     SettingSpec("assistant_llm_api_key", "str", "assistant", "API key",
                 "Left blank for a local server (Ollama and similar) that doesn't check one.",
