@@ -9,10 +9,11 @@ probability that quietly ignores what stacking actually costs.
 from __future__ import annotations
 
 import datetime as dt
+import math
 
 import pytest
 
-from app.betcode.selection import SlipCriteria, build_candidate_legs, price_legs, select_legs
+from app.betcode.selection import SlipCriteria, build_candidate_legs, price_legs, select_legs, select_ranged_leg_slip
 from app.db.models import Match, MatchOdds, Prediction, Team
 
 BASE = dt.datetime.utcnow() + dt.timedelta(hours=6)
@@ -460,3 +461,100 @@ def test_price_legs_skips_an_unknown_match(db_session, three_matches):
 
 def test_price_legs_with_no_refs_returns_nothing(db_session):
     assert price_legs(db_session, []) == ([], [])
+
+
+# --- select_ranged_leg_slip: fixed leg count, ranged target ---------------
+#
+# The shape scripts/generate_weekly_picks.py needs: not "stop once a single
+# floor is met" (select_legs), but "exactly N legs, combined odds inside a
+# band" -- for a weekly Low/Medium/High risk accumulator, each always 10
+# legs, distinguished by odds range rather than leg count.
+
+
+def _ladder_matches(db_session, odds_list: list[float]) -> list[Match]:
+    """One match per odds value, each a safe (75%) favourite so every leg
+    clears an ordinary accuracy floor -- the ladder shape lives entirely in
+    the odds, which is what these tests exercise."""
+
+    matches = []
+    for i, odds in enumerate(odds_list):
+        home = Team(name=f"Home{i}", league="English Premier League", aliases=[])
+        away = Team(name=f"Away{i}", league="English Premier League", aliases=[])
+        db_session.add_all([home, away])
+        db_session.commit()
+        db_session.refresh(home)
+        db_session.refresh(away)
+        match = Match(
+            league="English Premier League", season="2025-26", date=BASE + dt.timedelta(days=1, hours=i),
+            home_team_id=home.id, away_team_id=away.id, status="SCHEDULED",
+        )
+        db_session.add(match)
+        db_session.commit()
+        db_session.refresh(match)
+        db_session.add(_prediction(match.id, home=0.75, draw=0.15, away=0.10))
+        db_session.add(MatchOdds(
+            match_id=match.id, bookmaker="Bet9ja", market="Match Result", selection="Home Win", decimal_odds=odds,
+        ))
+        matches.append(match)
+    db_session.commit()
+    return matches
+
+
+def test_select_ranged_leg_slip_picks_the_safest_qualifying_window(db_session):
+    """15 matches on an ascending-odds ladder, so several 10-leg windows
+    exist. A target range wide enough to cover both the very first window
+    and the next one along must still return the first (lowest-odds, safest)
+    one -- same "safest first" preference select_legs already applies."""
+
+    odds_list = [round(1.05 + 0.03 * i, 2) for i in range(15)]
+    _ladder_matches(db_session, odds_list)
+
+    window0 = math.prod(odds_list[0:10])
+    window1 = math.prod(odds_list[1:11])
+    target_min, target_max = min(window0, window1) - 0.01, max(window0, window1) + 0.01
+
+    criteria = SlipCriteria(bookmaker="system", target_odds=999, min_probability=0.5)
+    result = select_ranged_leg_slip(db_session, criteria, 10, target_min, target_max)
+
+    assert result.met_target
+    assert len(result.legs) == 10
+    assert result.combined_odds == pytest.approx(window0, rel=1e-6)
+    assert sorted(leg.decimal_odds for leg in result.legs) == sorted(odds_list[0:10])
+
+
+def test_select_ranged_leg_slip_reports_the_closest_miss_without_publishing_it(db_session):
+    odds_list = [round(1.05 + 0.03 * i, 2) for i in range(15)]
+    _ladder_matches(db_session, odds_list)
+
+    criteria = SlipCriteria(bookmaker="system", target_odds=999, min_probability=0.5)
+    result = select_ranged_leg_slip(db_session, criteria, 10, 10_000.0, 20_000.0)
+
+    assert not result.met_target
+    assert len(result.legs) == 10  # the closest window, not nothing
+    assert any("closest achievable" in w for w in result.warnings)
+
+
+def test_select_ranged_leg_slip_fails_cleanly_with_too_few_candidates(db_session):
+    _ladder_matches(db_session, [1.20, 1.25, 1.30])
+
+    criteria = SlipCriteria(bookmaker="system", target_odds=999, min_probability=0.5)
+    result = select_ranged_leg_slip(db_session, criteria, 10, 5.0, 10.0)
+
+    assert not result.met_target
+    assert result.legs == []
+    assert "need 10 for a full slip" in result.warnings[0]
+
+
+def test_select_ranged_leg_slip_combined_probability_matches_the_chosen_legs(db_session):
+    odds_list = [round(1.05 + 0.03 * i, 2) for i in range(12)]
+    _ladder_matches(db_session, odds_list)
+
+    window0 = math.prod(odds_list[0:10])
+    criteria = SlipCriteria(bookmaker="system", target_odds=999, min_probability=0.5)
+    result = select_ranged_leg_slip(db_session, criteria, 10, window0 - 0.01, window0 + 0.01)
+
+    assert result.met_target
+    expected_probability = 1.0
+    for leg in result.legs:
+        expected_probability *= leg.model_probability
+    assert result.combined_probability == pytest.approx(expected_probability)

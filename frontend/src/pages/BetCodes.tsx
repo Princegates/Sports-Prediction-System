@@ -746,14 +746,28 @@ export function BetCodes() {
             >
               <span>
                 {pick.label ? <strong>{pick.label}</strong> : <span className="sub">Untitled slip</span>}{" "}
+                {pick.source?.startsWith("system_weekly_") && (
+                  <span className="sub" style={{ fontStyle: "italic" }}>
+                    (auto-generated, weekly){" "}
+                  </span>
+                )}
                 <span className="sub">
                   {pick.legs.length} leg{pick.legs.length === 1 ? "" : "s"} ·{" "}
                   {pick.priced && pick.combined_odds !== null ? `${pick.combined_odds.toFixed(2)} odds · ` : "no odds · "}
                   {(pick.combined_probability * 100).toFixed(0)}% probability
                 </span>
-                <span className={`risk-tag ${pick.risk_tier}`} style={{ marginLeft: 8 }}>
-                  {pick.risk_tier === "low" ? "Low risk" : pick.risk_tier === "medium" ? "Medium risk" : "High risk"}
-                </span>
+                {/* pick.risk_tier is combined-probability-based (see
+                    betcode.selection.risk_tier) -- correct for a hand-built
+                    slip, but not for a fixed 10-leg weekly accumulator built
+                    to a combined-*odds* target instead (see AdminPickCard's
+                    riskOverride doc). For one of those, the label's own
+                    "Low/Medium/High Risk" text is the actual tier -- this
+                    tag is only ever shown here for a hand-built slip. */}
+                {!pick.source?.startsWith("system_weekly_") && (
+                  <span className={`risk-tag ${pick.risk_tier}`} style={{ marginLeft: 8 }}>
+                    {pick.risk_tier === "low" ? "Low risk" : pick.risk_tier === "medium" ? "Medium risk" : "High risk"}
+                  </span>
+                )}
               </span>
               <div style={{ display: "flex", gap: 6 }}>
                 {pick.priced && (

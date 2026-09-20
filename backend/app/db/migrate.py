@@ -61,6 +61,9 @@ _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     # real bookmaker's site -- see AdminPick's own docstring.
     ("admin_picks", "booking_code", "VARCHAR(64)"),
     ("admin_picks", "booking_code_bookmaker", "VARCHAR(64)"),
+    # "system_weekly_<tier>" on a row scripts/generate_weekly_picks.py
+    # created; null on everything an admin built by hand.
+    ("admin_picks", "source", "VARCHAR(32)"),
 ]
 
 

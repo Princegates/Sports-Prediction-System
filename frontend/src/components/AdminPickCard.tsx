@@ -29,13 +29,29 @@ function formatKickoff(iso: string): string {
  * ``whatsapp`` is only needed for the "a code exists, subscribe to see it"
  * teaser (``pick.has_booking_code`` true but ``pick.booking_code`` still
  * null -- a free-tier viewer); a premium viewer or superadmin gets the real
- * code straight from the API and never renders that branch. */
-export function AdminPickCard({ pick, whatsapp }: { pick: AdminPick; whatsapp?: string | null }) {
+ * code straight from the API and never renders that branch.
+ *
+ * ``riskOverride`` replaces the tag ``pick.risk_tier`` would otherwise show.
+ * WeeklyPicksSection sets it: ``risk_tier`` is combined-*probability*-based
+ * (see betcode.selection.risk_tier) and calibrated for a variable-length AI
+ * Generation slip, so a fixed 10-leg accumulator built to a Low combined-
+ * *odds* target (5-10) still stacks enough legs to land at a real
+ * combined-probability "high" by that unrelated scale -- showing it would
+ * contradict the section's own Low/Medium/High odds-band labeling right
+ * next to it. */
+export function AdminPickCard({
+  pick, whatsapp, riskOverride,
+}: {
+  pick: AdminPick;
+  whatsapp?: string | null;
+  riskOverride?: AdminPick["risk_tier"];
+}) {
   const tilt = useTilt<HTMLDivElement>();
   const [expanded, setExpanded] = useState(false);
 
   const hiddenCount = pick.legs.length - COLLAPSED_LEG_COUNT;
   const visibleLegs = expanded || hiddenCount <= 0 ? pick.legs : pick.legs.slice(0, COLLAPSED_LEG_COUNT);
+  const riskTier = riskOverride ?? pick.risk_tier;
 
   return (
     <div className="card match-card tilt-card" ref={tilt.ref} onMouseMove={tilt.onMouseMove} onMouseLeave={tilt.onMouseLeave}>
@@ -43,7 +59,7 @@ export function AdminPickCard({ pick, whatsapp }: { pick: AdminPick; whatsapp?: 
         <span className="match-competition">
           {pick.label || `${pick.legs.length}-leg slip`}
         </span>
-        <span className={`risk-tag ${pick.risk_tier}`}>{RISK_LABELS[pick.risk_tier]}</span>
+        <span className={`risk-tag ${riskTier}`}>{RISK_LABELS[riskTier]}</span>
       </div>
 
       <ol style={{ display: "flex", flexDirection: "column", gap: 8, margin: "8px 0", padding: 0, listStyle: "none" }}>

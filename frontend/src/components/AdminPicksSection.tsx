@@ -13,7 +13,10 @@ export function AdminPicksSection() {
   useEffect(() => {
     let cancelled = false;
     fetchAdminPicks()
-      .then((p) => !cancelled && setPicks(p))
+      // The three weekly system accumulators live in this same list --
+      // see WeeklyPicksSection, which fetches it again for its own,
+      // distinctly-labeled section, so they aren't duplicated here.
+      .then((p) => !cancelled && setPicks(p.filter((pick) => !pick.source)))
       .catch(() => !cancelled && setPicks([]));
     return () => {
       cancelled = true;

@@ -448,6 +448,13 @@ class AdminPick(Base):
     booking_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     booking_code_bookmaker: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    # Null for everything an admin built by hand through this table's normal
+    # CRUD endpoints (create_by_user_id identifies those instead). Set to
+    # "system_weekly_<tier>" ("low"/"medium"/"high") only by
+    # scripts/generate_weekly_picks.py, which upserts by this value so each
+    # tier stays a single row -- one week's low-risk slip replaces last
+    # week's rather than piling up a new row every run.
+    source: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
     # Self-cleaning, same as FeaturedPick -- 2 days past the LATEST leg's
     # kickoff, since a combo spans several matches rather than just one.

@@ -557,6 +557,97 @@ def resolve_legs_unpriced(
     return legs, warnings
 
 
+def select_ranged_leg_slip(
+    db: Session,
+    criteria: SlipCriteria,
+    leg_count: int,
+    target_min: float,
+    target_max: float,
+) -> SelectionResult:
+    """Picks exactly ``leg_count`` legs (one per match) whose combined odds
+    land inside ``[target_min, target_max]`` -- the fixed-size,
+    ranged-target shape scripts/generate_weekly_picks.py needs for its
+    three risk tiers, distinct from ``select_legs``' variable-length
+    "stop once a single floor is reached" search.
+
+    Candidates are sorted by decimal_odds ascending, then scanned as a
+    sliding window of ``leg_count`` consecutive entries. Every odds value is
+    > 1, so sliding the window up by one always drops the window's cheapest
+    price and adds one at least as large as everything already in it --
+    the window's product is therefore non-decreasing as it slides, and the
+    first window landing inside the target range is both correct and the
+    safest (lowest-odds) one that qualifies. No combinatorial search across
+    subsets is needed.
+
+    Never widens the range to force a result: if no window's product falls
+    inside it, the closest window found is returned anyway (so the caller
+    can report how close it got) but ``met_target`` is False -- the same
+    "refuse rather than mislabel" rule ``select_legs`` applies to its own
+    target, just checked against a range instead of a floor. A caller
+    publishing these to users should skip writing the tier that week
+    rather than store a slip outside the range it claims to be.
+    """
+
+    candidates = build_candidate_legs(db, criteria)
+    candidates.sort(key=lambda leg: leg.decimal_odds)
+
+    if len(candidates) < leg_count:
+        return SelectionResult(
+            criteria=criteria, legs=[], combined_odds=1.0, combined_probability=1.0,
+            candidates_considered=len(candidates), met_target=False,
+            warnings=[
+                f"Only {len(candidates)} qualifying match(es) available -- need {leg_count} for a full slip."
+            ],
+        )
+
+    best_window: list[Leg] | None = None
+    best_odds = 1.0
+    closest_window: list[Leg] = candidates[:leg_count]
+    closest_odds = 1.0
+    for leg in closest_window:
+        closest_odds *= leg.decimal_odds
+    closest_distance = min(abs(closest_odds - target_min), abs(closest_odds - target_max))
+
+    for start in range(0, len(candidates) - leg_count + 1):
+        window = candidates[start:start + leg_count]
+        odds = 1.0
+        for leg in window:
+            odds *= leg.decimal_odds
+
+        if target_min <= odds <= target_max:
+            best_window, best_odds = window, odds
+            break  # first (safest) qualifying window along the sorted order
+
+        distance = min(abs(odds - target_min), abs(odds - target_max))
+        if distance < closest_distance:
+            closest_window, closest_odds, closest_distance = window, odds, distance
+
+    chosen = best_window if best_window is not None else closest_window
+    combined_odds = best_odds if best_window is not None else closest_odds
+    combined_probability = 1.0
+    for leg in chosen:
+        combined_probability *= leg.model_probability
+
+    met_target = best_window is not None
+    warnings: list[str] = []
+    if not met_target:
+        warnings.append(
+            f"No {leg_count}-leg combination this week lands between {target_min:.2f} and "
+            f"{target_max:.2f} combined odds -- the closest achievable is {combined_odds:.2f}. "
+            "Not published rather than shown outside its stated range."
+        )
+
+    return SelectionResult(
+        criteria=criteria,
+        legs=chosen,
+        combined_odds=combined_odds,
+        combined_probability=combined_probability,
+        candidates_considered=len(candidates),
+        met_target=met_target,
+        warnings=warnings,
+    )
+
+
 # Independent of which risk preset (if any) produced a slip -- labels the
 # *resulting* combined probability, the same "result, not input" reasoning
 # BetCodes.tsx's own resultRiskLabel uses on the frontend, mirrored here so

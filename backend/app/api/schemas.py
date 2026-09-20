@@ -624,6 +624,11 @@ class AdminPickOut(BaseModel):
     risk_tier: str  # "low" | "medium" | "high" -- see betcode.selection.risk_tier
     label: str | None
     note: str | None
+    # "system_weekly_<tier>" for a row scripts/generate_weekly_picks.py
+    # produced, null for anything an admin built by hand -- lets the
+    # frontend split the two into separate sections without a second
+    # endpoint. See AdminPick.source.
+    source: str | None
     # Whether a booking code exists on this pick at all, regardless of
     # whether *this viewer* is allowed to see it -- lets a free-tier viewer
     # be shown "a code is available, subscribe to see it" instead of no

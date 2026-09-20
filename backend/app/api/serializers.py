@@ -231,6 +231,7 @@ def admin_pick_to_schema(pick: AdminPick, legs: list[Leg], *, viewer_has_premium
         risk_tier=risk_tier(combined_probability),
         label=pick.label,
         note=pick.note,
+        source=pick.source,
         has_booking_code=bool(pick.booking_code and pick.booking_code_bookmaker),
         booking_code=pick.booking_code if viewer_has_premium else None,
         booking_code_bookmaker=pick.booking_code_bookmaker if viewer_has_premium else None,

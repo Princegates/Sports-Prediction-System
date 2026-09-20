@@ -130,6 +130,23 @@ jobs:
           # separate argv entries rather than becoming one long string.
           eval "python scripts/bootstrap.py --days-ahead $DAYS_AHEAD $FLAGS --leagues $LEAGUES"
 
+      # Only on the weekly retrain, not the daily refresh -- "every match
+      # week" means once a week, not reshuffled every morning. Runs after
+      # the step above so it always searches this run's freshest
+      # predictions and odds, pooled across every league (never just the
+      # ones named in $LEAGUES -- see generate_weekly_picks.py).
+      - name: Generate this week's system picks
+        if: ${{ (inputs.mode || (github.event.schedule == '0 3 * * 1' && 'retrain') || 'refresh') == 'retrain' }}
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret is not set -- nothing to generate."
+            exit 0
+          fi
+          python scripts/generate_weekly_picks.py
+
       # Saved even on failure: a run that trained some leagues and then died
       # shouldn't throw away the models it did produce.
       - name: Save trained models
