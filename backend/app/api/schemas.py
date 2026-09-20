@@ -457,6 +457,9 @@ class BrandingOut(BaseModel):
     default_accent: str
     registration_open: bool
     contact_whatsapp: str
+    # Which Markets page coupon tab (match_result/double_chance/btts/
+    # draw_no_bet/other) opens by default -- see app_settings.py.
+    default_market_tab: str
 
 
 # --- Outcome browser -------------------------------------------------------

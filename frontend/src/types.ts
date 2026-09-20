@@ -420,6 +420,7 @@ export interface Branding {
   default_accent: string;
   registration_open: boolean;
   contact_whatsapp: string;
+  default_market_tab: string;
 }
 
 // --- Outcome browser -------------------------------------------------------

@@ -2,13 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { fetchSettings, fetchSystemStatus, saveSettings, sendTestEmail } from "../api";
 import { ACCENT_PROFILES } from "../lib/accentProfiles";
 import { ErrorState } from "../components/ErrorState";
+import { GRID_TABS } from "./Markets";
 import type { SettingSpec, SettingsPayload, SystemStatus } from "../types";
 
 type Draft = Record<string, string | number | boolean>;
 
 /** Groups in the order an operator actually needs them: turn email on, set
  *  how access works, make it look right, and only then touch the model. */
-const GROUP_ORDER = ["data", "email", "access", "appearance", "notice", "picks", "model", "betcode", "assistant"];
+const GROUP_ORDER = ["data", "email", "access", "appearance", "notice", "picks", "markets", "model", "betcode", "assistant"];
 
 const GROUP_NOTES: Record<string, string> = {
   data:
@@ -19,6 +20,7 @@ const GROUP_NOTES: Record<string, string> = {
   appearance: "Theme and accent color for the whole platform -- there's no per-user override.",
   notice: "A dismissible banner shown on the Dashboard to every signed-in account — for an outage, a new league going live, or anything else worth a heads-up.",
   picks: "Feature outcomes from a match's Markets tab to promote them on every Dashboard.",
+  markets: "Which coupon tab the Betting Markets page opens on for everyone, before they pick a different one themselves.",
   model:
     "Only a fallback. Once a league has been backtested, its weights are fitted from that league's own validation data and those are used instead — these apply to leagues that haven't been trained yet.",
   betcode:
@@ -135,6 +137,14 @@ export function Settings() {
 
         {spec.kind === "bool" ? (
           <input type="checkbox" checked={Boolean(current)} onChange={(e) => set(e.target.checked)} />
+        ) : spec.key === "default_market_tab" ? (
+          <select value={String(current)} onChange={(e) => set(e.target.value)}>
+            {GRID_TABS.map((t) => (
+              <option key={t.key} value={t.key}>
+                {t.label}
+              </option>
+            ))}
+          </select>
         ) : spec.kind === "choice" ? (
           <select value={String(current)} onChange={(e) => set(e.target.value)}>
             {spec.choices.map((c) => (

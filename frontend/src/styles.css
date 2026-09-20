@@ -1384,6 +1384,66 @@ table.predictions-table {
   font-size: 11.5px;
 }
 
+/* Markets page coupon tabs (Match Result & Goals / Double Chance / GG/NG /
+   Draw No Bet): a match per row, one probability box per market column,
+   the model's own selection highlighted -- see Markets.tsx. Overrides the
+   base table's row/header pointer + hover, which imply the whole row and
+   every header are clickable the way the old sortable flat table's were;
+   here only a leg's own name text and its odds boxes are. */
+table.predictions-table.odds-grid th {
+  cursor: default;
+}
+
+table.predictions-table.odds-grid tbody tr {
+  cursor: default;
+}
+
+table.predictions-table.odds-grid tbody tr:hover {
+  background: none;
+}
+
+.odds-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.odds-cell:hover {
+  border-color: var(--border-strong);
+}
+
+/* The model's own selection within its market group (highest probability
+   among the group's columns) -- see Markets.tsx's topKeyIn. */
+.odds-cell.ai-top {
+  border-color: var(--accent-strong);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+/* Currently in "My picks", regardless of whether it's also the AI's own
+   top selection -- takes visual precedence over .ai-top. */
+.odds-cell.picked {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  color: #fff;
+}
+
+.odds-cell.empty {
+  opacity: 0.35;
+  cursor: default;
+  border-style: dashed;
+}
+
 /* ==========================================================================
    SEARCH COMMAND PALETTE
    ========================================================================== */

@@ -576,6 +576,7 @@ export function fetchOutcomes(params: {
   days_ahead?: number;
   min_probability?: number;
   confidence?: string;
+  limit_per_league?: number;
 }): Promise<OutcomesResponse> {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => {

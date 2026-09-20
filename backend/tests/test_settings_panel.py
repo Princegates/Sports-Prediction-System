@@ -280,6 +280,36 @@ def test_branding_is_public_and_follows_the_setting(db_session, admin):
     assert after["contact_whatsapp"] == "233209998888"
 
 
+def test_default_market_tab_is_public_and_follows_the_setting(db_session, admin):
+    """Markets.tsx reads this off the same public branding payload as the
+    theme -- it has to be visible before login for the same reason the
+    theme is, and an operator's choice has to actually reach it."""
+
+    before = client.get("/api/public/branding").json()
+    assert before["default_market_tab"] == "match_result"
+
+    client.patch(
+        "/api/admin/settings",
+        json={"values": {"default_market_tab": "double_chance"}},
+        headers=_headers(admin),
+    )
+
+    after = client.get("/api/public/branding").json()
+    assert after["default_market_tab"] == "double_chance"
+
+
+def test_default_market_tab_rejects_an_unknown_tab(db_session, admin):
+    result = client.patch(
+        "/api/admin/settings",
+        json={"values": {"default_market_tab": "correct_score"}},
+        headers=_headers(admin),
+    )
+    assert result.status_code == 400
+
+    unchanged = client.get("/api/public/branding").json()
+    assert unchanged["default_market_tab"] == "match_result"
+
+
 def test_model_weight_override_reaches_the_ensemble(db_session, admin):
     from app.prediction_models.ensemble import EnsembleWeights
 

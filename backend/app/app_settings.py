@@ -223,6 +223,13 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 "Off restricts Admin Picks to accounts with redeemed access -- on shows it to "
                 "everyone, same as the rest of the Dashboard.",
                 default=True),
+
+    # --- Betting markets page ---------------------------------------------
+    SettingSpec("default_market_tab", "choice", "markets", "Default tab",
+                "Which market coupon opens first on every visitor's Betting Markets page, "
+                "before they pick a different one themselves.",
+                choices=("match_result", "double_chance", "btts", "draw_no_bet", "other"),
+                default="match_result"),
 )
 
 BY_KEY: dict[str, SettingSpec] = {spec.key: spec for spec in REGISTRY}
@@ -237,6 +244,7 @@ GROUP_LABELS = {
     "picks": "Guda Picks",
     "betcode": "Booking codes",
     "assistant": "AI assistant",
+    "markets": "Betting markets",
 }
 
 
