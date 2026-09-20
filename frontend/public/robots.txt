@@ -1,0 +1,10 @@
+# /app/* is the logged-in product itself (dashboard, predictions, AI
+# Generation, admin, ...) -- every route there requires an account, most
+# also require redeemed access, and the whole area shares one index.html
+# with the public pages (client-side routing), so a crawler indexing it
+# would only ever see a login wall or thin duplicate content. The public
+# marketing pages (/, /how-it-works, /responsible, /login, /register) are
+# what's actually worth indexing.
+User-agent: *
+Disallow: /app/
+Allow: /
