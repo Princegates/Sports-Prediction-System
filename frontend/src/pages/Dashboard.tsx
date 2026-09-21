@@ -219,11 +219,7 @@ export function Dashboard() {
             <EmptyState
               icon="◌"
               title={`No ${highConfidenceOnly ? "high-confidence " : ""}matches found for ${leagueLabel(league)} in this range.`}
-              hint={
-                <>
-                  Import more fixtures with <code>scripts/fetch_openfootball_data.py</code> or widen the date range.
-                </>
-              }
+              hint="Try a different league, widen the date range, or check back closer to kickoff."
             />
           )}
           {!error && visibleRows !== null && visibleRows.length > 0 && (

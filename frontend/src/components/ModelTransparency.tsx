@@ -33,8 +33,7 @@ export function ModelTransparency({ hasMlModel }: Props) {
       </div>
       {!hasMlModel && (
         <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 10 }}>
-          No trained Gradient Boosting model found for this league yet (run <code>scripts/backtest.py</code>) --
-          falling back to Elo + Poisson only.
+          No trained Gradient Boosting model for this league yet -- falling back to Elo + Poisson only.
         </p>
       )}
       <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 10 }}>
