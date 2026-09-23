@@ -96,6 +96,46 @@ def ensure_schema(engine: Engine) -> None:
                 conn.execute(text(statement))
 
 
+def _enable_row_level_security(engine: Engine) -> None:
+    """Locks every table's row-level security on, Postgres only.
+
+    This backend is the only thing that ever talks to the database, and it
+    always connects as Supabase's ``postgres`` role (see DEPLOYMENT.md's
+    pooler connection string) -- a superuser, which bypasses row security
+    unconditionally regardless of whether it's enabled. So this changes
+    nothing about what the app itself can do.
+
+    What it does close is Supabase's *separate* auto-generated PostgREST/
+    GraphQL API, which this project never uses but which exists on every
+    Supabase project regardless and talks to the database as the
+    anon/authenticated roles -- roles row security actually applies to.
+    Supabase's own security advisor flags every public table with RLS
+    disabled for exactly this reason (an access code, a user's password
+    hash, or a redeemed grant readable by anyone who finds the anon key),
+    and the fix needs no policies: RLS enabled with none defined denies
+    those roles outright, which is the correct default for a table with no
+    legitimate reason to be reachable from anywhere but this backend.
+
+    SQLite (local dev, tests) has no such concept, so this is a no-op there.
+    """
+
+    if engine.dialect.name != "postgresql":
+        return
+
+    # Imported here rather than at module scope, same reason as init_db's
+    # own Base import: models imports this module's sibling, so a
+    # top-level import here would be circular.
+    from app.db.models import Base
+
+    inspector = inspect(engine)
+    existing = set(inspector.get_table_names())
+    with engine.begin() as conn:
+        for table in Base.metadata.tables:
+            if table not in existing:
+                continue
+            conn.execute(text(f'ALTER TABLE "{table}" ENABLE ROW LEVEL SECURITY'))
+
+
 def _migrate_pending_users_to_active(engine: Engine) -> None:
     """One-time flip for accounts stuck in the old ``pending`` status.
 
@@ -131,3 +171,4 @@ def init_db(engine: Engine) -> None:
     Base.metadata.create_all(bind=engine)
     ensure_schema(engine)
     _migrate_pending_users_to_active(engine)
+    _enable_row_level_security(engine)
