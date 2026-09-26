@@ -9,7 +9,6 @@ import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { FreePickCard } from "../components/FreePickCard";
 import { GudaPicksSection } from "../components/GudaPicksSection";
-import { Mascot } from "../components/Mascot";
 import { NoticeBanner } from "../components/NoticeBanner";
 import { PredictionCard } from "../components/PredictionCard";
 import { SearchCommand } from "../components/SearchCommand";
@@ -108,13 +107,8 @@ export function Dashboard() {
     <div>
       <NoticeBanner />
       <section className="hero">
-        <div style={{ display: "flex", alignItems: "center", gap: 24, flexWrap: "wrap" }}>
-          <Mascot variant="hero" pose="idle" size={140} />
-          <div style={{ flex: 1, minWidth: 260 }}>
-            <h1>Every match, every angle, one probability.</h1>
-            <p>Analyze matches, discover patterns and understand what the data says -- with the reasoning always shown alongside the number.</p>
-          </div>
-        </div>
+        <h1>Every match, every angle, one probability.</h1>
+        <p>Analyze matches, discover patterns and understand what the data says -- with the reasoning always shown alongside the number.</p>
 
         {hasAccess && (
           <>
