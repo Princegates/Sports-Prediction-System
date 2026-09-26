@@ -110,6 +110,10 @@ export function AppShell() {
 
   return (
     <LeagueContext.Provider value={{ league, setLeague }}>
+      <div className="tagline-banner">
+        <span className="brand-word tagline-word">Football Prediction AI</span>
+      </div>
+
       <div className="app-shell">
         <aside className="app-sidebar">
           <Brand to="/app" />

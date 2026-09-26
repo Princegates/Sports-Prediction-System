@@ -269,6 +269,23 @@ h1, h2, h3, h4 {
   }
 }
 
+/* the tagline banner: "Football Prediction AI", center-top on every page,
+   above the nav. Same gradient/shimmer treatment as the wordmark above --
+   .brand-word is reused as-is -- just bigger. */
+.tagline-banner {
+  display: flex;
+  justify-content: center;
+  padding: 10px var(--space-4);
+  text-align: center;
+  background: var(--bg-topbar);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+
+.tagline-word {
+  font-size: clamp(18px, 4vw, 26px);
+}
+
 .nav-group {
   display: flex;
   flex-direction: column;
