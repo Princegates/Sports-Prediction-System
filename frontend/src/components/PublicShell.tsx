@@ -44,10 +44,6 @@ export function PublicShell({
 
   return (
     <div className="public-shell">
-      <div className="tagline-banner">
-        <span className="brand-word tagline-word">Football Prediction AI</span>
-      </div>
-
       <header className="public-topbar">
         <Brand to="/" onClick={() => setMenuOpen(false)} />
 
@@ -92,6 +88,10 @@ export function PublicShell({
           {menuOpen ? "✕" : "☰"}
         </button>
       </header>
+
+      <div className="tagline-banner">
+        <span className="brand-word tagline-word">Football Prediction AI</span>
+      </div>
 
       {menuOpen && (
         <div className="public-mobile-menu">
