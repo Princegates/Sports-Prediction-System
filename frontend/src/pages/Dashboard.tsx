@@ -108,10 +108,6 @@ export function Dashboard() {
     <div>
       <NoticeBanner />
       <section className="hero">
-        <div className="hero-eyebrow">
-          <span className="dot" /> Meet Guda, your football intelligence
-        </div>
-
         <div style={{ display: "flex", alignItems: "center", gap: 24, flexWrap: "wrap" }}>
           <Mascot variant="hero" pose="idle" size={140} />
           <div style={{ flex: 1, minWidth: 260 }}>

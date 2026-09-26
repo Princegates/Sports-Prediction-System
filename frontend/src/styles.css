@@ -425,30 +425,6 @@ h1, h2, h3, h4 {
   margin-bottom: var(--space-6);
 }
 
-.hero-eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11.5px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ai-violet);
-  background: var(--ai-violet-soft);
-  border: 1px solid rgba(144, 133, 233, 0.3);
-  padding: 4px 10px;
-  border-radius: var(--radius-pill);
-  margin-bottom: var(--space-3);
-}
-
-.hero-eyebrow .dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--ai-violet);
-  animation: pulse-dot 2s ease-in-out infinite;
-}
-
 .hero h1 {
   font-size: clamp(28px, 4vw, 38px);
   background: linear-gradient(120deg, #ffffff 0%, #c9d6f3 60%, var(--ai-violet) 120%);
