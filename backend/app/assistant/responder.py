@@ -67,6 +67,14 @@ class Answer:
     # prose, not just the template. Never set here; every handler in this
     # module always produces the grounded, un-rewritten answer.
     rewritten: bool = False
+    # Set by engine.compose() when this Intent.UNKNOWN answer was generated
+    # by the optional LLM rather than the canned "I couldn't match that"
+    # menu below -- distinct from rewritten (which only ever rephrases text
+    # this system already produced): this text has no grounding at all, so
+    # the UI must label it differently rather than imply it's still "from
+    # the system." Never set here; _unknown() always produces the grounded
+    # fallback.
+    general_chat: bool = False
 
 
 def _pct(value: float, places: int = 0) -> str:

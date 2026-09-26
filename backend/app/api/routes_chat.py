@@ -60,6 +60,7 @@ def _answer_to_schema(result: Answer, message_id: int | None = None) -> ChatAnsw
         caveat=PROBABILITY_CAVEAT if result.includes_probability else None,
         picks=[ChatPickOut(**asdict(p)) for p in result.picks],
         rewritten=result.rewritten,
+        general_chat=result.general_chat,
     )
 
 
@@ -76,6 +77,7 @@ def _row_to_schema(row: ChatMessage) -> ChatMessageOut:
         # A row written before this column existed reads back as NULL, not
         # False -- coerce rather than let a non-optional bool field reject it.
         rewritten=bool(row.rewritten),
+        general_chat=bool(row.general_chat),
         created_at=row.created_at,
     )
 

@@ -53,14 +53,21 @@ def compose(
     result = responder.respond(db, parsed, now=now)
 
     if allow_rewrite and llm.is_enabled(db):
-        rewritten_text = llm.rewrite(db, result.text, text)
-        if rewritten_text:
-            # The grounded text stays the source of truth for storage; only
-            # the delivered prose changes. dataclasses.replace() rather than
-            # rebuilding Answer(...) field by field, so a field added to
-            # Answer later (picks, sources, ...) can't be silently dropped
-            # here the way one already was.
-            result = replace(result, text=rewritten_text, rewritten=True)
+        if result.intent == nlu.Intent.UNKNOWN:
+            # Nothing grounded to rewrite -- let the LLM answer the message
+            # itself rather than only ever handing back the capability menu.
+            general_text = llm.answer_general_question(db, text)
+            if general_text:
+                result = replace(result, text=general_text, general_chat=True)
+        else:
+            rewritten_text = llm.rewrite(db, result.text, text)
+            if rewritten_text:
+                # The grounded text stays the source of truth for storage;
+                # only the delivered prose changes. dataclasses.replace()
+                # rather than rebuilding Answer(...) field by field, so a
+                # field added to Answer later can't be silently dropped
+                # here the way one already was.
+                result = replace(result, text=rewritten_text, rewritten=True)
     return result
 
 
@@ -89,6 +96,7 @@ def _persist(
         suggestions=list(result.suggestions),
         picks=[asdict(p) for p in result.picks],
         rewritten=result.rewritten,
+        general_chat=result.general_chat,
     )
     db.add(assistant_row)
     db.commit()

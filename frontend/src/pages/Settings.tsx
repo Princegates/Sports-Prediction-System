@@ -26,7 +26,7 @@ const GROUP_NOTES: Record<string, string> = {
   betcode:
     "Provider = none still lets people build and preview selections at a target price — only the redeemable code and the deep link into the sportsbook need an aggregator.",
   assistant:
-    "Off by default — Guda's answers already come straight from this system's own data. Turning this on only rewrites the phrasing of an answer already composed; it's never shown a fact it wasn't already given. Google AI Studio's Gemini API has a genuine free tier if you want to try it — get a key at aistudio.google.com/apikey.",
+    "Off by default — Guda's answers already come straight from this system's own data. Turning this on does two things: it rewrites the phrasing of an answer already composed (never shown a fact it wasn't already given), and it lets Guda answer basic questions the grounded system can't match to anything, instead of only ever handing back a capability menu — both are clearly labeled in the chat either way. Google AI Studio's Gemini API has a genuine free tier if you want to try it — get a key at aistudio.google.com/apikey.",
 };
 
 function relative(iso: string | null): string {

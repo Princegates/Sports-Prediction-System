@@ -167,6 +167,11 @@ export interface ChatAnswer {
    * text (Settings -> AI assistant) -- false whenever it's off, unset, or
    * the call failed and the grounded text was kept instead. */
   rewritten: boolean;
+  /** True when this answer came from the optional LLM answering a message
+   * the grounded system couldn't match to anything, rather than the canned
+   * capability menu -- distinct from rewritten: this text is not grounded
+   * in the system's own data at all. */
+  general_chat: boolean;
 }
 
 export interface ChatMessage {
@@ -179,6 +184,7 @@ export interface ChatMessage {
   suggestions: string[];
   picks: ChatPick[];
   rewritten: boolean;
+  general_chat: boolean;
   created_at: string;
 }
 

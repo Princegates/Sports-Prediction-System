@@ -33,6 +33,7 @@ interface Turn {
   suggestions?: string[];
   picks?: ChatPick[];
   rewritten?: boolean;
+  general_chat?: boolean;
   caveat?: string | null;
   streaming?: boolean;
   failed?: boolean;
@@ -206,6 +207,7 @@ export function ChatDock() {
             suggestions: r.suggestions,
             picks: r.picks,
             rewritten: r.rewritten,
+            general_chat: r.general_chat,
           })),
         );
       })
@@ -286,6 +288,7 @@ export function ChatDock() {
             suggestions: answer.suggestions,
             picks: answer.picks,
             rewritten: answer.rewritten,
+            general_chat: answer.general_chat,
             caveat: answer.caveat,
             streaming: false,
           })),
@@ -421,6 +424,14 @@ export function ChatDock() {
                     title="Phrasing polished by the configured AI model -- every fact still comes from this system's own data, unchanged"
                   >
                     ✨ phrased by AI
+                  </span>
+                )}
+                {turn.general_chat && (
+                  <span
+                    className="chat-rewritten-badge"
+                    title="Answered directly by the configured AI model, not from this platform's own match data -- ask about a specific team or fixture for a grounded answer"
+                  >
+                    💬 general AI answer
                   </span>
                 )}
               </span>

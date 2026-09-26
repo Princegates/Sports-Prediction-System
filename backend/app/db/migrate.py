@@ -51,6 +51,10 @@ _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     # True only when the optional LLM rewriter actually replaced this row's
     # content -- see app/assistant/llm.py.
     ("chat_messages", "rewritten", "BOOLEAN"),
+    # True only when the optional LLM answered a message the grounded
+    # pipeline couldn't match to anything -- see app/assistant/llm.py's
+    # answer_general_question().
+    ("chat_messages", "general_chat", "BOOLEAN"),
     # DEFAULT TRUE, unlike every column above -- every Admin Pick that
     # existed before this column did was a bookmaker-priced AI Generation
     # slip, never the new probability-only kind, so a backfilled NULL would

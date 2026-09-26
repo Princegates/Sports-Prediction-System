@@ -1,25 +1,32 @@
-"""Optional LLM rewriter -- **off by default, and the assistant is complete
+"""Optional LLM extension -- **off by default, and the assistant is complete
 without it.**
 
-The grounded pipeline (nlu -> retrieval -> responder) already produces the
-answer. What an LLM can add here is phrasing: turning a bulleted factor list
-into something that reads like a person wrote it. What it must *not* be
-allowed to add is facts.
+The grounded pipeline (nlu -> retrieval -> responder) already produces every
+answer this system can back with real data. This module does two distinct
+things with the same LLM connection, and it is important they stay distinct:
 
-So the contract for this module is narrow on purpose:
+1. **Rewrite.** Given an already-composed grounded answer, ask an LLM to
+   phrase it more naturally. The system prompt forbids introducing any
+   number, team or claim not present in that text -- what it can change is
+   how the answer reads, never what it says.
+2. **General chat.** When the grounded pipeline found nothing to answer from
+   (``Intent.UNKNOWN`` -- no fixture, team, or system capability the message
+   matched), let the LLM answer directly instead of only ever handing back a
+   capability menu. This is real generation, not a rewrite of grounded text,
+   so its own system prompt separately forbids inventing anything about this
+   platform's actual data (a team's form, a fixture, a probability) --
+   anything needing that must still route back through the grounded pipeline.
 
-- It receives the already-composed grounded answer and is asked to rewrite it.
-- The system prompt forbids introducing any number, team or claim not present
-  in that text.
-- If the call fails, times out, or is not configured, the caller keeps the
-  grounded text. There is no code path where a failed rewrite degrades the
-  answer.
+If a call fails, times out, or is not configured, the caller keeps whatever
+it already had (the grounded text, or the canned "I couldn't match that"
+answer). There is no code path where either feature degrades the answer.
 
-This still cannot make a rewriter trustworthy in the strict sense -- a model
-asked not to add facts sometimes adds facts anyway. That is exactly why it is
-opt-in, why the grounded text is what gets stored, and why the UI marks
-rewritten answers. Leave it disabled and the feature costs nothing and risks
-nothing.
+Neither of this makes an LLM call trustworthy in the strict sense -- a model
+asked not to add facts sometimes adds facts anyway. That is exactly why both
+are opt-in, why the grounded text is always what gets stored as the intent's
+own truth, and why the UI marks which of the two happened rather than
+presenting either as "from the system." Leave it disabled and the feature
+costs nothing and risks nothing.
 
 Five settings drive this -- all in the admin Settings panel (group "AI
 assistant"), each with an environment-variable fallback of the same name
@@ -63,20 +70,35 @@ Absolute constraints:
 
 Return only the rewritten text."""
 
+# Used only when the grounded pipeline found nothing to answer from -- a
+# genuinely different job from REWRITE_SYSTEM_PROMPT above, which is only
+# ever handed text this system already produced. This one is handed a raw
+# user message and asked to generate a reply from nothing, so its own
+# constraints are about scope, not fidelity to an existing text: answer
+# what's safe to answer generally, and refuse anything that would require
+# this platform's own data to answer honestly.
+GENERAL_SYSTEM_PROMPT = """You are Guda, the assistant on Socca Intelligence, a football (soccer) prediction platform.
 
-def is_enabled(db: Session) -> bool:
-    values = app_settings.all_values(db)
+A user just asked something the platform's own structured football-data system could not match to anything it tracks (a fixture, a team's form, a prediction, the model's own accuracy or methodology). You are being asked to answer it directly and conversationally instead of only handing back "I don't understand."
+
+Absolute constraints:
+- Do NOT invent or estimate any fact specific to this platform's own data -- a team's current form, a fixture, a match prediction, a probability, an accuracy figure, or anything else this system would need its database to answer honestly. If the question needs that, say plainly that you don't have that from here and suggest asking it more directly (naming both teams, or "what's on today").
+- Do NOT give financial or betting advice, or suggest any bet, pick, or outcome is safe or guaranteed.
+- General football knowledge not specific to this platform (rules, history, trivia) is fine to answer directly.
+- Keep answers brief and conversational -- this is chat, not a report.
+
+Answer the user's message now."""
+
+
+def _values_configured(values: dict) -> bool:
     return bool(values["assistant_llm_enabled"] and values["assistant_llm_base_url"])
 
 
-def rewrite(db: Session, grounded_text: str, user_message: str) -> str | None:
-    """Return a more fluent version of ``grounded_text``, or ``None`` if the
-    rewrite is unavailable for any reason. Callers must treat ``None`` as
-    "use the grounded text", never as an error."""
-
-    values = app_settings.all_values(db)
-    if not (values["assistant_llm_enabled"] and values["assistant_llm_base_url"]):
-        return None
+def _chat_completion(values: dict, system_prompt: str, user_content: str, *, max_tokens: int) -> str | None:
+    """Shared plumbing for both rewrite() and answer_general_question(): one
+    OpenAI-compatible /chat/completions call, tolerant of any failure. The
+    two differ only in what they send and why -- not in how the call is
+    made, retried (never -- a slow provider just falls back), or logged."""
 
     url = values["assistant_llm_base_url"].rstrip("/") + "/chat/completions"
     headers = {"Content-Type": "application/json"}
@@ -86,17 +108,11 @@ def rewrite(db: Session, grounded_text: str, user_message: str) -> str | None:
     payload = {
         "model": values["assistant_llm_model"],
         "messages": [
-            {"role": "system", "content": REWRITE_SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": (
-                    f"The user asked: {user_message}\n\n"
-                    f"Rewrite this answer:\n\n{grounded_text}"
-                ),
-            },
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content},
         ],
         "temperature": 0.3,
-        "max_tokens": 900,
+        "max_tokens": max_tokens,
     }
 
     try:
@@ -104,16 +120,48 @@ def rewrite(db: Session, grounded_text: str, user_message: str) -> str | None:
         response.raise_for_status()
         content = response.json()["choices"][0]["message"]["content"]
     except (requests.RequestException, KeyError, IndexError, ValueError) as exc:
-        # A rewrite is cosmetic; never fail the user's question over it. The
-        # status line alone (e.g. "400 Bad Request") doesn't say *why* --
-        # the provider's own error body does, so log it too, truncated in
-        # case it's ever unexpectedly large.
+        # Both callers treat this as cosmetic/optional; never fail the
+        # user's question over it. The status line alone (e.g. "400 Bad
+        # Request") doesn't say *why* -- the provider's own error body does,
+        # so log it too, truncated in case it's ever unexpectedly large.
         detail = str(exc)
         error_response = getattr(exc, "response", None)
         if error_response is not None:
             detail = f"{detail} -- body: {error_response.text[:500]}"
-        logger.warning("Assistant LLM rewrite unavailable (%s) -- serving grounded text", detail)
+        logger.warning("Assistant LLM call unavailable (%s)", detail)
         return None
 
     text = (content or "").strip()
     return text or None
+
+
+def is_enabled(db: Session) -> bool:
+    values = app_settings.all_values(db)
+    return _values_configured(values)
+
+
+def rewrite(db: Session, grounded_text: str, user_message: str) -> str | None:
+    """Return a more fluent version of ``grounded_text``, or ``None`` if the
+    rewrite is unavailable for any reason. Callers must treat ``None`` as
+    "use the grounded text", never as an error."""
+
+    values = app_settings.all_values(db)
+    if not _values_configured(values):
+        return None
+
+    user_content = f"The user asked: {user_message}\n\nRewrite this answer:\n\n{grounded_text}"
+    return _chat_completion(values, REWRITE_SYSTEM_PROMPT, user_content, max_tokens=900)
+
+
+def answer_general_question(db: Session, user_message: str) -> str | None:
+    """Return a direct, conversational answer to a message the grounded
+    pipeline couldn't match to anything (``Intent.UNKNOWN``), or ``None`` if
+    unavailable for any reason. Callers must treat ``None`` as "use the
+    grounded fallback answer", never as an error -- same contract as
+    ``rewrite``, just generating rather than rephrasing."""
+
+    values = app_settings.all_values(db)
+    if not _values_configured(values):
+        return None
+
+    return _chat_completion(values, GENERAL_SYSTEM_PROMPT, user_message, max_tokens=400)

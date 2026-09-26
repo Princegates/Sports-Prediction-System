@@ -184,6 +184,11 @@ class ChatAnswerOut(BaseModel):
     # True when the optional LLM rewriter actually replaced the grounded
     # text -- lets the UI show that it's looking at phrased prose.
     rewritten: bool = False
+    # True when the optional LLM answered a message the grounded pipeline
+    # couldn't match to anything, rather than the canned capability menu --
+    # distinct from rewritten: this text isn't grounded in the system's own
+    # data at all, so the UI must label it differently.
+    general_chat: bool = False
 
 
 class ChatMessageOut(BaseModel):
@@ -196,6 +201,7 @@ class ChatMessageOut(BaseModel):
     suggestions: list[str] = []
     picks: list[ChatPickOut] = []
     rewritten: bool = False
+    general_chat: bool = False
     created_at: dt.datetime
 
 

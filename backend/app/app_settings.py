@@ -181,11 +181,14 @@ REGISTRY: tuple[SettingSpec, ...] = (
     SettingSpec("notice_message", "str", "notice", "Notice message",
                 "Shown only while the notice above is turned on.", default=""),
 
-    # --- AI assistant rewriter --------------------------------------------
-    SettingSpec("assistant_llm_enabled", "bool", "assistant", "Enable the rewriter",
-                "Off by default -- Guda's answers are already complete without this. On, an LLM "
-                "rewrites the grounded reply for phrasing only; it is never shown a fact it wasn't "
-                "already given, and a failed or slow call just keeps the unrewritten text.",
+    # --- AI assistant rewriter/general chat ---------------------------------
+    SettingSpec("assistant_llm_enabled", "bool", "assistant", "Enable the AI extension",
+                "Off by default -- Guda's grounded answers are already complete without this. On, "
+                "the same LLM does two things: it rewrites a grounded reply for phrasing only (never "
+                "shown a fact it wasn't already given), and it answers basic questions the grounded "
+                "system can't match to anything (small talk, general football trivia) instead of only "
+                "ever handing back a capability menu -- clearly labeled in the UI either way. A failed "
+                "or slow call always falls back to the grounded text or menu.",
                 env_attr="assistant_llm_enabled"),
     SettingSpec("assistant_llm_base_url", "str", "assistant", "API base URL",
                 "Any OpenAI-compatible /chat/completions endpoint. Defaults to Google AI Studio's "

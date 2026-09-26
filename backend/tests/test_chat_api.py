@@ -263,6 +263,102 @@ def test_unknown_team_is_not_silently_swapped_for_a_known_one(db_session, auth_h
     assert body["sources"] == []
 
 
+def test_unmatched_question_gets_the_capability_menu_when_llm_is_off(db_session, auth_headers, fixture_data):
+    body = _ask("what's the capital of France?", auth_headers)
+    assert body["intent"] == "unknown"
+    assert body["general_chat"] is False
+    assert body["rewritten"] is False
+    assert "couldn't match that" in body["text"].lower()
+
+
+def test_unmatched_question_is_answered_generally_when_the_llm_is_on(
+    db_session, auth_headers, fixture_data, monkeypatch,
+):
+    """The grounded system has nothing on French geography -- with the LLM
+    extension on, Guda should answer it directly instead of only ever
+    handing back the capability menu, and the answer must be labeled
+    general_chat, never rewritten (nothing grounded was rewritten here)."""
+
+    app_settings.set_values(
+        db_session,
+        {
+            "assistant_llm_enabled": True,
+            "assistant_llm_base_url": "https://example-llm.test/v1",
+            "assistant_llm_model": "test-model",
+        },
+    )
+
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"choices": [{"message": {"content": "Paris is the capital of France."}}]}
+
+    monkeypatch.setattr(llm.requests, "post", lambda *a, **k: FakeResponse())
+
+    body = _ask("what's the capital of France?", auth_headers)
+
+    assert body["text"] == "Paris is the capital of France."
+    assert body["general_chat"] is True
+    assert body["rewritten"] is False
+
+    history = client.get("/api/chat/history", headers=auth_headers).json()
+    assistant_row = next(r for r in history if r["role"] == "assistant")
+    assert assistant_row["general_chat"] is True
+    assert assistant_row["rewritten"] is False
+
+
+def test_a_matched_question_still_only_ever_gets_rewritten_not_general_chat(
+    db_session, auth_headers, fixture_data, monkeypatch,
+):
+    """Regression guard for the branch in engine.compose(): a real intent
+    match must go through rewrite(), never answer_general_question(), even
+    with the LLM extension on."""
+
+    app_settings.set_values(
+        db_session,
+        {
+            "assistant_llm_enabled": True,
+            "assistant_llm_base_url": "https://example-llm.test/v1",
+            "assistant_llm_model": "test-model",
+        },
+    )
+
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"choices": [{"message": {"content": "Here's the top pick, rephrased."}}]}
+
+    monkeypatch.setattr(llm.requests, "post", lambda *a, **k: FakeResponse())
+
+    body = _ask("what are the best picks?", auth_headers)
+
+    assert body["rewritten"] is True
+    assert body["general_chat"] is False
+
+
+def test_llm_failure_on_an_unmatched_question_falls_back_to_the_capability_menu(
+    db_session, auth_headers, fixture_data, monkeypatch,
+):
+    app_settings.set_values(
+        db_session,
+        {
+            "assistant_llm_enabled": True,
+            "assistant_llm_base_url": "https://example-llm.test/v1",
+            "assistant_llm_model": "test-model",
+        },
+    )
+    monkeypatch.setattr(llm.requests, "post", lambda *a, **k: (_ for _ in ()).throw(llm.requests.RequestException("boom")))
+
+    body = _ask("what's the capital of France?", auth_headers)
+
+    assert body["general_chat"] is False
+    assert "couldn't match that" in body["text"].lower()
+
+
 def test_head_to_head_counts_real_results(db_session, auth_headers, fixture_data):
     body = _ask("head to head arsenal vs chelsea", auth_headers)
     assert body["intent"] == "head_to_head"

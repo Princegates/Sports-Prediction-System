@@ -99,6 +99,12 @@ class ChatMessage(Base):
     # and on an assistant row whenever the rewriter is off, unconfigured,
     # or the call failed and the grounded text was kept instead.
     rewritten: Mapped[bool] = mapped_column(Boolean, default=False)
+    # True only when this row's content came from the optional LLM
+    # answering a message the grounded pipeline couldn't match to anything
+    # (Intent.UNKNOWN), rather than the canned capability-menu fallback --
+    # distinct from rewritten, since this text was generated, not rephrased
+    # from something this system already knew.
+    general_chat: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
 
 
