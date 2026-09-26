@@ -238,23 +238,35 @@ h1, h2, h3, h4 {
   flex-shrink: 0;
 }
 
-.brand-text {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.15;
+.brand-center {
+  justify-content: center;
 }
 
-.brand-text strong {
+/* the wordmark: a gradient across the theme's own accent colors (so it
+   recolors correctly in light/dark mode and every accent theme with no JS)
+   that sweeps continuously rather than sitting static. */
+.brand-word {
   font-family: var(--font-display);
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  background: linear-gradient(90deg, var(--accent) 0%, var(--ai-violet) 45%, var(--accent-strong) 75%, var(--accent) 100%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: brand-shimmer 6s ease-in-out infinite;
 }
 
-.brand-text span {
-  font-size: 11px;
-  color: var(--text-muted);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+@keyframes brand-shimmer {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-word {
+    animation: none;
+  }
 }
 
 .nav-group {
@@ -2497,6 +2509,10 @@ table.admin-table {
 
 .auth-mascot {
   margin-bottom: 12px;
+}
+
+.auth-brand {
+  margin-bottom: 24px;
 }
 
 /* compact: a tight head-and-shoulders crop in a circular badge, for

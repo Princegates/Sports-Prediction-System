@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Brand } from "../components/Brand";
 import { Mascot } from "../components/Mascot";
 import { PublicShell } from "../components/PublicShell";
 import { useAuth } from "../lib/AuthContext";
@@ -41,13 +42,7 @@ export function Login() {
       <div className="auth-shell">
       <div className="card card-pad auth-card">
         <Mascot pose="idle" size={64} className="auth-mascot" />
-        <div className="brand" style={{ marginBottom: 24, justifyContent: "center" }}>
-          <span className="brand-mark">SI</span>
-          <span className="brand-text">
-            <strong>Socca Intelligence</strong>
-            <span>Football prediction AI</span>
-          </span>
-        </div>
+        <Brand center className="auth-brand" />
 
         <h1 style={{ fontSize: 20, marginBottom: 6 }}>Sign in</h1>
         <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 0, marginBottom: 20 }}>

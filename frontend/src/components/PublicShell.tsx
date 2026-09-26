@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Link, NavLink } from "react-router-dom";
 import { useAuth } from "../lib/AuthContext";
+import { Brand } from "./Brand";
 import { ThemeToggle } from "./ThemeToggle";
 import { usePageMeta } from "../lib/pageMeta";
 
@@ -44,13 +45,7 @@ export function PublicShell({
   return (
     <div className="public-shell">
       <header className="public-topbar">
-        <Link to="/" className="brand" onClick={() => setMenuOpen(false)}>
-          <span className="brand-mark">SI</span>
-          <span className="brand-text">
-            <strong>Socca Intelligence</strong>
-            <span>Football prediction AI</span>
-          </span>
-        </Link>
+        <Brand to="/" onClick={() => setMenuOpen(false)} />
 
         <nav className="public-nav">
           {PUBLIC_NAV.map((item) => (

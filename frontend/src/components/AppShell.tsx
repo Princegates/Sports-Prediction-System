@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { Brand } from "./Brand";
 import { SearchCommand } from "./SearchCommand";
 import { ChatDock } from "./ChatDock";
 import { useAuth } from "../lib/AuthContext";
@@ -111,13 +112,7 @@ export function AppShell() {
     <LeagueContext.Provider value={{ league, setLeague }}>
       <div className="app-shell">
         <aside className="app-sidebar">
-          <Link to="/app" className="brand">
-            <span className="brand-mark">SI</span>
-            <span className="brand-text">
-              <strong>Socca Intelligence</strong>
-              <span>Football prediction AI</span>
-            </span>
-          </Link>
+          <Brand to="/app" />
 
           <nav className="nav-group">
             <div className="nav-label">Intelligence</div>
@@ -163,12 +158,7 @@ export function AppShell() {
           </header>
 
           <header className="mobile-topbar">
-            <Link to="/app" className="brand">
-              <span className="brand-mark">SI</span>
-              <span className="brand-text">
-                <strong>Socca Intelligence</strong>
-              </span>
-            </Link>
+            <Brand to="/app" />
             <div style={{ display: "flex", gap: 8 }}>
               <button className="btn ghost" onClick={() => setSearchOpen(true)} aria-label="Search">
                 ⌕

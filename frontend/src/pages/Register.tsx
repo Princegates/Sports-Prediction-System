@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { fetchBranding, registerAccount } from "../api";
+import { Brand } from "../components/Brand";
 import { Mascot } from "../components/Mascot";
 import { PublicShell } from "../components/PublicShell";
 import { formatWhatsapp, whatsappLink } from "../lib/whatsapp";
@@ -86,13 +87,7 @@ export function Register() {
     >
       <div className="auth-shell">
       <div className="card card-pad auth-card">
-        <div className="brand" style={{ marginBottom: 24 }}>
-          <span className="brand-mark">SI</span>
-          <span className="brand-text">
-            <strong>Socca Intelligence</strong>
-            <span>Football prediction AI</span>
-          </span>
-        </div>
+        <Brand center className="auth-brand" />
 
         <h1 style={{ fontSize: 20, marginBottom: 6 }}>Create an account</h1>
         <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 0, marginBottom: 20 }}>
