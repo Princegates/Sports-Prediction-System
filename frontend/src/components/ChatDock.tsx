@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { clearChatHistory, fetchBranding, fetchChatHistory, streamChatMessage } from "../api";
 import { Mascot } from "../components/Mascot";
 import { useAuth } from "../lib/AuthContext";
+import { useDraggableFab } from "../lib/useDraggableFab";
 import { formatWhatsapp, whatsappLink } from "../lib/whatsapp";
 import type { ChatAnswer, ChatPick, ChatSource } from "../types";
 
@@ -337,9 +338,21 @@ export function ChatDock() {
       ? OPENING_SUGGESTIONS
       : (lastAssistant?.suggestions ?? []).slice(0, 3);
 
+  // Guda's floating launcher is draggable -- the button doubles as a handle,
+  // so a plain tap (no movement past the threshold) still opens the dock.
+  const fab = useDraggableFab(() => setOpen(true));
+
   if (!open) {
     return (
-      <button className="chat-fab" onClick={() => setOpen(true)} aria-label="Open Guda">
+      <button
+        ref={fab.ref}
+        className="chat-fab"
+        style={fab.style}
+        onPointerDown={fab.onPointerDown}
+        onPointerMove={fab.onPointerMove}
+        onPointerUp={fab.onPointerUp}
+        aria-label="Open Guda (drag to move)"
+      >
         <Mascot pose="idle" size={30} />
         <span className="chat-fab-label">Ask Guda</span>
         <kbd>&#8984;J</kbd>
