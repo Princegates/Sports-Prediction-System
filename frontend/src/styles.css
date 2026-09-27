@@ -26,12 +26,14 @@
   --gridline: #38443d;
   --baseline: #4b554f;
 
-  /* Accent -- brand palette */
+  /* Accent -- brand palette. --ai-violet aliases --accent (no separate hue)
+     so every spot that used to blend in violet now just shows the theme's
+     one accent color. */
   --accent: #ff6115;
   --accent-soft: rgba(255, 97, 21, 0.16);
   --accent-strong: #ff8b54;
-  --ai-violet: #af86ff;
-  --ai-violet-soft: rgba(175, 134, 255, 0.16);
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
 
   /* Decorative-only (mascot sparkles, never a semantic/status color) */
   --spark-lime: #b7ff72;
@@ -100,8 +102,8 @@
   --accent: #6b352a;
   --accent-soft: rgba(107, 53, 42, 0.1);
   --accent-strong: #50271f;
-  --ai-violet: #4f22a6;
-  --ai-violet-soft: rgba(79, 34, 166, 0.1);
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
 
   --good: #0ca30c;
   --good-soft: rgba(12, 163, 12, 0.12);
@@ -858,7 +860,7 @@ h1, h2, h3, h4 {
 }
 
 .prob-bar-fill.away {
-  background: linear-gradient(90deg, var(--ai-violet) 0%, color-mix(in srgb, var(--ai-violet) 65%, white) 100%);
+  background: linear-gradient(90deg, var(--accent-strong) 0%, color-mix(in srgb, var(--accent-strong) 65%, white) 100%);
 }
 
 .prob-row .value {
@@ -1291,7 +1293,7 @@ h1, h2, h3, h4 {
 }
 
 .compare-bar-right {
-  background: var(--ai-violet);
+  background: var(--accent-strong);
   border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
   margin-left: auto;
 }
@@ -2076,12 +2078,14 @@ table.admin-table {
 }
 
 /* ==========================================================================
-   COLOR PROFILES (9 accent themes)
-   Only --accent/--accent-strong/--accent-soft/--ai-violet/--ai-violet-soft
-   vary per profile. Status colors (good/warning/serious/critical) and the
-   categorical chart palette are fixed and never repurposed for branding,
-   per the dataviz skill's rule that identity colors and status colors
-   never swap roles.
+   COLOR PROFILES (6 accent themes)
+   Only --accent/--accent-strong/--accent-soft vary per profile. --ai-violet/
+   --ai-violet-soft always alias --accent/--accent-soft -- no profile has a
+   second, separate hue, so nothing ever blends two colors and every profile
+   shows as one consistent color throughout. Status colors (good/warning/
+   serious/critical) and the categorical chart palette are fixed and never
+   repurposed for branding, per the dataviz skill's rule that identity colors
+   and status colors never swap roles.
 
    "sunset" duplicates the brand values already set as the base :root /
    :root[data-theme="light"] accent in the DESIGN TOKENS section above --
@@ -2090,153 +2094,103 @@ table.admin-table {
    to it (every visitor gets a data-accent value, from either their own
    preference or the site's default_accent setting).
 
-   The rest are curated down from a much longer list of near-duplicate
-   blues/purples (see accentProfiles.ts) to eight hues spaced around the
-   wheel from teal to pink, so switching between them is actually visible
-   instead of picking between lookalikes.
+   Blue options (ocean/cyan/indigo) were removed entirely rather than kept as
+   opt-in alternatives.
    ========================================================================== */
 :root[data-accent="sunset"] {
   --accent: #ff6115;
   --accent-soft: rgba(255, 97, 21, 0.16);
   --accent-strong: #ff8b54;
-  --ai-violet: #af86ff;
-  --ai-violet-soft: rgba(175, 134, 255, 0.16);
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
 }
 
 :root[data-theme="light"][data-accent="sunset"] {
   --accent: #6b352a;
   --accent-soft: rgba(107, 53, 42, 0.1);
   --accent-strong: #50271f;
-  --ai-violet: #4f22a6;
-  --ai-violet-soft: rgba(79, 34, 166, 0.1);
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
 }
 
 :root[data-accent="teal"] {
   --accent: #14b8a6;
   --accent-soft: rgba(20, 184, 166, 0.14);
   --accent-strong: #3ec5b6;
-  --ai-violet: #8b5cf6;
-  --ai-violet-soft: rgba(139, 92, 246, 0.16);
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
 }
 
 :root[data-theme="light"][data-accent="teal"] {
   --accent: #10867a;
   --accent-soft: rgba(16, 134, 122, 0.1);
   --accent-strong: #0d635b;
-  --ai-violet: #583c9c;
-  --ai-violet-soft: rgba(88, 60, 156, 0.1);
-}
-
-:root[data-accent="cyan"] {
-  --accent: #06b6d4;
-  --accent-soft: rgba(6, 182, 212, 0.14);
-  --accent-strong: #33c3dc;
-  --ai-violet: #6366f1;
-  --ai-violet-soft: rgba(99, 102, 241, 0.16);
-}
-
-:root[data-theme="light"][data-accent="cyan"] {
-  --accent: #06859b;
-  --accent-soft: rgba(6, 133, 155, 0.1);
-  --accent-strong: #066273;
-  --ai-violet: #3f4299;
-  --ai-violet-soft: rgba(63, 66, 153, 0.1);
-}
-
-:root[data-accent="ocean"] {
-  --accent: #3987e5;
-  --accent-soft: rgba(57, 135, 229, 0.14);
-  --accent-strong: #5d9dea;
-  --ai-violet: #9085e9;
-  --ai-violet-soft: rgba(144, 133, 233, 0.16);
-}
-
-:root[data-theme="light"][data-accent="ocean"] {
-  --accent: #2a63a8;
-  --accent-soft: rgba(42, 99, 168, 0.1);
-  --accent-strong: #204a7c;
-  --ai-violet: #5b5594;
-  --ai-violet-soft: rgba(91, 85, 148, 0.1);
-}
-
-:root[data-accent="indigo"] {
-  --accent: #6366f1;
-  --accent-soft: rgba(99, 102, 241, 0.14);
-  --accent-strong: #7f82f4;
-  --ai-violet: #a855f7;
-  --ai-violet-soft: rgba(168, 85, 247, 0.16);
-}
-
-:root[data-theme="light"][data-accent="indigo"] {
-  --accent: #494bb0;
-  --accent-soft: rgba(73, 75, 176, 0.1);
-  --accent-strong: #363882;
-  --ai-violet: #6a379d;
-  --ai-violet-soft: rgba(106, 55, 157, 0.1);
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
 }
 
 :root[data-accent="violet"] {
   --accent: #8b5cf6;
   --accent-soft: rgba(139, 92, 246, 0.14);
   --accent-strong: #a079f8;
-  --ai-violet: #ec4899;
-  --ai-violet-soft: rgba(236, 72, 153, 0.16);
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
 }
 
 :root[data-theme="light"][data-accent="violet"] {
   --accent: #6544b4;
   --accent-soft: rgba(101, 68, 180, 0.1);
   --accent-strong: #4b3385;
-  --ai-violet: #942f63;
-  --ai-violet-soft: rgba(148, 47, 99, 0.1);
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
 }
 
 :root[data-accent="berry"] {
   --accent: #c026d3;
   --accent-soft: rgba(192, 38, 211, 0.14);
   --accent-strong: #cb4ddb;
-  --ai-violet: #f472b6;
-  --ai-violet-soft: rgba(244, 114, 182, 0.16);
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
 }
 
 :root[data-theme="light"][data-accent="berry"] {
   --accent: #8c1d9b;
   --accent-soft: rgba(140, 29, 155, 0.1);
   --accent-strong: #661773;
-  --ai-violet: #994975;
-  --ai-violet-soft: rgba(153, 73, 117, 0.1);
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
 }
 
 :root[data-accent="blush"] {
   --accent: #f472b6;
   --accent-soft: rgba(244, 114, 182, 0.14);
   --accent-strong: #f68bc3;
-  --ai-violet: #a78bfa;
-  --ai-violet-soft: rgba(167, 139, 250, 0.16);
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
 }
 
 :root[data-theme="light"][data-accent="blush"] {
   --accent: #b15486;
   --accent-soft: rgba(177, 84, 134, 0.1);
   --accent-strong: #813f63;
-  --ai-violet: #69599f;
-  --ai-violet-soft: rgba(105, 89, 159, 0.1);
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
 }
 
 :root[data-accent="steel"] {
   --accent: #64748b;
   --accent-soft: rgba(100, 116, 139, 0.14);
   --accent-strong: #808da0;
-  --ai-violet: #818cf8;
-  --ai-violet-soft: rgba(129, 140, 248, 0.16);
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
 }
 
 :root[data-theme="light"][data-accent="steel"] {
   --accent: #495567;
   --accent-soft: rgba(73, 85, 103, 0.1);
   --accent-strong: #36404d;
-  --ai-violet: #52599e;
-  --ai-violet-soft: rgba(82, 89, 158, 0.1);
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
 }
 
 
@@ -2339,7 +2293,7 @@ table.admin-table {
 
 .mascot-sparks-burst i:nth-child(1) { top: -10%; left: 0%; background: var(--spark-lime); }
 .mascot-sparks-burst i:nth-child(2) { top: -12%; right: 0%; width: 7px; height: 7px; background: var(--accent); animation-delay: 0.15s; }
-.mascot-sparks-burst i:nth-child(3) { top: 24%; left: -14%; width: 5px; height: 5px; background: var(--ai-violet); animation-delay: 0.3s; }
+.mascot-sparks-burst i:nth-child(3) { top: 24%; left: -14%; width: 5px; height: 5px; background: var(--spark-yellow); animation-delay: 0.3s; }
 .mascot-sparks-burst i:nth-child(4) { top: 24%; right: -14%; width: 5px; height: 5px; background: var(--spark-peach); animation-delay: 0.45s; }
 
 @keyframes mascot-bob {
