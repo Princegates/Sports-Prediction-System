@@ -117,11 +117,6 @@
   --bg-topbar: rgba(240, 242, 245, 0.85);
 }
 
-:root[data-theme="light"] .hero h1 {
-  background: linear-gradient(120deg, var(--text-primary) 0%, var(--accent) 60%, var(--ai-violet) 120%);
-  -webkit-background-clip: text;
-  background-clip: text;
-}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -247,25 +242,21 @@ h1, h2, h3, h4 {
   justify-content: center;
 }
 
-/* the wordmark: a gradient across the theme's own accent colors (so it
-   recolors correctly in light/dark mode and every accent theme with no JS)
-   that sweeps continuously rather than sitting static. */
+/* the wordmark: a single solid theme color (so it recolors correctly in
+   light/dark mode and every accent theme with no JS) that pulses gently
+   rather than sitting static -- never a blend of colors. */
 .brand-word {
   font-family: var(--font-display);
   font-size: 16px;
   font-weight: 800;
   letter-spacing: -0.01em;
-  background: linear-gradient(90deg, var(--accent) 0%, var(--ai-violet) 45%, var(--accent-strong) 75%, var(--accent) 100%);
-  background-size: 250% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: brand-shimmer 6s ease-in-out infinite;
+  color: var(--accent);
+  animation: brand-glow 2.6s ease-in-out infinite;
 }
 
-@keyframes brand-shimmer {
-  0%, 100% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
+@keyframes brand-glow {
+  0%, 100% { text-shadow: 0 0 0 transparent; }
+  50% { text-shadow: 0 0 10px var(--accent-soft); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -432,10 +423,7 @@ h1, h2, h3, h4 {
 
 .hero h1 {
   font-size: clamp(28px, 4vw, 38px);
-  background: linear-gradient(120deg, var(--text-primary) 0%, var(--spark-peach) 60%, var(--ai-violet) 120%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: var(--accent);
   margin-bottom: var(--space-2);
 }
 
@@ -2879,18 +2867,7 @@ table.admin-table {
 }
 
 .hero-gradient {
-  background: linear-gradient(120deg, var(--accent-strong) 0%, var(--ai-violet) 55%, var(--accent-strong) 100%);
-  background-size: 200% auto;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
-  animation: hero-gradient-drift 6s ease-in-out infinite;
-}
-
-@keyframes hero-gradient-drift {
-  0%, 100% { background-position: 0% center; }
-  50% { background-position: 100% center; }
+  color: var(--accent);
 }
 
 .lede {
@@ -3039,10 +3016,7 @@ table.admin-table {
   font-weight: 700;
   line-height: 1;
   font-variant-numeric: tabular-nums;
-  background: linear-gradient(120deg, var(--accent-strong), var(--ai-violet));
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: var(--accent);
 }
 
 .hero-panel-metric > span:last-child {
@@ -3216,10 +3190,7 @@ table.admin-table {
   line-height: 1;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
-  background: linear-gradient(120deg, var(--accent-strong), var(--ai-violet));
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: var(--accent);
 }
 
 .accuracy-caption {
