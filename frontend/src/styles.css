@@ -7,31 +7,36 @@
 :root {
   color-scheme: dark;
 
-  /* Surfaces */
-  --bg-page: #0b0c0e;
-  --bg-surface: #1a1a19;
-  --bg-surface-2: #202123;
-  --bg-surface-3: #26272a;
-  --bg-overlay: rgba(11, 12, 14, 0.72);
-  --bg-topbar: rgba(11, 12, 14, 0.85);
+  /* Surfaces -- dark pitch-green base (brand palette) */
+  --bg-page: #18251d;
+  --bg-surface: #253129;
+  --bg-surface-2: #2c3831;
+  --bg-surface-3: #323e36;
+  --bg-overlay: rgba(11, 19, 43, 0.78);
+  --bg-topbar: rgba(24, 37, 29, 0.85);
 
   /* Ink */
-  --text-primary: #ffffff;
-  --text-secondary: #c3c2b7;
-  --text-muted: #898781;
+  --text-primary: #fffcf4;
+  --text-secondary: #c2c3bb;
+  --text-muted: #8b9088;
 
   /* Structure */
-  --border: rgba(255, 255, 255, 0.1);
-  --border-strong: rgba(255, 255, 255, 0.18);
-  --gridline: #2c2c2a;
-  --baseline: #383835;
+  --border: rgba(255, 252, 244, 0.1);
+  --border-strong: rgba(255, 252, 244, 0.18);
+  --gridline: #38443d;
+  --baseline: #4b554f;
 
-  /* Accent (categorical slot 1 / slot 7 from the validated dark palette) */
-  --accent: #3987e5;
-  --accent-soft: rgba(57, 135, 229, 0.14);
-  --accent-strong: #5fa2ef;
-  --ai-violet: #9085e9;
-  --ai-violet-soft: rgba(144, 133, 233, 0.16);
+  /* Accent -- brand palette */
+  --accent: #ff6115;
+  --accent-soft: rgba(255, 97, 21, 0.16);
+  --accent-strong: #ff8b54;
+  --ai-violet: #af86ff;
+  --ai-violet-soft: rgba(175, 134, 255, 0.16);
+
+  /* Decorative-only (mascot sparkles, never a semantic/status color) */
+  --spark-lime: #b7ff72;
+  --spark-peach: #ffb7a5;
+  --spark-yellow: #fff1a6;
 
   /* Status (fixed -- never repurposed for series identity) */
   --good: #0ca30c;
@@ -71,32 +76,32 @@
   --sidebar-w: 232px;
 }
 
-/* Light theme -- reference palette's light-mode values (dataviz skill),
-   toggled manually via the sun/moon control in AppShell, not tied to the OS
-   setting, so "night and day" is a deliberate user choice. */
+/* Light theme -- brand palette's light-mode values, toggled manually via the
+   sun/moon control in AppShell, not tied to the OS setting, so "night and
+   day" is a deliberate user choice. */
 :root[data-theme="light"] {
   color-scheme: light;
 
-  --bg-page: #f4f4f2;
-  --bg-surface: #fcfcfb;
-  --bg-surface-2: #f2f1ee;
-  --bg-surface-3: #e9e8e4;
-  --bg-overlay: rgba(244, 244, 242, 0.72);
+  --bg-page: #fffcf4;
+  --bg-surface: #f0f2f5;
+  --bg-surface-2: #e9ebee;
+  --bg-surface-3: #dfe1e4;
+  --bg-overlay: rgba(255, 252, 244, 0.72);
 
-  --text-primary: #0b0b0b;
-  --text-secondary: #52514e;
-  --text-muted: #7c7a74;
+  --text-primary: #18251d;
+  --text-secondary: #5d655d;
+  --text-muted: #858a82;
 
-  --border: rgba(11, 11, 11, 0.1);
-  --border-strong: rgba(11, 11, 11, 0.18);
-  --gridline: #e1e0d9;
-  --baseline: #c3c2b7;
+  --border: rgba(24, 37, 29, 0.1);
+  --border-strong: rgba(24, 37, 29, 0.18);
+  --gridline: #e6e3dc;
+  --baseline: #c2c0b9;
 
-  --accent: #2a78d6;
-  --accent-soft: rgba(42, 120, 214, 0.1);
-  --accent-strong: #1c5cab;
-  --ai-violet: #4a3aa7;
-  --ai-violet-soft: rgba(74, 58, 167, 0.1);
+  --accent: #6b352a;
+  --accent-soft: rgba(107, 53, 42, 0.1);
+  --accent-strong: #50271f;
+  --ai-violet: #4f22a6;
+  --ai-violet-soft: rgba(79, 34, 166, 0.1);
 
   --good: #0ca30c;
   --good-soft: rgba(12, 163, 12, 0.12);
@@ -107,13 +112,13 @@
   --critical-soft: rgba(208, 59, 59, 0.1);
   --live: #d03b3b;
 
-  --shadow-card: 0 1px 2px rgba(11, 11, 11, 0.06), 0 12px 24px -16px rgba(11, 11, 11, 0.16);
-  --shadow-pop: 0 8px 24px rgba(11, 11, 11, 0.14), 0 2px 8px rgba(11, 11, 11, 0.1);
-  --bg-topbar: rgba(252, 252, 251, 0.85);
+  --shadow-card: 0 1px 2px rgba(24, 37, 29, 0.06), 0 12px 24px -16px rgba(24, 37, 29, 0.16);
+  --shadow-pop: 0 8px 24px rgba(24, 37, 29, 0.14), 0 2px 8px rgba(24, 37, 29, 0.1);
+  --bg-topbar: rgba(240, 242, 245, 0.85);
 }
 
 :root[data-theme="light"] .hero h1 {
-  background: linear-gradient(120deg, #0b0b0b 0%, #2a4a8a 60%, var(--ai-violet) 120%);
+  background: linear-gradient(120deg, var(--text-primary) 0%, var(--accent) 60%, var(--ai-violet) 120%);
   -webkit-background-clip: text;
   background-clip: text;
 }
@@ -427,7 +432,7 @@ h1, h2, h3, h4 {
 
 .hero h1 {
   font-size: clamp(28px, 4vw, 38px);
-  background: linear-gradient(120deg, #ffffff 0%, #c9d6f3 60%, var(--ai-violet) 120%);
+  background: linear-gradient(120deg, var(--text-primary) 0%, var(--spark-peach) 60%, var(--ai-violet) 120%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -2081,18 +2086,41 @@ table.admin-table {
 }
 
 /* ==========================================================================
-   COLOR PROFILES (8 accent themes)
+   COLOR PROFILES (9 accent themes)
    Only --accent/--accent-strong/--accent-soft/--ai-violet/--ai-violet-soft
    vary per profile. Status colors (good/warning/serious/critical) and the
    categorical chart palette are fixed and never repurposed for branding,
    per the dataviz skill's rule that identity colors and status colors
    never swap roles.
 
-   Curated down from a much longer list of near-duplicate blues/purples
-   (see accentProfiles.ts) to eight hues spaced around the wheel from teal
-   to pink, so switching profiles is actually visible instead of picking
-   between lookalikes.
+   "sunset" duplicates the brand values already set as the base :root /
+   :root[data-theme="light"] accent in the DESIGN TOKENS section above --
+   defined again here, explicitly, so it's a selectable profile in its own
+   right rather than relying on "no data-accent attribute" as the only path
+   to it (every visitor gets a data-accent value, from either their own
+   preference or the site's default_accent setting).
+
+   The rest are curated down from a much longer list of near-duplicate
+   blues/purples (see accentProfiles.ts) to eight hues spaced around the
+   wheel from teal to pink, so switching between them is actually visible
+   instead of picking between lookalikes.
    ========================================================================== */
+:root[data-accent="sunset"] {
+  --accent: #ff6115;
+  --accent-soft: rgba(255, 97, 21, 0.16);
+  --accent-strong: #ff8b54;
+  --ai-violet: #af86ff;
+  --ai-violet-soft: rgba(175, 134, 255, 0.16);
+}
+
+:root[data-theme="light"][data-accent="sunset"] {
+  --accent: #6b352a;
+  --accent-soft: rgba(107, 53, 42, 0.1);
+  --accent-strong: #50271f;
+  --ai-violet: #4f22a6;
+  --ai-violet-soft: rgba(79, 34, 166, 0.1);
+}
+
 :root[data-accent="teal"] {
   --accent: #14b8a6;
   --accent-soft: rgba(20, 184, 166, 0.14);
@@ -2312,17 +2340,17 @@ table.admin-table {
   animation: mascot-twinkle 1.4s ease-in-out infinite;
 }
 
-.mascot-sparks i:nth-child(1) { top: 0%; right: -8%; background: var(--warning); }
-.mascot-sparks i:nth-child(2) { top: 28%; right: -16%; width: 4px; height: 4px; background: var(--warning); animation-delay: 0.4s; }
+.mascot-sparks i:nth-child(1) { top: 0%; right: -8%; background: var(--spark-yellow); }
+.mascot-sparks i:nth-child(2) { top: 28%; right: -16%; width: 4px; height: 4px; background: var(--spark-yellow); animation-delay: 0.4s; }
 
 .mascot-sparks-burst i {
   animation-duration: 0.9s;
 }
 
-.mascot-sparks-burst i:nth-child(1) { top: -10%; left: 0%; background: var(--good); }
+.mascot-sparks-burst i:nth-child(1) { top: -10%; left: 0%; background: var(--spark-lime); }
 .mascot-sparks-burst i:nth-child(2) { top: -12%; right: 0%; width: 7px; height: 7px; background: var(--accent); animation-delay: 0.15s; }
 .mascot-sparks-burst i:nth-child(3) { top: 24%; left: -14%; width: 5px; height: 5px; background: var(--ai-violet); animation-delay: 0.3s; }
-.mascot-sparks-burst i:nth-child(4) { top: 24%; right: -14%; width: 5px; height: 5px; background: var(--warning); animation-delay: 0.45s; }
+.mascot-sparks-burst i:nth-child(4) { top: 24%; right: -14%; width: 5px; height: 5px; background: var(--spark-peach); animation-delay: 0.45s; }
 
 @keyframes mascot-bob {
   0%, 100% { transform: translateY(0); }

@@ -154,7 +154,7 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 "Applies to every visitor and account -- there is no per-user override.",
                 choices=THEME_CHOICES, default="dark"),
     SettingSpec("default_accent", "str", "appearance", "Accent color",
-                "Applies to every visitor and account -- there is no per-user override.", default="ocean"),
+                "Applies to every visitor and account -- there is no per-user override.", default="sunset"),
     SettingSpec("site_name", "str", "appearance", "Site name",
                 "Shown in the browser tab.", default="Socca Intelligence"),
     SettingSpec("site_tagline", "str", "appearance", "Tagline", default="Football prediction AI"),
