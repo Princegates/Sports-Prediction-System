@@ -39,6 +39,7 @@
   --spark-lime: #b7ff72;
   --spark-peach: #ffb7a5;
   --spark-yellow: #fff1a6;
+  --spark-neon: #39ff88;
 
   /* Status (fixed -- never repurposed for series identity) */
   --good: #0ca30c;
@@ -2078,7 +2079,7 @@ table.admin-table {
 }
 
 /* ==========================================================================
-   COLOR PROFILES (6 accent themes)
+   COLOR PROFILES (16 accent themes)
    Only --accent/--accent-strong/--accent-soft vary per profile. --ai-violet/
    --ai-violet-soft always alias --accent/--accent-soft -- no profile has a
    second, separate hue, so nothing ever blends two colors and every profile
@@ -2193,7 +2194,171 @@ table.admin-table {
   --ai-violet-soft: var(--accent-soft);
 }
 
+/* 10 more profiles, added after the above 6. Kept out of red/orange/green
+   (status colors + sunset's own territory) and out of blue entirely per
+   request; the safe hue range left is a narrow purple-to-pink arc, so these
+   lean on saturation/lightness variation (like steel does) for distinction
+   rather than pure hue spacing -- there's no more room to space 16 total
+   profiles evenly with those two bands off-limits. */
+:root[data-accent="orchid"] {
+  --accent: #c77dff;
+  --accent-soft: rgba(199, 125, 255, 0.16);
+  --accent-strong: #d194ff;
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
+}
 
+:root[data-theme="light"][data-accent="orchid"] {
+  --accent: #8f5ab7;
+  --accent-soft: rgba(143, 90, 183, 0.1);
+  --accent-strong: #754a96;
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
+}
+
+:root[data-accent="plum"] {
+  --accent: #a873e0;
+  --accent-soft: rgba(168, 115, 224, 0.16);
+  --accent-strong: #b88ce6;
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
+}
+
+:root[data-theme="light"][data-accent="plum"] {
+  --accent: #845aaf;
+  --accent-soft: rgba(132, 90, 175, 0.1);
+  --accent-strong: #6c4a90;
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
+}
+
+:root[data-accent="magenta"] {
+  --accent: #ea4fc0;
+  --accent-soft: rgba(234, 79, 192, 0.16);
+  --accent-strong: #ee6fcb;
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
+}
+
+:root[data-theme="light"][data-accent="magenta"] {
+  --accent: #b63e96;
+  --accent-soft: rgba(182, 62, 150, 0.1);
+  --accent-strong: #95337b;
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
+}
+
+:root[data-accent="grape"] {
+  --accent: #a378e2;
+  --accent-soft: rgba(163, 120, 226, 0.16);
+  --accent-strong: #b490e7;
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
+}
+
+:root[data-theme="light"][data-accent="grape"] {
+  --accent: #845ebe;
+  --accent-soft: rgba(132, 94, 190, 0.1);
+  --accent-strong: #6c4d9c;
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
+}
+
+:root[data-accent="rose"] {
+  --accent: #ff7a9e;
+  --accent-soft: rgba(255, 122, 158, 0.16);
+  --accent-strong: #ff92af;
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
+}
+
+:root[data-theme="light"][data-accent="rose"] {
+  --accent: #a85067;
+  --accent-soft: rgba(168, 80, 103, 0.1);
+  --accent-strong: #8a4254;
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
+}
+
+:root[data-accent="lilac"] {
+  --accent: #b3a0e8;
+  --accent-soft: rgba(179, 160, 232, 0.16);
+  --accent-strong: #c1b1ec;
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
+}
+
+:root[data-theme="light"][data-accent="lilac"] {
+  --accent: #776999;
+  --accent-soft: rgba(119, 105, 153, 0.1);
+  --accent-strong: #62567d;
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
+}
+
+:root[data-accent="mulberry"] {
+  --accent: #d46ba6;
+  --accent-soft: rgba(212, 107, 166, 0.16);
+  --accent-strong: #dc86b6;
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
+}
+
+:root[data-theme="light"][data-accent="mulberry"] {
+  --accent: #a34c7c;
+  --accent-soft: rgba(163, 76, 124, 0.1);
+  --accent-strong: #863e66;
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
+}
+
+:root[data-accent="amethyst"] {
+  --accent: #b47aec;
+  --accent-soft: rgba(180, 122, 236, 0.16);
+  --accent-strong: #c292ef;
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
+}
+
+:root[data-theme="light"][data-accent="amethyst"] {
+  --accent: #8257a9;
+  --accent-soft: rgba(130, 87, 169, 0.1);
+  --accent-strong: #6b478b;
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
+}
+
+:root[data-accent="wine"] {
+  --accent: #c6789b;
+  --accent-soft: rgba(198, 120, 155, 0.16);
+  --accent-strong: #d090ad;
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
+}
+
+:root[data-theme="light"][data-accent="wine"] {
+  --accent: #975674;
+  --accent-soft: rgba(151, 86, 116, 0.1);
+  --accent-strong: #7c475f;
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
+}
+
+:root[data-accent="mauve"] {
+  --accent: #a68a96;
+  --accent-soft: rgba(166, 138, 150, 0.16);
+  --accent-strong: #b69fa9;
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
+}
+
+:root[data-theme="light"][data-accent="mauve"] {
+  --accent: #826c75;
+  --accent-soft: rgba(130, 108, 117, 0.1);
+  --accent-strong: #6b5960;
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
+}
 
 /* ==========================================================================
    MASCOT -- Guda, an animated 3D-rendered AI-robot photo. Pose is expressed
@@ -2295,6 +2460,7 @@ table.admin-table {
 .mascot-sparks-burst i:nth-child(2) { top: -12%; right: 0%; width: 7px; height: 7px; background: var(--accent); animation-delay: 0.15s; }
 .mascot-sparks-burst i:nth-child(3) { top: 24%; left: -14%; width: 5px; height: 5px; background: var(--spark-yellow); animation-delay: 0.3s; }
 .mascot-sparks-burst i:nth-child(4) { top: 24%; right: -14%; width: 5px; height: 5px; background: var(--spark-peach); animation-delay: 0.45s; }
+.mascot-sparks-burst i:nth-child(5) { top: 45%; left: 50%; width: 4px; height: 4px; background: var(--spark-neon); animation-delay: 0.6s; }
 
 @keyframes mascot-bob {
   0%, 100% { transform: translateY(0); }
@@ -2504,6 +2670,7 @@ table.admin-table {
   background:
     radial-gradient(ellipse 900px 520px at 12% -12%, var(--accent-soft), transparent 60%),
     radial-gradient(ellipse 760px 520px at 104% 8%, var(--ai-violet-soft), transparent 55%),
+    radial-gradient(ellipse 820px 480px at 50% 118%, rgba(26, 11, 46, 0.14), transparent 60%),
     var(--bg-page);
   font-family: var(--font-public-body);
 }

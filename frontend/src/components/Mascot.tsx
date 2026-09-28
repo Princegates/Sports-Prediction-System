@@ -52,6 +52,7 @@ export function Mascot({ pose = "idle", size = 96, className, variant = "compact
           <i />
           <i />
           <i />
+          <i />
         </span>
       )}
     </div>
