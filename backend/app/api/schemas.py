@@ -757,6 +757,34 @@ class SiteCodeOut(BaseModel):
     unavailable_match_ids: list[int] = []
 
 
+class PicksBookingIn(BaseModel):
+    """Games and outcomes a member picked themselves, to book as-is on the
+    chosen sites. No price is needed: each site prices its own slip."""
+
+    picks: list[BetCodePickIn]
+    sites: list[str]
+
+
+class PickedLegOut(BaseModel):
+    match_id: int
+    league: str
+    home_team: str
+    away_team: str
+    kickoff: dt.datetime
+    market: str
+    selection: str
+    model_probability: float
+
+
+class PicksBookingOut(BaseModel):
+    # The picks that were booked -- after the same checks AI Generation
+    # makes (a real upcoming match, an outcome its prediction offers, one
+    # pick per match). Anything left out is explained in ``warnings``.
+    legs: list[PickedLegOut]
+    site_codes: list[SiteCodeOut]
+    warnings: list[str]
+
+
 class BetCodeOut(BaseModel):
     id: int
     created_at: dt.datetime

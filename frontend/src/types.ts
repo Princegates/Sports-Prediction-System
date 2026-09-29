@@ -560,6 +560,15 @@ export interface BookingSlipResult {
   site_codes: SiteCode[];
 }
 
+/** Codes for a member's own picks (POST /api/betcodes/picks): the picks
+ * that were booked, each site's answer, and why any pick was left out. */
+export interface PicksBooking {
+  legs: { match_id: number; league: string; home_team: string; away_team: string; kickoff: string;
+          market: string; selection: string; model_probability: number }[];
+  site_codes: SiteCode[];
+  warnings: string[];
+}
+
 /** An explicit (match, market, selection) to price -- no search, just "what
  * does this cost right now". What a chat answer's picks, or a Markets-page
  * shortlist, sends to POST /api/betcodes/price. */

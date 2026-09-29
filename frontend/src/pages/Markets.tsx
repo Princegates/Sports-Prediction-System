@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { createAdminPick, fetchBranding, fetchMatches, fetchOutcomes } from "../api";
+import { bookPicks, createAdminPick, fetchBranding, fetchMatches, fetchOutcomes } from "../api";
 import { ConfidenceTag } from "../components/MostLikelyOutcome";
 import { CopyButton } from "../components/CopyButton";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
+import { SiteCodes } from "../components/SiteCodes";
 import { dateKeyFromIso, FixtureCalendar } from "../components/FixtureCalendar";
 import { useLeague } from "../components/AppShell";
 import { formatPicksForCopy, readStoredPicks, storePicks } from "../lib/myPicks";
@@ -464,9 +465,9 @@ export function Markets() {
           </div>
 
           <p className="setting-note" style={{ marginBottom: 12 }}>
-            Picked while browsing, not priced -- this page has no bookmaker odds attached to it, only
-            the model's probability. Paste these into your own betting app yourself, or use{" "}
-            <strong>AI Generation</strong> instead for a combo priced from real, stored bookmaker odds.
+            Picked while browsing -- the percentages are the model's probability, not bookmaker odds.
+            Get a booking code for these picks below: the betting site builds the slip and sets its own
+            odds, which you'll see when you open it there. Or copy them and add them yourself.
           </p>
 
           <div className="predictions-table-wrapper">
@@ -531,6 +532,16 @@ export function Markets() {
               Clear all
             </button>
           </div>
+
+          <SiteCodes
+            legs={picks}
+            book={(sites) =>
+              bookPicks(
+                picks.map((p) => ({ match_id: p.match_id, market: p.market, selection: p.selection })),
+                sites,
+              )
+            }
+          />
         </div>
       )}
 

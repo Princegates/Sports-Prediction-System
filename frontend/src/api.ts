@@ -6,6 +6,7 @@ import type {
   BetCodePreview,
   BettingSite,
   BookingSlipResult,
+  PicksBooking,
   OutcomesResponse,
   Branding,
   SettingsPayload,
@@ -583,6 +584,12 @@ export function createSiteCodes(
   sites: string[],
 ): Promise<BookingSlipResult> {
   return post("/api/betcodes", { criteria, legs, sites });
+}
+
+/** Books the games and outcomes a member picked, as picked, on each chosen
+ * site. No price needed -- each site prices its own slip. */
+export function bookPicks(picks: BetCodePick[], sites: string[]): Promise<PicksBooking> {
+  return post("/api/betcodes/picks", { picks, sites });
 }
 
 /** Prices an explicit list of picks -- no search, just "what do these cost

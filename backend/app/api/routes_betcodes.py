@@ -33,11 +33,14 @@ from app.api.schemas import (
     BetCodePreviewOut,
     BetCodePriceIn,
     BettingSiteOut,
+    PickedLegOut,
+    PicksBookingIn,
+    PicksBookingOut,
     SiteCodeOut,
 )
 from app.betcode import sites as betting_sites
 from app.betcode.providers import BookingCodeError, ProviderNotConfigured, get_provider
-from app.betcode.selection import Leg, SlipCriteria, price_legs, select_legs
+from app.betcode.selection import Leg, SlipCriteria, price_legs, resolve_legs_unpriced, select_legs
 from app.db.models import BookingSlip, User
 
 router = APIRouter(
@@ -230,6 +233,44 @@ def _book_on_sites(slip: BookingSlip, site_keys: list[str], legs: list[Leg]) -> 
     else:
         slip.status = "provider_error"
     slip.provider_message = " ".join(r.message for r in results if r.message and r.status != "code_ready") or None
+
+
+@router.post("/picks", response_model=PicksBookingOut)
+def book_picks(payload: PicksBookingIn, db: Session = Depends(get_db)) -> PicksBookingOut:
+    """Books the games and outcomes a member selected, exactly as picked.
+
+    Unlike ``/price`` this needs no stored bookmaker quote: the code is the
+    site's own slip, priced by the site when it's opened, so requiring our
+    price would only drop picks for no reason -- most outcomes on the
+    Markets page never get one captured. Each pick is still checked against
+    the match's current prediction (resolve_legs_unpriced), so nothing that
+    isn't a real upcoming match and outcome is ever sent to a site.
+
+    Not stored as a slip: a slip's history row carries a combined price,
+    and there isn't an honest one here.
+    """
+
+    if not payload.sites:
+        raise HTTPException(status_code=422, detail="Choose at least one betting site.")
+    refs = [(p.match_id, p.market, p.selection) for p in payload.picks]
+    legs, warnings = resolve_legs_unpriced(db, refs)
+    if not legs:
+        raise HTTPException(
+            status_code=422, detail=" ".join(warnings) or "No picks to book -- select some outcomes first."
+        )
+
+    return PicksBookingOut(
+        legs=[
+            PickedLegOut(
+                match_id=leg.match_id, league=leg.league, home_team=leg.home_team, away_team=leg.away_team,
+                kickoff=leg.kickoff, market=leg.market, selection=leg.selection,
+                model_probability=leg.model_probability,
+            )
+            for leg in legs
+        ],
+        site_codes=[SiteCodeOut(**r.as_json()) for r in betting_sites.codes_for_sites(payload.sites, legs)],
+        warnings=warnings,
+    )
 
 
 @router.get("/sites", response_model=list[BettingSiteOut])

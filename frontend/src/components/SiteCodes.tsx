@@ -1,11 +1,22 @@
 import { useEffect, useState } from "react";
-import { createSiteCodes, fetchBettingSites } from "../api";
-import type { BetCodeCriteria, BetCodeLeg, BettingSite, SiteCode } from "../types";
+import { fetchBettingSites } from "../api";
+import type { BettingSite, SiteCode } from "../types";
 import { CopyButton } from "./CopyButton";
 
+/** What the panel needs of each pick: enough to name it, and to notice when
+ * the slip has changed. AI Generation legs and Markets picks both fit. */
+export interface SiteCodeLeg {
+  match_id: number;
+  home_team: string;
+  away_team: string;
+  market: string;
+  selection: string;
+}
+
 interface Props {
-  legs: BetCodeLeg[];
-  criteria: BetCodeCriteria;
+  legs: SiteCodeLeg[];
+  /** Asks the backend for a code on each of these sites. */
+  book: (sites: string[]) => Promise<{ site_codes: SiteCode[]; warnings?: string[] }>;
 }
 
 /**
@@ -14,12 +25,13 @@ interface Props {
  * one site's connection is built, so members are never offered a button that
  * can only fail.
  */
-export function SiteCodes({ legs, criteria }: Props) {
+export function SiteCodes({ legs, book }: Props) {
   const [sites, setSites] = useState<BettingSite[]>([]);
   const [chosen, setChosen] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [codes, setCodes] = useState<SiteCode[] | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -38,7 +50,10 @@ export function SiteCodes({ legs, criteria }: Props) {
 
   // A different slip means the old codes no longer describe it.
   const legsKey = legs.map((l) => `${l.match_id}|${l.market}|${l.selection}`).join(",");
-  useEffect(() => setCodes(null), [legsKey]);
+  useEffect(() => {
+    setCodes(null);
+    setWarnings([]);
+  }, [legsKey]);
 
   if (sites.length === 0) return null;
 
@@ -50,8 +65,9 @@ export function SiteCodes({ legs, criteria }: Props) {
     setBusy(true);
     setError(null);
     try {
-      const slip = await createSiteCodes(criteria, legs, chosen);
-      setCodes(slip.site_codes);
+      const result = await book(chosen);
+      setCodes(result.site_codes);
+      setWarnings(result.warnings ?? []);
     } catch (e) {
       setError(String(e instanceof Error ? e.message : e));
     } finally {
@@ -67,7 +83,7 @@ export function SiteCodes({ legs, criteria }: Props) {
   return (
     <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
       <div className="meta" style={{ marginBottom: 8 }}>
-        Booking codes -- each site issues its own; odds are that site's, not the prices above
+        Booking codes -- each site issues its own and sets its own odds
       </div>
       <div className="filter-bar">
         {sites.map((s) => (
@@ -84,6 +100,13 @@ export function SiteCodes({ legs, criteria }: Props) {
         {busy ? "Asking the sites…" : `Get booking code${chosen.length === 1 ? "" : "s"}`}
       </button>
       {error && <p className="auth-error">{error}</p>}
+      {warnings.length > 0 && (
+        <ul className="sub" style={{ marginTop: 10, paddingLeft: 18 }}>
+          {warnings.map((w) => (
+            <li key={w}>{w}</li>
+          ))}
+        </ul>
+      )}
 
       {codes && (
         <div style={{ marginTop: 14, display: "grid", gap: 10 }}>

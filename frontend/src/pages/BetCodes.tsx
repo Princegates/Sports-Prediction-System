@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import {
   createAdminPick,
+  createSiteCodes,
   deleteAdminPick,
   fetchAdminPicksAdmin,
   previewBetCode,
@@ -426,8 +427,8 @@ export function BetCodes() {
         Every leg here is priced from a real, stored bookmaker quote -- there is no estimated or synthetic
         price. Combining matches multiplies the risk as fast as it multiplies the price: three legs each
         70% likely land around a 34% chance of all three coming in, whatever the combined odds look like.
-        The number below is calculated, not softened. No bookmaker booking code is generated -- paste the
-        selections into your betting app yourself, or use the "Copy selections" button below.
+        The number below is calculated, not softened. For a booking code, pick a betting site under the
+        legs -- the site builds the slip at its own odds -- or copy the selections and add them yourself.
       </p>
 
       <div className="card card-pad" style={{ marginBottom: 20 }}>
@@ -736,7 +737,9 @@ export function BetCodes() {
             </div>
           )}
 
-          {editedLegs.length > 0 && <SiteCodes legs={editedLegs} criteria={criteria()} />}
+          {editedLegs.length > 0 && (
+            <SiteCodes legs={editedLegs} book={(sites) => createSiteCodes(criteria(), editedLegs, sites)} />
+          )}
         </div>
       )}
 

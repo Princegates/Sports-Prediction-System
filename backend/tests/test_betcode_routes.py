@@ -336,3 +336,86 @@ def test_no_connected_site_saves_the_slip_without_inventing_a_code(auth_headers,
     assert body["status"] == "provider_unavailable"
     assert body["booking_code"] is None and body["site_codes"][0]["code"] is None
     assert db_session.query(BookingSlip).count() == 1
+
+
+# --- booking a member's own picks --------------------------------------------
+
+
+class _RecordingConnector(_FakeConnector):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.booked = []
+
+    def create_code(self, legs):
+        self.booked.append(list(legs))
+        return super().create_code(legs)
+
+
+def test_booking_picks_requires_authentication():
+    assert client.post("/api/betcodes/picks", json={"picks": [], "sites": ["sportybet_gh"]}).status_code == 401
+
+
+def test_a_picked_outcome_with_no_stored_price_is_still_booked(auth_headers, db_session, priced_match, sites):
+    """The site prices its own slip, so our lack of a quote for BTTS here is
+    no reason to leave the pick out -- unlike /price, which needs one."""
+
+    connector = _RecordingConnector("MINE01")
+    sites(sportybet_gh=connector)
+
+    response = client.post(
+        "/api/betcodes/picks",
+        json={"picks": [{"match_id": priced_match.id, "market": "Both Teams To Score", "selection": "Yes"}],
+              "sites": ["sportybet_gh"]},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["site_codes"][0]["code"] == "MINE01"
+    assert [(leg["market"], leg["selection"]) for leg in body["legs"]] == [("Both Teams To Score", "Yes")]
+    assert connector.booked[0][0].decimal_odds is None
+    assert db_session.query(BookingSlip).count() == 0
+
+
+def test_a_pick_that_cant_be_booked_is_explained_and_the_rest_go_through(auth_headers, priced_match, sites):
+    connector = _RecordingConnector()
+    sites(sportybet_gh=connector)
+
+    body = client.post(
+        "/api/betcodes/picks",
+        json={"picks": [
+            {"match_id": priced_match.id, "market": "Match Result", "selection": "Home Win"},
+            {"match_id": 999999, "market": "Match Result", "selection": "Home Win"},
+        ], "sites": ["sportybet_gh"]},
+        headers=auth_headers,
+    ).json()
+
+    assert [leg["match_id"] for leg in body["legs"]] == [priced_match.id]
+    assert any("999999" in w for w in body["warnings"])
+    assert [leg.match_id for leg in connector.booked[0]] == [priced_match.id]
+
+
+def test_no_bookable_pick_is_a_422_and_no_site_is_asked(auth_headers, priced_match, sites):
+    connector = _RecordingConnector()
+    sites(sportybet_gh=connector)
+
+    response = client.post(
+        "/api/betcodes/picks",
+        json={"picks": [{"match_id": priced_match.id, "market": "Match Result", "selection": "Nonsense"}],
+              "sites": ["sportybet_gh"]},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 422
+    assert "isn't an outcome" in response.json()["detail"]
+    assert connector.booked == []
+
+
+def test_booking_picks_needs_a_site(auth_headers, priced_match):
+    response = client.post(
+        "/api/betcodes/picks",
+        json={"picks": [{"match_id": priced_match.id, "market": "Match Result", "selection": "Home Win"}], "sites": []},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 422
