@@ -377,8 +377,9 @@ def run_single_league(db, league_name: str, train_fraction: float, validation_fr
 
     # Blend weights are shared across leagues and fitted by --all-leagues;
     # one league's validation slice is too small to fit its own (see
-    # model_store.load_ensemble_weights).
-    weights = load_ensemble_weights(league_name)
+    # model_store.load_ensemble_weights). Scored with whatever will serve,
+    # the settings panel's weights included.
+    weights = load_ensemble_weights(league_name, db)
     evaluate_league(db, league_name, ml_model, matches, train_end_date, val_end_date, MODEL_VERSION, weights)
 
 
@@ -436,12 +437,23 @@ def run_all_leagues(db, target_leagues: list[str], pool_ml: bool, train_fraction
 
     all_breakdowns = [b for v in validations.values() for b in v.breakdowns]
     all_labels = [y for v in validations.values() for y in v.labels]
-    weights = fit_ensemble_weights(all_breakdowns, all_labels)
-    save_ensemble_weights(weights)
+    fitted = fit_ensemble_weights(all_breakdowns, all_labels)
+    save_ensemble_weights(fitted)
     print(
         f"\nShared blend weights from {len(all_labels)} pooled validation matches: "
-        f"elo={weights.elo:.2f} poisson={weights.poisson:.2f} ml={weights.ml:.2f}"
+        f"elo={fitted.elo:.2f} poisson={fitted.poisson:.2f} ml={fitted.ml:.2f}"
     )
+
+    # The test slice is scored with the weights that will actually serve, so
+    # the stored metrics describe the live predictions. Those are the fitted
+    # ones unless the settings panel overrides them.
+    weights = load_ensemble_weights(next(iter(league_matches)), db)
+    if weights != fitted:
+        print(
+            f"  NOTE: the settings panel overrides these with elo={weights.elo:.2f} "
+            f"poisson={weights.poisson:.2f} ml={weights.ml:.2f}; predictions and the metrics "
+            "below use the panel's. Reset the three weights in the panel to use the fitted ones."
+        )
 
     version = f"{MODEL_VERSION}-pooled" if pool_ml else MODEL_VERSION
     summaries = []

@@ -193,6 +193,19 @@ def fit_ensemble_weights(
     return best_weights
 
 
+def _applied_weights(weights: "EnsembleWeights", has_ml: bool) -> dict[str, float]:
+    """The share each component gets in ``blend_1x2`` for one match, summing
+    to 1: the ML weight drops out when there is no ML prediction, and an
+    all-zero set falls back to an equal split, as ``_weighted_blend`` does."""
+
+    raw = {"elo": weights.elo, "poisson": weights.poisson, "ml": weights.ml if has_ml else 0.0}
+    total = sum(raw.values())
+    if total <= 0:
+        present = ["elo", "poisson"] + (["ml"] if has_ml else [])
+        return {k: (1.0 / len(present) if k in present else 0.0) for k in raw}
+    return {k: v / total for k, v in raw.items()}
+
+
 def _agreement(values: list[float]) -> float:
     if len(values) < 2:
         return 1.0
@@ -278,6 +291,7 @@ def generate_prediction(
             ml_probs = None
 
     blended_1x2 = blend_1x2(elo_probs, poisson_probs, ml_probs, weights)
+    applied_weights = _applied_weights(weights, has_ml=ml_probs is not None)
 
     if "1x2" in calibrators:
         blended_1x2 = calibrators["1x2"].calibrate(blended_1x2)
@@ -327,5 +341,9 @@ def generate_prediction(
                 "lambda_away_ht": lambda_away_ht,
             },
             "ml": ml_probs,
+            # What each component actually counted for in this prediction,
+            # after renormalizing over the ones present -- so the match page
+            # can show the real blend rather than a hard-coded one.
+            "weights": applied_weights,
         },
     )

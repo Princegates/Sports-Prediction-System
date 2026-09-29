@@ -305,7 +305,7 @@ export function MatchDetail() {
             </div>
             <div className="card card-pad">
               <h3 style={{ marginBottom: 14, fontSize: 15 }}>How the AI calculated this</h3>
-              <ModelTransparency hasMlModel={Boolean(breakdown.ml)} />
+              <ModelTransparency hasMlModel={Boolean(breakdown.ml)} weights={breakdown.weights} />
             </div>
           </div>
         </div>

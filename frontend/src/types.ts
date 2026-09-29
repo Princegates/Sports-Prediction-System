@@ -99,10 +99,18 @@ export interface TokenResponse {
   user: User;
 }
 
+export interface BlendWeights {
+  elo: number;
+  poisson: number;
+  ml: number;
+}
+
 export interface ModelBreakdown {
   elo?: { home_win: number; draw: number; away_win: number; elo_diff: number };
   poisson?: { home_win: number; draw: number; away_win: number; lambda_home: number; lambda_away: number };
   ml?: { H: number; D: number; A: number } | null;
+  // Share each model counted for in this prediction; absent on older ones.
+  weights?: BlendWeights;
 }
 
 export interface TeamForm {

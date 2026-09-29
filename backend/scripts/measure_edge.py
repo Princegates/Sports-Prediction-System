@@ -117,7 +117,7 @@ def main() -> None:
         for league, league_matches in sorted(by_league.items()):
             model = load_ml_model(league)
             calibrators = load_calibrators(league)
-            weights = load_ensemble_weights(league)
+            weights = load_ensemble_weights(league, db)
             cache = LeagueFeatureCache(db, league)
 
             for match in sorted(league_matches, key=lambda m: m.date):

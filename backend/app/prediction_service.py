@@ -41,7 +41,7 @@ def build_prediction_for_match(
 
     ml_model = load_ml_model(match.league)
     calibrators = load_calibrators(match.league)
-    weights = load_ensemble_weights(match.league)
+    weights = load_ensemble_weights(match.league, db)
 
     result = generate_prediction(
         db,

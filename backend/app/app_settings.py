@@ -161,10 +161,16 @@ REGISTRY: tuple[SettingSpec, ...] = (
 
     # --- Model -----------------------------------------------------------
     SettingSpec("ensemble_weight_elo", "float", "model", "Elo weight",
+                "Saving any of the three blend weights replaces the weights the weekly retrain "
+                "fits on held-out matches, for every league, from the next prediction on. They "
+                "are renormalized, so they need not sum to 1. Reset all three to go back to the "
+                "fitted weights -- hand-set weights have measured worse (ROADMAP.md 1e).",
                 env_attr="ensemble_weight_elo", minimum=0, maximum=1),
     SettingSpec("ensemble_weight_poisson", "float", "model", "Poisson weight",
+                "See Elo weight. An unsaved weight uses the environment default alongside saved ones.",
                 env_attr="ensemble_weight_poisson", minimum=0, maximum=1),
     SettingSpec("ensemble_weight_ml", "float", "model", "Gradient boosting weight",
+                "See Elo weight. Ignored for a league with no trained model.",
                 env_attr="ensemble_weight_ml", minimum=0, maximum=1),
     SettingSpec("home_advantage_elo", "float", "model", "Home advantage (Elo points)",
                 env_attr="home_advantage_elo", minimum=0, maximum=300),
@@ -298,6 +304,22 @@ def all_values(db: Session) -> dict[str, Any]:
 
 def is_overridden(db: Session, key: str) -> bool:
     return db.get(AppSetting, key) is not None
+
+
+def overridden_values(db: Session, keys: list[str]) -> dict[str, Any]:
+    """The saved overrides among ``keys``, coerced -- one query, for callers
+    that need to know which settings the panel actually set rather than
+    what they resolve to. A stored value that no longer parses is left out,
+    as ``get_value`` would ignore it."""
+
+    rows = db.execute(select(AppSetting).where(AppSetting.key.in_(keys))).scalars()
+    values: dict[str, Any] = {}
+    for row in rows:
+        try:
+            values[row.key] = BY_KEY[row.key].coerce(row.value)
+        except (KeyError, TypeError, ValueError):
+            continue
+    return values
 
 
 def validate(spec: SettingSpec, value: Any) -> str:

@@ -348,6 +348,14 @@ def test_default_market_tab_rejects_an_unknown_tab(db_session, admin):
     assert unchanged["default_market_tab"] == "match_result"
 
 
+@pytest.fixture()
+def model_dir(tmp_path, monkeypatch):
+    from app import model_store
+
+    monkeypatch.setattr(model_store, "MODEL_DIR", tmp_path)
+    return tmp_path
+
+
 def test_model_weight_override_reaches_the_ensemble(db_session, admin):
     from app.prediction_models.ensemble import EnsembleWeights
 
@@ -359,6 +367,96 @@ def test_model_weight_override_reaches_the_ensemble(db_session, admin):
 
     weights = EnsembleWeights.from_settings(db_session)
     assert (weights.elo, weights.poisson, weights.ml) == (0.5, 0.3, 0.2)
+
+
+def test_panel_weights_beat_the_fitted_ones_until_reset(db_session, admin, model_dir):
+    """The version of the test above that matters. from_settings(db) always
+    read the panel -- but nothing that makes a prediction ever called it with
+    a session, so the fields changed the page and no prediction. What serves
+    is load_ensemble_weights."""
+
+    from app.model_store import load_ensemble_weights, save_ensemble_weights
+    from app.prediction_models.ensemble import EnsembleWeights
+
+    league = "English Premier League"
+    fitted = EnsembleWeights(elo=0.45, poisson=0.35, ml=0.2)
+    save_ensemble_weights(fitted)
+    assert load_ensemble_weights(league, db_session) == fitted
+
+    client.patch(
+        "/api/admin/settings",
+        json={"values": {"ensemble_weight_elo": 0.6, "ensemble_weight_poisson": 0.3, "ensemble_weight_ml": 0.1}},
+        headers=_headers(admin),
+    )
+    assert load_ensemble_weights(league, db_session) == EnsembleWeights(elo=0.6, poisson=0.3, ml=0.1)
+
+    client.patch(
+        "/api/admin/settings",
+        json={"reset": ["ensemble_weight_elo", "ensemble_weight_poisson", "ensemble_weight_ml"]},
+        headers=_headers(admin),
+    )
+    assert load_ensemble_weights(league, db_session) == fitted
+
+
+def test_one_saved_weight_takes_the_shown_defaults_for_the_other_two(db_session, admin, model_dir):
+    from app.model_store import load_ensemble_weights, save_ensemble_weights
+    from app.prediction_models.ensemble import EnsembleWeights
+
+    save_ensemble_weights(EnsembleWeights(elo=0.45, poisson=0.35, ml=0.2))
+    client.patch("/api/admin/settings", json={"values": {"ensemble_weight_ml": 0.0}}, headers=_headers(admin))
+
+    shown = client.get("/api/admin/settings", headers=_headers(admin)).json()["values"]
+    weights = load_ensemble_weights("English Premier League", db_session)
+
+    assert (weights.elo, weights.poisson, weights.ml) == (
+        shown["ensemble_weight_elo"], shown["ensemble_weight_poisson"], 0.0
+    )
+
+
+def test_panel_weights_reach_a_stored_prediction(db_session, admin, model_dir):
+    """All the way through: a saved panel weight changes the prediction the
+    service builds and records, not just a loader's return value."""
+
+    import datetime as dt
+
+    from app.db.models import Match, Team
+    from app.prediction_models import elo
+    from app.prediction_service import build_prediction_for_match
+
+    league = "Panel Weights League"
+    home, away = Team(name="Panel Home", league=league, aliases=[]), Team(name="Panel Away", league=league, aliases=[])
+    db_session.add_all([home, away])
+    db_session.commit()
+    base = dt.datetime(2025, 8, 1, 15, 0)
+    for day in range(12):
+        db_session.add(Match(
+            league=league, season="2025-26", date=base + dt.timedelta(days=7 * day),
+            home_team_id=home.id if day % 2 == 0 else away.id, away_team_id=away.id if day % 2 == 0 else home.id,
+            home_score=2 if day % 3 else 0, away_score=1, status="FINISHED",
+        ))
+    upcoming = Match(league=league, season="2025-26", date=base + dt.timedelta(days=100),
+                     home_team_id=home.id, away_team_id=away.id, status="SCHEDULED")
+    db_session.add(upcoming)
+    db_session.commit()
+    elo.rebuild_elo_history(db_session, league)
+
+    def blended(elo_weight: float, poisson_weight: float):
+        client.patch(
+            "/api/admin/settings",
+            json={"values": {"ensemble_weight_elo": elo_weight, "ensemble_weight_poisson": poisson_weight}},
+            headers=_headers(admin),
+        )
+        return build_prediction_for_match(db_session, upcoming)
+
+    all_elo = blended(1.0, 0.0)
+    all_poisson = blended(0.0, 1.0)
+
+    # No ML model is trained here, so Elo and Poisson split everything.
+    assert all_elo.model_breakdown["weights"] == {"elo": 1.0, "poisson": 0.0, "ml": 0.0}
+    assert all_poisson.model_breakdown["weights"] == {"elo": 0.0, "poisson": 1.0, "ml": 0.0}
+    assert all_elo.home_win == pytest.approx(all_elo.model_breakdown["elo"]["home_win"])
+    assert all_poisson.home_win == pytest.approx(all_poisson.model_breakdown["poisson"]["home_win"])
+    assert all_elo.home_win != pytest.approx(all_poisson.home_win)
 
 
 # --- test email and status ---------------------------------------------
