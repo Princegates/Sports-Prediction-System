@@ -3,13 +3,16 @@
 Three steps, each against an endpoint SportyBet's own web page uses and that
 answers without an account:
 
-1. **Find the match.** ``factsCenter/pcUpcomingEvents`` lists upcoming
-   football by tournament. A leg is the event on the same date (a day either
-   way -- kickoff times differ between sources) whose home *and* away teams
-   both match ours by name. Both sides, in order, because one side alone is
-   not evidence: "Aston Villa" scores a full match against "Villarreal" on
-   its own. A leg with no such event, or with two equally good ones, is left
-   out rather than guessed.
+1. **Find the match.** A leg in a league we know SportyBet's id for is
+   looked up in that league's own list (``factsCenter/pcEvents``), which
+   runs a couple of rounds ahead; anything else, or anything that list
+   lacks, in the cross-league ``factsCenter/pcUpcomingEvents``, which shows
+   only about the next round of each league. A leg is the event on the same
+   date (a day either way -- kickoff times differ between sources) whose
+   home *and* away teams both match ours by name. Both sides, in order,
+   because one side alone is not evidence: "Aston Villa" scores a full match
+   against "Villarreal" on its own. A leg with no such event, or with two
+   equally good ones, is left out rather than guessed.
 2. **Translate the pick.** Our market and selection become SportyBet's
    Sportradar market id, specifier and outcome id (``_MARKETS``). Only
    markets whose ids were read off the site itself are here; any other
@@ -27,6 +30,7 @@ the member is told so, which is the answer a real connection gets.
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import threading
 import time
 from dataclasses import dataclass
@@ -38,10 +42,13 @@ from app.betcode.selection import Leg
 from app.betcode.sites import ConnectorResult
 from app.data.team_matching import name_match_score
 
+logger = logging.getLogger(__name__)
+
 SITE_NAME = "SportyBet Ghana"
 BASE_URL = "https://www.sportybet.com"
 COUNTRY = "gh"
 EVENTS_URL = f"{BASE_URL}/api/{COUNTRY}/factsCenter/pcUpcomingEvents"
+LEAGUE_EVENTS_URL = f"{BASE_URL}/api/{COUNTRY}/factsCenter/pcEvents"
 SHARE_URL = f"{BASE_URL}/api/{COUNTRY}/orders/share"
 SHARE_LINK = f"{BASE_URL}/{COUNTRY}/?shareCode={{code}}"
 
@@ -50,6 +57,26 @@ FOOTBALL = "sr:sport:1"
 # doesn't need prices, but asking for what the page asks for keeps this to a
 # request the endpoint is known to answer.
 EVENT_MARKETS = "1,18,10,29,11,26,36,14,60100"
+# ...and what its league page asks for.
+LEAGUE_MARKETS = "1,18,10,29,11,26,36,14"
+
+# Our league -> SportyBet's (Sportradar's) tournament id. The first four were
+# read off SportyBet itself; the rest are Sportradar's ids for those leagues,
+# not yet seen on the site. A wrong one can't book the wrong match --
+# find_event still needs both teams -- it only sends that league's legs on to
+# the cross-league list.
+TOURNAMENTS = {
+    "English Premier League": "sr:tournament:17",
+    "Spanish La Liga": "sr:tournament:8",
+    "German Bundesliga": "sr:tournament:35",
+    "UEFA Champions League": "sr:tournament:7",
+    "English Championship": "sr:tournament:18",
+    "Italian Serie A": "sr:tournament:23",
+    "French Ligue 1": "sr:tournament:34",
+    "Dutch Eredivisie": "sr:tournament:37",
+    "Portuguese Primeira Liga": "sr:tournament:238",
+    "Turkish Süper Lig": "sr:tournament:52",
+}
 PAGE_SIZE = 100
 # ~1,200 upcoming football events at 100 a page. Paging stops as soon as
 # every leg is found, so this is a ceiling, not the usual cost.
@@ -145,8 +172,11 @@ def _parse_events(payload: dict) -> tuple[list[Event], int]:
     if payload.get("bizCode") != _OK:
         raise BookingCodeError(f"{SITE_NAME} wouldn't list its matches: {payload.get('message') or 'no reason given'}.")
     data = payload.get("data") or {}
+    # The league list sends its tournaments as a bare list; the cross-league
+    # one wraps them with a total count.
+    tournaments = data if isinstance(data, list) else data.get("tournaments") or []
     events = []
-    for tournament in data.get("tournaments") or []:
+    for tournament in tournaments:
         for raw in tournament.get("events") or []:
             try:
                 events.append(Event(
@@ -157,11 +187,12 @@ def _parse_events(payload: dict) -> tuple[list[Event], int]:
                 ))
             except (KeyError, TypeError, ValueError):
                 continue
-    return events, int(data.get("totalNum") or 0)
+    return events, 0 if isinstance(data, list) else int(data.get("totalNum") or 0)
 
 
 class _EventList:
-    """Upcoming events, fetched a page at a time and only as far as needed."""
+    """Upcoming events: each league's own list, fetched once, and the
+    cross-league list a page at a time and only as far as needed."""
 
     def __init__(self, session: requests.Session) -> None:
         self._session = session
@@ -170,10 +201,28 @@ class _EventList:
 
     def _reset(self) -> None:
         self.events: list[Event] = []
+        self._leagues: dict[str, list[Event]] = {}
         self._seen: set[str] = set()
         self._pages = 0
         self._exhausted = False
         self._fetched_at = time.monotonic()
+
+    def _fetch_league(self, tournament_id: str) -> list[Event]:
+        body = [{"sportId": FOOTBALL, "marketId": LEAGUE_MARKETS, "tournamentId": [[tournament_id]]}]
+        try:
+            response = self._session.post(
+                LEAGUE_EVENTS_URL, json=body, headers={**_API_HEADERS, "Content-Type": "application/json"},
+                timeout=TIMEOUT_SECONDS,
+            )
+            if response.status_code != 200:
+                raise BookingCodeError(f"HTTP {response.status_code}")
+            return _parse_events(response.json())[0]
+        except (requests.RequestException, BookingCodeError, ValueError) as exc:
+            # The cross-league list still covers the next round, so a league
+            # list that fails narrows the search rather than failing the
+            # booking.
+            logger.warning("%s league list %s unavailable: %s", SITE_NAME, tournament_id, exc)
+            return []
 
     def _fetch_page(self, page: int) -> tuple[list[Event], int]:
         params = {
@@ -192,25 +241,37 @@ class _EventList:
             raise BookingCodeError(f"{SITE_NAME} sent a match list this connection can't read.") from exc
 
     def find_all(self, legs: list[Leg]) -> dict[int, str]:
-        """match_id -> SportyBet eventId for every leg found, paging only
-        until all of them are."""
+        """match_id -> SportyBet eventId for every leg found: first in each
+        league's own list, then the rest in the cross-league one."""
 
         with self._lock:
             if time.monotonic() - self._fetched_at > EVENTS_CACHE_SECONDS:
                 self._reset()
-            found = _match_legs(legs, self.events)
-            while len(found) < len(legs) and not self._exhausted:
-                page_events, total = self._fetch_page(self._pages + 1)
-                self._pages += 1
-                new = [e for e in page_events if e.event_id not in self._seen]
-                self._seen.update(e.event_id for e in new)
-                self.events.extend(new)
-                # A page that adds nothing means paging has stopped moving,
-                # whatever totalNum says.
-                if not new or self._pages * PAGE_SIZE >= total or self._pages >= MAX_PAGES:
-                    self._exhausted = True
-                found = _match_legs(legs, self.events)
+            found: dict[int, str] = {}
+            for tournament_id in dict.fromkeys(TOURNAMENTS[l.league] for l in legs if l.league in TOURNAMENTS):
+                if tournament_id not in self._leagues:
+                    self._leagues[tournament_id] = self._fetch_league(tournament_id)
+                in_league = [l for l in legs if TOURNAMENTS.get(l.league) == tournament_id]
+                found.update(_match_legs(in_league, self._leagues[tournament_id]))
+            rest = [l for l in legs if l.match_id not in found]
+            if rest:
+                found.update(self._find_upcoming(rest))
             return found
+
+    def _find_upcoming(self, legs: list[Leg]) -> dict[int, str]:
+        found = _match_legs(legs, self.events)
+        while len(found) < len(legs) and not self._exhausted:
+            page_events, total = self._fetch_page(self._pages + 1)
+            self._pages += 1
+            new = [e for e in page_events if e.event_id not in self._seen]
+            self._seen.update(e.event_id for e in new)
+            self.events.extend(new)
+            # A page that adds nothing means paging has stopped moving,
+            # whatever totalNum says.
+            if not new or self._pages * PAGE_SIZE >= total or self._pages >= MAX_PAGES:
+                self._exhausted = True
+            found = _match_legs(legs, self.events)
+        return found
 
 
 def _match_legs(legs: list[Leg], events: list[Event]) -> dict[int, str]:

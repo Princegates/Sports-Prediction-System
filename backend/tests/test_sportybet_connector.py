@@ -79,12 +79,16 @@ class _Response:
 
 
 class _Session:
-    def __init__(self, pages=None, share=None, get_error=None):
+    def __init__(self, pages=None, share=None, get_error=None, leagues=None):
         self.pages = pages if pages is not None else [_Response(payload=PAGE_ONE)]
         self.share = share if share is not None else _Response(payload=_share_reply())
         self.get_error = get_error
+        # tournament id -> league-list response; a league not given answers
+        # with an empty list.
+        self.leagues = leagues or {}
         self.gets: list[dict] = []
         self.posts: list[dict] = []
+        self.league_posts: list[dict] = []
 
     def get(self, url, params=None, headers=None, timeout=None):
         self.gets.append({"url": url, "params": params, "headers": headers})
@@ -94,6 +98,9 @@ class _Session:
         return self.pages[page - 1] if page <= len(self.pages) else _Response(payload=_events_page(total=0))
 
     def post(self, url, json=None, headers=None, timeout=None):
+        if url == sb.LEAGUE_EVENTS_URL:
+            self.league_posts.append({"json": json, "headers": headers})
+            return self.leagues.get(json[0]["tournamentId"][0][0], _Response(payload={"bizCode": 10000, "data": []}))
         self.posts.append({"url": url, "json": json, "headers": headers})
         return self.share
 
@@ -312,6 +319,89 @@ def test_the_match_list_is_reused_for_a_few_minutes(monkeypatch):
     clock[0] += sb.EVENTS_CACHE_SECONDS + 1
     connector.create_code([leg])
     assert len(session.gets) == 2
+
+
+# --- league lists ------------------------------------------------------------
+
+SPURS_COVENTRY = dt.datetime(2026, 10, 19, 19, 0)
+LEEDS_UNITED = dt.datetime(2026, 10, 18, 13, 0)
+
+# SportyBet's Premier League page: two rounds, in the bare-list shape that
+# endpoint sends -- including matches the cross-league list above doesn't.
+PREMIER_LEAGUE = {"bizCode": 10000, "message": "0#0", "data": [{
+    "id": "sr:tournament:17", "name": "Premier League", "categoryName": "England", "categoryId": "sr:category:1",
+    "events": [
+        _event("sr:match:72221308", "Man Utd", "Tottenham", MAN_UTD_SPURS),
+        _event("sr:match:72221322", "Leeds United", "Man Utd", LEEDS_UNITED),
+        _event("sr:match:72221330", "Tottenham", "Coventry City", SPURS_COVENTRY),
+    ],
+}]}
+
+
+def _epl_leg(match_id, home, away, kickoff, **kwargs) -> Leg:
+    return Leg(match_id=match_id, league="English Premier League", home_team=home, away_team=away,
+               kickoff=kickoff, market=kwargs.get("market", "Match Result"),
+               selection=kwargs.get("selection", "Home Win"), model_probability=0.6)
+
+
+def test_a_leg_is_found_in_its_own_leagues_list_beyond_the_next_round():
+    session = _Session(leagues={"sr:tournament:17": _Response(payload=PREMIER_LEAGUE)})
+
+    result = sb.SportyBetConnector(session).create_code([
+        _epl_leg(1, "Tottenham Hotspur FC", "Coventry City FC", SPURS_COVENTRY),
+        _epl_leg(2, "Leeds United FC", "Manchester United FC", LEEDS_UNITED),
+    ])
+
+    assert result.unavailable_match_ids == []
+    assert [s["eventId"] for s in session.posts[0]["json"]["selections"]] == ["sr:match:72221330", "sr:match:72221322"]
+    assert session.league_posts[0]["json"] == [
+        {"sportId": "sr:sport:1", "marketId": "1,18,10,29,11,26,36,14", "tournamentId": [["sr:tournament:17"]]}
+    ]
+    assert session.gets == [], "every leg was in its league list, so the cross-league list isn't needed"
+    sent = session.league_posts[0]["headers"]
+    assert sent["User-Agent"] == sb.USER_AGENT and not {"Cookie", "Origin", "Referer"} & set(sent)
+
+
+def test_a_leg_its_league_list_lacks_is_looked_for_in_the_cross_league_list():
+    empty_league = _Response(payload={"bizCode": 10000, "data": [{"id": "sr:tournament:17", "events": []}]})
+    session = _Session(leagues={"sr:tournament:17": empty_league})
+
+    result = sb.SportyBetConnector(session).create_code(
+        [_epl_leg(1, "Manchester United FC", "Tottenham Hotspur FC", MAN_UTD_SPURS)]
+    )
+
+    assert result.unavailable_match_ids == []
+    assert len(session.league_posts) == 1 and len(session.gets) == 1
+
+
+def test_a_refused_league_list_narrows_the_search_rather_than_failing_the_booking():
+    session = _Session(leagues={"sr:tournament:17": _Response(403, {})})
+
+    result = sb.SportyBetConnector(session).create_code(
+        [_epl_leg(1, "Manchester United FC", "Tottenham Hotspur FC", MAN_UTD_SPURS)]
+    )
+
+    assert result.code == "9Y8YN0"
+
+
+def test_a_league_without_a_known_id_goes_straight_to_the_cross_league_list():
+    session = _Session()
+
+    sb.SportyBetConnector(session).create_code(
+        [_leg(1, "Manchester United FC", "Tottenham Hotspur FC", MAN_UTD_SPURS)]
+    )
+
+    assert session.league_posts == [] and len(session.gets) == 1
+
+
+def test_each_league_list_is_fetched_once_for_a_few_minutes():
+    session = _Session(leagues={"sr:tournament:17": _Response(payload=PREMIER_LEAGUE)})
+    connector = sb.SportyBetConnector(session)
+
+    connector.create_code([_epl_leg(1, "Tottenham Hotspur FC", "Coventry City FC", SPURS_COVENTRY)])
+    connector.create_code([_epl_leg(2, "Leeds United FC", "Manchester United FC", LEEDS_UNITED)])
+
+    assert len(session.league_posts) == 1
 
 
 # --- registration ------------------------------------------------------------
