@@ -116,7 +116,10 @@ def predictions_most_likely(
 
 @router.get("/outcomes", response_model=OutcomesOut, dependencies=[Depends(require_active_access)])
 def browse_outcomes(
-    market: str | None = Query(None, description="Exact market name, e.g. 'Match Result' or 'Total Goals 2.5'"),
+    market: list[str] | None = Query(
+        None,
+        description="Exact market name, e.g. 'Match Result' or 'Total Goals 2.5'. Repeat it to ask for several markets at once.",
+    ),
     league: str | None = None,
     days_ahead: int = Query(7, ge=0, le=21),
     min_probability: float = Query(0.0, ge=0.0, le=1.0),
@@ -142,6 +145,10 @@ def browse_outcomes(
     Matches with their teams, then predictions for those matches, then the
     outcomes expand in memory. The obvious implementation -- a query per match
     -- is what this codebase has already been bitten by.
+
+    With several ``market`` values, ``limit_per_league`` caps each market
+    separately within a league, so one market's near-certain outcomes (a 99%
+    Under 7.5) can't push another market's rows out of a shared cap.
     """
 
     now = dt.datetime.utcnow()
@@ -170,10 +177,14 @@ def browse_outcomes(
     latest: dict[int, Prediction] = {p.match_id: p for p in predictions}
 
     wanted_confidence = confidence.upper() if confidence else None
+    wanted_markets = set(market) if market else None
 
     per_league: dict[str, list[OutcomeOut]] = {}
     matches_with_outcomes: dict[str, set[int]] = {}
-    market_selections: dict[str, set[str]] = {}
+    # Dicts rather than sets so markets and their selections keep the
+    # registry's own order (Home Win, Draw, Away Win; Over before Under) --
+    # the Markets page lays its coupon columns out in exactly this order.
+    market_selections: dict[str, dict[str, None]] = {}
     market_groups: dict[str, str] = {}
 
     for match_id, prediction in latest.items():
@@ -182,12 +193,12 @@ def browse_outcomes(
             continue
 
         for outcome in outcomes_from_prediction(prediction):
-            if market and outcome.market != market:
+            if wanted_markets and outcome.market not in wanted_markets:
                 continue
             if outcome.probability < min_probability:
                 continue
 
-            market_selections.setdefault(outcome.market, set()).add(outcome.selection)
+            market_selections.setdefault(outcome.market, {})[outcome.selection] = None
             market_groups[outcome.market] = outcome.mutually_exclusive_group
 
             per_league.setdefault(match.league, []).append(
@@ -210,7 +221,16 @@ def browse_outcomes(
 
     leagues = []
     for name in sorted(per_league):
-        rows = sorted(per_league[name], key=lambda o: (-o.probability, o.kickoff))[:limit_per_league]
+        ranked = sorted(per_league[name], key=lambda o: (-o.probability, o.kickoff))
+        if wanted_markets:
+            kept: dict[str, int] = {}
+            rows = []
+            for o in ranked:
+                if kept.get(o.market, 0) < limit_per_league:
+                    kept[o.market] = kept.get(o.market, 0) + 1
+                    rows.append(o)
+        else:
+            rows = ranked[:limit_per_league]
         leagues.append(LeagueOutcomesOut(league=name, matches=len(matches_with_outcomes[name]), outcomes=rows))
 
     # A group appearing on more than one market name -- "Total Goals 2.5" and
@@ -218,15 +238,22 @@ def browse_outcomes(
     # within each. See NOT_A_FULL_PARTITION_GROUPS for which groups' selections
     # don't actually add up to 100% (Correct Score's truncated top-N, and
     # every Double-Chance-flavored union).
+    #
+    # Correct-score selections are each match's own top-N scorelines, so
+    # first-seen order is just whichever match came first -- sort those.
     markets = [
         MarketOut(
             market=name,
             group=market_groups[name],
-            selections=sorted(market_selections[name]),
+            selections=(
+                sorted(selections)
+                if market_groups[name] in ("correct_score", "ht_correct_score")
+                else list(selections)
+            ),
             outcomes=sum(1 for rows in per_league.values() for o in rows if o.market == name),
             mutually_exclusive=market_groups[name] not in NOT_A_FULL_PARTITION_GROUPS,
         )
-        for name in sorted(market_selections)
+        for name, selections in market_selections.items()
     ]
 
     return OutcomesOut(

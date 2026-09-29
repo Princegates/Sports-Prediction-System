@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { checkBettingSites, fetchSettings, fetchSystemStatus, saveSettings, sendTestEmail } from "../api";
 import { ACCENT_PROFILES } from "../lib/accentProfiles";
 import { ErrorState } from "../components/ErrorState";
-import { GRID_TABS } from "./Markets";
+import { MARKET_PRESETS } from "./Markets";
 import type { BettingSiteCheck, SettingSpec, SettingsPayload, SystemStatus } from "../types";
 
 type Draft = Record<string, string | number | boolean>;
@@ -154,7 +154,7 @@ export function Settings() {
           <input type="checkbox" checked={Boolean(current)} onChange={(e) => set(e.target.checked)} />
         ) : spec.key === "default_market_tab" ? (
           <select value={String(current)} onChange={(e) => set(e.target.value)}>
-            {GRID_TABS.map((t) => (
+            {MARKET_PRESETS.map((t) => (
               <option key={t.key} value={t.key}>
                 {t.label}
               </option>

@@ -600,7 +600,8 @@ export function priceSelections(picks: BetCodePick[], priceBookmaker?: string | 
 }
 
 export function fetchOutcomes(params: {
-  market?: string;
+  /** One market, or several -- sent as a repeated `market` parameter. */
+  market?: string | string[];
   league?: string;
   days_ahead?: number;
   min_probability?: number;
@@ -609,7 +610,8 @@ export function fetchOutcomes(params: {
 }): Promise<OutcomesResponse> {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => {
-    if (v !== undefined && v !== "" && v !== null) query.set(k, String(v));
+    if (Array.isArray(v)) v.forEach((item) => query.append(k, item));
+    else if (v !== undefined && v !== "" && v !== null) query.set(k, String(v));
   });
   return get(`/api/predictions/outcomes?${query.toString()}`);
 }

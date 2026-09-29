@@ -169,6 +169,39 @@ def test_filters_narrow_the_result(db_session, auth_headers, fixtures):
     assert none_match["total_outcomes"] == 0
 
 
+def test_several_markets_can_be_asked_for_at_once(db_session, auth_headers, fixtures):
+    """The Markets page's dropdown lets a member tick several markets; they
+    arrive as a repeated ``market`` parameter and come back together."""
+
+    body = _get(auth_headers, days_ahead=7, market=["Match Result", "Total Goals 2.5", "Double Chance"])
+    assert {o["market"] for lg in body["leagues"] for o in lg["outcomes"]} == {
+        "Match Result", "Total Goals 2.5", "Double Chance",
+    }
+    assert [m["market"] for m in body["markets"]] == ["Match Result", "Double Chance", "Total Goals 2.5"]
+
+
+def test_with_several_markets_the_cap_applies_to_each_one(db_session, auth_headers, fixtures):
+    """A shared per-league cap would let whichever market has the highest
+    probabilities (Double Chance, here) fill it and leave the other with
+    nothing -- each ticked market gets the whole cap instead."""
+
+    body = _get(auth_headers, days_ahead=7, market=["Double Chance", "Match Result"], limit_per_league=2)
+    epl = next(lg for lg in body["leagues"] if lg["league"] == "English Premier League")
+    by_market = [o["market"] for o in epl["outcomes"]]
+    assert by_market.count("Double Chance") == 2
+    assert by_market.count("Match Result") == 2
+
+
+def test_selections_keep_the_registry_order_and_scores_are_sorted(db_session, auth_headers, fixtures):
+    """The coupon's columns follow ``selections`` -- 1/X/2, Over before Under
+    -- not the alphabetical order a set would give (Away Win, Draw, Home Win)."""
+
+    markets = {m["market"]: m for m in _get(auth_headers, days_ahead=7)["markets"]}
+    assert markets["Match Result"]["selections"] == ["Home Win", "Draw", "Away Win"]
+    assert markets["Total Goals 2.5"]["selections"] == ["Over 2.5", "Under 2.5"]
+    assert markets["Correct Score"]["selections"] == ["1-0", "1-1", "2-1"]
+
+
 def test_outcomes_are_ordered_by_probability_within_a_league(db_session, auth_headers, fixtures):
     body = _get(auth_headers, days_ahead=7)
     for lg in body["leagues"]:

@@ -234,9 +234,9 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 default=True),
 
     # --- Betting markets page ---------------------------------------------
-    SettingSpec("default_market_tab", "choice", "markets", "Default tab",
-                "Which market coupon opens first on every visitor's Betting Markets page, "
-                "before they pick a different one themselves.",
+    SettingSpec("default_market_tab", "choice", "markets", "Default markets",
+                "Which markets the Betting Markets page's dropdown starts with for every "
+                "visitor, until they choose their own.",
                 choices=("match_result", "double_chance", "btts", "draw_no_bet", "other"),
                 default="match_result"),
 )

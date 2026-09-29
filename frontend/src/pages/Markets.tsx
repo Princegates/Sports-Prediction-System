@@ -5,45 +5,42 @@ import { ConfidenceTag } from "../components/MostLikelyOutcome";
 import { CopyButton } from "../components/CopyButton";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
+import { MarketPicker, type MarketPreset } from "../components/MarketPicker";
 import { SiteCodes } from "../components/SiteCodes";
 import { dateKeyFromIso, FixtureCalendar } from "../components/FixtureCalendar";
 import { useLeague } from "../components/AppShell";
 import { formatPicksForCopy, readStoredPicks, storePicks } from "../lib/myPicks";
 import { useAuth } from "../lib/AuthContext";
-import type { BettingOutcome, MatchSummary, OutcomesResponse } from "../types";
+import type { BettingOutcome, MarketSummary, MatchSummary, OutcomesResponse } from "../types";
 
 /**
  * Every available betting outcome, grouped by league -- laid out as a
- * bookmaker coupon: one row per match, the model's selection and
- * probability for each market sat in columns, and the markets themselves
- * switched with tabs (Match Result & Goals, Double Chance, GG/NG, Draw No
- * Bet), the same shape a SportyBet-style coupon uses. The predictions table
- * answers "what does the system say about this match"; this answers "where
- * is the best Over 2.5 this week, which BTTS calls stand out" -- comparing
- * outcomes across matches, which a per-match view can't do, without the
- * same match repeating once per market the old flat-row layout produced.
+ * bookmaker coupon: one row per match, the model's probability for each
+ * selection of each chosen market sat in columns. The markets come from one
+ * dropdown listing every market the system prices, any number ticked at
+ * once (Match Result + GG/NG + Over/Under 2.5, say), each getting its own
+ * block of columns. The predictions table answers "what does the system say
+ * about this match"; this answers "where is the best Over 2.5 this week,
+ * which BTTS calls stand out" -- comparing outcomes across matches, which a
+ * per-match view can't do.
  *
- * The first four tabs pull exactly the market(s) they need -- one
- * `fetchOutcomes` call per market, at a high per-league cap -- rather than
- * one unfiltered call for every market this project knows. A match's own
- * near-certain exotic-market outcomes (a 99% Under 8.5, say) would
- * otherwise crowd genuinely useful matches out of a shared top-N cap. The
- * fifth tab, "Other Markets", keeps the original market-dropdown-driven
- * flat table for everything else this project prices (Correct Score,
- * Winning Margin, and so on) -- building fixed columns for every one of
- * those would be a lot of layout for markets few people compare side by
- * side across matches anyway.
+ * The coupon asks for exactly the ticked markets in one `fetchOutcomes` call
+ * (a repeated `market` parameter), with the per-league cap applied to each
+ * market separately -- a match's near-certain exotic outcomes (a 99% Under
+ * 7.5) would otherwise crowd other markets out of a shared cap. The list
+ * view keeps the original flat, probability-sorted table with its
+ * probability-floor and confidence filters, for the same ticked markets or
+ * every market when none are.
  *
  * The 3/7/14-day chips are a rolling window from today -- fine for "what's
  * coming up", useless for "what's on the 14th". FixtureCalendar answers
  * that: it's seeded from every SCHEDULED match this league has (no
  * days-ahead cap), so it can show fixture density a season out, and
  * picking a date there computes just enough days_ahead to reach it and
- * filters both coupon views down to that one day.
+ * filters both views down to that one day.
  */
 
 const DAY_OPTIONS = [3, 7, 14];
-const GOAL_LINES = ["1.5", "2.5", "3.5"];
 const FLOORS = [
   { value: 0, label: "Any" },
   { value: 0.5, label: "50%+" },
@@ -51,18 +48,51 @@ const FLOORS = [
   { value: 0.85, label: "85%+" },
 ];
 
-// Exported so Settings.tsx's "default tab" picker (default_market_tab) shows
-// the exact same keys and labels as this page's own tab bar -- one list,
-// never two that could drift apart.
-export type GridTabKey = "match_result" | "double_chance" | "btts" | "draw_no_bet" | "other";
+type MarketView = "coupon" | "list";
 
-export const GRID_TABS: { key: GridTabKey; label: string }[] = [
-  { key: "match_result", label: "Match Result & Goals" },
-  { key: "double_chance", label: "Double Chance" },
-  { key: "btts", label: "GG/NG" },
-  { key: "draw_no_bet", label: "Draw No Bet" },
-  { key: "other", label: "Other Markets" },
+// Exported so Settings.tsx's "Default markets" picker (default_market_tab)
+// shows the exact same keys and labels this page starts from -- one list,
+// never two that could drift apart. The keys predate the dropdown (they
+// were tab names) and stay as they are so saved settings keep working.
+export type MarketPresetKey = "match_result" | "double_chance" | "btts" | "draw_no_bet" | "other";
+
+export const MARKET_PRESETS: { key: MarketPresetKey; label: string; markets: string[]; view: MarketView }[] = [
+  { key: "match_result", label: "Match Result & Goals", markets: ["Match Result", "Total Goals 2.5"], view: "coupon" },
+  { key: "double_chance", label: "Double Chance", markets: ["Double Chance"], view: "coupon" },
+  { key: "btts", label: "GG/NG", markets: ["Both Teams To Score"], view: "coupon" },
+  { key: "draw_no_bet", label: "Draw No Bet", markets: ["Draw No Bet"], view: "coupon" },
+  { key: "other", label: "Every market, as a list", markets: [], view: "list" },
 ];
+
+const QUICK_PICKS: MarketPreset[] = [
+  ...MARKET_PRESETS.filter((p) => p.markets.length > 0),
+  { label: "1X2 + GG/NG + O/U 2.5", markets: ["Match Result", "Both Teams To Score", "Total Goals 2.5"] },
+  { label: "Goal lines", markets: ["Total Goals 1.5", "Total Goals 2.5", "Total Goals 3.5"] },
+  { label: "Half-time", markets: ["HT Result", "HT Total Goals 0.5", "HT Total Goals 1.5"] },
+];
+
+const SELECTION_STORAGE_KEY = "market_selection";
+
+/** This browser's last dropdown choice -- a convenience only, so it's
+ * fine for it to come back empty (private browsing, cleared storage). */
+function readStoredSelection(): { markets: string[]; view: MarketView } | null {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SELECTION_STORAGE_KEY) ?? "null");
+    if (!parsed || !Array.isArray(parsed.markets)) return null;
+    if (parsed.view !== "coupon" && parsed.view !== "list") return null;
+    return { markets: parsed.markets.filter((m: unknown) => typeof m === "string"), view: parsed.view };
+  } catch {
+    return null;
+  }
+}
+
+function storeSelection(markets: string[], view: MarketView): void {
+  try {
+    localStorage.setItem(SELECTION_STORAGE_KEY, JSON.stringify({ markets, view }));
+  } catch {
+    // storage disabled -- the choice just won't be remembered
+  }
+}
 
 interface GridColumn {
   market: string;
@@ -70,21 +100,24 @@ interface GridColumn {
   header: string;
 }
 
-const FIXED_COLUMNS: Record<Exclude<GridTabKey, "other" | "match_result">, GridColumn[]> = {
-  double_chance: [
-    { market: "Double Chance", selection: "Home/Draw", header: "1X" },
-    { market: "Double Chance", selection: "Home/Away", header: "12" },
-    { market: "Double Chance", selection: "Draw/Away", header: "X2" },
-  ],
-  btts: [
-    { market: "Both Teams To Score", selection: "Yes", header: "Yes" },
-    { market: "Both Teams To Score", selection: "No", header: "No" },
-  ],
-  draw_no_bet: [
-    { market: "Draw No Bet", selection: "Home", header: "Home" },
-    { market: "Draw No Bet", selection: "Away", header: "Away" },
-  ],
-};
+interface GridMarket {
+  market: string;
+  columns: GridColumn[];
+}
+
+const RESULT_SHORT: Record<string, string> = { "Home Win": "1", Home: "1", Draw: "X", "Away Win": "2", Away: "2" };
+const DOUBLE_CHANCE_SHORT: Record<string, string> = { "Home/Draw": "1X", "Home/Away": "12", "Draw/Away": "X2" };
+
+/** A column header short enough for a coupon -- 1/X/2 and 1X/12/X2 the way
+ * bookmakers print them, and "Over"/"Under" rather than repeating the line
+ * the market block's own header already shows. */
+function shortHeader(market: string, selection: string): string {
+  if (market === "Match Result" || market === "HT Result") return RESULT_SHORT[selection] ?? selection;
+  if (market === "Double Chance" || market === "HT Double Chance") return DOUBLE_CHANCE_SHORT[selection] ?? selection;
+  const line = market.match(/ (\d+\.5)$/)?.[1];
+  if (line && selection.endsWith(` ${line}`)) return selection.slice(0, -(line.length + 1));
+  return selection;
+}
 
 interface MatchRow {
   match_id: number;
@@ -159,12 +192,14 @@ export function Markets() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const [tab, setTab] = useState<GridTabKey>("match_result");
-  const [goalLine, setGoalLine] = useState("2.5");
+  const [stored] = useState(readStoredSelection);
+  const [selectedMarkets, setSelectedMarkets] = useState<string[]>(stored?.markets ?? MARKET_PRESETS[0].markets);
+  const [view, setView] = useState<MarketView>(stored?.view ?? MARKET_PRESETS[0].view);
   const [days, setDays] = useState(7);
   const [picks, setPicks] = useState<BettingOutcome[]>(readStoredPicks);
   const [featuring, setFeaturing] = useState(false);
-  const tabTouchedByUser = useRef(false);
+  // A choice this browser already made outranks the site-wide default.
+  const selectionTouchedByUser = useRef(stored !== null);
 
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -198,23 +233,57 @@ export function Markets() {
   }, [selectedDate, days]);
 
   // Superadmin-configured default (Settings -> Betting markets -> Default
-  // tab), applied once -- and only if this visitor hasn't already clicked a
-  // different tab themselves before the fetch resolves.
+  // markets), applied once -- and only if this visitor hasn't already made
+  // their own choice, now or on an earlier visit.
   useEffect(() => {
     fetchBranding()
       .then((b) => {
-        if (tabTouchedByUser.current) return;
-        if (GRID_TABS.some((t) => t.key === b.default_market_tab)) {
-          setTab(b.default_market_tab as GridTabKey);
+        if (selectionTouchedByUser.current) return;
+        const preset = MARKET_PRESETS.find((p) => p.key === b.default_market_tab);
+        if (preset) {
+          setSelectedMarkets(preset.markets);
+          setView(preset.view);
         }
       })
       .catch(() => {});
   }, []);
 
-  function selectTab(key: GridTabKey) {
-    tabTouchedByUser.current = true;
-    setTab(key);
+  function chooseMarkets(next: string[]) {
+    selectionTouchedByUser.current = true;
+    setSelectedMarkets(next);
+    storeSelection(next, view);
   }
+
+  function chooseView(next: MarketView) {
+    selectionTouchedByUser.current = true;
+    setView(next);
+    storeSelection(selectedMarkets, next);
+  }
+
+  // Every market the system prices for upcoming matches, for the dropdown --
+  // one call with a tiny per-league cap, since only its `markets` summary
+  // is used. Fixed to the widest window so the list doesn't shrink when a
+  // short date range happens to be quiet.
+  const [catalog, setCatalog] = useState<MarketSummary[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetchOutcomes({ league: league || undefined, days_ahead: 21, limit_per_league: 1 })
+      .then((d) => !cancelled && setCatalog(d.markets))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [league]);
+
+  // A remembered or default market this league has no prices for right now
+  // still gets a row in the dropdown, so it can be unticked.
+  const pickerMarkets = useMemo((): MarketSummary[] => {
+    const known = new Set(catalog.map((m) => m.market));
+    const missing = selectedMarkets
+      .filter((m) => !known.has(m))
+      .map((market) => ({ market, group: "", selections: [], outcomes: 0, mutually_exclusive: true }));
+    return [...catalog, ...missing];
+  }, [catalog, selectedMarkets]);
 
   function pickedFor(matchId: number): BettingOutcome | undefined {
     return picks.find((p) => p.match_id === matchId);
@@ -274,60 +343,51 @@ export function Markets() {
     }
   }
 
-  // -- Coupon tabs: one outcomes fetch per market the active tab needs -----
+  // -- Coupon view: every ticked market in one outcomes fetch -------------
 
-  const gridMarkets = useMemo((): string[] => {
-    if (tab === "match_result") return ["Match Result", `Total Goals ${goalLine}`];
-    if (tab === "other") return [];
-    return [FIXED_COLUMNS[tab][0].market];
-  }, [tab, goalLine]);
-
-  const [gridData, setGridData] = useState<OutcomesResponse[] | null>(null);
+  const [gridData, setGridData] = useState<OutcomesResponse | null>(null);
   const [gridError, setGridError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (tab === "other") return;
+    if (view !== "coupon" || selectedMarkets.length === 0) return;
     let cancelled = false;
     setGridData(null);
     setGridError(null);
-    Promise.all(
-      gridMarkets.map((market) =>
-        fetchOutcomes({ market, league: league || undefined, days_ahead: effectiveDays, min_probability: 0, limit_per_league: 500 }),
-      ),
-    )
-      .then((results) => !cancelled && setGridData(results))
+    fetchOutcomes({
+      market: selectedMarkets, league: league || undefined, days_ahead: effectiveDays,
+      min_probability: 0, limit_per_league: 500,
+    })
+      .then((d) => !cancelled && setGridData(d))
       .catch((e) => !cancelled && setGridError(String(e instanceof Error ? e.message : e)));
     return () => {
       cancelled = true;
     };
-  }, [tab, gridMarkets, league, effectiveDays]);
+  }, [view, selectedMarkets, league, effectiveDays]);
 
-  const columns: GridColumn[] = useMemo(() => {
-    if (tab === "match_result") {
-      return [
-        { market: "Match Result", selection: "Home Win", header: "1" },
-        { market: "Match Result", selection: "Draw", header: "X" },
-        { market: "Match Result", selection: "Away Win", header: "2" },
-        { market: `Total Goals ${goalLine}`, selection: `Over ${goalLine}`, header: "Over" },
-        { market: `Total Goals ${goalLine}`, selection: `Under ${goalLine}`, header: "Under" },
-      ];
-    }
-    if (tab === "other") return [];
-    return FIXED_COLUMNS[tab];
-  }, [tab, goalLine]);
+  // One block of columns per ticked market, in the dropdown's order, each
+  // with its selections in the order the model lists them.
+  const gridMarkets: GridMarket[] = useMemo(() => {
+    if (!gridData) return [];
+    const byName = new Map(gridData.markets.map((m) => [m.market, m]));
+    return selectedMarkets
+      .map((name) => byName.get(name))
+      .filter((m): m is MarketSummary => !!m)
+      .map((m) => ({
+        market: m.market,
+        columns: m.selections.map((selection) => ({ market: m.market, selection, header: shortHeader(m.market, selection) })),
+      }));
+  }, [gridData, selectedMarkets]);
 
-  // Which columns compete for the "AI selection" highlight together --
-  // Match Result's 1/X/2 are one group, its Over/Under line a second,
-  // separate one; every other tab's columns are a single group.
-  const highlightGroups: string[][] = useMemo(() => {
-    const keys = columns.map((c) => cellKey(c.market, c.selection));
-    if (tab === "match_result") return [keys.slice(0, 3), keys.slice(3)];
-    return [keys];
-  }, [tab, columns]);
+  // Each market's columns compete for the "AI selection" highlight among
+  // themselves only -- Match Result's pick and Over/Under's pick both show.
+  const highlightGroups: string[][] = useMemo(
+    () => gridMarkets.map((g) => g.columns.map((c) => cellKey(c.market, c.selection))),
+    [gridMarkets],
+  );
 
   const rowsByLeague = useMemo(() => {
     if (!gridData) return [];
-    const allOutcomes = gridData.flatMap((d) => d.leagues.flatMap((l) => l.outcomes));
+    const allOutcomes = gridData.leagues.flatMap((l) => l.outcomes);
     let rows = buildMatchRows([allOutcomes]);
     if (selectedDate) rows = rows.filter((r) => dateKeyFromIso(r.kickoff) === selectedDate);
     const byLeague = groupBy(rows, (r) => r.league).sort(([a], [b]) => a.localeCompare(b));
@@ -337,39 +397,31 @@ export function Markets() {
     });
   }, [gridData, selectedDate]);
 
-  // -- "Other Markets" tab: the original market-dropdown-driven flat table -
+  // -- List view: the original flat table, sorted by probability ----------
 
-  const [otherMarket, setOtherMarket] = useState("");
   const [otherFloor, setOtherFloor] = useState(0);
   const [otherConfidence, setOtherConfidence] = useState("");
   const [otherData, setOtherData] = useState<OutcomesResponse | null>(null);
   const [otherError, setOtherError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (tab !== "other") return;
+    if (view !== "list") return;
     let cancelled = false;
     setOtherData(null);
     setOtherError(null);
     fetchOutcomes({
-      league: league || undefined, market: otherMarket || undefined, days_ahead: effectiveDays,
-      min_probability: otherFloor, confidence: otherConfidence || undefined,
+      league: league || undefined, market: selectedMarkets.length ? selectedMarkets : undefined,
+      days_ahead: effectiveDays, min_probability: otherFloor, confidence: otherConfidence || undefined,
     })
       .then((d) => !cancelled && setOtherData(d))
       .catch((e) => !cancelled && setOtherError(String(e instanceof Error ? e.message : e)));
     return () => {
       cancelled = true;
     };
-  }, [tab, league, otherMarket, effectiveDays, otherFloor, otherConfidence]);
+  }, [view, league, selectedMarkets, effectiveDays, otherFloor, otherConfidence]);
 
-  const [knownOtherMarkets, setKnownOtherMarkets] = useState<OutcomesResponse["markets"]>([]);
-  useEffect(() => {
-    if (otherData && !otherMarket && !otherConfidence && otherFloor === 0) setKnownOtherMarkets(otherData.markets);
-  }, [otherData, otherMarket, otherConfidence, otherFloor]);
-  const otherMarketOptions = useMemo(
-    () => (knownOtherMarkets.length ? knownOtherMarkets : otherData?.markets ?? []),
-    [knownOtherMarkets, otherData],
-  );
-  const selectedOtherMarket = otherMarketOptions.find((m) => m.market === otherMarket);
+  const singleMarket =
+    selectedMarkets.length === 1 ? catalog.find((m) => m.market === selectedMarkets[0]) : undefined;
 
   const otherLeagues = useMemo(() => {
     if (!otherData) return [];
@@ -387,15 +439,27 @@ export function Markets() {
       </div>
 
       <div className="filter-bar" style={{ marginBottom: 10 }}>
-        {GRID_TABS.map((t) => (
-          <button
-            key={t.key}
-            className={`filter-chip${tab === t.key ? " active" : ""}`}
-            onClick={() => selectTab(t.key)}
-          >
-            {t.label}
-          </button>
-        ))}
+        <MarketPicker
+          markets={pickerMarkets}
+          selected={selectedMarkets}
+          onChange={chooseMarkets}
+          presets={QUICK_PICKS}
+          emptyLabel={view === "list" ? "All markets" : "Choose markets"}
+        />
+        <button
+          type="button"
+          className={`filter-chip${view === "coupon" ? " active" : ""}`}
+          onClick={() => chooseView("coupon")}
+        >
+          Coupon
+        </button>
+        <button
+          type="button"
+          className={`filter-chip${view === "list" ? " active" : ""}`}
+          onClick={() => chooseView("list")}
+        >
+          List by probability
+        </button>
       </div>
 
       <div className="filter-bar" style={{ marginBottom: 14 }}>
@@ -426,18 +490,6 @@ export function Markets() {
             </button>
           ))}
 
-        {tab === "match_result" && (
-          <>
-            <span className="sub" style={{ marginLeft: 8 }}>
-              Goals line:
-            </span>
-            {GOAL_LINES.map((l) => (
-              <button key={l} className={`filter-chip${goalLine === l ? " active" : ""}`} onClick={() => setGoalLine(l)}>
-                {l}
-              </button>
-            ))}
-          </>
-        )}
       </div>
 
       {calendarOpen && (
@@ -545,11 +597,14 @@ export function Markets() {
         </div>
       )}
 
-      {tab !== "other" ? (
+      {view === "coupon" ? (
         <>
-          {gridError && <ErrorState message={gridError} />}
-          {!gridError && !gridData && <p className="badge-neutral">Loading outcomes…</p>}
-          {!gridError && gridData && rowsByLeague.length === 0 && (
+          {selectedMarkets.length === 0 && (
+            <EmptyState icon="◌" title="Pick one or more markets from the dropdown above." />
+          )}
+          {selectedMarkets.length > 0 && gridError && <ErrorState message={gridError} />}
+          {selectedMarkets.length > 0 && !gridError && !gridData && <p className="badge-neutral">Loading outcomes…</p>}
+          {selectedMarkets.length > 0 && !gridError && gridData && rowsByLeague.length === 0 && (
             <EmptyState
               icon="◌"
               title={
@@ -560,7 +615,8 @@ export function Markets() {
             />
           )}
 
-          {!gridError &&
+          {selectedMarkets.length > 0 &&
+            !gridError &&
             rowsByLeague.map(({ league: leagueName, dates }) => (
               <div className="card card-pad" style={{ marginBottom: 20 }} key={leagueName}>
                 <div className="section-header" style={{ marginBottom: 12 }}>
@@ -576,12 +632,27 @@ export function Markets() {
                       <table className="predictions-table odds-grid">
                         <thead>
                           <tr>
-                            <th>Match</th>
-                            {columns.map((c) => (
-                              <th key={c.header} className="tabular-nums" style={{ textAlign: "center" }}>
-                                {c.header}
+                            <th rowSpan={2} className="match-col">
+                              Match
+                            </th>
+                            {gridMarkets.map((g) => (
+                              <th key={g.market} colSpan={g.columns.length} className="market-head">
+                                {g.market}
                               </th>
                             ))}
+                          </tr>
+                          <tr>
+                            {gridMarkets.flatMap((g) =>
+                              g.columns.map((c, i) => (
+                                <th
+                                  key={cellKey(c.market, c.selection)}
+                                  className={`selection-head tabular-nums${i === 0 ? " market-start" : ""}`}
+                                  title={c.selection}
+                                >
+                                  {c.header}
+                                </th>
+                              )),
+                            )}
                           </tr>
                         </thead>
                         <tbody>
@@ -590,33 +661,35 @@ export function Markets() {
                             const picked = pickedFor(row.match_id);
                             return (
                               <tr key={row.match_id}>
-                                <td>
+                                <td className="match-col">
                                   <div className="match-cell" style={{ cursor: "pointer" }} onClick={() => navigate(`/app/match/${row.match_id}`)}>
                                     {row.home_team} vs {row.away_team}
                                   </div>
                                   <div className="sub">{formatTime(row.kickoff)}</div>
                                 </td>
-                                {columns.map((c) => {
-                                  const key = cellKey(c.market, c.selection);
-                                  const o = row.cells.get(key);
-                                  const isPicked = !!o && picked?.market === o.market && picked?.selection === o.selection;
-                                  return (
-                                    <td key={c.header} style={{ textAlign: "center" }}>
-                                      {o ? (
-                                        <button
-                                          type="button"
-                                          className={`odds-cell${tops.has(key) ? " ai-top" : ""}${isPicked ? " picked" : ""}`}
-                                          onClick={() => togglePick(o)}
-                                          title={`${o.definition} -- AI probability ${(o.probability * 100).toFixed(0)}%`}
-                                        >
-                                          {(o.probability * 100).toFixed(0)}%
-                                        </button>
-                                      ) : (
-                                        <span className="odds-cell empty">—</span>
-                                      )}
-                                    </td>
-                                  );
-                                })}
+                                {gridMarkets.flatMap((g) =>
+                                  g.columns.map((c, i) => {
+                                    const key = cellKey(c.market, c.selection);
+                                    const o = row.cells.get(key);
+                                    const isPicked = !!o && picked?.market === o.market && picked?.selection === o.selection;
+                                    return (
+                                      <td key={key} className={i === 0 ? "market-start" : undefined} style={{ textAlign: "center" }}>
+                                        {o ? (
+                                          <button
+                                            type="button"
+                                            className={`odds-cell${tops.has(key) ? " ai-top" : ""}${isPicked ? " picked" : ""}`}
+                                            onClick={() => togglePick(o)}
+                                            title={`${o.market}: ${o.selection} -- ${o.definition} AI probability ${(o.probability * 100).toFixed(0)}%`}
+                                          >
+                                            {(o.probability * 100).toFixed(0)}%
+                                          </button>
+                                        ) : (
+                                          <span className="odds-cell empty">—</span>
+                                        )}
+                                      </td>
+                                    );
+                                  }),
+                                )}
                               </tr>
                             );
                           })}
@@ -631,15 +704,6 @@ export function Markets() {
       ) : (
         <>
           <div className="filter-bar" style={{ marginBottom: 14 }}>
-            <select className="filter-select" value={otherMarket} onChange={(e) => setOtherMarket(e.target.value)}>
-              <option value="">All other markets</option>
-              {otherMarketOptions.map((m) => (
-                <option key={m.market} value={m.market}>
-                  {m.market}
-                </option>
-              ))}
-            </select>
-
             {FLOORS.map((f) => (
               <button
                 key={f.value}
@@ -658,10 +722,10 @@ export function Markets() {
             </select>
           </div>
 
-          {selectedOtherMarket && (
+          {singleMarket && (
             <p className="setting-note" style={{ marginBottom: 18 }}>
-              <strong>{selectedOtherMarket.market}</strong> — {selectedOtherMarket.selections.join(" · ")}.{" "}
-              {selectedOtherMarket.mutually_exclusive
+              <strong>{singleMarket.market}</strong> — {singleMarket.selections.join(" · ")}.{" "}
+              {singleMarket.mutually_exclusive
                 ? "Exactly one of these happens, so their probabilities add up to 100%."
                 : "These are not alternatives to each other — only one exact score can happen, and most matches land on none of the ones listed."}
             </p>
