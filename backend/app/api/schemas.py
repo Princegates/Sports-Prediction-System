@@ -755,6 +755,8 @@ class SiteCodeOut(BaseModel):
     link: str | None = None
     message: str | None = None
     unavailable_match_ids: list[int] = []
+    # match_id -> why that pick isn't on the site's slip.
+    unavailable_reasons: dict[int, str] = {}
 
 
 class PicksBookingIn(BaseModel):

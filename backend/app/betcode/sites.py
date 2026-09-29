@@ -26,6 +26,8 @@ class ConnectorResult:
     link: str | None
     # match_ids of legs the site couldn't include -- the code covers the rest.
     unavailable_match_ids: list[int] = field(default_factory=list)
+    # match_id -> why that leg was left out, in words a member can act on.
+    reasons: dict[int, str] = field(default_factory=dict)
 
 
 class SiteConnector(Protocol):
@@ -70,11 +72,13 @@ class SiteCode:
     link: str | None = None
     message: str | None = None
     unavailable_match_ids: list[int] = field(default_factory=list)
+    unavailable_reasons: dict[int, str] = field(default_factory=dict)
 
     def as_json(self) -> dict:
         return {
             "site": self.site, "name": self.name, "status": self.status, "code": self.code,
             "link": self.link, "message": self.message, "unavailable_match_ids": list(self.unavailable_match_ids),
+            "unavailable_reasons": {str(k): v for k, v in self.unavailable_reasons.items()},
         }
 
 
@@ -97,12 +101,13 @@ def code_for_site(site_key: str, legs: list[Leg]) -> SiteCode:
     message = None
     if dropped:
         message = (
-            f"{site.name} doesn't offer {dropped} of these {len(legs)} picks, so the code covers the "
+            f"{site.name} couldn't take {dropped} of these {len(legs)} picks, so the code covers the "
             f"other {len(legs) - dropped}."
         )
     return SiteCode(
         site=site.key, name=site.name, status="code_ready", code=result.code, link=result.link,
         message=message, unavailable_match_ids=list(result.unavailable_match_ids),
+        unavailable_reasons=dict(result.reasons),
     )
 
 

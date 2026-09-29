@@ -124,7 +124,20 @@ export function SiteCodes({ legs, book }: Props) {
               </div>
               {c.message && <p className="setting-note">{c.message}</p>}
               {c.unavailable_match_ids.length > 0 && (
-                <p className="sub">Not included: {c.unavailable_match_ids.map(matchName).join(", ")}</p>
+                <div className="sub">
+                  Not included:
+                  <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+                    {c.unavailable_match_ids.map((id) => {
+                      const reason = c.unavailable_reasons?.[String(id)];
+                      return (
+                        <li key={id}>
+                          {matchName(id)}
+                          {reason ? ` -- ${reason}` : ""}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
               )}
               {c.status === "code_ready" && c.code && (
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 6 }}>

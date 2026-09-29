@@ -552,6 +552,8 @@ export interface SiteCode {
   message: string | null;
   /** Matches the site doesn't offer -- the code covers the rest of the slip. */
   unavailable_match_ids: number[];
+  /** Why each left-out match isn't on the site's slip, keyed by match id. */
+  unavailable_reasons?: Record<string, string>;
 }
 
 export interface BookingSlipResult {

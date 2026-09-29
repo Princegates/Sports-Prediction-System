@@ -1,0 +1,727 @@
+{
+ "_source": "SportyBet Ghana factsCenter/event for sr:match:72221292 (Arsenal vs Leeds United), captured 2026-09-29. Market and outcome ids and names only. Trimmed to the markets the SportyBet connection books.",
+ "markets": [
+  {
+   "id": "1",
+   "specifier": null,
+   "desc": "1X2",
+   "outcomes": {
+    "1": "Home",
+    "2": "Draw",
+    "3": "Away"
+   }
+  },
+  {
+   "id": "18",
+   "specifier": "total=1",
+   "desc": "Over/Under",
+   "outcomes": {
+    "12": "Over 1",
+    "13": "Under 1"
+   }
+  },
+  {
+   "id": "18",
+   "specifier": "total=2",
+   "desc": "Over/Under",
+   "outcomes": {
+    "12": "Over 2",
+    "13": "Under 2"
+   }
+  },
+  {
+   "id": "18",
+   "specifier": "total=3",
+   "desc": "Over/Under",
+   "outcomes": {
+    "12": "Over 3",
+    "13": "Under 3"
+   }
+  },
+  {
+   "id": "18",
+   "specifier": "total=4",
+   "desc": "Over/Under",
+   "outcomes": {
+    "12": "Over 4",
+    "13": "Under 4"
+   }
+  },
+  {
+   "id": "18",
+   "specifier": "total=0.5",
+   "desc": "Over/Under",
+   "outcomes": {
+    "12": "Over 0.5",
+    "13": "Under 0.5"
+   }
+  },
+  {
+   "id": "18",
+   "specifier": "total=5",
+   "desc": "Over/Under",
+   "outcomes": {
+    "12": "Over 5",
+    "13": "Under 5"
+   }
+  },
+  {
+   "id": "18",
+   "specifier": "total=1.5",
+   "desc": "Over/Under",
+   "outcomes": {
+    "12": "Over 1.5",
+    "13": "Under 1.5"
+   }
+  },
+  {
+   "id": "18",
+   "specifier": "total=2.5",
+   "desc": "Over/Under",
+   "outcomes": {
+    "12": "Over 2.5",
+    "13": "Under 2.5"
+   }
+  },
+  {
+   "id": "18",
+   "specifier": "total=3.5",
+   "desc": "Over/Under",
+   "outcomes": {
+    "12": "Over 3.5",
+    "13": "Under 3.5"
+   }
+  },
+  {
+   "id": "18",
+   "specifier": "total=4.5",
+   "desc": "Over/Under",
+   "outcomes": {
+    "12": "Over 4.5",
+    "13": "Under 4.5"
+   }
+  },
+  {
+   "id": "18",
+   "specifier": "total=5.5",
+   "desc": "Over/Under",
+   "outcomes": {
+    "12": "Over 5.5",
+    "13": "Under 5.5"
+   }
+  },
+  {
+   "id": "10",
+   "specifier": null,
+   "desc": "Double Chance",
+   "outcomes": {
+    "9": "Home or Draw",
+    "10": "Home or Away",
+    "11": "Draw or Away"
+   }
+  },
+  {
+   "id": "19",
+   "specifier": "total=0.5",
+   "desc": "Arsenal Over/Under",
+   "outcomes": {
+    "12": "Over 0.5",
+    "13": "Under 0.5"
+   }
+  },
+  {
+   "id": "19",
+   "specifier": "total=1.5",
+   "desc": "Arsenal Over/Under",
+   "outcomes": {
+    "12": "Over 1.5",
+    "13": "Under 1.5"
+   }
+  },
+  {
+   "id": "19",
+   "specifier": "total=2.5",
+   "desc": "Arsenal Over/Under",
+   "outcomes": {
+    "12": "Over 2.5",
+    "13": "Under 2.5"
+   }
+  },
+  {
+   "id": "19",
+   "specifier": "total=3.5",
+   "desc": "Arsenal Over/Under",
+   "outcomes": {
+    "12": "Over 3.5",
+    "13": "Under 3.5"
+   }
+  },
+  {
+   "id": "19",
+   "specifier": "total=4.5",
+   "desc": "Arsenal Over/Under",
+   "outcomes": {
+    "12": "Over 4.5",
+    "13": "Under 4.5"
+   }
+  },
+  {
+   "id": "20",
+   "specifier": "total=0.5",
+   "desc": "Leeds United Over/Under",
+   "outcomes": {
+    "12": "Over 0.5",
+    "13": "Under 0.5"
+   }
+  },
+  {
+   "id": "20",
+   "specifier": "total=1.5",
+   "desc": "Leeds United Over/Under",
+   "outcomes": {
+    "12": "Over 1.5",
+    "13": "Under 1.5"
+   }
+  },
+  {
+   "id": "20",
+   "specifier": "total=2.5",
+   "desc": "Leeds United Over/Under",
+   "outcomes": {
+    "12": "Over 2.5",
+    "13": "Under 2.5"
+   }
+  },
+  {
+   "id": "29",
+   "specifier": null,
+   "desc": "GG/NG",
+   "outcomes": {
+    "74": "Yes",
+    "76": "No"
+   }
+  },
+  {
+   "id": "11",
+   "specifier": null,
+   "desc": "Draw No Bet",
+   "outcomes": {
+    "4": "Home",
+    "5": "Away"
+   }
+  },
+  {
+   "id": "45",
+   "specifier": null,
+   "desc": "Correct Score",
+   "outcomes": {
+    "274": "0:0",
+    "276": "1:0",
+    "278": "2:0",
+    "280": "3:0",
+    "282": "4:0",
+    "284": "0:1",
+    "286": "1:1",
+    "288": "2:1",
+    "290": "3:1",
+    "292": "4:1",
+    "294": "0:2",
+    "296": "1:2",
+    "298": "2:2",
+    "300": "3:2",
+    "302": "4:2",
+    "304": "0:3",
+    "306": "1:3",
+    "308": "2:3",
+    "310": "3:3",
+    "312": "4:3",
+    "314": "0:4",
+    "316": "1:4",
+    "318": "2:4",
+    "320": "3:4",
+    "322": "4:4",
+    "324": "Other"
+   }
+  },
+  {
+   "id": "47",
+   "specifier": null,
+   "desc": "Half Time/Full Time",
+   "outcomes": {
+    "418": "Home/Home",
+    "420": "Home/Draw",
+    "422": "Home/Away",
+    "424": "Draw/Home",
+    "426": "Draw/Draw",
+    "428": "Draw/Away",
+    "430": "Away/Home",
+    "432": "Away/Draw",
+    "434": "Away/Away"
+   }
+  },
+  {
+   "id": "58",
+   "specifier": "total=1.5",
+   "desc": "Both Halves Over 1.5",
+   "outcomes": {
+    "74": "Yes",
+    "76": "No"
+   }
+  },
+  {
+   "id": "59",
+   "specifier": "total=1.5",
+   "desc": "Both Halves Under 1.5",
+   "outcomes": {
+    "74": "Yes",
+    "76": "No"
+   }
+  },
+  {
+   "id": "26",
+   "specifier": null,
+   "desc": "Odd/Even",
+   "outcomes": {
+    "70": "Odd",
+    "72": "Even"
+   }
+  },
+  {
+   "id": "27",
+   "specifier": null,
+   "desc": "Home Team Odd/Even",
+   "outcomes": {
+    "70": "Odd",
+    "72": "Even"
+   }
+  },
+  {
+   "id": "28",
+   "specifier": null,
+   "desc": "Away Team Odd/Even",
+   "outcomes": {
+    "70": "Odd",
+    "72": "Even"
+   }
+  },
+  {
+   "id": "60",
+   "specifier": null,
+   "desc": "1st Half - 1X2",
+   "outcomes": {
+    "1": "Home",
+    "2": "Draw",
+    "3": "Away"
+   }
+  },
+  {
+   "id": "68",
+   "specifier": "total=1",
+   "desc": "1st Half - Over/Under",
+   "outcomes": {
+    "12": "Over 1",
+    "13": "Under 1"
+   }
+  },
+  {
+   "id": "68",
+   "specifier": "total=2",
+   "desc": "1st Half - Over/Under",
+   "outcomes": {
+    "12": "Over 2",
+    "13": "Under 2"
+   }
+  },
+  {
+   "id": "68",
+   "specifier": "total=3",
+   "desc": "1st Half - Over/Under",
+   "outcomes": {
+    "12": "Over 3",
+    "13": "Under 3"
+   }
+  },
+  {
+   "id": "68",
+   "specifier": "total=0.5",
+   "desc": "1st Half - Over/Under",
+   "outcomes": {
+    "12": "Over 0.5",
+    "13": "Under 0.5"
+   }
+  },
+  {
+   "id": "68",
+   "specifier": "total=1.5",
+   "desc": "1st Half - Over/Under",
+   "outcomes": {
+    "12": "Over 1.5",
+    "13": "Under 1.5"
+   }
+  },
+  {
+   "id": "68",
+   "specifier": "total=2.5",
+   "desc": "1st Half - Over/Under",
+   "outcomes": {
+    "12": "Over 2.5",
+    "13": "Under 2.5"
+   }
+  },
+  {
+   "id": "63",
+   "specifier": null,
+   "desc": "1st Half - Double Chance",
+   "outcomes": {
+    "9": "Home or Draw",
+    "10": "Home or Away",
+    "11": "Draw or Away"
+   }
+  },
+  {
+   "id": "75",
+   "specifier": null,
+   "desc": "1st Half - GG/NG",
+   "outcomes": {
+    "74": "Yes",
+    "76": "No"
+   }
+  },
+  {
+   "id": "81",
+   "specifier": null,
+   "desc": "1st Half - Correct Score",
+   "outcomes": {
+    "462": "0:0",
+    "464": "1:1",
+    "466": "2:2",
+    "468": "1:0",
+    "470": "2:0",
+    "472": "2:1",
+    "474": "0:1",
+    "476": "0:2",
+    "478": "1:2",
+    "480": "Other"
+   }
+  },
+  {
+   "id": "71",
+   "specifier": "variant=sr:exact_goals:3+",
+   "desc": "1st Half - Exact Goals",
+   "outcomes": {
+    "sr:exact_goals:3+:88": "0",
+    "sr:exact_goals:3+:89": "1",
+    "sr:exact_goals:3+:90": "2",
+    "sr:exact_goals:3+:91": "3+"
+   }
+  },
+  {
+   "id": "552",
+   "specifier": null,
+   "desc": "1st Half - Multigoals",
+   "outcomes": {
+    "1746": "1-2",
+    "1747": "1-3",
+    "1748": "2-3",
+    "1749": "4+",
+    "1805": "No goal"
+   }
+  },
+  {
+   "id": "74",
+   "specifier": null,
+   "desc": "1st Half - Odd/Even",
+   "outcomes": {
+    "70": "Odd",
+    "72": "Even"
+   }
+  },
+  {
+   "id": "15",
+   "specifier": "variant=sr:winning_margin:3+",
+   "desc": "Winning Margin",
+   "outcomes": {
+    "sr:winning_margin:3+:113": "Home by 1",
+    "sr:winning_margin:3+:114": "Home by 2",
+    "sr:winning_margin:3+:115": "Home by 3+",
+    "sr:winning_margin:3+:116": "Away by 1",
+    "sr:winning_margin:3+:117": "Away by 2",
+    "sr:winning_margin:3+:118": "Away by 3+",
+    "sr:winning_margin:3+:119": "Draw"
+   }
+  },
+  {
+   "id": "21",
+   "specifier": "variant=sr:exact_goals:6+",
+   "desc": "Exact Goals",
+   "outcomes": {
+    "sr:exact_goals:6+:68": "0",
+    "sr:exact_goals:6+:69": "1",
+    "sr:exact_goals:6+:70": "2",
+    "sr:exact_goals:6+:71": "3",
+    "sr:exact_goals:6+:72": "4",
+    "sr:exact_goals:6+:73": "5",
+    "sr:exact_goals:6+:74": "6+"
+   }
+  },
+  {
+   "id": "31",
+   "specifier": null,
+   "desc": "Home Team Clean Sheet",
+   "outcomes": {
+    "74": "Yes",
+    "76": "No"
+   }
+  },
+  {
+   "id": "32",
+   "specifier": null,
+   "desc": "Away Team Clean Sheet",
+   "outcomes": {
+    "74": "Yes",
+    "76": "No"
+   }
+  },
+  {
+   "id": "33",
+   "specifier": null,
+   "desc": "Home Team to Win to Nil",
+   "outcomes": {
+    "74": "Yes",
+    "76": "No"
+   }
+  },
+  {
+   "id": "34",
+   "specifier": null,
+   "desc": "Away Team to Win to Nil",
+   "outcomes": {
+    "74": "Yes",
+    "76": "No"
+   }
+  },
+  {
+   "id": "52",
+   "specifier": null,
+   "desc": "Highest Scoring Half",
+   "outcomes": {
+    "436": "1st half",
+    "438": "2nd half",
+    "440": "Equal"
+   }
+  },
+  {
+   "id": "37",
+   "specifier": "total=1.5",
+   "desc": "1X2 & Over/Under 1.5",
+   "outcomes": {
+    "794": "Home & Under 1.5",
+    "796": "Home & Over 1.5",
+    "798": "Draw & Under 1.5",
+    "800": "Draw & Over 1.5",
+    "802": "Away & Under 1.5",
+    "804": "Away & Over 1.5"
+   }
+  },
+  {
+   "id": "37",
+   "specifier": "total=2.5",
+   "desc": "1X2 & Over/Under 2.5",
+   "outcomes": {
+    "794": "Home & Under 2.5",
+    "796": "Home & Over 2.5",
+    "798": "Draw & Under 2.5",
+    "800": "Draw & Over 2.5",
+    "802": "Away & Under 2.5",
+    "804": "Away & Over 2.5"
+   }
+  },
+  {
+   "id": "37",
+   "specifier": "total=3.5",
+   "desc": "1X2 & Over/Under 3.5",
+   "outcomes": {
+    "794": "Home & Under 3.5",
+    "796": "Home & Over 3.5",
+    "798": "Draw & Under 3.5",
+    "800": "Draw & Over 3.5",
+    "802": "Away & Under 3.5",
+    "804": "Away & Over 3.5"
+   }
+  },
+  {
+   "id": "37",
+   "specifier": "total=4.5",
+   "desc": "1X2 & Over/Under 4.5",
+   "outcomes": {
+    "794": "Home & Under 4.5",
+    "796": "Home & Over 4.5",
+    "798": "Draw & Under 4.5",
+    "800": "Draw & Over 4.5",
+    "802": "Away & Under 4.5",
+    "804": "Away & Over 4.5"
+   }
+  },
+  {
+   "id": "35",
+   "specifier": null,
+   "desc": "1X2 & GG/NG",
+   "outcomes": {
+    "78": "Home & Yes",
+    "80": "Home & No",
+    "82": "Draw & Yes",
+    "84": "Draw & No",
+    "86": "Away & Yes",
+    "88": "Away & No"
+   }
+  },
+  {
+   "id": "36",
+   "specifier": "total=2.5",
+   "desc": "Over/Under & GG/NG",
+   "outcomes": {
+    "90": "Over 2.5 & Yes",
+    "92": "Under 2.5 & Yes",
+    "94": "Over 2.5 & No",
+    "96": "Under 2.5 & No"
+   }
+  },
+  {
+   "id": "818",
+   "specifier": "total=1.5",
+   "desc": "Halftime/Fulltime & Over/Under 1.5",
+   "outcomes": {
+    "1836": "Home/Home & Under 1.5",
+    "1839": "Draw/Home & Under 1.5",
+    "1840": "Draw/draw & Under 1.5",
+    "1841": "Draw/Away & Under 1.5",
+    "1844": "Away/Away & Under 1.5",
+    "1845": "Home/Home & Over 1.5",
+    "1846": "Home/Draw & Over 1.5",
+    "1847": "Home/Away & Over 1.5",
+    "1848": "Draw/Home & Over 1.5",
+    "1849": "Draw/Draw & over 1.5",
+    "1850": "Draw/Away & Over 1.5",
+    "1851": "Away/Home & Over 1.5",
+    "1852": "Away/Draw & Over 1.5",
+    "1853": "Away/Away & Over 1.5"
+   }
+  },
+  {
+   "id": "818",
+   "specifier": "total=2.5",
+   "desc": "Halftime/Fulltime & Over/Under 2.5",
+   "outcomes": {
+    "1836": "Home/Home & Under 2.5",
+    "1837": "Home/Draw & Under 2.5",
+    "1839": "Draw/Home & Under 2.5",
+    "1840": "Draw/draw & Under 2.5",
+    "1841": "Draw/Away & Under 2.5",
+    "1843": "Away/Draw & Under 2.5",
+    "1844": "Away/Away & Under 2.5",
+    "1845": "Home/Home & Over 2.5",
+    "1846": "Home/Draw & Over 2.5",
+    "1847": "Home/Away & Over 2.5",
+    "1848": "Draw/Home & Over 2.5",
+    "1849": "Draw/Draw & over 2.5",
+    "1850": "Draw/Away & Over 2.5",
+    "1851": "Away/Home & Over 2.5",
+    "1852": "Away/Draw & Over 2.5",
+    "1853": "Away/Away & Over 2.5"
+   }
+  },
+  {
+   "id": "818",
+   "specifier": "total=3.5",
+   "desc": "Halftime/Fulltime & Over/Under 3.5",
+   "outcomes": {
+    "1836": "Home/Home & Under 3.5",
+    "1837": "Home/Draw & Under 3.5",
+    "1838": "Home/Away & Under 3.5",
+    "1839": "Draw/Home & Under 3.5",
+    "1840": "Draw/draw & Under 3.5",
+    "1841": "Draw/Away & Under 3.5",
+    "1842": "Away/Home & Under 3.5",
+    "1843": "Away/Draw & Under 3.5",
+    "1844": "Away/Away & Under 3.5",
+    "1845": "Home/Home & Over 3.5",
+    "1846": "Home/Draw & Over 3.5",
+    "1847": "Home/Away & Over 3.5",
+    "1848": "Draw/Home & Over 3.5",
+    "1849": "Draw/Draw & over 3.5",
+    "1850": "Draw/Away & Over 3.5",
+    "1851": "Away/Home & Over 3.5",
+    "1852": "Away/Draw & Over 3.5",
+    "1853": "Away/Away & Over 3.5"
+   }
+  },
+  {
+   "id": "818",
+   "specifier": "total=4.5",
+   "desc": "Halftime/Fulltime & Over/Under 4.5",
+   "outcomes": {
+    "1836": "Home/Home & Under 4.5",
+    "1837": "Home/Draw & Under 4.5",
+    "1838": "Home/Away & Under 4.5",
+    "1839": "Draw/Home & Under 4.5",
+    "1840": "Draw/draw & Under 4.5",
+    "1841": "Draw/Away & Under 4.5",
+    "1842": "Away/Home & Under 4.5",
+    "1843": "Away/Draw & Under 4.5",
+    "1844": "Away/Away & Under 4.5",
+    "1845": "Home/Home & Over 4.5",
+    "1846": "Home/Draw & Over 4.5",
+    "1847": "Home/Away & Over 4.5",
+    "1848": "Draw/Home & Over 4.5",
+    "1849": "Draw/Draw & over 4.5",
+    "1850": "Draw/Away & Over 4.5",
+    "1851": "Away/Home & Over 4.5",
+    "1852": "Away/Draw & Over 4.5",
+    "1853": "Away/Away & Over 4.5"
+   }
+  },
+  {
+   "id": "820",
+   "specifier": null,
+   "desc": "Halftime/Fulltime & Exact Goals",
+   "outcomes": {
+    "1854": "draw/draw & 0",
+    "1855": "Arsenal/Arsenal & 1",
+    "1856": "draw/Arsenal & 1",
+    "1857": "draw/Leeds United & 1",
+    "1858": "Leeds United/Leeds United & 1",
+    "1859": "Arsenal/Arsenal & 2",
+    "1860": "Arsenal/draw & 2",
+    "1861": "draw/Arsenal & 2",
+    "1862": "draw/draw & 2",
+    "1863": "draw/Leeds United & 2",
+    "1864": "Leeds United/draw & 2",
+    "1865": "Leeds United/Leeds United & 2",
+    "1866": "Arsenal/Arsenal & 3",
+    "1867": "Arsenal/Leeds United & 3",
+    "1868": "draw/Arsenal & 3",
+    "1869": "draw/Leeds United & 3",
+    "1870": "Leeds United/Arsenal & 3",
+    "1871": "Leeds United/Leeds United & 3",
+    "1872": "Arsenal/Arsenal & 4",
+    "1873": "Arsenal/draw & 4",
+    "1874": "Arsenal/Leeds United & 4",
+    "1875": "draw/Arsenal & 4",
+    "1876": "draw/draw & 4",
+    "1877": "draw/Leeds United & 4",
+    "1878": "Leeds United/Arsenal & 4",
+    "1879": "Leeds United/draw & 4",
+    "1880": "Leeds United/Leeds United & 4",
+    "1881": "Arsenal/Arsenal & 5+",
+    "1882": "Arsenal/draw & 5+",
+    "1883": "Arsenal/Leeds United & 5+",
+    "1884": "draw/Arsenal & 5+",
+    "1885": "draw/draw & 5+",
+    "1886": "draw/Leeds United & 5+",
+    "1887": "Leeds United/Arsenal & 5+",
+    "1888": "Leeds United/draw & 5+",
+    "1889": "Leeds United/Leeds United & 5+"
+   }
+  }
+ ]
+}

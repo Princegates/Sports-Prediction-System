@@ -9,6 +9,8 @@ the shapes the live site actually sends.
 from __future__ import annotations
 
 import datetime as dt
+import json
+from pathlib import Path
 
 import pytest
 import requests
@@ -130,15 +132,127 @@ def test_known_picks_translate_to_sportybet_ids(market, selection, expected):
     assert sb.translate(market, selection) == expected
 
 
+@pytest.mark.parametrize("market,selection,expected", [
+    ("Correct Score", "2-1", ("45", None, "288")),
+    ("HT Result", "Home", ("60", None, "1")),
+    ("Home Goals 1.5", "Over 1.5", ("19", "total=1.5", "12")),
+    ("HT/FT", "X/1", ("47", None, "424")),
+    ("HT/FT & Exact Goals", "2/X & 2 goals", ("820", None, "1864")),
+    # Same bet under SportyBet's own name for it.
+    ("Both Teams Clean Sheet", "Yes", ("18", "total=0.5", "13")),
+    ("Total Goals Range", "5+ goals", ("18", "total=4.5", "12")),
+    ("Result & Clean Sheet", "Home & Clean Sheet Yes", ("33", None, "74")),
+])
+def test_the_wider_markets_translate_too(market, selection, expected):
+    assert sb.translate(market, selection) == expected
+
+
 @pytest.mark.parametrize("market,selection", [
-    ("Correct Score", "2-1"),
-    ("HT Result", "Home"),
-    ("Home Goals 1.5", "Over 1.5"),
+    # Ours counts full-time goals; SportyBet's lookalike counts first-half ones.
+    ("HT Result & Total Goals 1.5", "Home & Over 1.5"),
+    ("HT Result & BTTS", "Home & BTTS Yes"),
+    ("HT Double Chance & BTTS", "Home/Draw & BTTS Yes"),
+    # SportyBet's margin buckets are 1, 2, 3+; ours 1, 2, 3, 4+.
+    ("Winning Margin", "Home by exactly 3"),
+    ("Winning Margin", "Away by 4+"),
+    ("Correct Score", "5-1"),  # SportyBet's "Other" isn't the score picked
+    ("Result & Clean Sheet", "Home & Clean Sheet No"),
+    ("HT/FT & BTTS", "1/1 & BTTS Yes"),
     ("Total Goals 2.5", "Over 3.5"),  # a selection from a different line
     ("Total Goals 2", "Over 2"),  # a whole line settles differently (a push)
 ])
-def test_a_market_without_confirmed_ids_is_not_approximated(market, selection):
+def test_a_pick_without_an_identical_sportybet_bet_is_not_approximated(market, selection):
     assert sb.translate(market, selection) is None
+
+
+# --- the table against SportyBet's own market list -----------------------------
+
+_CAPTURE = json.loads((Path(__file__).parent / "fixtures" / "sportybet_event_markets.json").read_text())
+_ON_SITE = {(m["id"], m["specifier"]): m["outcomes"] for m in _CAPTURE["markets"]}
+# Outcome ids mean the same on every line of a market; a line leaves out the
+# combinations it makes impossible (a half-time home lead can't become an away
+# win with under 2.5 goals), so existence is checked across all its lines.
+_OUTCOMES_BY_MARKET: dict[str, set[str]] = {}
+for _m in _CAPTURE["markets"]:
+    _OUTCOMES_BY_MARKET.setdefault(_m["id"], set()).update(_m["outcomes"])
+
+
+def test_every_translation_names_an_outcome_sportybet_offers():
+    """Each (market, specifier, outcome) must exist on SportyBet's real match
+    page. Lines a match doesn't happen to carry (total=6.5) are skipped;
+    markets without a line must all be there, which catches a mistyped id."""
+
+    checked = 0
+    for (market, selection), (market_id, specifier, outcome_id) in sb._MARKETS.items():
+        offered = _ON_SITE.get((market_id, specifier))
+        if offered is None:
+            assert specifier and specifier.startswith("total="), f"{market} / {selection}: no SportyBet market {market_id} {specifier}"
+            continue
+        assert outcome_id in _OUTCOMES_BY_MARKET[market_id], f"{market} / {selection}: SportyBet {market_id} has no outcome {outcome_id}"
+        checked += 1
+    assert checked > 200
+
+
+_HT_FT = {"1": "Home", "X": "Draw", "2": "Away"}
+
+
+def _expected_desc(market: str, selection: str) -> str | None:
+    """What SportyBet calls our selection, for markets named the same way on
+    both sides. None for the ones booked under SportyBet's own name for the
+    same bet (checked by hand in the table's comments)."""
+
+    if market in ("Correct Score", "HT Correct Score"):
+        return selection.replace("-", ":")
+    if market in ("Double Chance", "HT Double Chance"):
+        return selection.replace("/", " or ")
+    if market == "HT/FT":
+        ht, ft = selection.split("/")
+        return f"{_HT_FT[ht]}/{_HT_FT[ft]}"
+    if market.startswith("HT/FT & Total Goals"):
+        htft, total = selection.split(" & ")
+        ht, ft = htft.split("/")
+        return f"{_HT_FT[ht]}/{_HT_FT[ft]} & {total}".lower()
+    if market == "HT/FT & Exact Goals":
+        htft, goals = selection.split(" & ")
+        ht, ft = htft.split("/")
+        return f"{_HT_FT[ht]}/{_HT_FT[ft]} & {goals.split(' ')[0]}".lower()
+    if market == "Result & BTTS":
+        return selection.replace("BTTS ", "")
+    if market == "Winning Margin":
+        return selection.replace("exactly ", "")
+    if market == "Total Goals Range":
+        return None if selection == "5+ goals" else selection.split(" ")[0]
+    if market.startswith(("Total Goals ", "Home Goals ", "Away Goals ", "HT Total Goals ",
+                          "Result & Total Goals ", "BTTS & Total Goals ", "HT Exact Goals", "HT Result",
+                          "Match Result", "Both Teams To Score", "HT Both Teams To Score", "Draw No Bet",
+                          "Half With Most Goals")) and "Odd/Even" not in market:
+        if market.startswith("BTTS & Total Goals "):
+            btts, total = selection.split(" & ")
+            return f"{total} & {btts}"
+        return selection.removesuffix(" Win").replace("1st Half", "1st half").replace("2nd Half", "2nd half")
+    if "Odd/Even" in market or market in ("Home Clean Sheet", "Away Clean Sheet"):
+        return selection
+    return None
+
+
+def test_each_translation_means_what_we_picked():
+    """The outcome's name on SportyBet has to say what our selection says --
+    "2-1" is "2:1", "X/1" is "Draw/Home" -- not merely exist."""
+
+    team = {"Arsenal": "Home", "Leeds United": "Away", "draw": "Draw"}
+    compared = 0
+    for (market, selection), (market_id, specifier, outcome_id) in sb._MARKETS.items():
+        expected = _expected_desc(market, selection)
+        offered = _ON_SITE.get((market_id, specifier))
+        if expected is None or offered is None or outcome_id not in offered:
+            continue
+        actual = offered[outcome_id]
+        if market == "HT/FT & Exact Goals":  # SportyBet names the teams here
+            htft, goals = actual.split(" & ")
+            actual = "/".join(team[side] for side in htft.split("/")) + f" & {goals}"
+        assert actual.lower() == expected.lower(), f"{market} / {selection}: SportyBet calls it {actual!r}"
+        compared += 1
+    assert compared > 150
 
 
 # --- finding the match -------------------------------------------------------
@@ -221,7 +335,7 @@ def test_legs_the_site_cant_take_are_named_and_the_rest_booked():
     legs = [
         _leg(1, "Manchester United FC", "Tottenham Hotspur FC", MAN_UTD_SPURS),
         _leg(2, "Real Madrid", "Villarreal CF", REAL_VILLARREAL),  # refused by the site
-        _leg(3, "Aston Villa", "Brentford FC", VILLA_BRENTFORD, "Correct Score", "1-0"),  # market not known
+        _leg(3, "Aston Villa", "Brentford FC", VILLA_BRENTFORD, "HT Result & BTTS", "Home & BTTS Yes"),  # no such bet
         _leg(4, "Liverpool FC", "Chelsea FC", MAN_UTD_SPURS),  # not listed
     ]
 
@@ -229,6 +343,10 @@ def test_legs_the_site_cant_take_are_named_and_the_rest_booked():
 
     assert result.code == "9Y8YN0"
     assert result.unavailable_match_ids == [2, 3, 4]
+    assert "wouldn't take this pick" in result.reasons[2]
+    assert result.reasons[3] == "SportyBet Ghana has no bet that settles like HT Result & BTTS: Home & BTTS Yes."
+    assert result.reasons[4] == "Not listed on SportyBet Ghana right now."
+    assert 1 not in result.reasons
     assert [s["eventId"] for s in session.posts[0]["json"]["selections"]] == ["sr:match:72221308", "sr:match:72478622"]
 
 
@@ -423,4 +541,5 @@ def test_the_site_step_reports_what_the_code_leaves_out(monkeypatch):
 
     assert code.status == "code_ready" and code.code == "9Y8YN0"
     assert code.unavailable_match_ids == [2]
+    assert code.as_json()["unavailable_reasons"] == {"2": "Not listed on SportyBet Ghana right now."}
     assert "1 of these 2 picks" in code.message

@@ -323,7 +323,7 @@ def test_a_site_that_skips_a_match_says_which(auth_headers, priced_match, sites)
 
     code = body["site_codes"][0]
     assert code["unavailable_match_ids"] == [priced_match.id]
-    assert "doesn't offer 1 of these 1 picks" in code["message"]
+    assert "couldn't take 1 of these 1 picks" in code["message"]
 
 
 def test_no_connected_site_saves_the_slip_without_inventing_a_code(auth_headers, db_session, priced_match, sites):

@@ -14,9 +14,10 @@ answers without an account:
    against "Villarreal" on its own. A leg with no such event, or with two
    equally good ones, is left out rather than guessed.
 2. **Translate the pick.** Our market and selection become SportyBet's
-   Sportradar market id, specifier and outcome id (``_MARKETS``). Only
-   markets whose ids were read off the site itself are here; any other
-   market is left out, never approximated by a neighbouring one.
+   Sportradar market id, specifier and outcome id (``_MARKETS``), read off
+   the site's own match page. A pick translates only to a bet that settles
+   the same way; one with no such bet is left out, never approximated by a
+   neighbouring one.
 3. **Book it.** ``orders/share`` takes the selections and returns the
    booking code, a link that opens the slip, and any selections it wouldn't
    include (a suspended market, a line it doesn't offer on that match).
@@ -105,56 +106,140 @@ KICKOFF_TOLERANCE = dt.timedelta(days=1)
 NAME_THRESHOLD = 0.82
 
 
-# (our market, our selection) -> (marketId, specifier, outcomeId). Every id
-# here was read from SportyBet's own responses; see the module docstring.
-_MARKETS: dict[tuple[str, str], tuple[str, str | None, str]] = {
-    ("Match Result", "Home Win"): ("1", None, "1"),
-    ("Match Result", "Draw"): ("1", None, "2"),
-    ("Match Result", "Away Win"): ("1", None, "3"),
-    ("Double Chance", "Home/Draw"): ("10", None, "9"),
-    ("Double Chance", "Home/Away"): ("10", None, "10"),
-    ("Double Chance", "Draw/Away"): ("10", None, "11"),
-    ("Both Teams To Score", "Yes"): ("29", None, "74"),
-    ("Both Teams To Score", "No"): ("29", None, "76"),
-    ("Draw No Bet", "Home"): ("11", None, "4"),
-    ("Draw No Bet", "Away"): ("11", None, "5"),
-    ("Total Goals Odd/Even", "Odd"): ("26", None, "70"),
-    ("Total Goals Odd/Even", "Even"): ("26", None, "72"),
-}
-# "BTTS & Total Goals 2.5" / "Yes & Over 2.5" -> market 36, total=2.5.
-_BTTS_TOTAL_OUTCOMES = {("Over", "Yes"): "90", ("Under", "Yes"): "92", ("Over", "No"): "94", ("Under", "No"): "96"}
+# (our market, our selection) -> (marketId, specifier, outcomeId).
+#
+# Every id here was read off SportyBet's own match page (factsCenter/event,
+# Arsenal vs Leeds United): Sportradar's market ids, whose outcome ids are
+# the same on every match. A pick maps only to a SportyBet bet that settles
+# identically -- sometimes under SportyBet's own name for it ("Both Teams
+# Clean Sheet: Yes" is its "Under 0.5") -- and otherwise not at all. Four of
+# ours look like SportyBet markets but aren't: our "HT Result & Total Goals",
+# "HT Result & BTTS" and "HT Double Chance & BTTS" count full-time goals where
+# SportyBet's count first-half ones, so they, like "HT/FT & BTTS", "HT + 2H
+# Result" and "HT + FT Double Chance", have no entry.
+Selection = tuple[str, str | None, str]
+_RESULT = {"Home": 0, "Draw": 1, "Away": 2}
+_SHORT = {"1": "Home", "X": "Draw", "2": "Away"}
+_HALF_LINES = [f"{n}.5" for n in range(10)]
 
 
-def translate(market: str, selection: str) -> tuple[str, str | None, str] | None:
+def _goal_label(n: str) -> str:
+    return "5+ goals" if n == "5+" else f"{n} goal" + ("" if n == "1" else "s")
+
+
+def _build_markets() -> dict[tuple[str, str], Selection]:
+    t: dict[tuple[str, str], Selection] = {}
+
+    def add(market: str, market_id: str, specifier: str | None, outcomes: dict[str, str]) -> None:
+        for selection, outcome_id in outcomes.items():
+            t[(market, selection)] = (market_id, specifier, outcome_id)
+
+    yes_no = {"Yes": "74", "No": "76"}
+    odd_even = {"Odd": "70", "Even": "72"}
+    double_chance = {"Home/Draw": "9", "Home/Away": "10", "Draw/Away": "11"}
+
+    # -- full time --------------------------------------------------------
+    add("Match Result", "1", None, {"Home Win": "1", "Draw": "2", "Away Win": "3"})
+    add("Double Chance", "10", None, double_chance)
+    add("Both Teams To Score", "29", None, yes_no)
+    add("Draw No Bet", "11", None, {"Home": "4", "Away": "5"})
+    add("Total Goals Odd/Even", "26", None, odd_even)
+    add("Home Goals Odd/Even", "27", None, odd_even)
+    add("Away Goals Odd/Even", "28", None, odd_even)
+    add("Home Clean Sheet", "31", None, yes_no)
+    add("Away Clean Sheet", "32", None, yes_no)
+    # Neither side conceding is no goals at all; otherwise at least one.
+    add("Both Teams Clean Sheet", "18", "total=0.5", {"Yes": "13", "No": "12"})
+    for line in _HALF_LINES:
+        add(f"Total Goals {line}", "18", f"total={line}", {f"Over {line}": "12", f"Under {line}": "13"})
+        add(f"Home Goals {line}", "19", f"total={line}", {f"Over {line}": "12", f"Under {line}": "13"})
+        add(f"Away Goals {line}", "20", f"total={line}", {f"Over {line}": "12", f"Under {line}": "13"})
+        add(f"BTTS & Total Goals {line}", "36", f"total={line}", {
+            f"Yes & Over {line}": "90", f"Yes & Under {line}": "92",
+            f"No & Over {line}": "94", f"No & Under {line}": "96",
+        })
+        add(f"Result & Total Goals {line}", "37", f"total={line}", {
+            f"Home & Under {line}": "794", f"Home & Over {line}": "796",
+            f"Draw & Under {line}": "798", f"Draw & Over {line}": "800",
+            f"Away & Under {line}": "802", f"Away & Over {line}": "804",
+        })
+    add("Result & BTTS", "35", None, {
+        "Home & BTTS Yes": "78", "Home & BTTS No": "80", "Draw & BTTS Yes": "82",
+        "Draw & BTTS No": "84", "Away & BTTS Yes": "86", "Away & BTTS No": "88",
+    })
+    # Correct Score runs 0:0 to 4:4 (274, 276, ... 322: +2 per home goal,
+    # +10 per away goal). Anything bigger is SportyBet's "Other", which isn't
+    # the score picked.
+    add("Correct Score", "45", None,
+        {f"{h}-{a}": str(274 + 2 * (5 * a + h)) for h in range(5) for a in range(5)})
+    # SportyBet's margin runs 1, 2, 3+; ours 1, 2, 3, 4+. Only the matching
+    # buckets translate.
+    add("Winning Margin", "15", "variant=sr:winning_margin:3+", {
+        "Home by exactly 1": "sr:winning_margin:3+:113", "Home by exactly 2": "sr:winning_margin:3+:114",
+        "Away by exactly 1": "sr:winning_margin:3+:116", "Away by exactly 2": "sr:winning_margin:3+:117",
+        "Draw": "sr:winning_margin:3+:119",
+    })
+    add("Total Goals Range", "21", "variant=sr:exact_goals:6+",
+        {_goal_label(str(n)): f"sr:exact_goals:6+:{68 + n}" for n in range(5)})
+    add("Total Goals Range", "18", "total=4.5", {"5+ goals": "12"})
+    # The winning side keeping a clean sheet is SportyBet's "win to nil"; a
+    # clean-sheet draw is 0-0. The "No" halves have no single SportyBet bet.
+    add("Result & Clean Sheet", "33", None, {"Home & Clean Sheet Yes": "74"})
+    add("Result & Clean Sheet", "34", None, {"Away & Clean Sheet Yes": "74"})
+    add("Result & Clean Sheet", "18", "total=0.5", {"Draw & Clean Sheet Yes": "13"})
+
+    # -- half time --------------------------------------------------------
+    add("HT Result", "60", None, {"Home": "1", "Draw": "2", "Away": "3"})
+    add("HT Double Chance", "63", None, double_chance)
+    add("HT Both Teams To Score", "75", None, yes_no)
+    add("HT Total Goals Odd/Even", "74", None, odd_even)
+    for line in _HALF_LINES:
+        add(f"HT Total Goals {line}", "68", f"total={line}", {f"Over {line}": "12", f"Under {line}": "13"})
+    add("HT Correct Score", "81", None, {
+        "0-0": "462", "1-1": "464", "2-2": "466", "1-0": "468", "2-0": "470",
+        "2-1": "472", "0-1": "474", "0-2": "476", "1-2": "478",
+    })
+    add("HT Exact Goals", "71", "variant=sr:exact_goals:3+",
+        {k: f"sr:exact_goals:3+:{88 + i}" for i, k in enumerate(["0", "1", "2", "3+"])})
+    add("HT Multigoals", "552", None, {"2-3": "1748", "4+": "1749"})
+    add("HT Multigoals", "68", "total=1.5", {"0-1": "13"})
+
+    # -- half time + full time --------------------------------------------
+    for ht_short, ht in _SHORT.items():
+        for ft_short, ft in _SHORT.items():
+            i = 3 * _RESULT[ht] + _RESULT[ft]
+            add("HT/FT", "47", None, {f"{ht_short}/{ft_short}": str(418 + 2 * i)})
+            add("HT/FT & Total Goals 2.5", "818", "total=2.5", {
+                f"{ht_short}/{ft_short} & Under 2.5": str(1836 + i),
+                f"{ht_short}/{ft_short} & Over 2.5": str(1845 + i),
+            })
+    ht_ft_exact = {
+        ("X/X", "0"): 1854,
+        ("1/1", "1"): 1855, ("X/1", "1"): 1856, ("X/2", "1"): 1857, ("2/2", "1"): 1858,
+        ("1/1", "2"): 1859, ("1/X", "2"): 1860, ("X/1", "2"): 1861, ("X/X", "2"): 1862,
+        ("X/2", "2"): 1863, ("2/X", "2"): 1864, ("2/2", "2"): 1865,
+        ("1/1", "3"): 1866, ("1/2", "3"): 1867, ("X/1", "3"): 1868, ("X/2", "3"): 1869,
+        ("2/1", "3"): 1870, ("2/2", "3"): 1871,
+    }
+    for goals, first in (("4", 1872), ("5+", 1881)):
+        for i, htft in enumerate(["1/1", "1/X", "1/2", "X/1", "X/X", "X/2", "2/1", "2/X", "2/2"]):
+            ht_ft_exact[(htft, goals)] = first + i
+    add("HT/FT & Exact Goals", "820", None,
+        {f"{htft} & {_goal_label(goals)}": str(o) for (htft, goals), o in ht_ft_exact.items()})
+    add("HT & 2H Total Goals 1.5", "58", "total=1.5", {"Over 1.5 HT & Over 1.5 2H": "74"})
+    add("HT & 2H Total Goals 1.5", "59", "total=1.5", {"Under 1.5 HT & Under 1.5 2H": "74"})
+    add("Half With Most Goals", "52", None, {"1st Half": "436", "2nd Half": "438", "Equal": "440"})
+    return t
+
+
+_MARKETS = _build_markets()
+
+
+def translate(market: str, selection: str) -> Selection | None:
     """SportyBet's (marketId, specifier, outcomeId) for one of our picks, or
-    None when this connection doesn't know the market."""
+    None when SportyBet has no bet that settles the same way."""
 
-    fixed = _MARKETS.get((market, selection))
-    if fixed is not None:
-        return fixed
-
-    if market.startswith("Total Goals ") and market != "Total Goals Odd/Even":
-        line = market.removeprefix("Total Goals ")
-        side = {f"Over {line}": "12", f"Under {line}": "13"}.get(selection)
-        if side and _is_half_line(line):
-            return "18", f"total={line}", side
-
-    if market.startswith("BTTS & Total Goals "):
-        line = market.removeprefix("BTTS & Total Goals ")
-        btts, _, total = selection.partition(" & ")
-        over_under = total.removesuffix(f" {line}")
-        outcome = _BTTS_TOTAL_OUTCOMES.get((over_under, btts))
-        if outcome and total.endswith(f" {line}") and _is_half_line(line):
-            return "36", f"total={line}", outcome
-
-    return None
-
-
-def _is_half_line(line: str) -> bool:
-    try:
-        return float(line) % 1 == 0.5
-    except ValueError:
-        return False
+    return _MARKETS.get((market, selection))
 
 
 # --- the event list ----------------------------------------------------------
@@ -365,9 +450,20 @@ class SportyBetConnector:
         if link.startswith("http://"):
             link = "https://" + link.removeprefix("http://")
         included = set(booked.values()) - refused
+        reasons = {}
+        for leg in legs:
+            if translated[leg.match_id] is None:
+                reasons[leg.match_id] = f"{SITE_NAME} has no bet that settles like {leg.market}: {leg.selection}."
+            elif leg.match_id in refused:
+                reasons[leg.match_id] = (
+                    f"{SITE_NAME} wouldn't take this pick -- the market may be closed or not offered for this match."
+                )
+            elif leg.match_id not in included:
+                reasons[leg.match_id] = f"Not listed on {SITE_NAME} right now."
         return ConnectorResult(
             code=str(code), link=link,
             unavailable_match_ids=[leg.match_id for leg in legs if leg.match_id not in included],
+            reasons=reasons,
         )
 
     def _share(self, selections: list[dict]) -> dict:
