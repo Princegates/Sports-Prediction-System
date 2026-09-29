@@ -1,5 +1,7 @@
 import datetime as dt
 
+import pytest
+
 from app.db.models import Match, Team
 from app.prediction_models import elo
 
@@ -46,3 +48,28 @@ def test_rebuild_elo_history_rewards_winner(db_session):
 
     rating_after_for_away = elo.get_rating_before(db_session, away.id, dt.datetime(2024, 8, 2))
     assert rating_after_for_away == ratings[away.id]
+
+
+def test_rebuild_reads_the_k_factor_from_settings(db_session, monkeypatch):
+    """ELO_K_FACTOR used to be read by nothing -- rebuild_elo_history had
+    its own hard-coded default -- so changing it changed no rating."""
+
+    from app.config import get_settings
+
+    home = Team(name="Home FC", league="Test League")
+    away = Team(name="Away FC", league="Test League")
+    db_session.add_all([home, away])
+    db_session.flush()
+    db_session.add(
+        Match(
+            league="Test League", season="2425", date=dt.datetime(2024, 8, 1),
+            home_team_id=home.id, away_team_id=away.id, home_score=1, away_score=0, status="FINISHED",
+        )
+    )
+    db_session.commit()
+
+    gain_at_20 = elo.rebuild_elo_history(db_session, "Test League", k_factor=20.0)[home.id] - 1500.0
+    monkeypatch.setattr(get_settings(), "elo_k_factor", 40.0)
+    gain_from_settings = elo.rebuild_elo_history(db_session, "Test League")[home.id] - 1500.0
+
+    assert gain_from_settings == pytest.approx(2 * gain_at_20)

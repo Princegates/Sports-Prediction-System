@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.db.models import EloHistory, Match
 
 
@@ -68,14 +69,26 @@ def _margin_of_victory_multiplier(goal_diff: int, elo_diff_pre: float) -> float:
 def rebuild_elo_history(
     db: Session,
     league: str,
-    k_factor: float = 20.0,
-    home_advantage: float = 60.0,
-    start_rating: float = 1500.0,
+    k_factor: float | None = None,
+    home_advantage: float | None = None,
+    start_rating: float | None = None,
 ) -> dict[int, float]:
     """Replay all finished matches for ``league`` and persist Elo history.
 
+    Parameters left as None come from settings -- ELO_K_FACTOR,
+    HOME_ADVANTAGE_ELO, ELO_START_RATING -- the same values the ensemble
+    reads at prediction time. They used to be hard-coded defaults here, so
+    setting ELO_K_FACTOR changed nothing, and a changed HOME_ADVANTAGE_ELO
+    predicted with a different home advantage from the one the ratings were
+    built with.
+
     Returns the final rating dict {team_id: rating} for convenience.
     """
+
+    settings = get_settings()
+    k_factor = settings.elo_k_factor if k_factor is None else k_factor
+    home_advantage = settings.home_advantage_elo if home_advantage is None else home_advantage
+    start_rating = settings.elo_start_rating if start_rating is None else start_rating
 
     if league in EUROPEAN_COMPETITIONS:
         raise ValueError(
