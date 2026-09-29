@@ -34,8 +34,8 @@ export function HowItWorks() {
         <span className="eyebrow">Methodology</span>
         <h1>How the predictions are made</h1>
         <p className="lede">
-          No black box. Three named statistical models, a documented blending step, a calibration pass
-          fitted on held-out data, and an outcome selector with an explicit data-quality gate. Here is
+          No black box. Three named statistical models, a blending step fitted and checked on held-out
+          data, and an outcome selector with an explicit data-quality gate. Here is
           each stage, including where it falls short.
         </p>
       </section>
@@ -98,16 +98,19 @@ export function HowItWorks() {
       <section className="doc-section">
         <h2>2. Blending and calibration</h2>
         <p>
-          The three sets of probabilities are combined on configured weights, then renormalized. That
-          gives a sharper prediction than any single model, but a blended probability is not
-          automatically an <em>honest</em> one -- a model can be 70% confident on a set of matches that
-          only happen 55% of the time.
+          The three sets of probabilities are combined on one set of weights, then renormalized. The
+          weights are fitted on a validation split the models never trained on, pooled across every
+          league -- fitting them league by league chased noise in a few hundred matches and did worse
+          on the seasons that followed. A blended probability is not automatically an <em>honest</em>
+          one, though -- a model can be 70% confident on a set of matches that only happen 55% of the
+          time.
         </p>
         <p>
-          So the blend goes through <strong>isotonic regression</strong> fitted on a validation split
-          the models never trained on. This is the step that makes the numbers mean what they say: after
-          calibration, the matches where the system says 70% are matches that historically resolved that
-          way about 70% of the time.
+          So every number is checked against a later, untouched test split. Match-result probabilities
+          come out close to calibrated as blended; an extra per-league correction fitted on top made
+          them worse on that test split and was removed. The goals markets do still get a{" "}
+          <strong>held-out calibration</strong> pass. The result: the matches where the system says 70%
+          are matches that historically resolved that way about 70% of the time.
         </p>
         <div className="doc-callout">
           <h4>Why calibration matters more than accuracy</h4>
@@ -118,6 +121,12 @@ export function HowItWorks() {
             also reports its confidence band, data-quality score and model agreement.
           </p>
         </div>
+        <p>
+          The <strong>confidence band</strong> follows the match-result pick's own probability. On
+          held-out seasons, a pick at 60% or more (HIGH) came in about 7 times in 10; between 45% and
+          60% (MEDIUM), about half the time; below 45% (LOW), about 4 times in 10. A thin match
+          history or models that split over the fixture cap the band lower, whatever the probability.
+        </p>
       </section>
 
       {/* --- Outcome engine --- */}

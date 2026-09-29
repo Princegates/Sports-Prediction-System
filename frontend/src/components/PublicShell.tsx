@@ -189,7 +189,7 @@ export function PublicShell({
           </p>
           <p className="public-footer-copy">
             Built on free and open data sources. Elo · Dixon-Coles Poisson · Gradient Boosting ·
-            Isotonic calibration.
+            Held-out validation.
           </p>
           <p className="public-footer-copy">&copy; 2026 Soccaintel.com. All rights reserved. Powered by Anknovate IT Services.</p>
         </div>

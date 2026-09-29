@@ -128,15 +128,18 @@ prediction logic.
   system with home advantage and a margin-of-victory multiplier, converted to
   calibrated 1X2 probabilities via a fitted logistic model on Elo difference.
 - **Poisson goal model** (`prediction_models/poisson_model.py`): attack/defense
-  strength ratings per team (home/away split) with a Dixon-Coles low-score
-  correction, producing the full score-matrix, 1X2, Over/Under 0.5-4.5, BTTS,
-  and Correct Score markets.
+  strength ratings per team (home/away split), time-decayed (540-day half-life)
+  and shrunk toward league average, with a Dixon-Coles low-score correction,
+  producing the full score-matrix, 1X2, Over/Under 0.5-4.5, BTTS, and Correct
+  Score markets.
 - **Gradient boosting model** (`prediction_models/ml_model.py`): scikit-learn
   model trained on engineered features (form, goal differentials, rest days,
   Elo gap) for 1X2, Over 2.5 and BTTS.
 - **Ensemble + calibration** (`prediction_models/ensemble.py`,
-  `calibration.py`): weighted blend of the three models above, then isotonic
-  regression calibration fit on a held-out validation split.
+  `calibration.py`): weighted blend of the three models above, on one set of
+  weights fitted on every league's validation split pooled; the goals markets
+  are then calibrated on that split. ROADMAP.md 1e has the measurements behind
+  both choices.
 - **Global Most-Likely Outcome Engine** (`outcomes/`): maintains an Outcome
   Registry (market, selection, mutually-exclusive group, minimum data
   requirement) and selects `argmax(probability)` only among outcomes whose
@@ -203,8 +206,10 @@ cp .env.example .env
 python scripts/fetch_openfootball_data.py --league "English Premier League" \
     --seasons 2019-20 2020-21 2021-22 2022-23 2023-24 2024-25 2025-26 2026-27
 
-# 2. Train the models + run a temporal backtest (accuracy/log-loss/Brier/calibration)
-python scripts/backtest.py --league-name "English Premier League"
+# 2. Train the models + run a temporal backtest (accuracy/log-loss/Brier/calibration).
+#    --leagues fits the ensemble's blend weights across every league named;
+#    --league-name "..." retrains a single league on the last saved weights.
+python scripts/backtest.py --leagues "English Premier League"
 
 # 3. Generate predictions for the real scheduled fixtures step 1 already imported
 python scripts/generate_predictions.py --league "English Premier League" --days-ahead 10
@@ -234,7 +239,7 @@ npm run dev   # set VITE_API_URL if the backend isn't on localhost:8000
 docker compose up --build
 # then, one time, run the same data/training steps inside the backend container:
 docker compose exec backend python scripts/fetch_openfootball_data.py --league "English Premier League" --seasons 2022-23 2023-24 2024-25 2025-26 2026-27
-docker compose exec backend python scripts/backtest.py --league-name "English Premier League"
+docker compose exec backend python scripts/backtest.py --leagues "English Premier League"
 docker compose exec backend python scripts/generate_predictions.py --league "English Premier League" --days-ahead 10
 ```
 

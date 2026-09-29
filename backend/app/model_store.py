@@ -18,7 +18,14 @@ from app.prediction_models.ml_model import MLModel
 MODEL_DIR = Path(__file__).resolve().parent.parent / "model_artifacts"
 MODEL_DIR.mkdir(exist_ok=True)
 
-CALIBRATION_MARKETS = ["1x2", "over_2_5", "btts"]
+# No "1x2": a per-league calibrator for the match result is fitted on ~600
+# validation matches, and measured on six leagues' held-out test slices it made
+# every league's probabilities worse -- it learns that slice's quirks (one
+# season's draw rate, say) rather than a lasting bias. The three component
+# models are already close to calibrated on their own; blended with shared
+# weights they need no correction. Files an older backtest left behind are
+# ignored rather than read.
+CALIBRATION_MARKETS = ["over_2_5", "btts"]
 
 # Key under which the cross-league model is stored -- see
 # app.prediction_models.ml_model.build_pooled_training_dataset. Calibration
@@ -43,16 +50,30 @@ def ensemble_weights_path(league: str) -> Path:
     return MODEL_DIR / f"ensemble_weights_{_slug(league)}.json"
 
 
-def save_ensemble_weights(league: str, weights: EnsembleWeights) -> None:
-    ensemble_weights_path(league).write_text(json.dumps({"elo": weights.elo, "poisson": weights.poisson, "ml": weights.ml}))
+def save_ensemble_weights(weights: EnsembleWeights) -> None:
+    ensemble_weights_path(GLOBAL_MODEL_KEY).write_text(
+        json.dumps({"elo": weights.elo, "poisson": weights.poisson, "ml": weights.ml})
+    )
 
 
 def load_ensemble_weights(league: str) -> EnsembleWeights:
-    """Falls back to the fixed settings.ensemble_weight_* default for a
-    league that hasn't had weights fitted yet (``scripts/backtest.py`` is
-    what fits and saves them)."""
+    """The blend weights for ``league`` -- which are the same for every league.
 
-    path = ensemble_weights_path(league)
+    They used to be fitted per league, on that league's ~600 validation
+    matches, and the fit chased noise: the Premier League put 0% on Poisson,
+    La Liga 85%, and on the held-out test slices those weights did worse than
+    one shared set in all six leagues -- even a shared set fitted without
+    seeing the league in question. How much to trust Elo against Poisson
+    against the GBM is a property of the models, not of the league.
+
+    So ``scripts/backtest.py --all-leagues`` fits one set on every league's
+    validation matches pooled, and this returns it, falling back to the
+    settings default (itself set from that pooled fit) before one exists.
+    Per-league files an older backtest left behind are ignored. ``league`` is
+    kept so callers don't change if a league ever has the data to earn its own.
+    """
+
+    path = ensemble_weights_path(GLOBAL_MODEL_KEY)
     if not path.exists():
         return EnsembleWeights.from_settings()
     data = json.loads(path.read_text())

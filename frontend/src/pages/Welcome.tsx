@@ -57,8 +57,8 @@ const MODEL_STACK = [
   },
   {
     step: "04",
-    title: "Blend and calibrate",
-    body: "The three are weighted into one set of probabilities, then passed through isotonic regression fitted on a held-out split -- so a stated 70% has historically happened about 70% of the time.",
+    title: "Blend and check",
+    body: "The three are weighted into one set of probabilities, on weights fitted to held-out matches from every league, then checked on a later split none of it saw -- so a stated 70% has historically happened about 70% of the time.",
   },
 ];
 
@@ -199,7 +199,7 @@ export function Welcome() {
                 </div>
                 <div>
                   <span>Calibration</span>
-                  <span>Isotonic, held-out fit</span>
+                  <span>Held-out fit</span>
                 </div>
               </div>
             </div>

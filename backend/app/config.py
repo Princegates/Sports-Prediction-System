@@ -14,9 +14,11 @@ class Settings(BaseSettings):
     # override via THESPORTSDB_API_KEY in .env, no code change needed.
     thesportsdb_api_key: str = "123"
 
-    ensemble_weight_elo: float = 0.30
-    ensemble_weight_poisson: float = 0.35
-    ensemble_weight_ml: float = 0.35
+    # Fitted on six leagues' validation matches pooled -- see
+    # model_store.load_ensemble_weights for why one set serves every league.
+    ensemble_weight_elo: float = 0.40
+    ensemble_weight_poisson: float = 0.40
+    ensemble_weight_ml: float = 0.20
 
     home_advantage_elo: float = 60.0
     elo_k_factor: float = 20.0

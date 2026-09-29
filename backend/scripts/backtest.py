@@ -7,19 +7,25 @@ trained on, and reports accuracy / log loss / Brier score / calibration on a
 held-out test slice that comes chronologically *after* both -- so no future
 match ever leaks into a prediction for an earlier one.
 
-Two modes:
+Three modes:
+
+    python scripts/backtest.py --all-leagues
+        The recommended run. Every league gets its own Gradient Boosting
+        model, and the ensemble's blend weights are fitted once on every
+        league's validation matches pooled (see
+        app.model_store.load_ensemble_weights for why one set serves all).
+        ``--leagues A B ...`` restricts it to the named leagues.
 
     python scripts/backtest.py --league-name "English Premier League"
-        Legacy single-league mode: one model trained on that league's own
-        ~1,300 matches alone.
+        Single-league mode: retrains and scores one league, blending with the
+        shared weights the last --all-leagues run saved (or the settings
+        default before one has).
 
     python scripts/backtest.py --pool-leagues
-        Cross-league mode (see ROADMAP.md, "the single biggest lever left on
-        accuracy"): one Gradient Boosting model trained across every known
-        league's data (9,000+ matches) with a league identity feature,
-        evaluated per league against its own held-out test set and its own
-        calibrators. This is what app.model_store.load_ml_model picks up
-        automatically once it's saved -- no serving-code changes needed.
+        As --all-leagues, but with one Gradient Boosting model trained across
+        every league's data with a league identity feature. Measured worse
+        than per-league models (ROADMAP.md 1d), so app.model_store only falls
+        back to it for a league without a model of its own.
 """
 
 from __future__ import annotations
@@ -40,10 +46,16 @@ from app.data.providers.football_data_co_uk import LEAGUE_CODES
 from app.db.migrate import init_db
 from app.db.models import Match, ModelMetric
 from app.db.session import SessionLocal, engine
-from app.model_store import GLOBAL_MODEL_KEY, calibrator_path, ml_model_path, save_ensemble_weights
+from app.model_store import (
+    GLOBAL_MODEL_KEY,
+    calibrator_path,
+    load_ensemble_weights,
+    ml_model_path,
+    save_ensemble_weights,
+)
 from app.prediction_models import elo
 from app.prediction_models.calibration import MarketCalibrator
-from app.prediction_models.ensemble import blend_1x2, breakdown_to_hda, fit_ensemble_weights, generate_prediction
+from app.prediction_models.ensemble import EnsembleWeights, fit_ensemble_weights, generate_prediction
 from app.prediction_models.ml_model import (
     KNOWN_LEAGUES,
     LeagueFeatureCache,
@@ -111,6 +123,45 @@ def baseline_metrics(
     return acc, ll_baseline
 
 
+class ValidationPass:
+    """Every validation match's unblended component predictions, plus what
+    the goal-market calibrators need. Computed once per league and shared by
+    the pooled weight fit and that league's own calibrators.
+
+    A plain class rather than a dataclass: scripts are loaded by file path in
+    tests/test_scripts_importable.py, without a sys.modules entry, and
+    dataclass() needs one to resolve postponed annotations."""
+
+    def __init__(self) -> None:
+        self.labels: list[str] = []
+        self.breakdowns: list[dict] = []
+        self.over25_probs: list[float] = []
+        self.over25_actual: list[int] = []
+        self.btts_probs: list[float] = []
+        self.btts_actual: list[int] = []
+
+
+def run_validation(
+    db, league_name: str, ml_model: MLModel, validation_matches: list[Match], feature_cache: LeagueFeatureCache
+) -> ValidationPass:
+    out = ValidationPass()
+    for m in validation_matches:
+        # Weights don't matter for this pass -- model_breakdown carries each
+        # component's raw, unblended probabilities regardless of how
+        # generate_prediction() would have combined them, which is exactly
+        # what fitting the blend weights needs.
+        result = generate_prediction(
+            db, m.home_team_id, m.away_team_id, league_name, m.date, ml_model=ml_model, feature_cache=feature_cache
+        )
+        out.labels.append("H" if m.home_score > m.away_score else ("D" if m.home_score == m.away_score else "A"))
+        out.breakdowns.append(result.model_breakdown)
+        out.over25_probs.append(result.over_probabilities["2.5"])
+        out.over25_actual.append(1 if (m.home_score + m.away_score) > 2.5 else 0)
+        out.btts_probs.append(result.btts_yes)
+        out.btts_actual.append(1 if (m.home_score >= 1 and m.away_score >= 1) else 0)
+    return out
+
+
 def evaluate_league(
     db,
     league_name: str,
@@ -119,81 +170,53 @@ def evaluate_league(
     train_end_date: dt.datetime,
     val_end_date: dt.datetime,
     model_version: str,
+    weights: EnsembleWeights,
+    validation: ValidationPass | None = None,
+    feature_cache: LeagueFeatureCache | None = None,
 ) -> dict:
-    """Fits this league's own calibrators on its own validation slice, then
-    scores the shared (or per-league) ``ml_model`` on its own held-out test
-    slice. Returns a summary dict used for the final cross-league table."""
+    """Fits this league's goal-market calibrators on its own validation slice,
+    then scores the ensemble -- blended with ``weights`` -- on its own
+    held-out test slice. Returns a summary dict used for the final
+    cross-league table.
+
+    ``validation`` and ``feature_cache`` let a multi-league run reuse the pass
+    it already made to fit the shared weights."""
 
     validation_matches = [m for m in matches if train_end_date <= m.date < val_end_date]
     test_matches = [m for m in matches if m.date >= val_end_date]
 
-    # Built once here, after main() has rebuilt this league's Elo history,
-    # and shared by both passes below. Without it each generate_prediction()
-    # call reloads the league's entire match and Elo history to produce one
-    # feature row.
-    feature_cache = LeagueFeatureCache(db, league_name)
+    # Built once, after this league's Elo history has been rebuilt, and shared
+    # by both passes. Without it each generate_prediction() call reloads the
+    # league's entire match and Elo history to produce one feature row.
+    if feature_cache is None:
+        feature_cache = LeagueFeatureCache(db, league_name)
 
     print(f"\n--- {league_name} ---")
     print(f"Train: < {train_end_date.date()}  |  Validation: {train_end_date.date()} -> {val_end_date.date()}  |  Test: >= {val_end_date.date()}")
-    print(f"Fitting calibrators on {len(validation_matches)} validation matches ...")
+    if validation is None:
+        print(f"Running {len(validation_matches)} validation matches ...")
+        validation = run_validation(db, league_name, ml_model, validation_matches, feature_cache)
+    print(f"  blend weights: elo={weights.elo:.2f} poisson={weights.poisson:.2f} ml={weights.ml:.2f}")
 
-    val_1x2_actual_labels: list[str] = []
-    val_breakdowns: list[dict] = []
-    val_over25_probs, val_over25_actual = [], []
-    val_btts_probs, val_btts_actual = [], []
-
-    for m in validation_matches:
-        # Weights don't matter for this pass -- model_breakdown carries each
-        # component's raw, unblended probabilities regardless of how
-        # generate_prediction() would have combined them, which is exactly
-        # what fitting this league's own weights needs below.
-        result = generate_prediction(
-            db, m.home_team_id, m.away_team_id, league_name, m.date, ml_model=ml_model, feature_cache=feature_cache
-        )
-        actual_result = "H" if m.home_score > m.away_score else ("D" if m.home_score == m.away_score else "A")
-        val_1x2_actual_labels.append(actual_result)
-        val_breakdowns.append(result.model_breakdown)
-
-        val_over25_probs.append(result.over_probabilities["2.5"])
-        val_over25_actual.append(1 if (m.home_score + m.away_score) > 2.5 else 0)
-        val_btts_probs.append(result.btts_yes)
-        val_btts_actual.append(1 if (m.home_score >= 1 and m.away_score >= 1) else 0)
-
-    print("Fitting ensemble blend weights on the same validation matches ...")
-    fitted_weights = fit_ensemble_weights(val_breakdowns, val_1x2_actual_labels)
-    save_ensemble_weights(league_name, fitted_weights)
-    print(f"  fitted weights: elo={fitted_weights.elo:.2f} poisson={fitted_weights.poisson:.2f} ml={fitted_weights.ml:.2f} (default was 0.30/0.35/0.35)")
-
-    val_1x2_probs: dict[str, list[float]] = {"H": [], "D": [], "A": []}
-    val_1x2_actual: dict[str, list[int]] = {"H": [], "D": [], "A": []}
-    for breakdown, actual_result in zip(val_breakdowns, val_1x2_actual_labels):
-        # "ml" is already H/D/A-keyed (see the note in fit_ensemble_weights) --
-        # only elo/poisson need converting from their display keys.
-        blended = blend_1x2(breakdown_to_hda(breakdown["elo"]), breakdown_to_hda(breakdown["poisson"]), breakdown.get("ml"), fitted_weights)
-        for label in RESULT_LABELS:
-            val_1x2_probs[label].append(blended[label])
-            val_1x2_actual[label].append(1 if label == actual_result else 0)
-
-    calibrator_1x2 = MarketCalibrator()
-    calibrator_1x2.fit({k: np.array(v) for k, v in val_1x2_probs.items()}, {k: np.array(v) for k, v in val_1x2_actual.items()})
-    calibrator_1x2.save(calibrator_path(league_name, "1x2"))
+    # No 1X2 calibrator any more -- see model_store.CALIBRATION_MARKETS. A
+    # stale one from an older run is removed so nothing mistakes it for
+    # current.
+    calibrator_path(league_name, "1x2").unlink(missing_ok=True)
 
     calibrator_over25 = MarketCalibrator()
-    calibrator_over25.fit(
-        {"yes": np.array(val_over25_probs), "no": 1 - np.array(val_over25_probs)},
-        {"yes": np.array(val_over25_actual), "no": 1 - np.array(val_over25_actual)},
-    )
+    over25 = np.array(validation.over25_probs)
+    over25_actual = np.array(validation.over25_actual)
+    calibrator_over25.fit({"yes": over25, "no": 1 - over25}, {"yes": over25_actual, "no": 1 - over25_actual})
     calibrator_over25.save(calibrator_path(league_name, "over_2_5"))
 
     calibrator_btts = MarketCalibrator()
-    calibrator_btts.fit(
-        {"yes": np.array(val_btts_probs), "no": 1 - np.array(val_btts_probs)},
-        {"yes": np.array(val_btts_actual), "no": 1 - np.array(val_btts_actual)},
-    )
+    btts = np.array(validation.btts_probs)
+    btts_actual = np.array(validation.btts_actual)
+    calibrator_btts.fit({"yes": btts, "no": 1 - btts}, {"yes": btts_actual, "no": 1 - btts_actual})
     calibrator_btts.save(calibrator_path(league_name, "btts"))
 
     print(f"Evaluating on {len(test_matches)} held-out test matches ...")
-    calibrators = {"1x2": calibrator_1x2, "over_2_5": calibrator_over25, "btts": calibrator_btts}
+    calibrators = {"over_2_5": calibrator_over25, "btts": calibrator_btts}
 
     test_probs, test_actual = [], []
     test_over25_probs, test_over25_actual = [], []
@@ -208,7 +231,7 @@ def evaluate_league(
             m.date,
             ml_model=ml_model,
             calibrators=calibrators,
-            weights=fitted_weights,
+            weights=weights,
             feature_cache=feature_cache,
         )
         actual_result = "H" if m.home_score > m.away_score else ("D" if m.home_score == m.away_score else "A")
@@ -323,12 +346,125 @@ def print_summary_table(summaries: list[dict]) -> None:
     print(f"{'Mean':<28} {mean_acc:>8.1f}% {'':>9} {mean_edge:>+7.1f}")
 
 
+MODEL_VERSION = "ensemble-v2"
+
+
+def _finished_matches(db, league_name: str) -> list[Match]:
+    return list(
+        db.execute(
+            select(Match).where(Match.league == league_name, Match.home_score.is_not(None)).order_by(Match.date.asc())
+        ).scalars()
+    )
+
+
+def run_single_league(db, league_name: str, train_fraction: float, validation_fraction: float) -> None:
+    print(f"Rebuilding Elo history for {league_name} ...")
+    elo.rebuild_elo_history(db, league_name)
+
+    matches = _finished_matches(db, league_name)
+    if len(matches) < 100:
+        print(f"Only {len(matches)} finished matches found -- import more seasons with fetch_historical_data.py first.")
+        return
+
+    train_end_date, val_end_date = compute_split(matches, train_fraction, validation_fraction)
+
+    print("Building training features + fitting Gradient Boosting model ...")
+    train_df = build_training_dataset(db, league_name, end_date=train_end_date)
+    ml_model = MLModel()
+    ml_model.fit(train_df)
+    ml_model.save(ml_model_path(league_name))
+    print(f"  trained on {len(train_df)} matches")
+
+    # Blend weights are shared across leagues and fitted by --all-leagues;
+    # one league's validation slice is too small to fit its own (see
+    # model_store.load_ensemble_weights).
+    weights = load_ensemble_weights(league_name)
+    evaluate_league(db, league_name, ml_model, matches, train_end_date, val_end_date, MODEL_VERSION, weights)
+
+
+def run_all_leagues(db, target_leagues: list[str], pool_ml: bool, train_fraction: float, validation_fraction: float) -> None:
+    # Cross-league cup competitions have no Elo replay of their own
+    # (rebuild_elo_history refuses them) and no domestic split to score.
+    target_leagues = [lg for lg in target_leagues if lg not in elo.EUROPEAN_COMPETITIONS]
+
+    # Every league's Elo before any league's predictions: a promoted side's
+    # rating lookup reads the rows its previous division wrote.
+    league_matches: dict[str, list[Match]] = {}
+    league_splits: dict[str, tuple[dt.datetime, dt.datetime]] = {}
+    for league_name in target_leagues:
+        matches = _finished_matches(db, league_name)
+        if len(matches) < 100:
+            print(f"  only {len(matches)} finished matches -- skipping {league_name}")
+            continue
+        print(f"Rebuilding Elo history for {league_name} ...")
+        elo.rebuild_elo_history(db, league_name)
+        league_matches[league_name] = matches
+        league_splits[league_name] = compute_split(matches, train_fraction, validation_fraction)
+
+    if not league_matches:
+        print("No league had enough data. Import more seasons first.")
+        return
+
+    models: dict[str, MLModel] = {}
+    if pool_ml:
+        train_end_dates = {lg: split[0] for lg, split in league_splits.items()}
+        print(f"\nBuilding pooled training set across {len(league_matches)} leagues ...")
+        pooled_df = build_pooled_training_dataset(db, train_end_dates)
+        print(f"  pooled training set: {len(pooled_df)} matches (vs ~{len(pooled_df) // len(league_matches)} per league trained alone)")
+        pooled = MLModel()
+        pooled.fit(pooled_df)
+        pooled.save(ml_model_path(GLOBAL_MODEL_KEY))
+        print(f"  saved global model to {ml_model_path(GLOBAL_MODEL_KEY)}")
+        models = {lg: pooled for lg in league_matches}
+    else:
+        for league_name in league_matches:
+            print(f"Fitting Gradient Boosting model for {league_name} ...")
+            train_df = build_training_dataset(db, league_name, end_date=league_splits[league_name][0])
+            models[league_name] = MLModel()
+            models[league_name].fit(train_df)
+            models[league_name].save(ml_model_path(league_name))
+            print(f"  trained on {len(train_df)} matches")
+
+    caches: dict[str, LeagueFeatureCache] = {}
+    validations: dict[str, ValidationPass] = {}
+    for league_name, matches in league_matches.items():
+        train_end_date, val_end_date = league_splits[league_name]
+        validation_matches = [m for m in matches if train_end_date <= m.date < val_end_date]
+        print(f"Running {len(validation_matches)} validation matches for {league_name} ...")
+        caches[league_name] = LeagueFeatureCache(db, league_name)
+        validations[league_name] = run_validation(db, league_name, models[league_name], validation_matches, caches[league_name])
+
+    all_breakdowns = [b for v in validations.values() for b in v.breakdowns]
+    all_labels = [y for v in validations.values() for y in v.labels]
+    weights = fit_ensemble_weights(all_breakdowns, all_labels)
+    save_ensemble_weights(weights)
+    print(
+        f"\nShared blend weights from {len(all_labels)} pooled validation matches: "
+        f"elo={weights.elo:.2f} poisson={weights.poisson:.2f} ml={weights.ml:.2f}"
+    )
+
+    version = f"{MODEL_VERSION}-pooled" if pool_ml else MODEL_VERSION
+    summaries = []
+    for league_name, matches in league_matches.items():
+        train_end_date, val_end_date = league_splits[league_name]
+        summaries.append(
+            evaluate_league(
+                db, league_name, models[league_name], matches, train_end_date, val_end_date, version, weights,
+                validation=validations[league_name], feature_cache=caches[league_name],
+            )
+        )
+
+    print_summary_table(summaries)
+    print("\nMetrics stored in model_metrics table.")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--league", default="E0", choices=sorted(LEAGUE_CODES), help="football-data.co.uk code (ignored if --league-name is given)")
-    parser.add_argument("--league-name", default=None, help='Exact league name already in the DB, e.g. "English Premier League" (use this for data imported via fetch_openfootball_data.py). Ignored with --pool-leagues.')
-    parser.add_argument("--pool-leagues", action="store_true", help="Train one cross-league model instead of one model per league (see ROADMAP.md item 6)")
-    parser.add_argument("--leagues", nargs="+", default=None, help="Leagues to pool + evaluate when --pool-leagues is set; defaults to every league in KNOWN_LEAGUES that has data")
+    parser.add_argument("--league-name", default=None, help='Exact league name already in the DB, e.g. "English Premier League" (use this for data imported via fetch_openfootball_data.py). Ignored with --all-leagues / --pool-leagues.')
+    parser.add_argument("--all-leagues", action="store_true", help="Retrain every league and fit the shared blend weights on all of their validation matches (recommended)")
+    parser.add_argument("--pool-leagues", action="store_true", help="As --all-leagues, but with one cross-league ML model instead of one per league (see ROADMAP.md item 6)")
+    parser.add_argument("--leagues", nargs="+", default=None, help="Leagues for --all-leagues / --pool-leagues; defaults to every league in KNOWN_LEAGUES that has data")
     parser.add_argument("--train-fraction", type=float, default=0.70)
     parser.add_argument("--validation-fraction", type=float, default=0.15)
     args = parser.parse_args()
@@ -337,75 +473,10 @@ def main() -> None:
     db = SessionLocal()
 
     try:
-        if not args.pool_leagues:
-            league_name = args.league_name or LEAGUE_CODES[args.league]
-            print(f"Rebuilding Elo history for {league_name} ...")
-            elo.rebuild_elo_history(db, league_name)
-
-            matches = list(
-                db.execute(
-                    select(Match).where(Match.league == league_name, Match.home_score.is_not(None)).order_by(Match.date.asc())
-                ).scalars()
-            )
-            if len(matches) < 100:
-                print(f"Only {len(matches)} finished matches found -- import more seasons with fetch_historical_data.py first.")
-                return
-
-            train_end_date, val_end_date = compute_split(matches, args.train_fraction, args.validation_fraction)
-
-            print("Building training features + fitting Gradient Boosting model ...")
-            train_df = build_training_dataset(db, league_name, end_date=train_end_date)
-            ml_model = MLModel()
-            ml_model.fit(train_df)
-            ml_model.save(ml_model_path(league_name))
-            print(f"  trained on {len(train_df)} matches")
-
-            evaluate_league(db, league_name, ml_model, matches, train_end_date, val_end_date, model_version="ensemble-v1")
-            return
-
-        # --- Cross-league pooled mode ---------------------------------------
-        target_leagues = args.leagues or KNOWN_LEAGUES
-        league_matches: dict[str, list[Match]] = {}
-        league_splits: dict[str, tuple[dt.datetime, dt.datetime]] = {}
-
-        for league_name in target_leagues:
-            print(f"Rebuilding Elo history for {league_name} ...")
-            elo.rebuild_elo_history(db, league_name)
-            matches = list(
-                db.execute(
-                    select(Match).where(Match.league == league_name, Match.home_score.is_not(None)).order_by(Match.date.asc())
-                ).scalars()
-            )
-            if len(matches) < 100:
-                print(f"  only {len(matches)} finished matches -- skipping {league_name}")
-                continue
-            league_matches[league_name] = matches
-            league_splits[league_name] = compute_split(matches, args.train_fraction, args.validation_fraction)
-
-        if not league_matches:
-            print("No league had enough data. Import more seasons first.")
-            return
-
-        train_end_dates = {lg: split[0] for lg, split in league_splits.items()}
-        print(f"\nBuilding pooled training set across {len(league_matches)} leagues ...")
-        pooled_df = build_pooled_training_dataset(db, train_end_dates)
-        print(f"  pooled training set: {len(pooled_df)} matches (vs ~{len(pooled_df) // len(league_matches)} per league trained alone)")
-
-        ml_model = MLModel()
-        ml_model.fit(pooled_df)
-        ml_model.save(ml_model_path(GLOBAL_MODEL_KEY))
-        print(f"  saved global model to {ml_model_path(GLOBAL_MODEL_KEY)}")
-
-        summaries = []
-        for league_name, matches in league_matches.items():
-            train_end_date, val_end_date = league_splits[league_name]
-            summaries.append(
-                evaluate_league(db, league_name, ml_model, matches, train_end_date, val_end_date, model_version="ensemble-v1-pooled")
-            )
-
-        print_summary_table(summaries)
-        print("\nMetrics stored in model_metrics table.")
-
+        if args.all_leagues or args.pool_leagues or args.leagues:
+            run_all_leagues(db, args.leagues or KNOWN_LEAGUES, args.pool_leagues, args.train_fraction, args.validation_fraction)
+        else:
+            run_single_league(db, args.league_name or LEAGUE_CODES[args.league], args.train_fraction, args.validation_fraction)
     finally:
         db.close()
 

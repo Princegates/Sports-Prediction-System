@@ -836,9 +836,10 @@ Four stages, all running locally on open-source libraries:
    over/under lines, both-teams-to-score and correct-score numbers come from.
 3. **Gradient boosting** -- scikit-learn, trained on engineered features: recent form,
    goal differentials, rest days, Elo gap.
-4. **Blend + calibration** -- the three are combined on configured weights, then passed
-   through isotonic regression fitted on a held-out validation split, so a stated 70%
-   means the outcome actually happened about 70% of the time historically.
+4. **Blend + check** -- the three are combined on one set of weights fitted on a held-out
+   validation split pooled across every league, and checked on a later test split, so a
+   stated 70% means the outcome actually happened about 70% of the time historically.
+   The goals markets get an extra held-out calibration pass.
 
 The **Global Most-Likely Outcome** you see on each match is then `argmax` across every
 market in the outcome registry -- but only over outcomes that clear a data-quality gate,

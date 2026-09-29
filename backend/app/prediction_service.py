@@ -19,7 +19,7 @@ from app.prediction_models.ensemble import generate_prediction
 from app.prediction_models.ml_model import LeagueFeatureCache
 from app.quality import confidence_label, data_quality_score
 
-MODEL_VERSION = "ensemble-v1"
+MODEL_VERSION = "ensemble-v2"
 
 
 def build_prediction_for_match(
@@ -72,7 +72,9 @@ def build_prediction_for_match(
     )
     global_outcome = select_global_most_likely(outcomes)
 
-    confidence = confidence_label(dq, result.model_agreement_1x2)
+    confidence = confidence_label(
+        dq, result.model_agreement_1x2, top_probability=max(result.home_win, result.draw, result.away_win)
+    )
 
     home_form = compute_team_form(db, match.home_team_id, as_of, match.league)
     away_form = compute_team_form(db, match.away_team_id, as_of, match.league)

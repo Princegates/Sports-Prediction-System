@@ -117,7 +117,7 @@ def main() -> None:
     # look perfectly plausible, so that case is skipped loudly.
     trained: bool | None = None
     if not args.skip_training:
-        # Per league, not pooled. An earlier version of this ran
+        # One ML model per league, not pooled. An earlier version of this ran
         # `backtest.py --pool-leagues` for the multi-league case, on the
         # reasoning in ROADMAP.md item 6 that one model with every league's
         # data behind it beats N data-starved ones. Measured, that was wrong:
@@ -129,7 +129,19 @@ def main() -> None:
         # which load_ml_model() used to prefer over every per-league model --
         # so leaving it here meant the weekly retrain quietly redeployed the
         # worse model, whatever the roadmap said.
-        results = [
+        #
+        # What IS shared is the blend weights, which --leagues fits once on
+        # every league's validation matches together (model_store.
+        # load_ensemble_weights has the measurements). That needs all the
+        # leagues in one run, so they go together -- and only if that run
+        # fails outright does each league retrain alone, blending with the
+        # last saved weights, so one league's bad data can't stop the rest.
+        trained_together = run(
+            "Training + backtesting every league (shared blend weights)",
+            ["scripts/backtest.py", "--leagues", *args.leagues],
+            required=False,
+        )
+        results = [trained_together] if trained_together else [
             run(
                 f"Training + backtesting {league}",
                 ["scripts/backtest.py", "--league-name", league],
