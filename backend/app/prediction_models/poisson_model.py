@@ -4,12 +4,14 @@ low-score correction.
 Team attack/defense strengths are estimated relative to the league's
 home/away scoring averages (a standard, well-documented approach -- see
 Maher 1982, Dixon & Coles 1997), split by home/away context per spec
-section 9. Everything here is a pure function of data available strictly
+section 9, time-decayed and shrunk toward league average (see the constants
+below). Everything here is a pure function of data available strictly
 before ``as_of``, so it plugs directly into the leakage-free backtester.
 """
 
 from __future__ import annotations
 
+import datetime as dt
 import math
 from dataclasses import dataclass, field
 
@@ -19,6 +21,29 @@ from sqlalchemy.orm import Session
 from app.db.models import Match
 
 MAX_GOALS = 8
+
+# Time decay (Dixon & Coles 1997): a match's weight halves every
+# DECAY_HALF_LIFE_DAYS, so last month outweighs a season from years ago --
+# squads, managers and form turn over far faster than a flat average over the
+# whole history can follow. 540 days was the best of 180-730 on every league's
+# validation slice (tuned there, never on test); the optimum is flat from
+# roughly 450 to 730, so the exact figure isn't fragile.
+DECAY_HALF_LIFE_DAYS = 540.0
+
+# The weight is piecewise-constant in 30-day buckets rather than a true
+# exponential so the aggregate stays one portable SQL expression -- SQLite has
+# no EXP() unless compiled with math functions. Within a bucket the true weight
+# differs by at most ~2%. Beyond the horizon every match keeps the horizon's
+# weight rather than dropping to zero, so a league with only old data still
+# has an average.
+DECAY_BUCKET_DAYS = 30
+DECAY_HORIZON_DAYS = 5 * 540
+
+# Pseudo-matches at the league average added to every team's weighted sums --
+# shrinkage for teams with little recent evidence (early-season promoted
+# sides, a handful of home games). Tuned alongside the half-life; 3-5 all
+# helped and 3 was best.
+SHRINKAGE_MATCHES = 3.0
 
 # Half-time score grids stay much smaller than full-time ones -- more than a
 # handful of goals inside 45 minutes is vanishingly rare, and Poisson decay
@@ -64,54 +89,103 @@ def _finished_before(league: str, as_of):
     return and_(Match.league == league, Match.date < as_of, Match.home_score.is_not(None))
 
 
-def league_goal_averages(db: Session, league: str, as_of) -> tuple[float, float]:
-    """Mean goals scored by the home and away side across the league so far."""
+_DECAY_BUCKETS = DECAY_HORIZON_DAYS // DECAY_BUCKET_DAYS
 
-    home_goals, away_goals, played = db.execute(
-        select(func.sum(Match.home_score), func.sum(Match.away_score), func.count()).where(
-            _finished_before(league, as_of)
-        )
+
+def _bucket_weight(bucket: int) -> float:
+    # Evaluated at the bucket's midpoint.
+    return 0.5 ** (((bucket + 0.5) * DECAY_BUCKET_DAYS) / DECAY_HALF_LIFE_DAYS)
+
+
+def decay_weight(age_days: float) -> float:
+    """The weight a match ``age_days`` old gets -- the same piecewise-constant
+    schedule ``_decay_weight_expr`` evaluates in SQL, exposed so tests and
+    tooling can reproduce the database's arithmetic exactly.
+
+    Buckets are closed at the old end, as the SQL is: a match exactly 30 days
+    old is still in the first bucket."""
+
+    bucket = max(math.ceil(age_days / DECAY_BUCKET_DAYS) - 1, 0)
+    return _bucket_weight(min(bucket, _DECAY_BUCKETS))
+
+
+def _decay_weight_expr(as_of):
+    """Per-match weight as a SQL CASE over date buckets counted back from
+    ``as_of``. Bucket boundaries are computed here and passed as parameters,
+    so the expression needs no date arithmetic from the database."""
+
+    whens = [
+        (Match.date >= as_of - dt.timedelta(days=(i + 1) * DECAY_BUCKET_DAYS), _bucket_weight(i))
+        for i in range(_DECAY_BUCKETS)
+    ]
+    return case(*whens, else_=_bucket_weight(_DECAY_BUCKETS))
+
+
+def league_goal_averages(db: Session, league: str, as_of) -> tuple[float, float]:
+    """Time-weighted mean goals scored by the home and away side in this
+    league so far -- weighted so a shift in scoring or home advantage (the
+    post-2020 drop, say) shows up instead of being averaged away."""
+
+    weight = _decay_weight_expr(as_of)
+    home_goals, away_goals, total_weight = db.execute(
+        select(
+            func.sum(weight * Match.home_score),
+            func.sum(weight * Match.away_score),
+            func.sum(weight),
+        ).where(_finished_before(league, as_of))
     ).one()
 
-    if not played:
+    if not total_weight:
         # Reasonable top-flight European default when there's no history yet.
         return 1.45, 1.15
-    return float(home_goals) / played, float(away_goals) / played
+    return float(home_goals) / float(total_weight), float(away_goals) / float(total_weight)
 
 
 def team_attack_defense(
     db: Session, team_id: int, league: str, as_of, avg_home_goals: float, avg_away_goals: float
 ) -> tuple[float, float, float, float]:
-    """Returns (home_attack, home_defense, away_attack, away_defense)."""
+    """Returns (home_attack, home_defense, away_attack, away_defense), each a
+    time-weighted rate relative to the league average, shrunk toward 1.0 by
+    ``SHRINKAGE_MATCHES`` pseudo-matches."""
 
     at_home = Match.home_team_id == team_id
     at_away = Match.away_team_id == team_id
+    weight = _decay_weight_expr(as_of)
 
-    # Four means in one round trip. CASE rather than the tidier FILTER
-    # clause because SQLite only supports FILTER from 3.30, and SQLite is
-    # what the project runs on by default.
-    scored_home, conceded_home, scored_away, conceded_away = db.execute(
+    # Every sum in one round trip. CASE rather than the tidier FILTER clause
+    # because SQLite only supports FILTER from 3.30, and SQLite is what the
+    # project runs on by default.
+    (
+        home_weight, scored_home, conceded_home,
+        away_weight, scored_away, conceded_away,
+    ) = db.execute(
         select(
-            func.avg(case((at_home, Match.home_score))),
-            func.avg(case((at_home, Match.away_score))),
-            func.avg(case((at_away, Match.away_score))),
-            func.avg(case((at_away, Match.home_score))),
+            func.sum(case((at_home, weight), else_=0.0)),
+            func.sum(case((at_home, weight * Match.home_score), else_=0.0)),
+            func.sum(case((at_home, weight * Match.away_score), else_=0.0)),
+            func.sum(case((at_away, weight), else_=0.0)),
+            func.sum(case((at_away, weight * Match.away_score), else_=0.0)),
+            func.sum(case((at_away, weight * Match.home_score), else_=0.0)),
         ).where(and_(_finished_before(league, as_of), or_(at_home, at_away)))
     ).one()
 
-    def ratio(mean: float | None, league_avg: float) -> float:
-        # AVG over no rows is NULL, which is the "this team has never played
-        # in this context" case -- treat it as league-average rather than
-        # inventing a number.
-        if mean is None or league_avg <= 0:
+    def ratio(weighted_goals: float | None, total_weight: float | None, league_avg: float) -> float:
+        # No rows in a context gives NULL sums -- the "never played at home
+        # here" case. The shrinkage prior alone then puts the team exactly at
+        # league average rather than inventing a number.
+        if league_avg <= 0:
             return 1.0
-        return max(float(mean) / league_avg, 0.05)
+        goals = float(weighted_goals or 0.0) + SHRINKAGE_MATCHES * league_avg
+        weights = float(total_weight or 0.0) + SHRINKAGE_MATCHES
+        if weights <= 0:
+            return 1.0
+        return max((goals / weights) / league_avg, 0.05)
 
     return (
-        ratio(scored_home, avg_home_goals),
-        ratio(conceded_home, avg_away_goals),
-        ratio(scored_away, avg_away_goals),
-        ratio(conceded_away, avg_home_goals),
+        ratio(scored_home, home_weight, avg_home_goals),
+        ratio(conceded_home, home_weight, avg_away_goals),
+        ratio(scored_away, away_weight, avg_away_goals),
+        ratio(conceded_away, away_weight, avg_home_goals),
     )
 
 
