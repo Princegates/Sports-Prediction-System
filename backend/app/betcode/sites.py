@@ -44,8 +44,15 @@ class Site:
         return self.connector is not None
 
 
+def _sportybet_gh() -> SiteConnector:
+    # Imported here: the connector module imports ConnectorResult from this one.
+    from app.betcode.sportybet import SportyBetConnector
+
+    return SportyBetConnector()
+
+
 SITES: list[Site] = [
-    Site("sportybet_gh", "SportyBet Ghana"),
+    Site("sportybet_gh", "SportyBet Ghana", _sportybet_gh),
     Site("betway_gh", "Betway Ghana"),
     Site("1xbet", "1xBet"),
 ]

@@ -145,6 +145,7 @@ EXPLICIT_ALIASES: dict[str, str] = {
     "west brom": "west bromwich albion",
     "qpr": "queens park rangers",
     "peterboro": "peterborough united",
+    "man utd": "manchester united",  # SportyBet
     # Spain
     "ath madrid": "atletico madrid",
     "ath bilbao": "athletic bilbao",
@@ -158,6 +159,9 @@ EXPLICIT_ALIASES: dict[str, str] = {
     "fc koln": "koln",
     "leverkusen": "bayer leverkusen",
     "mgladbach": "borussia monchengladbach",
+    # SportyBet writes "Borussia M´gladbach"; the accent folds to a space.
+    "borussia m gladbach": "borussia monchengladbach",
+    "borussia mgladbach": "borussia monchengladbach",
     "dortmund": "borussia dortmund",
     "hertha": "hertha berlin",
     "stuttgart": "vfb stuttgart",
@@ -201,7 +205,7 @@ def canonical_alias(name: str) -> str:
     return EXPLICIT_ALIASES.get(key, name)
 
 
-def name_match_score(a: str, b: str) -> tuple[float, float]:
+def name_match_score(a: str, b: str, *, abbreviation_only: bool = False) -> tuple[float, float]:
     """How much of each name the other accounts for, shorter name first.
 
     Two numbers rather than one, because the first cannot tell two clubs
@@ -222,6 +226,14 @@ def name_match_score(a: str, b: str) -> tuple[float, float]:
     something in the longer name is left unaccounted for, this is refused
     outright (0.0, 0.0) rather than scored as a plausible partial match --
     sharing a home city is not sharing an identity.
+
+    ``abbreviation_only`` makes the prefix rule one-way when one name has
+    fewer words: its words may shorten the other's ("Hamburg" ~ "Hamburger
+    SV"), never lengthen them. Without it, "Villarreal" scores a full match
+    against "Aston Villa", because "villa" is a prefix of "villarreal". Two
+    names of the same length stay symmetric ("Man City" ~ "Manchester City"
+    either way round). Opt-in, for callers matching against a provider's
+    whole fixture list rather than a known club table.
     """
 
     ta, tb = _tokens(canonical_alias(a)), _tokens(canonical_alias(b))
@@ -229,11 +241,12 @@ def name_match_score(a: str, b: str) -> tuple[float, float]:
         return 0.0, 0.0
 
     shorter, longer = (ta, tb) if len(ta) <= len(tb) else (tb, ta)
+    one_way = abbreviation_only and len(shorter) < len(longer)
     remaining = list(longer)
     matched = 0
     for token in shorter:
         for i, candidate in enumerate(remaining):
-            if _tokens_match(token, candidate):
+            if _tokens_match(token, candidate) and not (one_way and len(token) > len(candidate)):
                 matched += 1
                 remaining.pop(i)
                 break
