@@ -409,6 +409,16 @@ export interface TestEmailResult {
   detail: string;
 }
 
+export interface BettingSiteCheck {
+  name: string;
+  url: string;
+  reachable: boolean;
+  status_code: number | null;
+  final_url: string | null;
+  elapsed_ms: number | null;
+  note: string;
+}
+
 export interface SystemStatus {
   database_reachable: boolean;
   matches: number;

@@ -7,6 +7,7 @@ import type {
   Branding,
   SettingsPayload,
   SystemStatus,
+  BettingSiteCheck,
   TestEmailResult,
   AccessCode,
   AccessGrant,
@@ -546,6 +547,11 @@ export function sendTestEmail(to?: string): Promise<TestEmailResult> {
 
 export function fetchSystemStatus(): Promise<SystemStatus> {
   return get("/api/admin/system-status");
+}
+
+/** Makes outbound requests from the server to each betting site -- takes a few seconds. */
+export function checkBettingSites(): Promise<BettingSiteCheck[]> {
+  return post("/api/admin/betting-sites/check", {});
 }
 
 export function fetchBranding(): Promise<Branding> {

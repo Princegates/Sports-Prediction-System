@@ -454,6 +454,16 @@ class SystemStatusOut(BaseModel):
     settings_overridden: int = 0
 
 
+class BettingSiteCheckOut(BaseModel):
+    name: str
+    url: str
+    reachable: bool
+    status_code: int | None = None
+    final_url: str | None = None
+    elapsed_ms: int | None = None
+    note: str
+
+
 class BrandingOut(BaseModel):
     """Public site identity and default look, needed before anyone logs in."""
 

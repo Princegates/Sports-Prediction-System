@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from app import app_settings, mailer
 from app.api.deps import get_db, require_superadmin
 from app.api.schemas import (
+    BettingSiteCheckOut,
     SettingSpecOut,
     SettingsOut,
     SettingsUpdateIn,
@@ -29,6 +30,7 @@ from app.api.schemas import (
     TestEmailIn,
     TestEmailOut,
 )
+from app.betcode import reachability
 from app.db.models import AccessCode, AccessGrant, AppSetting, Match, Prediction, User
 from app.model_store import MODEL_DIR
 
@@ -133,6 +135,15 @@ def send_test_email(
         sent=result.sent,
         detail=f"Sent to {to}." if result.sent else (result.error or "Unknown error."),
     )
+
+
+@router.post("/betting-sites/check", response_model=list[BettingSiteCheckOut])
+def check_betting_sites() -> list[BettingSiteCheckOut]:
+    """Whether this server can reach each betting site a booking-code
+    connection would talk to. A POST and a button rather than part of
+    system-status, because it makes outbound requests and takes seconds."""
+
+    return [BettingSiteCheckOut(**vars(check)) for check in reachability.check_all()]
 
 
 @router.get("/system-status", response_model=SystemStatusOut)

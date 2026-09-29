@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { fetchSettings, fetchSystemStatus, saveSettings, sendTestEmail } from "../api";
+import { checkBettingSites, fetchSettings, fetchSystemStatus, saveSettings, sendTestEmail } from "../api";
 import { ACCENT_PROFILES } from "../lib/accentProfiles";
 import { ErrorState } from "../components/ErrorState";
 import { GRID_TABS } from "./Markets";
-import type { SettingSpec, SettingsPayload, SystemStatus } from "../types";
+import type { BettingSiteCheck, SettingSpec, SettingsPayload, SystemStatus } from "../types";
 
 type Draft = Record<string, string | number | boolean>;
 
@@ -47,6 +47,21 @@ export function Settings() {
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
+  const [siteChecks, setSiteChecks] = useState<BettingSiteCheck[] | null>(null);
+  const [checkingSites, setCheckingSites] = useState(false);
+  const [siteCheckError, setSiteCheckError] = useState<string | null>(null);
+
+  async function handleCheckSites() {
+    setCheckingSites(true);
+    setSiteCheckError(null);
+    try {
+      setSiteChecks(await checkBettingSites());
+    } catch (e) {
+      setSiteCheckError(String(e instanceof Error ? e.message : e));
+    } finally {
+      setCheckingSites(false);
+    }
+  }
 
   function load() {
     fetchSettings()
@@ -231,6 +246,32 @@ export function Settings() {
           </div>
         </div>
       )}
+
+      <div className="card card-pad" style={{ marginBottom: 20 }}>
+        <h3 style={{ marginTop: 0 }}>Betting sites</h3>
+        <p className="setting-note">
+          Booking codes need this server to reach each betting site. Some Nigerian and Ghanaian sites refuse
+          visitors from outside their country, and this server may not be in yours. Checks each site once, as
+          itself -- no disguise, no getting around blocks.
+        </p>
+        <button type="button" className="btn btn-secondary" onClick={handleCheckSites} disabled={checkingSites}>
+          {checkingSites ? "Checking..." : "Check betting sites from this server"}
+        </button>
+        {siteCheckError && <span className="auth-error">{siteCheckError}</span>}
+        {siteChecks && (
+          <div className="status-grid" style={{ marginTop: 14 }}>
+            {siteChecks.map((c) => (
+              <StatusTile
+                key={c.url}
+                label={c.name}
+                value={c.reachable ? "Reachable" : "Not reachable"}
+                detail={c.note}
+                ok={c.reachable}
+              />
+            ))}
+          </div>
+        )}
+      </div>
 
       {GROUP_ORDER.filter((g) => payload.specs.some((s) => s.group === g)).map((group) => (
         <div className="card card-pad" style={{ marginBottom: 20 }} key={group}>
