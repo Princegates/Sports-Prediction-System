@@ -254,6 +254,44 @@ def test_send_email_reports_a_resend_failure_without_raising(db_session, admin, 
     assert "401" in result.error
 
 
+def test_issuing_a_code_emails_it_using_panel_saved_settings(db_session, admin, monkeypatch):
+    """Panel-only email config (nothing in the environment) must count as
+    configured when issuing a code -- is_configured() without the session
+    reads the environment alone, so the endpoint has to pass it."""
+
+    _user(db_session, "buyer@example.com")
+    client.patch(
+        "/api/admin/settings",
+        json={"values": {"resend_api_key": "re_test_key", "smtp_from": "Bot <bot@example.com>"}},
+        headers=_headers(admin),
+    )
+
+    calls: list[dict] = []
+
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        calls.append({"url": url, "json": json})
+        return FakeResponse()
+
+    monkeypatch.setattr(mailer.requests, "post", fake_post)
+
+    response = client.post(
+        "/api/admin/access-codes",
+        json={"duration_days": 7, "assigned_user_email": "buyer@example.com", "send_email": True},
+        headers=_headers(admin),
+    )
+    assert response.status_code == 200, response.text
+
+    body = response.json()
+    assert body["email_error"] is None
+    assert body["emailed"] is True
+    assert len(calls) == 1
+    assert calls[0]["json"]["to"] == ["buyer@example.com"]
+
+
 def test_branding_is_public_and_follows_the_setting(db_session, admin):
     before = client.get("/api/public/branding")
     assert before.status_code == 200

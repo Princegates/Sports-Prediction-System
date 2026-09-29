@@ -41,6 +41,11 @@ from app.outcomes.registry import find_outcome
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_superadmin)])
 
+EMAIL_NOT_CONFIGURED = (
+    "Email is not configured. Set it up under Settings -> Email (an SMTP host and From "
+    "address, or a Resend API key and From address); the code below is still valid."
+)
+
 
 def _record(
     db: Session,
@@ -246,11 +251,8 @@ def create_code(
     emailed = False
     email_error: str | None = None
     if payload.send_email:
-        if not mailer.is_configured():
-            email_error = (
-                "Email is not configured on this server. Set SMTP_HOST and SMTP_FROM "
-                "to enable sending; the code below is still valid."
-            )
+        if not mailer.is_configured(db):
+            email_error = EMAIL_NOT_CONFIGURED
         else:
             subject, body = mailer.access_code_message(
                 code.code, code.duration_days, mailer.resolve_config(db).site_url or None
@@ -290,10 +292,7 @@ def resend_code(
     emailed = False
     email_error: str | None = None
     if not mailer.is_configured(db):
-        email_error = (
-            "Email is not configured on this server. Set SMTP_HOST and SMTP_FROM "
-            "to enable sending; the code below is still valid."
-        )
+        email_error = EMAIL_NOT_CONFIGURED
     else:
         subject, body = mailer.access_code_message(
             code.code, code.duration_days, mailer.resolve_config(db).site_url or None
