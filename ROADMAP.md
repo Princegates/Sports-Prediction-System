@@ -71,6 +71,7 @@ Where the remaining gains are, in order:
   model with 9,033 matches behind it. Pooling them with league indicators —
   or a global model with per-league fallback — is where the next real jump is.
 - **Ensemble weights are hand-set** (0.30/0.35/0.35) rather than fitted.
+  *(Since fitted, across all leagues pooled — see 1e.)*
 - **A fixed weighted mean is weaker than stacking** a meta-model over the
   three model outputs.
 
@@ -239,6 +240,94 @@ Revisiting pooling productively would mean per-league leaf weights or a
 stacked meta-model over per-league models, not a single shared tree ensemble
 distinguishing leagues by one-hot alone.
 
+#### 1e. Reliability audit (September 2026): what was measured and what changed
+
+Six leagues (Premier League, Championship, La Liga, Bundesliga, Serie A,
+Ligue 1; 24,700 finished matches, 2015-16 to 2025-26), each split 70/15/15 by
+date. Every choice below was made on the **validation** slice and then scored
+once on the **test** slice (3,717 matches), paired match by match against the
+old system. Log loss and RPS are the headline metrics: on ~600 test matches a
+league, accuracy has a standard error of about two points, so accuracy alone
+cannot tell a real change from luck.
+
+**Result, whole system, old → new (test slice):**
+
+| | Old | New | Paired z |
+|---|---|---|---|
+| 1X2 log loss | 1.0106 | **1.0065** | -2.1 |
+| 1X2 RPS | 0.2085 | **0.2071** | -2.7 |
+| Accuracy | 49.5% | **50.2%** | — |
+| Top-pick calibration error | 0.025 | **0.018** | — |
+
+Every league improved on both log loss and RPS; the Premier League most
+(log loss -0.013, z = -2.7). Before this, the shipped ensemble was *worse than
+its own Elo component alone* (1.0106 against 1.0071) — the blending layer was
+subtracting value.
+
+What changed, and why:
+
+1. **Poisson ratings are time-decayed and shrunk** (`poisson_model.py`).
+   Team attack/defence rates were flat averages over a league's whole
+   history. Now each match's weight halves every 540 days, and each team
+   gets 3 pseudo-matches at league average. The Poisson component's own test
+   log loss went 1.0271 → 1.0113 (z = -5.7), better in every league. Tuned on
+   validation: 180 days was worse than no decay; anything from 450 to 730
+   days was within 0.0002 of the best.
+2. **One set of blend weights for all leagues** (`model_store.py`,
+   `backtest.py --leagues`). Per-league weights fitted on ~600 matches
+   chased noise: 0% Poisson for the Premier League, 85% for La Liga, 95% Elo
+   for Ligue 1. A single set fitted on every league's validation matches
+   pooled (40% Elo / 40% Poisson / 20% GBM) beat the per-league weights in
+   all six leagues — even when fitted *without* the league being scored.
+3. **No per-league 1X2 calibrator.** Fitted on the same ~600 matches, it made
+   test probabilities worse (it learned one slice's draw rate). The blended
+   probabilities are already close to calibrated on their own. Stale files
+   are deleted on the next retrain and ignored until then.
+4. **Confidence labels follow the pick's probability** (`quality.py`). They
+   used to rest on data quality and model agreement. Agreement carries no
+   information: the top pick landed ~50% of the time in every agreement
+   tercile, and 98% of matches cleared the HIGH agreement bar, so HIGH was
+   the default and meant a coin flip. Bands are now set by the top 1X2
+   probability (with data quality and agreement kept as gates), and resolve
+   the same way on validation and test: LOW ~40%, MEDIUM ~50%, HIGH ~70%.
+5. **`ELO_K_FACTOR` and `HOME_ADVANTAGE_ELO` now reach the Elo rebuild**,
+   which had its own hard-coded defaults. Before this, setting either
+   changed nothing, or predicted with a different home advantage from the
+   one the ratings were built with.
+
+The weekly retrain (`bootstrap.py`) now runs one `backtest.py --leagues`
+over every league so the shared weights are fitted, falling back to
+per-league runs only if that fails.
+
+**Measured and not shipped:**
+
+| Idea | Result |
+|---|---|
+| Elo regression to the mean at each season start (10-33%) | Worse in every league, on validation and before it. Top sides stay top. |
+| Promoted sides start at the mean rating of the sides that left | Small gain (Elo log loss -0.001 before the test slice). Not shipped: a live prediction for a promoted side's first match can't see its new-league rating without schema work. Worth doing with it. |
+| Elo K-factor 25 instead of 20 | -0.0004 log loss, z = -1.6. Consistent but too small to count; set `ELO_K_FACTOR=25` to take it. |
+| Logistic regression instead of the GBM | The GBM overfits badly on its own (test log loss 1.037; worse than a coin flip on Over 2.5). A regularized logistic regression fixes that (1.010), but the final ensemble is *identical* on 1X2, Over 2.5 and BTTS: the blend and goal-market calibrators already compensate. It also zeroes Elo's blend weight, which makes the no-ML fallback Poisson-only. Revisit with shot statistics in the data (untestable here), where a linear model should use them better than the trees. |
+| Stacking (multinomial logistic regression over the three models) | No better than the pooled linear blend. |
+| Temperature scaling on the pooled blend | Validation said sharpen; test disagreed. Worse. |
+
+**Not testable in this environment, recommended next:**
+
+- **Market benchmark.** The honest ceiling for any football model is the
+  closing odds. `measure_edge.py` and the historical-odds importer exist;
+  run them once with odds data to know how far the model is from the market.
+  This is a yardstick only — the system still never uses odds to predict.
+- **Shot statistics.** The features exist and are gated by
+  `stats_available`, but the test data here had none. With them, re-run the
+  GBM-vs-logistic comparison above.
+- **Walk-forward evaluation.** One 70/15/15 split gives one test season per
+  league. Rolling-origin evaluation (refit every few months, score the next
+  block) would give error bars on every number in this section.
+- **Out-of-fold fitting of the goal-market calibrators** (see 1c), so the
+  deployed models can train on all data.
+- **A full Dixon-Coles maximum-likelihood fit** for Poisson. The current
+  ratings are ratios of weighted averages and are not adjusted for the
+  strength of the opponents faced.
+
 #### 2. Security gaps
 
 | Issue | Risk | Status |
@@ -283,8 +372,10 @@ Nothing else matters if the predictions aren't good. All **$0**.
    sample and check variance. This is likely a bug with a large payoff.
 2. **Fit the ensemble weights** on the validation split by minimising log loss, instead
    of hand-setting them. Store the fitted weights with the model version.
+   *Done — fitted once across all leagues pooled; per-league fits overfit (1e).*
 3. **Replace the weighted mean with a stacked meta-model** — logistic regression over the
    three models' outputs. Usually a solid gain over fixed weights.
+   *Measured: no gain over the pooled weighted mean (1e).*
 4. **Add a baseline row to every backtest**: always-home, always-draw, and the
    league's base rates. A model that can't beat always-home must not ship. Put it in the
    metrics table so it's visible, not buried in a console log.
@@ -296,7 +387,7 @@ Nothing else matters if the predictions aren't good. All **$0**.
    shots-on-target are in the football-data.co.uk CSVs), home/away-specific form splits,
    league position gap, days since last match per competition, promoted-team flags.
 8. **Time-decay weighting** on training samples — a match from 2019 should not count as
-   much as one from last month.
+   much as one from last month. *Done for the Poisson ratings (540-day half-life, 1e).*
 9. **Walk-forward cross-validation** instead of a single split, so the accuracy figure
    has an error bar rather than being one lucky or unlucky slice.
 
