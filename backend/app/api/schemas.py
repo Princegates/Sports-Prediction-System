@@ -736,6 +736,25 @@ class BetCodeGenerateIn(BaseModel):
     # to the aggregator is provably what was shown on screen -- omit to run
     # selection fresh instead.
     legs: list[BetCodeLegOut] | None = None
+    # Betting sites to make codes on (keys from GET /api/betcodes/sites).
+    # Empty = the older single-aggregator path in the settings panel.
+    sites: list[str] = []
+
+
+class BettingSiteOut(BaseModel):
+    key: str
+    name: str
+    connected: bool
+
+
+class SiteCodeOut(BaseModel):
+    site: str
+    name: str
+    status: str  # code_ready | not_connected | error
+    code: str | None = None
+    link: str | None = None
+    message: str | None = None
+    unavailable_match_ids: list[int] = []
 
 
 class BetCodeOut(BaseModel):
@@ -751,3 +770,4 @@ class BetCodeOut(BaseModel):
     booking_code: str | None
     deep_link: str | None
     provider_message: str | None
+    site_codes: list[SiteCodeOut] = []

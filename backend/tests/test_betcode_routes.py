@@ -223,3 +223,116 @@ def test_expires_at_is_the_earliest_leg_kickoff(auth_headers, db_session, priced
     response = client.post("/api/betcodes", json={"criteria": CRITERIA}, headers=auth_headers)
     body = response.json()
     assert body["expires_at"][:16] == priced_match.date.isoformat()[:16]
+
+
+# --- codes on betting sites ---------------------------------------------------
+
+
+class _FakeConnector:
+    """Stands in for a site connection: issues a fixed code, optionally
+    leaving some matches out, or fails with a site's own message."""
+
+    def __init__(self, code="ABC123", unavailable=(), error=None):
+        self.code, self.unavailable, self.error = code, list(unavailable), error
+
+    def create_code(self, legs):
+        from app.betcode.providers import BookingCodeError
+        from app.betcode.sites import ConnectorResult
+
+        if self.error:
+            raise BookingCodeError(self.error)
+        return ConnectorResult(code=self.code, link=f"https://example.test/?code={self.code}",
+                               unavailable_match_ids=self.unavailable)
+
+
+@pytest.fixture()
+def sites(monkeypatch):
+    """Swaps the site registry for one whose connections are fakes."""
+
+    from app.betcode import sites as betting_sites
+
+    def install(**connectors):
+        registry = [
+            betting_sites.Site(key, key.replace("_", " ").title(), (lambda c=c: c) if c else None)
+            for key, c in connectors.items()
+        ]
+        monkeypatch.setattr(betting_sites, "SITES", registry)
+        monkeypatch.setattr(betting_sites, "SITES_BY_KEY", {s.key: s for s in registry})
+
+    return install
+
+
+def test_sites_lists_which_are_connected(auth_headers, sites):
+    sites(sportybet_gh=_FakeConnector(), betway_gh=None)
+
+    body = client.get("/api/betcodes/sites", headers=auth_headers).json()
+
+    assert body == [
+        {"key": "sportybet_gh", "name": "Sportybet Gh", "connected": True},
+        {"key": "betway_gh", "name": "Betway Gh", "connected": False},
+    ]
+
+
+def test_the_real_registry_claims_no_connection_it_does_not_have(auth_headers):
+    """Until a site's connection is built, it must say so -- the booking
+    step is hidden on that basis, and a false 'connected' would offer
+    members a button that can only fail."""
+
+    body = client.get("/api/betcodes/sites", headers=auth_headers).json()
+
+    assert {s["key"] for s in body} == {"sportybet_gh", "betway_gh", "1xbet"}
+    from app.betcode import sites as betting_sites
+
+    assert all(s["connected"] == betting_sites.SITES_BY_KEY[s["key"]].connected for s in body)
+
+
+def test_one_slip_gets_a_code_from_each_site(auth_headers, db_session, priced_match, sites):
+    sites(
+        sportybet_gh=_FakeConnector("SPORTY1"),
+        betway_gh=_FakeConnector(error="Betway refused the slip."),
+        onexbet=None,
+    )
+
+    response = client.post(
+        "/api/betcodes",
+        json={"criteria": CRITERIA, "sites": ["sportybet_gh", "betway_gh", "onexbet"]},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    by_site = {c["site"]: c for c in body["site_codes"]}
+    assert by_site["sportybet_gh"]["status"] == "code_ready" and by_site["sportybet_gh"]["code"] == "SPORTY1"
+    assert by_site["betway_gh"]["status"] == "error" and "refused" in by_site["betway_gh"]["message"]
+    assert by_site["onexbet"]["status"] == "not_connected"
+
+    # The slip is saved with every site's answer, and the single-code
+    # fields mirror the first site that issued one.
+    slip = db_session.query(BookingSlip).one()
+    assert slip.status == "code_ready" and slip.booking_code == "SPORTY1"
+    assert len(slip.site_codes) == 3
+    assert client.get(f"/api/betcodes/{slip.id}", headers=auth_headers).json()["site_codes"] == body["site_codes"]
+
+
+def test_a_site_that_skips_a_match_says_which(auth_headers, priced_match, sites):
+    sites(sportybet_gh=_FakeConnector("PART01", unavailable=[priced_match.id]))
+
+    body = client.post(
+        "/api/betcodes", json={"criteria": CRITERIA, "sites": ["sportybet_gh"]}, headers=auth_headers
+    ).json()
+
+    code = body["site_codes"][0]
+    assert code["unavailable_match_ids"] == [priced_match.id]
+    assert "doesn't offer 1 of these 1 picks" in code["message"]
+
+
+def test_no_connected_site_saves_the_slip_without_inventing_a_code(auth_headers, db_session, priced_match, sites):
+    sites(sportybet_gh=None)
+
+    body = client.post(
+        "/api/betcodes", json={"criteria": CRITERIA, "sites": ["sportybet_gh"]}, headers=auth_headers
+    ).json()
+
+    assert body["status"] == "provider_unavailable"
+    assert body["booking_code"] is None and body["site_codes"][0]["code"] is None
+    assert db_session.query(BookingSlip).count() == 1

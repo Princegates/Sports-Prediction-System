@@ -68,6 +68,8 @@ _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     # "system_weekly_<tier>" on a row scripts/generate_weekly_picks.py
     # created; null on everything an admin built by hand.
     ("admin_picks", "source", "VARCHAR(32)"),
+    # Per-site booking codes -- see BookingSlip.site_codes.
+    ("booking_slips", "site_codes", "JSON"),
 ]
 
 

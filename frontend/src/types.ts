@@ -534,6 +534,32 @@ export interface BetCodePreview {
   warnings: string[];
 }
 
+/** A betting site a slip can be turned into a booking code for. */
+export interface BettingSite {
+  key: string;
+  name: string;
+  /** False until that site's connection is built -- only connected sites are offered. */
+  connected: boolean;
+}
+
+/** One site's answer for one slip: its own code, or why there isn't one. */
+export interface SiteCode {
+  site: string;
+  name: string;
+  status: "code_ready" | "not_connected" | "error";
+  code: string | null;
+  link: string | null;
+  message: string | null;
+  /** Matches the site doesn't offer -- the code covers the rest of the slip. */
+  unavailable_match_ids: number[];
+}
+
+export interface BookingSlipResult {
+  id: number;
+  status: string;
+  site_codes: SiteCode[];
+}
+
 /** An explicit (match, market, selection) to price -- no search, just "what
  * does this cost right now". What a chat answer's picks, or a Markets-page
  * shortlist, sends to POST /api/betcodes/price. */

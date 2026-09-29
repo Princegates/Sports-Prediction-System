@@ -11,6 +11,7 @@ import {
 import { CopyButton } from "../components/CopyButton";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
+import { SiteCodes } from "../components/SiteCodes";
 import { LEAGUES, useLeague } from "../components/AppShell";
 import { useAuth } from "../lib/AuthContext";
 import type { AdminPick, BetCodeCriteria, BetCodeLeg, BetCodePick, BetCodePreview } from "../types";
@@ -47,6 +48,11 @@ function formatLegsForCopy(legs: BetCodeLeg[], combinedOdds: number): string {
  * shows exactly what it can stand behind: real matches, real markets, real
  * prices, and the combined number they add up to -- copyable, not a
  * fabricated code that would fail the moment someone tried to redeem it.
+ *
+ * Codes come back through direct connections to each betting site instead
+ * (app/betcode/sites.py): <SiteCodes> asks every connected site to book the
+ * slip itself and shows what each one issued. It renders nothing until a
+ * site is connected, so the note below stays true until then.
  */
 
 const MARKET_OPTIONS = [
@@ -729,6 +735,8 @@ export function BetCodes() {
               )}
             </div>
           )}
+
+          {editedLegs.length > 0 && <SiteCodes legs={editedLegs} criteria={criteria()} />}
         </div>
       )}
 

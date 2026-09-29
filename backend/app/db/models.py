@@ -594,4 +594,9 @@ class BookingSlip(Base):
     deep_link: Mapped[str | None] = mapped_column(String(512), nullable=True)
     provider_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # One entry per betting site a code was asked for -- see
+    # app.betcode.sites.SiteCode.as_json. Null on slips from before sites
+    # were connected directly, which used the single-aggregator fields above.
+    site_codes: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
     user: Mapped["User"] = relationship()

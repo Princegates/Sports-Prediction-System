@@ -32,7 +32,10 @@ from app.api.schemas import (
     BetCodeOut,
     BetCodePreviewOut,
     BetCodePriceIn,
+    BettingSiteOut,
+    SiteCodeOut,
 )
+from app.betcode import sites as betting_sites
 from app.betcode.providers import BookingCodeError, ProviderNotConfigured, get_provider
 from app.betcode.selection import Leg, SlipCriteria, price_legs, select_legs
 from app.db.models import BookingSlip, User
@@ -92,6 +95,7 @@ def _slip_to_out(slip: BookingSlip) -> BetCodeOut:
         combined_odds=slip.combined_odds, combined_probability=slip.combined_probability,
         expires_at=slip.expires_at, provider=slip.provider, status=slip.status,
         booking_code=slip.booking_code, deep_link=slip.deep_link, provider_message=slip.provider_message,
+        site_codes=[SiteCodeOut(**entry) for entry in (slip.site_codes or [])],
     )
 
 
@@ -176,9 +180,16 @@ def generate(
         combined_odds=combined_odds,
         combined_probability=combined_probability,
         expires_at=expires_at,
-        provider=provider_name,
+        provider="sites" if payload.sites else provider_name,
         status="selected",
     )
+
+    if payload.sites:
+        _book_on_sites(slip, payload.sites, legs)
+        db.add(slip)
+        db.commit()
+        db.refresh(slip)
+        return _slip_to_out(slip)
 
     try:
         provider = get_provider(db)
@@ -198,6 +209,35 @@ def generate(
     db.commit()
     db.refresh(slip)
     return _slip_to_out(slip)
+
+
+def _book_on_sites(slip: BookingSlip, site_keys: list[str], legs: list[Leg]) -> None:
+    """Asks each site for its own code and records every answer on the slip.
+    The single-code fields mirror the first site that issued one, so older
+    screens that only read those still show something true."""
+
+    results = betting_sites.codes_for_sites(site_keys, legs)
+    slip.site_codes = [r.as_json() for r in results]
+
+    ready = [r for r in results if r.status == "code_ready"]
+    if ready:
+        slip.status = "code_ready"
+        slip.bookmaker = ready[0].name
+        slip.booking_code = ready[0].code
+        slip.deep_link = ready[0].link
+    elif all(r.status == "not_connected" for r in results):
+        slip.status = "provider_unavailable"
+    else:
+        slip.status = "provider_error"
+    slip.provider_message = " ".join(r.message for r in results if r.message and r.status != "code_ready") or None
+
+
+@router.get("/sites", response_model=list[BettingSiteOut])
+def list_sites() -> list[BettingSiteOut]:
+    """Every betting site a code can be asked for, and whether its
+    connection is built. The booking step only offers connected ones."""
+
+    return [BettingSiteOut(key=s.key, name=s.name, connected=s.connected) for s in betting_sites.SITES]
 
 
 @router.get("", response_model=list[BetCodeOut])

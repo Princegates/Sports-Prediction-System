@@ -1,8 +1,11 @@
 import type {
   AdminPick,
   BetCodeCriteria,
+  BetCodeLeg,
   BetCodePick,
   BetCodePreview,
+  BettingSite,
+  BookingSlipResult,
   OutcomesResponse,
   Branding,
   SettingsPayload,
@@ -567,6 +570,19 @@ export function fetchNotice(): Promise<SiteNotice> {
 
 export function previewBetCode(criteria: BetCodeCriteria): Promise<BetCodePreview> {
   return post("/api/betcodes/preview", criteria);
+}
+
+export function fetchBettingSites(): Promise<BettingSite[]> {
+  return get("/api/betcodes/sites");
+}
+
+/** Asks each chosen site for its own booking code for exactly these legs. */
+export function createSiteCodes(
+  criteria: BetCodeCriteria,
+  legs: BetCodeLeg[],
+  sites: string[],
+): Promise<BookingSlipResult> {
+  return post("/api/betcodes", { criteria, legs, sites });
 }
 
 /** Prices an explicit list of picks -- no search, just "what do these cost
