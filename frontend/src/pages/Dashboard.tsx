@@ -195,6 +195,10 @@ export function Dashboard() {
         )}
       </section>
 
+      <GudaPicksSection />
+
+      <AdminPicksSection />
+
       {/* Neither branch below can render yet without knowing hasAccess --
           without this, every visit shows a blank gap under the hero for
           however long the access check takes. */}
@@ -340,11 +344,7 @@ export function Dashboard() {
         </>
       )}
 
-      <GudaPicksSection />
-
       <WeeklyPicksSection />
-
-      <AdminPicksSection />
 
       <SearchCommand open={searchOpen} onClose={() => setSearchOpen(false)} leagues={LEAGUES} />
     </div>
