@@ -262,3 +262,105 @@ def test_the_importer_does_not_claim_a_result_with_a_different_score(db_session)
     report = import_fixtures(db, client, league_id=94, season=2026)
 
     assert report.inserted == 1
+
+
+# --- What the production inspection found ---------------------------------
+
+
+def test_an_old_import_that_put_atleticos_match_under_real_madrid_is_folded_away(db_session):
+    """Fixture 1570334 was stored twice: once under Real Madrid by an import
+    from before the Madrid name fix, once correctly under Atletico. The
+    importer's current club matching decides, and the wrong row goes."""
+
+    db = db_session
+    real, atleti, malaga = (_team(db, n, ES) for n in ("Real Madrid CF", "Club Atlético de Madrid", "Málaga CF"))
+    wrong = _match(db, ES, real, malaga, dt.datetime(2026, 8, 19, 19), api_id=1570334, score=(2, 0),
+                   source="football-data.co.uk")
+    right = _match(db, ES, atleti, malaga, dt.datetime(2026, 8, 19, 21), score=(2, 0))
+    pending_wrong = _match(db, ES, malaga, real, KICKOFF, api_id=1570416, source="football-data.co.uk")
+    db.add(FeaturedPick(match_id=pending_wrong.id, market="Match Result", selection="Draw",
+                        expires_at=KICKOFF + dt.timedelta(days=2)))
+    wrong_id, right_id, pending_wrong_id = wrong.id, right.id, pending_wrong.id
+    db.commit()
+
+    client = FakeClient({"fixtures": [
+        {"fixture": {"id": 1570334, "date": "2026-08-19T19:00:00+00:00", "status": {"short": "FT"}},
+         "teams": {"home": {"name": "Atletico Madrid"}, "away": {"name": "Malaga"}},
+         "goals": {"home": 2, "away": 0}},
+        {"fixture": {"id": 1570416, "date": KICKOFF.strftime("%Y-%m-%dT%H:%M:00+00:00"), "status": {"short": "NS"}},
+         "teams": {"home": {"name": "Malaga"}, "away": {"name": "Atletico Madrid"}},
+         "goals": {"home": None, "away": None}},
+    ]})
+    report = import_fixtures(db, client, league_id=140, season=2026)
+
+    assert report.misattached == 2
+    assert db.get(Match, wrong_id) is None and db.get(Match, pending_wrong_id) is None
+    kept = db.get(Match, right_id)
+    assert kept.api_fixture_id == 1570334 and kept.home_team_id == atleti.id
+    upcoming = db.query(Match).filter_by(api_fixture_id=1570416).one()
+    assert upcoming.away_team_id == atleti.id
+    assert db.query(FeaturedPick).one().match_id == upcoming.id, "the pick follows the real fixture"
+    assert db.query(Match).filter(Match.home_team_id == real.id).count() == 0
+    assert db.query(Match).filter(Match.away_team_id == real.id).count() == 0
+
+
+def test_a_test_edited_copy_of_a_fixture_folds_into_api_footballs_row_and_its_score(db_session):
+    """Spurs vs Villa: API-Football says 2-3; an openfootball copy an hour
+    later had been set to 0-0 by Live-tab test events."""
+
+    db = db_session
+    epl = "English Premier League"
+    spurs, villa = _team(db, "Tottenham Hotspur FC", epl), _team(db, "Aston Villa FC", epl)
+    api = _match(db, epl, spurs, villa, dt.datetime(2026, 9, 19, 11, 30), api_id=1557416, score=(2, 3))
+    copy = _match(db, epl, spurs, villa, dt.datetime(2026, 9, 19, 12, 30), score=(0, 0))
+    api_id, copy_id = api.id, copy.id
+    db.commit()
+
+    report = retire_free_fixtures(db, epl)
+
+    assert report.fixtures_merged == 1
+    assert db.get(Match, copy_id) is None
+    kept = db.get(Match, api_id)
+    assert (kept.home_score, kept.away_score) == (2, 3)
+
+
+def test_free_feed_copies_of_each_other_keep_one_but_a_disputed_score_keeps_both(db_session):
+    db = db_session
+    real, sociedad, barca = (_team(db, n, ES) for n in ("Real Madrid CF", "Real Sociedad de Fútbol", "FC Barcelona"))
+    _match(db, ES, barca, sociedad, dt.datetime(2026, 8, 1, 19), api_id=1, score=(1, 1))  # API coverage starts
+    first = _match(db, ES, real, sociedad, dt.datetime(2026, 8, 26, 21), score=(4, 1))
+    second = _match(db, ES, real, sociedad, dt.datetime(2026, 8, 26, 21), score=(4, 1))
+    a = _match(db, ES, barca, real, dt.datetime(2026, 9, 1, 19), score=(1, 0))
+    b = _match(db, ES, barca, real, dt.datetime(2026, 9, 1, 21), score=(2, 2))
+    ids = first.id, second.id, a.id, b.id
+    db.commit()
+
+    retire_free_fixtures(db, ES)
+
+    assert db.get(Match, ids[0]) is not None and db.get(Match, ids[1]) is None
+    assert db.get(Match, ids[2]) is not None and db.get(Match, ids[3]) is not None
+
+
+def test_a_mislabeled_row_never_merges_two_real_clubs(db_session):
+    """An openfootball row with Atletico's match stored under Real Madrid
+    pairs with API-Football's "Atletico vs Barcelona" through Barcelona. That
+    must not "prove" Real Madrid and Atletico are one club -- they've played
+    each other. The mislabeled row still goes."""
+
+    db = db_session
+    real, atleti, barca = (_team(db, n, ES) for n in ("Real Madrid CF", "Club Atlético de Madrid", "FC Barcelona"))
+    _match(db, ES, real, atleti, dt.datetime(2025, 2, 8, 20), score=(1, 1))  # a derby
+    api = _match(db, ES, atleti, barca, dt.datetime(2026, 9, 15, 17), api_id=1570390, score=(2, 1))
+    mislabeled = _match(db, ES, real, barca, dt.datetime(2026, 9, 15, 19), score=(2, 1))
+    api_id, mislabeled_id = api.id, mislabeled.id
+    db.commit()
+
+    report = retire_free_fixtures(db, ES)
+
+    assert not report.teams_merged
+    assert any("different clubs" in c and "played each other" in c for c in report.conflicts)
+    assert {t.name for t in db.query(Team).filter_by(league=ES)} == {
+        "Real Madrid CF", "Club Atlético de Madrid", "FC Barcelona",
+    }
+    assert db.get(Match, mislabeled_id) is None
+    assert db.get(Match, api_id).home_team_id == atleti.id

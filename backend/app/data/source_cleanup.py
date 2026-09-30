@@ -10,20 +10,24 @@ hours apart, and the Markets page listed both. Worse for the model, a
 club's history was split across the two rows.
 
 ``retire_free_fixtures`` runs per league, after that league's API-Football
-import, and uses a football fact to repair it without guessing at
-spellings: a club plays one match at a time. A free-feed fixture and an
-API-Football fixture in the same league, kicking off within a few hours,
-where at least one side is plainly the same club, are the same match -- so
-the *other* side is the same club too, whatever it's called. Then:
+import, and leans on a football fact rather than on spellings: a club plays
+one match at a time. In order:
 
-1. The two club rows are merged into whichever has more results on record
-   (its history is the one worth keeping), taking API-Football's spelling
-   as the name, since that's the feed that names every fixture from now on.
-   The old spelling stays as an alias.
-2. The free-feed fixture is folded into the API-Football one -- which has
-   the right kickoff and the provider id that live scores and odds need --
-   moving anything that points at it first.
-3. A free-feed fixture still waiting to be played that API-Football doesn't
+1. A free-feed row for the same two clubs as an API-Football row, within a
+   day, is that fixture stored twice -- folded into API-Football's row
+   (right kickoff, the provider id live scores and odds need), whose score
+   stands even if the copy's differs (a Live-tab test edit, say).
+2. Free-feed rows that copy each other, with no API-Football row to
+   arbitrate, keep the oldest -- only when they agree on the score.
+3. A free-feed fixture and an API-Football one kicking off within a few
+   hours, where one side is plainly the same club, are the same match -- so
+   the other side is the same club too, whatever it's called. The two club
+   rows merge into whichever has more results on record, under
+   API-Football's spelling, the old one kept as an alias -- unless the rows
+   have ever played each other or both played different matches within a
+   day, which proves they're two clubs (a mislabeled row can otherwise
+   "prove" Real Madrid is Atletico). Either way the free row goes.
+4. A free-feed fixture still waiting to be played that API-Football doesn't
    have at all is removed: API-Football returns the whole season, so a
    fixture missing from it isn't on the real calendar. A finished one is
    left alone -- a result is history, and nothing here deletes history on
@@ -192,8 +196,12 @@ def _remove_dependents(db: Session, match_id: int) -> None:
     db.execute(update(ChatMessage).where(ChatMessage.context_match_id == match_id).values(context_match_id=None))
 
 
-def _merge_fixture(db: Session, keep: Match, drop: Match, admin_picks: list[AdminPick]) -> None:
-    """Fold a free-feed duplicate into its API-Football row."""
+def fold_fixture(db: Session, keep: Match, drop: Match, admin_picks: list[AdminPick] | None = None) -> None:
+    """Fold a duplicate of a match into the row that stays.
+
+    ``keep``'s own score wins where it has one -- it's API-Football's row,
+    and a copy's score may be a test edit or a feed's mistake.
+    """
 
     if keep.home_score is None and drop.home_score is not None:
         keep.home_score, keep.away_score = drop.home_score, drop.away_score
@@ -206,6 +214,8 @@ def _merge_fixture(db: Session, keep: Match, drop: Match, admin_picks: list[Admi
     # derived from the duplicate is simply rebuilt for the survivor.
     db.execute(update(FeaturedPick).where(FeaturedPick.match_id == drop.id).values(match_id=keep.id))
     db.execute(update(ChatMessage).where(ChatMessage.context_match_id == drop.id).values(context_match_id=keep.id))
+    if admin_picks is None:
+        admin_picks = list(db.execute(select(AdminPick)).scalars())
     for pick in admin_picks:
         legs = pick.legs or []
         if any(leg.get("match_id") == drop.id for leg in legs):
@@ -216,6 +226,45 @@ def _merge_fixture(db: Session, keep: Match, drop: Match, admin_picks: list[Admi
 
     _remove_dependents(db, drop.id)
     db.execute(delete(Match).where(Match.id == drop.id))
+
+
+def _twin_like(a, b) -> bool:
+    """Could these two rows be one match stored twice?"""
+    if a.home_score is not None and b.home_score is not None:
+        if (a.home_score, a.away_score) != (b.home_score, b.away_score):
+            return False
+        return abs(a.date - b.date) <= FINISHED_TWIN_WINDOW
+    return abs(a.date - b.date) <= TWIN_WINDOW
+
+
+def _why_not_same_club(db: Session, a_id: int, b_id: int) -> str | None:
+    """A reason two club rows can't be one club, or None if they could be.
+
+    The guard against the worst possible mistake here -- merging two real
+    clubs. A pairing built on a mislabeled row (Atletico's match stored under
+    Real Madrid) would otherwise "prove" Real Madrid and Atletico are one
+    club. Two rows that have played each other, or that both played
+    different matches within a day, are two clubs.
+    """
+
+    columns = (Match.id, Match.date, Match.home_score, Match.away_score, Match.home_team_id, Match.away_team_id)
+    rows_a = db.execute(select(*columns).where(or_(Match.home_team_id == a_id, Match.away_team_id == a_id))).all()
+    rows_b = db.execute(select(*columns).where(or_(Match.home_team_id == b_id, Match.away_team_id == b_id))).all()
+
+    for r in rows_a:
+        if {r.home_team_id, r.away_team_id} == {a_id, b_id}:
+            return f"they have played each other ({r.date:%Y-%m-%d})"
+
+    for mine, theirs in ((rows_a, rows_b), (rows_b, rows_a)):
+        theirs = sorted(theirs, key=lambda r: r.date)
+        dates = [r.date for r in theirs]
+        for r in mine:
+            lo = bisect.bisect_left(dates, r.date - FINISHED_TWIN_WINDOW)
+            hi = bisect.bisect_right(dates, r.date + FINISHED_TWIN_WINDOW)
+            near = theirs[lo:hi]
+            if near and not any(_twin_like(r, other) for other in near):
+                return f"both played different matches around {r.date:%Y-%m-%d}"
+    return None
 
 
 def retire_free_fixtures(db: Session, league: str, *, apply: bool = True) -> CleanupReport:
@@ -237,7 +286,7 @@ def retire_free_fixtures(db: Session, league: str, *, apply: bool = True) -> Cle
         db.execute(
             select(Match)
             .where(Match.league == league, Match.api_fixture_id.is_(None), Match.date >= covered_from)
-            .order_by(Match.date)
+            .order_by(Match.date, Match.id)
         ).scalars()
     )
     if not free_rows:
@@ -246,24 +295,62 @@ def retire_free_fixtures(db: Session, league: str, *, apply: bool = True) -> Cle
     team_ids = {t for m in (*api_rows, *free_rows) for t in (m.home_team_id, m.away_team_id)}
     teams = {t.id: t for t in db.execute(select(Team).where(Team.id.in_(team_ids))).scalars()}
     api_dates = [m.date for m in api_rows]
+    admin_picks = list(db.execute(select(AdminPick)).scalars()) if apply else []
 
     def label(m: Match) -> str:
         return f"{teams[m.home_team_id].name} vs {teams[m.away_team_id].name} ({m.date:%Y-%m-%d %H:%M})"
 
-    pairs: list[tuple[Match, Match]] = []
-    claimed: set[int] = set()
-    orphans: list[Match] = []
-    for free in free_rows:
-        twin = _find_twin(free, api_rows, api_dates, teams)
-        if twin is None or twin.id in claimed:
-            orphans.append(free)
-            continue
-        claimed.add(twin.id)
-        pairs.append((free, twin))
+    def fold(keep: Match, drop: Match) -> None:
+        report.fixtures_merged += 1
+        if apply:
+            fold_fixture(db, keep, drop, admin_picks)
 
-    # Club rows the pairings say are one club: API row -> free row. Only
-    # within this league -- a club's rows in two divisions are two real
-    # histories, never merged here.
+    # 1. The same two clubs, same direction, within a day of an API-Football
+    #    row: that fixture stored twice, whatever the copy's score says (a
+    #    Live-tab test edit, a feed's mistake). API-Football's row stands.
+    api_by_pair: dict[tuple[int, int], list[Match]] = {}
+    for m in api_rows:
+        api_by_pair.setdefault((m.home_team_id, m.away_team_id), []).append(m)
+    remaining: list[Match] = []
+    for free in free_rows:
+        same = [a for a in api_by_pair.get((free.home_team_id, free.away_team_id), [])
+                if abs(a.date - free.date) <= FINISHED_TWIN_WINDOW]
+        if len(same) == 1:
+            fold(same[0], free)
+        else:
+            remaining.append(free)
+
+    # 2. Free-feed copies of each other with no API-Football row at all:
+    #    same clubs, within a day, same score (or neither has one) -- keep
+    #    the oldest. Different scores and nothing to arbitrate: left alone.
+    by_pair: dict[tuple[int, int], list[Match]] = {}
+    for free in remaining:
+        by_pair.setdefault((free.home_team_id, free.away_team_id), []).append(free)
+    copies: set[int] = set()
+    for group in by_pair.values():
+        group.sort(key=lambda m: m.id)
+        for i, first in enumerate(group):
+            if first.id in copies:
+                continue
+            for other in group[i + 1:]:
+                if other.id not in copies and _twin_like(first, other) and _scores_agree(first, other):
+                    copies.add(other.id)
+                    fold(first, other)
+    remaining = [m for m in remaining if m.id not in copies]
+
+    # 3. The same match under another spelling of a club: paired by the
+    #    other side being plainly the same club (see the module docstring).
+    pairs: list[tuple[Match, Match]] = []
+    orphans: list[Match] = []
+    for free in remaining:
+        twin = _find_twin(free, api_rows, api_dates, teams)
+        if twin is None:
+            orphans.append(free)
+        else:
+            pairs.append((free, twin))
+
+    # Club rows the pairings say are one club. Only within this league -- a
+    # club's rows in two divisions are two real histories, never merged here.
     links: dict[int, set[int]] = {}
     for free, api in pairs:
         for f_id, a_id in ((free.home_team_id, api.home_team_id), (free.away_team_id, api.away_team_id)):
@@ -277,18 +364,20 @@ def retire_free_fixtures(db: Session, league: str, *, apply: bool = True) -> Cle
             + ", ".join(sorted(teams[o].name for o in links[t]))
         )
 
-    admin_picks = list(db.execute(select(AdminPick)).scalars()) if apply and pairs else []
+    refused: set[frozenset[int]] = set()
     merged_into: dict[int, int] = {}
     for free, api in pairs:
         sides = ((free.home_team_id, api.home_team_id), (free.away_team_id, api.away_team_id))
-        if any(f != a and (f in ambiguous or a in ambiguous) for f, a in sides):
-            report.left_alone.append(f"{label(free)} -- club pairing is ambiguous")
-            continue
-        cross_league = any(f != a and teams[f].league != teams[a].league for f, a in sides)
-
         for f_id, a_id in sides:
             f_id, a_id = merged_into.get(f_id, f_id), merged_into.get(a_id, a_id)
-            if f_id == a_id or cross_league:
+            if f_id == a_id or f_id in ambiguous or a_id in ambiguous:
+                continue
+            if teams[f_id].league != teams[a_id].league or frozenset((f_id, a_id)) in refused:
+                continue
+            reason = _why_not_same_club(db, f_id, a_id)
+            if reason:
+                refused.add(frozenset((f_id, a_id)))
+                report.conflicts.append(f"{teams[f_id].name} and {teams[a_id].name} are different clubs: {reason}")
                 continue
             api_team, free_team = teams[a_id], teams[f_id]
             report.teams_merged.append((free_team.name, api_team.name))
@@ -300,9 +389,10 @@ def retire_free_fixtures(db: Session, league: str, *, apply: bool = True) -> Cle
             else:
                 merged_into[f_id] = a_id
 
-        report.fixtures_merged += 1
-        if apply:
-            _merge_fixture(db, api, free, admin_picks)
+        # Whether or not the clubs merged, the free row is a copy of the
+        # API-Football fixture (a club can't play twice at once) -- often a
+        # mislabeled one -- so it goes, and API-Football's row stands.
+        fold(api, free)
 
     covered_until = api_rows[-1].date + FINISHED_TWIN_WINDOW
     for free in orphans:

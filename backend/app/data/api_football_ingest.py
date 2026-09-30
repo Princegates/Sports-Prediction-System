@@ -32,6 +32,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.data.providers.api_football import ApiFootballClient, ID_TO_LEAGUE
+from app.data.source_cleanup import fold_fixture
 from app.data.team_matching import canonical_alias, name_match_score
 from app.db.models import LivePrediction, Match, MatchOdds, Team
 from app.live_engine import record_live_event
@@ -74,6 +75,10 @@ class ImportReport:
     # key alone produced duplicate rows every time a broadcaster moved a
     # kickoff.
     rescheduled: int = 0
+    # Rows an older import attached to the wrong club, found because they
+    # carry the same provider fixture id as the row this import chose, and
+    # folded into it -- see import_fixtures.
+    misattached: int = 0
     skipped_unresolved: list[str] = field(default_factory=list)
     unresolved_clubs: dict[str, UnresolvedClub] = field(default_factory=dict)
     requests_used: int = 0
@@ -266,6 +271,12 @@ def import_fixtures(
     # SCHEDULED fixture should ever be waiting per (home, away) pair -- this
     # index exists purely to survive a moved kickoff, not to disambiguate a
     # real rematch.
+    by_fixture_id: dict[int, list[Match]] = {}
+    for m in stored:
+        if m.api_fixture_id is not None:
+            by_fixture_id.setdefault(m.api_fixture_id, []).append(m)
+    chosen: dict[int, Match] = {}
+
     scheduled_by_pair: dict[tuple[int, int], list[Match]] = {}
     for m in stored:
         if m.status == "SCHEDULED":
@@ -357,7 +368,12 @@ def import_fixtures(
             report.inserted += 1
             if not finished:
                 scheduled_by_pair.setdefault((home.id, away.id), []).append(match)
+            if api_fixture_id is not None:
+                chosen[api_fixture_id] = match
             continue
+
+        if api_fixture_id is not None:
+            chosen[api_fixture_id] = match
 
         if match.api_fixture_id != api_fixture_id:
             # Backfills a row imported before this column existed, and
@@ -372,6 +388,21 @@ def import_fixtures(
             match.away_score = goals.get("away")
             match.status = "FINISHED"
             report.updated += 1
+
+    # One provider fixture is one match. Before the Madrid/Milan name fixes an
+    # import could attach a fixture to the wrong club (Atletico's matches
+    # under Real Madrid, AC Milan's under Inter); a later, correct import
+    # then stored the right row with the same fixture id and the wrong one
+    # stayed behind -- a club playing twice a day, and a fixture that never
+    # existed on the Markets page. The row this import chose is the one its
+    # current club matching stands behind; any other row carrying the id is
+    # folded into it.
+    db.flush()
+    for fixture_id, keep in chosen.items():
+        for other in by_fixture_id.get(fixture_id, []):
+            if other.id != keep.id:
+                fold_fixture(db, keep, other)
+                report.misattached += 1
 
     db.commit()
     return report

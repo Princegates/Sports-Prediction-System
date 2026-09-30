@@ -198,7 +198,7 @@ def main() -> None:
         print(f"  budget       : {daily_budget}/day, "
               f"{int(values.get('api_football_per_minute') or 300)}/minute (from settings)")
 
-        total_inserted = total_updated = total_rescheduled = 0
+        total_inserted = total_updated = total_rescheduled = total_misattached = 0
         unresolved: dict[str, UnresolvedClub] = {}
         skipped_fixtures = 0
         failed: list[str] = []
@@ -223,6 +223,7 @@ def main() -> None:
             total_inserted += report.inserted
             total_updated += report.updated
             total_rescheduled += report.rescheduled
+            total_misattached += report.misattached
             skipped_fixtures += len(report.skipped_unresolved)
             for name, club in report.unresolved_clubs.items():
                 seen = unresolved.get(name)
@@ -233,6 +234,9 @@ def main() -> None:
             print(f"  fixtures: {report.considered} seen, {report.inserted} new, {report.updated} updated")
             if report.rescheduled:
                 print(f"            {report.rescheduled} matched to an existing fixture under a moved kickoff")
+            if report.misattached:
+                print(f"            {report.misattached} stored under the wrong club by an older import, "
+                      f"folded into the right row")
             if report.skipped_unresolved:
                 print(f"            {len(report.skipped_unresolved)} skipped (clubs not recognised)")
 
