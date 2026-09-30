@@ -762,6 +762,20 @@ h1, h2, h3, h4 {
   transform: translateY(-1px);
 }
 
+/* FreePickCard/GudaPickCard reuse .match-card for its layout (padding,
+   flex column, gap) but are deliberately not clickable -- without this,
+   they'd inherit the pointer cursor and hover lift/border-highlight that
+   signal "click me" on every other .match-card, which would be false
+   advertising for a card with no onClick at all. */
+.match-card-static {
+  cursor: default;
+}
+
+.match-card-static:hover {
+  border-color: var(--border);
+  transform: none;
+}
+
 .match-card-top {
   display: flex;
   align-items: center;

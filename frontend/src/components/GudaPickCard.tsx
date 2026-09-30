@@ -9,7 +9,12 @@ export function GudaPickCard({ pick }: { pick: FeaturedPick }) {
   const tilt = useTilt<HTMLDivElement>();
 
   return (
-    <div className="card match-card tilt-card" ref={tilt.ref} onMouseMove={tilt.onMouseMove} onMouseLeave={tilt.onMouseLeave}>
+    <div
+      className="card match-card match-card-static tilt-card"
+      ref={tilt.ref}
+      onMouseMove={tilt.onMouseMove}
+      onMouseLeave={tilt.onMouseLeave}
+    >
       <div className="match-card-top">
         <span className="match-competition">{pick.match.league}</span>
         <span className="badge-neutral">{pick.market}</span>
