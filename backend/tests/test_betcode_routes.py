@@ -1,5 +1,6 @@
-"""The API surface: preview is free and stateless, generate always persists a
-slip whether or not a code came back, and history is scoped to the caller.
+"""The API surface: /suggest and /resolve are free, stateless previews of
+what a slip would contain (no bookmaker price anywhere), and /picks is the
+one call that books a real code with a betting site.
 """
 
 from __future__ import annotations
@@ -9,7 +10,7 @@ import datetime as dt
 import pytest
 from fastapi.testclient import TestClient
 
-from app.db.models import BookingSlip, Match, MatchOdds, Prediction, Team
+from app.db.models import Match, MatchOdds, Prediction, Team
 from app.main import app
 
 client = TestClient(app)
@@ -28,7 +29,12 @@ def _prediction(match_id: int, home=0.85) -> Prediction:
 
 
 @pytest.fixture()
-def priced_match(db_session):
+def upcoming_match(db_session):
+    """A scheduled match with a stored prediction -- no MatchOdds row, since
+    nothing under test needs one. A separate MatchOdds row is added by
+    the priced_match fixture only where a test explicitly wants to prove a
+    stored price is irrelevant to these routes."""
+
     home = Team(name="Arsenal", league="English Premier League", aliases=[])
     away = Team(name="Chelsea", league="English Premier League", aliases=[])
     db_session.add_all([home, away])
@@ -44,40 +50,57 @@ def priced_match(db_session):
     db_session.commit()
     db_session.refresh(m)
     db_session.add(_prediction(m.id))
-    db_session.add(MatchOdds(
-        match_id=m.id, bookmaker="Bet9ja", market="Match Result", selection="Home Win", decimal_odds=1.30,
-    ))
     db_session.commit()
     return m
 
 
-CRITERIA = {"bookmaker": "Bet9ja", "target_odds": 1.2, "min_probability": 0.5}
+@pytest.fixture()
+def priced_match(db_session, upcoming_match):
+    """Same as upcoming_match, plus a stored MatchOdds row -- for a test
+    proving these routes book a pick with or without one."""
+
+    db_session.add(MatchOdds(
+        match_id=upcoming_match.id, bookmaker="Bet9ja", market="Match Result", selection="Home Win",
+        decimal_odds=1.30,
+    ))
+    db_session.commit()
+    return upcoming_match
 
 
-def test_requires_authentication():
-    assert client.post("/api/betcodes/preview", json={"criteria": CRITERIA} | CRITERIA).status_code == 401
+# --- /suggest -----------------------------------------------------------------
 
 
-def test_requires_active_access(headers_no_access):
-    response = client.post("/api/betcodes/preview", json=CRITERIA, headers=headers_no_access)
+def test_suggest_requires_authentication():
+    assert client.post("/api/betcodes/suggest", json={}).status_code == 401
+
+
+def test_suggest_requires_active_access(headers_no_access):
+    response = client.post("/api/betcodes/suggest", json={}, headers=headers_no_access)
     assert response.status_code == 403
 
 
-def test_preview_returns_legs_and_writes_nothing(auth_headers, db_session, priced_match):
-    response = client.post("/api/betcodes/preview", json=CRITERIA, headers=auth_headers)
+def test_suggest_returns_no_priced_fields(auth_headers, upcoming_match):
+    response = client.post("/api/betcodes/suggest", json={"min_probability": 0.5}, headers=auth_headers)
     assert response.status_code == 200, response.text
     body = response.json()
     assert len(body["legs"]) == 1
-    assert body["legs"][0]["home_team"] == "Arsenal"
-    assert body["combined_odds"] == pytest.approx(1.30, abs=0.001)
-    assert db_session.query(BookingSlip).count() == 0
+    leg = body["legs"][0]
+    assert leg["home_team"] == "Arsenal"
+    assert "decimal_odds" not in leg
+    assert "priced_by" not in leg
+    assert "combined_odds" not in body
 
 
-def test_preview_leagues_plural_reaches_the_engine(auth_headers, db_session, priced_match):
-    """The multi-select league field on the API payload must actually reach
-    SlipCriteria.leagues, not just parse -- a La Liga fixture only shows up
-    when La Liga is one of the leagues asked for."""
+def test_suggest_does_not_need_a_stored_price(auth_headers, upcoming_match):
+    """The whole point of dropping odds from this page: a match with no
+    MatchOdds row at all still qualifies."""
 
+    response = client.post("/api/betcodes/suggest", json={"min_probability": 0.5}, headers=auth_headers)
+    assert response.status_code == 200, response.text
+    assert len(response.json()["legs"]) == 1
+
+
+def test_suggest_leagues_plural_reaches_the_engine(auth_headers, db_session, upcoming_match):
     home = Team(name="Real Madrid", league="Spanish La Liga", aliases=[])
     away = Team(name="Barcelona", league="Spanish La Liga", aliases=[])
     db_session.add_all([home, away])
@@ -92,140 +115,76 @@ def test_preview_leagues_plural_reaches_the_engine(auth_headers, db_session, pri
     db_session.commit()
     db_session.refresh(m)
     db_session.add(_prediction(m.id))
-    db_session.add(MatchOdds(
-        match_id=m.id, bookmaker="Bet9ja", market="Match Result", selection="Home Win", decimal_odds=1.40,
-    ))
     db_session.commit()
 
-    # target_odds high enough that the search never stops early -- otherwise
-    # a single 1.30-odds EPL leg alone would already clear CRITERIA's own
-    # 1.2 target and mask whether La Liga was even in the candidate pool.
-    overrides = {"max_legs": 10, "target_odds": 1_000_000.0}
-
     only_epl = client.post(
-        "/api/betcodes/preview", json=CRITERIA | overrides | {"leagues": ["English Premier League"]},
+        "/api/betcodes/suggest",
+        json={"min_probability": 0.5, "max_legs": 10, "leagues": ["English Premier League"]},
         headers=auth_headers,
     ).json()
     assert {leg["league"] for leg in only_epl["legs"]} == {"English Premier League"}
 
     both = client.post(
-        "/api/betcodes/preview",
-        json=CRITERIA | overrides | {"leagues": ["English Premier League", "Spanish La Liga"]},
+        "/api/betcodes/suggest",
+        json={"min_probability": 0.5, "max_legs": 10, "leagues": ["English Premier League", "Spanish La Liga"]},
         headers=auth_headers,
     ).json()
     assert {leg["league"] for leg in both["legs"]} == {"English Premier League", "Spanish La Liga"}
 
 
-def test_price_requires_authentication():
-    assert client.post("/api/betcodes/price", json={"picks": []}).status_code == 401
-
-
-def test_price_requires_active_access(headers_no_access):
-    response = client.post("/api/betcodes/price", json={"picks": []}, headers=headers_no_access)
-    assert response.status_code == 403
-
-
-def test_price_attaches_the_real_stored_quote_to_an_explicit_pick(auth_headers, priced_match):
-    """The chat-picks / Markets-shortlist entry point: caller already knows
-    exactly which (match, market, selection) it wants, this just prices it."""
-
-    payload = {"picks": [{"match_id": priced_match.id, "market": "Match Result", "selection": "Home Win"}]}
-    response = client.post("/api/betcodes/price", json=payload, headers=auth_headers)
-    assert response.status_code == 200, response.text
-    body = response.json()
-    assert len(body["legs"]) == 1
-    assert body["legs"][0]["decimal_odds"] == pytest.approx(1.30, abs=0.001)
-    assert body["legs"][0]["priced_by"] == "Bet9ja"
-    assert body["combined_odds"] == pytest.approx(1.30, abs=0.001)
-    assert body["met_target"] is True
-    assert body["warnings"] == []
-
-
-def test_price_reports_why_an_unpriceable_pick_was_skipped(auth_headers, priced_match):
-    payload = {"picks": [{"match_id": priced_match.id, "market": "Both Teams To Score", "selection": "Yes"}]}
-    response = client.post("/api/betcodes/price", json=payload, headers=auth_headers)
+def test_suggest_with_no_qualifying_match_explains_why(auth_headers, db_session):
+    response = client.post("/api/betcodes/suggest", json={"min_probability": 0.99}, headers=auth_headers)
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["legs"] == []
     assert len(body["warnings"]) == 1
-    assert "no stored bookmaker price" in body["warnings"][0].lower()
+    assert "clears" in body["warnings"][0].lower()
 
 
-def test_generate_without_a_provider_still_saves_the_slip(auth_headers, db_session, priced_match):
-    response = client.post("/api/betcodes", json={"criteria": CRITERIA}, headers=auth_headers)
+# --- /resolve -------------------------------------------------------------------
+
+
+def test_resolve_requires_authentication():
+    assert client.post("/api/betcodes/resolve", json={"picks": []}).status_code == 401
+
+
+def test_resolve_requires_active_access(headers_no_access):
+    response = client.post("/api/betcodes/resolve", json={"picks": []}, headers=headers_no_access)
+    assert response.status_code == 403
+
+
+def test_resolve_checks_an_explicit_pick_against_the_current_prediction(auth_headers, upcoming_match):
+    payload = {"picks": [{"match_id": upcoming_match.id, "market": "Match Result", "selection": "Home Win"}]}
+    response = client.post("/api/betcodes/resolve", json=payload, headers=auth_headers)
     assert response.status_code == 200, response.text
     body = response.json()
-
-    assert body["status"] == "provider_unavailable"
-    assert body["booking_code"] is None
-    assert "aggregator" in body["provider_message"].lower()
-    # The real part -- the selections and combined price -- is still there.
     assert len(body["legs"]) == 1
-    assert body["combined_odds"] == pytest.approx(1.30, abs=0.001)
+    assert body["legs"][0]["model_probability"] == pytest.approx(0.85)
+    assert "decimal_odds" not in body["legs"][0]
+    assert body["warnings"] == []
 
-    assert db_session.query(BookingSlip).count() == 1
 
-
-def test_generate_from_explicit_legs_matches_what_preview_showed(auth_headers, priced_match):
-    preview = client.post("/api/betcodes/preview", json=CRITERIA, headers=auth_headers).json()
-
-    response = client.post(
-        "/api/betcodes", json={"criteria": CRITERIA, "legs": preview["legs"]}, headers=auth_headers
-    )
+def test_resolve_reports_why_a_pick_was_skipped(auth_headers, upcoming_match):
+    payload = {"picks": [{"match_id": upcoming_match.id, "market": "Match Result", "selection": "Nonsense"}]}
+    response = client.post("/api/betcodes/resolve", json=payload, headers=auth_headers)
+    assert response.status_code == 200, response.text
     body = response.json()
-    assert body["legs"] == preview["legs"]
-    assert body["combined_odds"] == pytest.approx(preview["combined_odds"])
+    assert body["legs"] == []
+    assert len(body["warnings"]) == 1
+    assert "isn't an outcome" in body["warnings"][0]
 
 
-def test_generate_with_no_qualifying_legs_is_a_422_not_an_empty_slip(auth_headers, db_session):
-    response = client.post(
-        "/api/betcodes", json={"criteria": {"bookmaker": "Bet9ja", "target_odds": 2.0}}, headers=auth_headers
-    )
-    assert response.status_code == 422
-    assert db_session.query(BookingSlip).count() == 0
+def test_resolve_does_not_need_a_stored_price(auth_headers, priced_match):
+    """Unlike the old /price, a market with no MatchOdds row still resolves
+    -- this is what a Markets-page shortlist relies on."""
+
+    payload = {"picks": [{"match_id": priced_match.id, "market": "Both Teams To Score", "selection": "Yes"}]}
+    response = client.post("/api/betcodes/resolve", json=payload, headers=auth_headers)
+    assert response.status_code == 200, response.text
+    assert len(response.json()["legs"]) == 1
 
 
-def test_history_is_scoped_to_the_caller(auth_headers, headers_no_access, priced_match, db_session, user_no_access):
-    """headers_no_access belongs to an account with no access grant, so it
-    cannot itself generate a slip -- a slip is inserted directly to prove the
-    *listing* endpoint would still scope by owner if one existed."""
-
-    client.post("/api/betcodes", json={"criteria": CRITERIA}, headers=auth_headers)
-
-    other = BookingSlip(
-        user_id=user_no_access.id, bookmaker="Bet9ja", criteria={}, legs=[],
-        combined_odds=1.0, combined_probability=1.0, expires_at=dt.datetime.utcnow(),
-        provider="none", status="provider_unavailable",
-    )
-    db_session.add(other)
-    db_session.commit()
-
-    mine = client.get("/api/betcodes", headers=auth_headers).json()
-    assert len(mine) == 1
-    assert all(row["id"] != other.id for row in mine)
-
-
-def test_a_slip_cannot_be_read_by_a_different_user(auth_headers, db_session, user_no_access):
-    other = BookingSlip(
-        user_id=user_no_access.id, bookmaker="Bet9ja", criteria={}, legs=[],
-        combined_odds=1.0, combined_probability=1.0, expires_at=dt.datetime.utcnow(),
-        provider="none", status="provider_unavailable",
-    )
-    db_session.add(other)
-    db_session.commit()
-    db_session.refresh(other)
-
-    response = client.get(f"/api/betcodes/{other.id}", headers=auth_headers)
-    assert response.status_code == 404
-
-
-def test_expires_at_is_the_earliest_leg_kickoff(auth_headers, db_session, priced_match):
-    response = client.post("/api/betcodes", json={"criteria": CRITERIA}, headers=auth_headers)
-    body = response.json()
-    assert body["expires_at"][:16] == priced_match.date.isoformat()[:16]
-
-
-# --- codes on betting sites ---------------------------------------------------
+# --- booking a member's picks with a site --------------------------------------
 
 
 class _FakeConnector:
@@ -236,13 +195,22 @@ class _FakeConnector:
         self.code, self.unavailable, self.error = code, list(unavailable), error
 
     def create_code(self, legs):
-        from app.betcode.providers import BookingCodeError
-        from app.betcode.sites import ConnectorResult
+        from app.betcode.sites import BookingCodeError, ConnectorResult
 
         if self.error:
             raise BookingCodeError(self.error)
         return ConnectorResult(code=self.code, link=f"https://example.test/?code={self.code}",
                                unavailable_match_ids=self.unavailable)
+
+
+class _RecordingConnector(_FakeConnector):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.booked = []
+
+    def create_code(self, legs):
+        self.booked.append(list(legs))
+        return super().create_code(legs)
 
 
 @pytest.fixture()
@@ -286,7 +254,78 @@ def test_the_real_registry_claims_no_connection_it_does_not_have(auth_headers):
     assert all(s["connected"] == betting_sites.SITES_BY_KEY[s["key"]].connected for s in body)
 
 
-def test_one_slip_gets_a_code_from_each_site(auth_headers, db_session, priced_match, sites):
+def test_booking_picks_requires_authentication():
+    assert client.post("/api/betcodes/picks", json={"picks": [], "sites": ["sportybet_gh"]}).status_code == 401
+
+
+def test_a_picked_outcome_with_no_stored_price_is_still_booked(auth_headers, upcoming_match, sites):
+    """The site prices its own slip, so having no quote for BTTS here is no
+    reason to leave the pick out -- unlike the old /price, which needed
+    one."""
+
+    connector = _RecordingConnector("MINE01")
+    sites(sportybet_gh=connector)
+
+    response = client.post(
+        "/api/betcodes/picks",
+        json={"picks": [{"match_id": upcoming_match.id, "market": "Both Teams To Score", "selection": "Yes"}],
+              "sites": ["sportybet_gh"]},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["site_codes"][0]["code"] == "MINE01"
+    assert [(leg["market"], leg["selection"]) for leg in body["legs"]] == [("Both Teams To Score", "Yes")]
+    assert connector.booked[0][0].decimal_odds is None
+
+
+def test_a_pick_that_cant_be_booked_is_explained_and_the_rest_go_through(auth_headers, upcoming_match, sites):
+    connector = _RecordingConnector()
+    sites(sportybet_gh=connector)
+
+    body = client.post(
+        "/api/betcodes/picks",
+        json={"picks": [
+            {"match_id": upcoming_match.id, "market": "Match Result", "selection": "Home Win"},
+            {"match_id": 999999, "market": "Match Result", "selection": "Home Win"},
+        ], "sites": ["sportybet_gh"]},
+        headers=auth_headers,
+    ).json()
+
+    assert [leg["match_id"] for leg in body["legs"]] == [upcoming_match.id]
+    assert any("999999" in w for w in body["warnings"])
+    assert [leg.match_id for leg in connector.booked[0]] == [upcoming_match.id]
+
+
+def test_no_bookable_pick_is_a_422_and_no_site_is_asked(auth_headers, upcoming_match, sites):
+    connector = _RecordingConnector()
+    sites(sportybet_gh=connector)
+
+    response = client.post(
+        "/api/betcodes/picks",
+        json={"picks": [{"match_id": upcoming_match.id, "market": "Match Result", "selection": "Nonsense"}],
+              "sites": ["sportybet_gh"]},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 422
+    assert "isn't an outcome" in response.json()["detail"]
+    assert connector.booked == []
+
+
+def test_booking_picks_needs_a_site(auth_headers, upcoming_match):
+    response = client.post(
+        "/api/betcodes/picks",
+        json={"picks": [{"match_id": upcoming_match.id, "market": "Match Result", "selection": "Home Win"}],
+              "sites": []},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 422
+
+
+def test_one_slip_gets_a_code_from_each_site(auth_headers, upcoming_match, sites):
     sites(
         sportybet_gh=_FakeConnector("SPORTY1"),
         betway_gh=_FakeConnector(error="Betway refused the slip."),
@@ -294,8 +333,9 @@ def test_one_slip_gets_a_code_from_each_site(auth_headers, db_session, priced_ma
     )
 
     response = client.post(
-        "/api/betcodes",
-        json={"criteria": CRITERIA, "sites": ["sportybet_gh", "betway_gh", "onexbet"]},
+        "/api/betcodes/picks",
+        json={"picks": [{"match_id": upcoming_match.id, "market": "Match Result", "selection": "Home Win"}],
+              "sites": ["sportybet_gh", "betway_gh", "onexbet"]},
         headers=auth_headers,
     )
 
@@ -306,116 +346,31 @@ def test_one_slip_gets_a_code_from_each_site(auth_headers, db_session, priced_ma
     assert by_site["betway_gh"]["status"] == "error" and "refused" in by_site["betway_gh"]["message"]
     assert by_site["onexbet"]["status"] == "not_connected"
 
-    # The slip is saved with every site's answer, and the single-code
-    # fields mirror the first site that issued one.
-    slip = db_session.query(BookingSlip).one()
-    assert slip.status == "code_ready" and slip.booking_code == "SPORTY1"
-    assert len(slip.site_codes) == 3
-    assert client.get(f"/api/betcodes/{slip.id}", headers=auth_headers).json()["site_codes"] == body["site_codes"]
 
-
-def test_a_site_that_skips_a_match_says_which(auth_headers, priced_match, sites):
-    sites(sportybet_gh=_FakeConnector("PART01", unavailable=[priced_match.id]))
+def test_a_site_that_skips_a_match_says_which(auth_headers, upcoming_match, sites):
+    sites(sportybet_gh=_FakeConnector("PART01", unavailable=[upcoming_match.id]))
 
     body = client.post(
-        "/api/betcodes", json={"criteria": CRITERIA, "sites": ["sportybet_gh"]}, headers=auth_headers
+        "/api/betcodes/picks",
+        json={"picks": [{"match_id": upcoming_match.id, "market": "Match Result", "selection": "Home Win"}],
+              "sites": ["sportybet_gh"]},
+        headers=auth_headers,
     ).json()
 
     code = body["site_codes"][0]
-    assert code["unavailable_match_ids"] == [priced_match.id]
+    assert code["unavailable_match_ids"] == [upcoming_match.id]
     assert "couldn't take 1 of these 1 picks" in code["message"]
 
 
-def test_no_connected_site_saves_the_slip_without_inventing_a_code(auth_headers, db_session, priced_match, sites):
+def test_no_connected_site_books_nothing_without_inventing_a_code(auth_headers, upcoming_match, sites):
     sites(sportybet_gh=None)
 
     body = client.post(
-        "/api/betcodes", json={"criteria": CRITERIA, "sites": ["sportybet_gh"]}, headers=auth_headers
-    ).json()
-
-    assert body["status"] == "provider_unavailable"
-    assert body["booking_code"] is None and body["site_codes"][0]["code"] is None
-    assert db_session.query(BookingSlip).count() == 1
-
-
-# --- booking a member's own picks --------------------------------------------
-
-
-class _RecordingConnector(_FakeConnector):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.booked = []
-
-    def create_code(self, legs):
-        self.booked.append(list(legs))
-        return super().create_code(legs)
-
-
-def test_booking_picks_requires_authentication():
-    assert client.post("/api/betcodes/picks", json={"picks": [], "sites": ["sportybet_gh"]}).status_code == 401
-
-
-def test_a_picked_outcome_with_no_stored_price_is_still_booked(auth_headers, db_session, priced_match, sites):
-    """The site prices its own slip, so our lack of a quote for BTTS here is
-    no reason to leave the pick out -- unlike /price, which needs one."""
-
-    connector = _RecordingConnector("MINE01")
-    sites(sportybet_gh=connector)
-
-    response = client.post(
         "/api/betcodes/picks",
-        json={"picks": [{"match_id": priced_match.id, "market": "Both Teams To Score", "selection": "Yes"}],
+        json={"picks": [{"match_id": upcoming_match.id, "market": "Match Result", "selection": "Home Win"}],
               "sites": ["sportybet_gh"]},
-        headers=auth_headers,
-    )
-
-    assert response.status_code == 200, response.text
-    body = response.json()
-    assert body["site_codes"][0]["code"] == "MINE01"
-    assert [(leg["market"], leg["selection"]) for leg in body["legs"]] == [("Both Teams To Score", "Yes")]
-    assert connector.booked[0][0].decimal_odds is None
-    assert db_session.query(BookingSlip).count() == 0
-
-
-def test_a_pick_that_cant_be_booked_is_explained_and_the_rest_go_through(auth_headers, priced_match, sites):
-    connector = _RecordingConnector()
-    sites(sportybet_gh=connector)
-
-    body = client.post(
-        "/api/betcodes/picks",
-        json={"picks": [
-            {"match_id": priced_match.id, "market": "Match Result", "selection": "Home Win"},
-            {"match_id": 999999, "market": "Match Result", "selection": "Home Win"},
-        ], "sites": ["sportybet_gh"]},
         headers=auth_headers,
     ).json()
 
-    assert [leg["match_id"] for leg in body["legs"]] == [priced_match.id]
-    assert any("999999" in w for w in body["warnings"])
-    assert [leg.match_id for leg in connector.booked[0]] == [priced_match.id]
-
-
-def test_no_bookable_pick_is_a_422_and_no_site_is_asked(auth_headers, priced_match, sites):
-    connector = _RecordingConnector()
-    sites(sportybet_gh=connector)
-
-    response = client.post(
-        "/api/betcodes/picks",
-        json={"picks": [{"match_id": priced_match.id, "market": "Match Result", "selection": "Nonsense"}],
-              "sites": ["sportybet_gh"]},
-        headers=auth_headers,
-    )
-
-    assert response.status_code == 422
-    assert "isn't an outcome" in response.json()["detail"]
-    assert connector.booked == []
-
-
-def test_booking_picks_needs_a_site(auth_headers, priced_match):
-    response = client.post(
-        "/api/betcodes/picks",
-        json={"picks": [{"match_id": priced_match.id, "market": "Match Result", "selection": "Home Win"}], "sites": []},
-        headers=auth_headers,
-    )
-
-    assert response.status_code == 422
+    assert body["site_codes"][0]["status"] == "not_connected"
+    assert body["site_codes"][0]["code"] is None

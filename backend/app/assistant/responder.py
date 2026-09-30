@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from app.assistant import retrieval
 from app.assistant.nlu import Intent, ParsedQuery
 from app.assistant.retrieval import MatchCard
-from app.betcode.selection import DEFAULT_MARKETS, DEFAULT_MIN_PROBABILITY, SlipCriteria, select_legs
+from app.betcode.selection import DEFAULT_MARKETS, DEFAULT_MIN_PROBABILITY, select_legs_by_confidence
 from app.db.models import Prediction
 
 # Never phrase a probability as a certainty. This line is appended to any
@@ -597,18 +597,19 @@ def _best_picks(db: Session, q: ParsedQuery, now: dt.datetime) -> Answer:
 # Chat's own mirror of AI Generation's one-click risk presets (frontend
 # BetCodes.tsx RISK_PRESETS), plus a fourth "higher" tier the page doesn't
 # expose as a single button yet -- for someone in chat explicitly asking for
-# the most aggressive odds accumulation this engine can honestly produce.
-# Each tier sets a floor, a leg cap, a market set, and a price ceiling (the
-# same "whichever is hit first" shape select_legs already gives the page's
-# own presets) -- see _generate_selections for when an explicit leg count
-# or market overrides a tier's own default instead of stacking with it.
+# the most aggressive combination this engine can honestly produce. Each
+# tier sets a floor, a leg cap and a market set (the same shape
+# select_legs_by_confidence already gives the page's own presets) -- see
+# _generate_selections for when an explicit leg count or market overrides a
+# tier's own default instead of stacking with it. No price ceiling: the
+# result is meant to be booked directly with a betting site, not combined
+# toward a target price.
 _RISK_TIERS: dict[str, dict] = {
     "low": {
         "label": "Low risk",
         "min_probability": 0.85,
         "max_legs": 3,
         "markets": (),
-        "target_odds": 3.0,
         "caution": None,
     },
     "medium": {
@@ -616,7 +617,6 @@ _RISK_TIERS: dict[str, dict] = {
         "min_probability": 0.65,
         "max_legs": 5,
         "markets": (),
-        "target_odds": 10.0,
         "caution": None,
     },
     "high": {
@@ -624,10 +624,9 @@ _RISK_TIERS: dict[str, dict] = {
         "min_probability": 0.5,
         "max_legs": 8,
         "markets": DEFAULT_MARKETS + ("Correct Score",),
-        "target_odds": 50.0,
         "caution": (
-            "**Caution:** each leg individually clears the floor, but stacking this many at this "
-            "price compounds fast -- the combined probability below, not the leg count, is what "
+            "**Caution:** each leg individually clears the floor, but stacking this many "
+            "compounds fast -- the combined probability below, not the leg count, is what "
             "actually says how likely this is to land."
         ),
     },
@@ -636,7 +635,6 @@ _RISK_TIERS: dict[str, dict] = {
         "min_probability": 0.35,
         "max_legs": 15,
         "markets": DEFAULT_MARKETS + ("Correct Score",),
-        "target_odds": 250.0,
         "caution": (
             "**Caution:** at this floor and leg count, a slip like this is realistically more "
             "likely to lose than win, even though every leg cleared the accuracy bar on its own. "
@@ -651,18 +649,16 @@ def _generate_selections(db: Session, q: ParsedQuery) -> Answer:
     """"Give me 20 selections with at least 50% chance", "build me a high
     risk accumulator for the premier league", and their variants -- the
     chat entry point to the same engine AI Generation's page uses
-    (app.betcode.selection.select_legs), so a chat answer and a page preview
-    can never disagree about what counts as a real, priced pick.
+    (app.betcode.selection.select_legs_by_confidence), so a chat answer and
+    a page preview can never disagree about what counts as a real pick.
+    Neither is priced: the result is meant to be booked directly with a
+    betting site, which prices the slip itself.
 
-    A named risk tier (_RISK_TIERS) supplies the floor, leg cap, market set
-    and price ceiling when the message doesn't state its own -- an explicit
-    count or floor in the message always wins over the tier's default for
-    that one field, the same way a manual edit overrides a preset on the
-    page itself. An explicit count also clears the tier's own price
-    ceiling: a count is a firm ask for that many legs, and a target price
-    stopping the search early would silently hand back fewer than that
-    without saying why (the same reasoning that already applied with no
-    tier involved).
+    A named risk tier (_RISK_TIERS) supplies the floor, leg cap and market
+    set when the message doesn't state its own -- an explicit count or
+    floor in the message always wins over the tier's default for that one
+    field, the same way a manual edit overrides a preset on the page
+    itself.
     """
 
     tier = _RISK_TIERS.get(q.risk_level) if q.risk_level else None
@@ -678,29 +674,25 @@ def _generate_selections(db: Session, q: ParsedQuery) -> Answer:
         if q.market
         else (tier["markets"] if tier else ())
     )
-    target_odds = 1_000_000.0 if q.selection_count else (tier["target_odds"] if tier else 1_000_000.0)
     market_label = _MARKET_LABELS.get(q.market, q.market) if q.market else None
 
-    criteria = SlipCriteria(
-        bookmaker="any",
-        target_odds=target_odds,
-        markets=markets,
+    pick = select_legs_by_confidence(
+        db,
         min_probability=floor,
         max_legs=count,
+        markets=markets,
         league=q.league,
         days_ahead=7,
     )
-    result = select_legs(db, criteria)
 
     scope = f"{f' in {q.league}' if q.league else ''}{f' for {market_label}' if market_label else ''}"
 
-    if not result.legs:
+    if not pick.legs:
         return Answer(
             text=(
-                f"No scheduled match in the next 7 days{scope} both clears "
-                f"{_pct(floor)} model probability and has a real, stored bookmaker price -- so there's "
-                f"nothing I can put together honestly. Try a lower floor, a different league or market, "
-                f"or capture more odds first (Settings -> Data sources)."
+                f"No scheduled match in the next 7 days{scope} clears "
+                f"{_pct(floor)} model probability -- so there's nothing I can put together honestly. "
+                f"Try a lower floor, a different league, or a different market."
             ),
             intent=q.intent,
             sources=[Source("page", "AI Generation", "/app/betcodes")],
@@ -709,29 +701,29 @@ def _generate_selections(db: Session, q: ParsedQuery) -> Answer:
 
     header = f"**{tier['label']} slip** -- " if tier else ""
     lines = [
-        f"{header}**{len(result.legs)} selection{'s' if len(result.legs) != 1 else ''}**, each priced "
-        f"from a real, stored bookmaker quote, {_pct(floor)}+ model probability"
+        f"{header}**{len(pick.legs)} selection{'s' if len(pick.legs) != 1 else ''}**, "
+        f"{_pct(floor)}+ model probability"
         f"{f', {market_label} only' if market_label else ''}:",
         "",
     ]
-    for i, leg in enumerate(result.legs, start=1):
+    for i, leg in enumerate(pick.legs, start=1):
         lines.append(
             f"{i}. **{leg.selection}** ({leg.market}) -- {leg.home_team} vs {leg.away_team}, "
-            f"{_kickoff(leg.kickoff)} -- {_pct(leg.model_probability)} at {leg.decimal_odds:.2f} "
-            f"({leg.priced_by})"
+            f"{_kickoff(leg.kickoff)} -- {_pct(leg.model_probability)}"
         )
 
     lines.append("")
-    if len(result.legs) < count:
+    if len(pick.legs) < count:
         lines.append(
             f"That's every match in the next 7 days{scope} that clears "
-            f"{_pct(floor)} with a real price -- short of the {count} you asked for. A lower floor, a "
-            f"wider league, or a different market would surface more."
+            f"{_pct(floor)} -- short of the {count} you asked for. A lower floor, a wider league, or a "
+            f"different market would surface more."
         )
         lines.append("")
     lines.append(
-        f"Combined: {result.combined_odds:.2f} odds, {_pct(result.combined_probability)} probability -- "
-        f"stacking {len(result.legs)} legs multiplies the risk, it doesn't add the confidence."
+        f"Combined probability: {_pct(pick.combined_probability)} -- stacking {len(pick.legs)} legs "
+        f"multiplies the risk, it doesn't add the confidence. These aren't priced -- pick a betting "
+        f"site on the AI Generation page to book them as a real slip; the site prices it when it's opened."
     )
     if tier and tier["caution"]:
         lines.append("")
@@ -741,7 +733,7 @@ def _generate_selections(db: Session, q: ParsedQuery) -> Answer:
         text="\n".join(lines),
         intent=q.intent,
         sources=[Source("page", "AI Generation", "/app/betcodes")]
-        + [Source("match", f"{leg.home_team} vs {leg.away_team}", leg.match_id) for leg in result.legs[:5]],
+        + [Source("match", f"{leg.home_team} vs {leg.away_team}", leg.match_id) for leg in pick.legs[:5]],
         suggestions=[
             "What are today's best picks?",
             f"Give me {count} selections with at least {min(95, int((floor + 0.15) * 100))}% chance",

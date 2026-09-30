@@ -38,9 +38,8 @@ from dataclasses import dataclass
 
 import requests
 
-from app.betcode.providers import BookingCodeError
 from app.betcode.selection import Leg
-from app.betcode.sites import ConnectorResult
+from app.betcode.sites import BookingCodeError, ConnectorResult
 from app.data.team_matching import name_match_score
 
 logger = logging.getLogger(__name__)

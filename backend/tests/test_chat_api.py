@@ -436,35 +436,25 @@ def test_best_picks_ranks_by_stored_probability(db_session, auth_headers, fixtur
     ]
 
 
-def test_generate_selections_uses_the_real_priced_selection_engine(db_session, auth_headers, fixture_data):
-    """The chat answer must come from the same engine (and the same real,
-    stored prices) AI Generation's own page uses -- never an estimated odds
-    figure invented for the reply."""
-
-    db_session.add(
-        MatchOdds(
-            match_id=fixture_data["upcoming"].id,
-            bookmaker="Bet365",
-            market="Match Result",
-            selection="Home Win",
-            decimal_odds=1.85,
-        )
-    )
-    db_session.commit()
+def test_generate_selections_uses_the_real_confidence_engine(db_session, auth_headers, fixture_data):
+    """The chat answer must come from the same engine AI Generation's own
+    page uses (select_legs_by_confidence) -- no MatchOdds is seeded here at
+    all, proving a stored bookmaker price is irrelevant to this answer now
+    that neither surface combines toward a priced target."""
 
     body = _ask("give me 5 selections with at least 50% chance", auth_headers)
     assert body["intent"] == "generate_selections"
-    assert "Home Win" in body["text"]
     assert "Arsenal vs Chelsea" in body["text"]
-    assert "1.85" in body["text"]
-    assert "Bet365" in body["text"]
+    # No odds figure is invented or quoted anywhere in the reply.
+    assert "1.85" not in body["text"]
+    assert "book them as a real slip" in body["text"]
 
 
-def test_generate_selections_with_no_priced_match_says_so_honestly(db_session, auth_headers, fixture_data):
-    """No MatchOdds seeded here -- there is nothing to price, and the
-    assistant must say that rather than quote a made-up combo."""
+def test_generate_selections_with_no_qualifying_match_says_so_honestly(db_session, auth_headers, fixture_data):
+    """No outcome in this fixture clears a 99% floor -- the assistant must
+    say that rather than quote a made-up combo."""
 
-    body = _ask("give me 5 selections with at least 50% chance", auth_headers)
+    body = _ask("give me 5 selections with at least 99% chance", auth_headers)
     assert body["intent"] == "generate_selections"
     assert "nothing" in body["text"].lower()
 
@@ -473,33 +463,19 @@ def test_generate_selections_a_named_market_overrides_the_higher_probability_def
     db_session, auth_headers, fixture_data
 ):
     """Regression test: a named market used to be parsed by the NLU and then
-    silently dropped before it ever reached SlipCriteria, so it had zero
-    effect on what got picked. With both Match Result (52%) and BTTS (61%)
-    priced, the default (no market named) picks BTTS for being the higher
-    probability -- asking for "match result" specifically must still return
-    the Match Result leg, proving the request actually reaches the engine."""
-
-    db_session.add_all(
-        [
-            MatchOdds(
-                match_id=fixture_data["upcoming"].id, bookmaker="Bet365",
-                market="Match Result", selection="Home Win", decimal_odds=1.85,
-            ),
-            MatchOdds(
-                match_id=fixture_data["upcoming"].id, bookmaker="Bet365",
-                market="Both Teams To Score", selection="Yes", decimal_odds=1.60,
-            ),
-        ]
-    )
-    db_session.commit()
+    silently dropped before it ever reached the engine, so it had zero
+    effect on what got picked. Unfiltered, Total Goals 1.5 (80%) beats both
+    Match Result (52%) and BTTS (61%) on model probability alone -- asking
+    for "match result" specifically must still return the Match Result leg,
+    proving the request actually reaches the engine."""
 
     unfiltered = _ask("build me an accumulator with at least 50% chance", auth_headers)
-    assert "Both Teams To Score" in unfiltered["text"]
+    assert "Total Goals 1.5" in unfiltered["text"]
 
     filtered = _ask("build me a match result accumulator with at least 50% chance", auth_headers)
     assert filtered["intent"] == "generate_selections"
     assert "Home Win" in filtered["text"]
-    assert "Both Teams To Score" not in filtered["text"]
+    assert "Total Goals 1.5" not in filtered["text"]
 
 
 def test_generate_selections_a_named_league_filters_without_naming_a_team(db_session, auth_headers, fixture_data):

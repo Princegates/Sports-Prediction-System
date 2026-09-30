@@ -578,7 +578,7 @@ export function Markets() {
                 })
               }
             >
-              Send {picks.length} pick{picks.length === 1 ? "" : "s"} to AI Generation for odds
+              Send {picks.length} pick{picks.length === 1 ? "" : "s"} to AI Generation
             </button>
             <button type="button" className="btn ghost" onClick={() => setPicks([])}>
               Clear all

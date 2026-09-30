@@ -135,10 +135,9 @@ function SourceChips({ sources }: { sources: ChatSource[] }) {
   );
 }
 
-/** Hands an answer's picks to AI Generation for real pricing -- Guda only
- * ever ranks by model probability, never a bookmaker price (see the
- * responder's own caveat text), so this is how a picks list actually gets
- * priced rather than staying an estimate. */
+/** Hands an answer's picks to AI Generation, where they can be booked
+ * directly with a betting site -- Guda only ever ranks by model
+ * probability, never a bookmaker price. */
 function SendToGenerationButton({ picks }: { picks: ChatPick[] }) {
   const navigate = useNavigate();
   if (picks.length === 0) return null;
@@ -149,7 +148,7 @@ function SendToGenerationButton({ picks }: { picks: ChatPick[] }) {
       style={{ marginTop: 8 }}
       onClick={() => navigate("/app/betcodes", { state: { picks } })}
     >
-      Send {picks.length} pick{picks.length === 1 ? "" : "s"} to AI Generation for odds
+      Send {picks.length} pick{picks.length === 1 ? "" : "s"} to AI Generation
     </button>
   );
 }

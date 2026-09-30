@@ -657,6 +657,142 @@ def select_ranged_leg_slip(
     )
 
 
+@dataclass
+class ConfidencePick:
+    """select_legs_by_confidence's result -- SelectionResult's shape without
+    anything odds-related (combined_odds, met_target, target_odds), since
+    nothing here is priced or combined toward a target. Booked directly with
+    a betting site (app.betcode.sites) instead."""
+
+    legs: list[Leg]
+    combined_probability: float
+    candidates_considered: int
+    warnings: list[str] = field(default_factory=list)
+
+
+def build_confidence_candidates(
+    db: Session,
+    *,
+    min_probability: float,
+    markets: tuple[str, ...] = (),
+    leagues: tuple[str, ...] = (),
+    league: str | None = None,
+    days_ahead: int = DEFAULT_DAYS_AHEAD,
+) -> list[Leg]:
+    """Every match whose current prediction clears min_probability in a
+    wanted market -- same matching as build_candidate_legs (one leg per
+    match, the strongest qualifying outcome), minus the MatchOdds/pricing
+    requirement. For a caller that books straight to a betting site
+    (app.betcode.sites) rather than combining a priced accumulator, where a
+    stored bookmaker quote would only drop otherwise-good matches for no
+    reason -- see resolve_legs_unpriced's docstring for the same trade-off
+    on an explicit pick.
+    """
+
+    now = dt.datetime.utcnow()
+    cutoff = now + dt.timedelta(days=days_ahead)
+
+    match_query = (
+        select(Match)
+        .where(Match.date >= now, Match.date < cutoff, Match.status == "SCHEDULED")
+        .options(selectinload(Match.home_team), selectinload(Match.away_team))
+    )
+    if leagues:
+        match_query = match_query.where(Match.league.in_(leagues))
+    elif league:
+        match_query = match_query.where(Match.league == league)
+    matches = list(db.execute(match_query).scalars())
+    if not matches:
+        return []
+
+    by_id = {m.id: m for m in matches}
+    predictions = db.execute(
+        select(Prediction).where(Prediction.match_id.in_(list(by_id))).order_by(Prediction.created_at.asc())
+    ).scalars()
+    latest_prediction: dict[int, Prediction] = {p.match_id: p for p in predictions}
+
+    wanted_markets = markets or DEFAULT_MARKETS
+
+    legs: list[Leg] = []
+    for match_id, prediction in latest_prediction.items():
+        outcomes = [
+            o for o in outcomes_from_prediction(prediction)
+            if o.probability >= min_probability and (not wanted_markets or o.market in wanted_markets)
+        ]
+        if not outcomes:
+            continue
+        chosen = max(outcomes, key=lambda o: o.probability)
+        match = by_id[match_id]
+        legs.append(
+            Leg(
+                match_id=match.id,
+                league=match.league,
+                home_team=match.home_team.name,
+                away_team=match.away_team.name,
+                kickoff=match.date,
+                market=chosen.market,
+                selection=chosen.selection,
+                model_probability=chosen.probability,
+            )
+        )
+
+    return legs
+
+
+def select_legs_by_confidence(
+    db: Session,
+    *,
+    min_probability: float = DEFAULT_MIN_PROBABILITY,
+    max_legs: int = DEFAULT_MAX_LEGS,
+    markets: tuple[str, ...] = (),
+    leagues: tuple[str, ...] = (),
+    league: str | None = None,
+    days_ahead: int = DEFAULT_DAYS_AHEAD,
+) -> ConfidencePick:
+    """The no-odds sibling of select_legs: picks up to max_legs matches,
+    safest (highest model probability) first, each clearing min_probability
+    in a wanted market. No price is required and there is no target to
+    reach -- the result is meant to be booked directly with a betting site
+    (app.betcode.sites), which prices the slip itself, rather than combined
+    toward a target price the way select_legs's accumulator is.
+    """
+
+    candidates = build_confidence_candidates(
+        db, min_probability=min_probability, markets=markets, leagues=leagues, league=league, days_ahead=days_ahead,
+    )
+    candidates.sort(key=lambda leg: -leg.model_probability)
+    chosen = candidates[:max_legs]
+
+    combined_probability = 1.0
+    for leg in chosen:
+        combined_probability *= leg.model_probability
+
+    warnings: list[str] = []
+    if not candidates:
+        warnings.append(
+            f"No scheduled match in the next {days_ahead} day(s) clears {min_probability:.0%} model "
+            "probability in these markets. Widen the window, lower the accuracy floor, or pick a "
+            "different market."
+        )
+    elif len(candidates) > len(chosen):
+        warnings.append(
+            f"{len(candidates)} matches qualify -- showing the {len(chosen)} safest by model probability."
+        )
+    if chosen:
+        drop = 1.0 - combined_probability
+        warnings.append(
+            f"Combined probability is {combined_probability:.0%} -- stacking {len(chosen)} legs "
+            f"multiplies the risk by about {drop:.0%}, it doesn't add the confidence."
+        )
+
+    return ConfidencePick(
+        legs=chosen,
+        combined_probability=combined_probability,
+        candidates_considered=len(candidates),
+        warnings=warnings,
+    )
+
+
 # Independent of which risk preset (if any) produced a slip -- labels the
 # *resulting* combined probability, the same "result, not input" reasoning
 # BetCodes.tsx's own resultRiskLabel uses on the frontend, mirrored here so

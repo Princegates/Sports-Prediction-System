@@ -2,11 +2,11 @@ import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import {
   createAdminPick,
-  createSiteCodes,
   deleteAdminPick,
   fetchAdminPicksAdmin,
-  previewBetCode,
-  priceSelections,
+  bookPicks,
+  resolvePicks,
+  suggestPicks,
   updateAdminPick,
 } from "../api";
 import { CopyButton } from "../components/CopyButton";
@@ -15,45 +15,30 @@ import { ErrorState } from "../components/ErrorState";
 import { SiteCodes } from "../components/SiteCodes";
 import { LEAGUES, useLeague } from "../components/AppShell";
 import { useAuth } from "../lib/AuthContext";
-import type { AdminPick, BetCodeCriteria, BetCodeLeg, BetCodePick, BetCodePreview } from "../types";
+import type { AdminPick, BetCodePick, SuggestCriteria, SuggestedLeg, SuggestedPicks } from "../types";
 
-/** Plain-text description of one generated combo, meant to be pasted
- * wherever the user places bets themselves. No bookmaker code, no deep
- * link -- see this file's module docstring for why. */
-function formatLegsForCopy(legs: BetCodeLeg[], combinedOdds: number): string {
-  const header = `AI Generation -- ${legs.length} leg combo, ${combinedOdds.toFixed(2)} combined odds (copied ${new Date().toLocaleString()})`;
+/** Plain-text description of one selected combo, meant to be pasted
+ * wherever the user places bets themselves. No bookmaker code, no odds
+ * figure -- nothing here is priced, see this file's module docstring. */
+function formatLegsForCopy(legs: SuggestedLeg[], combinedProbability: number): string {
+  const header = `AI Generation -- ${legs.length} leg combo, ${(combinedProbability * 100).toFixed(0)}% combined probability (copied ${new Date().toLocaleString()})`;
   const lines = legs.map((leg) => {
     const kickoff = new Date(leg.kickoff).toLocaleString(undefined, {
       weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
     });
     return (
       `${leg.home_team} vs ${leg.away_team} (${leg.league}, ${kickoff})\n` +
-      `${leg.market}: ${leg.selection} -- ${(leg.model_probability * 100).toFixed(0)}% probability, ` +
-      `${leg.decimal_odds.toFixed(2)} odds (${leg.priced_by})`
+      `${leg.market}: ${leg.selection} -- ${(leg.model_probability * 100).toFixed(0)}% probability`
     );
   });
   return [header, "", ...lines].join("\n\n");
 }
 
 /**
- * The "AI Generation" step: builds a multi-match selection toward a target
- * combined price, priced entirely from real, stored bookmaker odds.
- *
- * There used to be a second step here that sent the result to a booking-code
- * aggregator and handed back a redeemable bookmaker code. It's gone: every
- * such service this project could find -- BetPaddi included -- only
- * converts a code that already exists on one bookmaker to another, never
- * mints a fresh one from a raw list of selections. That isn't a gap in this
- * integration, it's what the whole market actually offers; no aggregator
- * can place a bet on a bookmaker's platform on your behalf. So this page
- * shows exactly what it can stand behind: real matches, real markets, real
- * prices, and the combined number they add up to -- copyable, not a
- * fabricated code that would fail the moment someone tried to redeem it.
- *
- * Codes come back through direct connections to each betting site instead
- * (app/betcode/sites.py): <SiteCodes> asks every connected site to book the
- * slip itself and shows what each one issued. It renders nothing until a
- * site is connected, so the note below stays true until then.
+ * The "AI Generation" step: picks a multi-match selection by model
+ * confidence alone -- no bookmaker price anywhere in this file. Pick a
+ * betting site under the legs and it books the slip (and prices it) at its
+ * own odds; nothing here ever estimates or invents a price of its own.
  */
 
 const MARKET_OPTIONS = [
@@ -88,8 +73,8 @@ const ACCURACY_OPTIONS = [
   { value: 0.85, label: "85%+" },
 ];
 
-// Matches the backend's own default (SlipCriteria.max_legs / the
-// betcode_max_legs setting) so leaving this untouched keeps prior behavior.
+// Matches the backend's own default (select_legs_by_confidence's own
+// max_legs default) so leaving this untouched keeps prior behavior.
 const DEFAULT_MAX_LEGS = 8;
 const LEG_COUNT_OPTIONS = [2, 3, 4, 5, 6, 8, 10];
 
@@ -100,26 +85,25 @@ type RiskLevel = "low" | "medium" | "high";
  * same criteria fields the form below exposes -- these aren't a separate
  * mode, just a fast way to reach a sensible corner of the same search.
  *
- * The three levers that actually drive risk here: how safe the floor is,
- * how many legs get stacked (more legs compounds risk fast even at a high
- * floor), and which markets are in play. Low risk leaves markets at the
- * engine's own default set (DEFAULT_MARKETS on the backend -- meaningful
- * markets, no trivial extreme goal lines). High risk explicitly adds
- * Correct Score on top of that default set: it's this project's highest-
- * variance, highest-odds market, deliberately excluded from the default
- * search, and "higher odds accumulation" means actually reaching into it
- * rather than just lowering the floor on the same safe markets.
+ * The two levers that actually drive risk here: how safe the floor is, and
+ * which markets are in play (more legs isn't a separate lever the way it
+ * was when a leg count doubled as "keep searching until the price target
+ * is hit" -- here it's just how many of the safest qualifying matches to
+ * show). Low risk leaves markets at the engine's own default set
+ * (DEFAULT_MARKETS on the backend -- meaningful markets, no trivial extreme
+ * goal lines). High risk explicitly adds Correct Score on top of that
+ * default set: it's this project's highest-variance market, deliberately
+ * excluded from the default search.
  */
 const RISK_PRESETS: Record<
   RiskLevel,
-  { label: string; description: string; minProbability: number; maxLegs: number; targetOdds: number; markets: string[] }
+  { label: string; description: string; minProbability: number; maxLegs: number; markets: string[] }
 > = {
   low: {
     label: "Low risk",
     description: "85%+ picks only, up to 3 legs, the safest markets",
     minProbability: 0.85,
     maxLegs: 3,
-    targetOdds: 3,
     markets: [],
   },
   medium: {
@@ -127,7 +111,6 @@ const RISK_PRESETS: Record<
     description: "65%+ picks, up to 5 legs",
     minProbability: 0.65,
     maxLegs: 5,
-    targetOdds: 10,
     markets: [],
   },
   high: {
@@ -135,7 +118,6 @@ const RISK_PRESETS: Record<
     description: "50%+ picks, up to 8 legs, correct score included",
     minProbability: 0.5,
     maxLegs: 8,
-    targetOdds: 50,
     markets: [...MARKET_OPTIONS.map((m) => m.value)],
   },
 };
@@ -153,7 +135,6 @@ export function BetCodes() {
   const { league } = useLeague();
   const { user } = useAuth();
   const location = useLocation();
-  const [targetOdds, setTargetOdds] = useState(3.0);
   const [maxLegs, setMaxLegs] = useState(DEFAULT_MAX_LEGS);
   const [markets, setMarkets] = useState<string[]>([]);
   const [minProbability, setMinProbability] = useState(0.65);
@@ -168,20 +149,19 @@ export function BetCodes() {
   // chip never claims a match that no longer holds.
   const [activeRisk, setActiveRisk] = useState<RiskLevel | null>(null);
 
-  const [preview, setPreview] = useState<BetCodePreview | null>(null);
+  const [preview, setPreview] = useState<SuggestedPicks | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
   // Set only when the current preview came from picks handed over by Guda
   // (or another page) rather than the criteria form below -- changes the
-  // result card's framing, not how it's priced.
+  // result card's framing, not how it's resolved.
   const [fromExternalPicks, setFromExternalPicks] = useState(false);
   // Legs manually removed from the current preview, keyed the same way a
   // leg is (match_id|market|selection) -- cleared to empty every time
   // `preview` itself is replaced (see runPreview and handleEditPick, the
   // only two places that ever call setPreview). Removal is a client-side
-  // filter, not a fresh search: the combined odds/probability below are
-  // recomputed by simply dropping that leg's own contribution, since both
-  // are already just a running product across the legs kept.
+  // filter, not a fresh search: the combined probability below is
+  // recomputed by simply dropping that leg's own contribution.
   const [removedLegKeys, setRemovedLegKeys] = useState<Set<string>>(new Set());
 
   // Superadmin-only: promoting the current preview as an "Admin Pick" onto
@@ -199,7 +179,6 @@ export function BetCodes() {
   }
 
   const editedLegs = preview ? preview.legs.filter((l) => !removedLegKeys.has(legKey(l))) : [];
-  const editedCombinedOdds = editedLegs.reduce((acc, l) => acc * l.decimal_odds, 1);
   const editedCombinedProbability = editedLegs.reduce((acc, l) => acc * l.model_probability, 1);
 
   useEffect(() => {
@@ -213,14 +192,8 @@ export function BetCodes() {
     };
   }, [user?.role]);
 
-  function criteria(overrides?: Partial<BetCodeCriteria>): BetCodeCriteria {
+  function criteria(overrides?: Partial<SuggestCriteria>): SuggestCriteria {
     return {
-      // Vestigial on the backend now that no aggregator is called -- kept
-      // only because the API still accepts a bookmaker field on the
-      // criteria payload; it has no bearing on which matches or prices
-      // are found.
-      bookmaker: "any",
-      target_odds: targetOdds,
       max_legs: maxLegs,
       markets,
       min_probability: minProbability,
@@ -235,7 +208,7 @@ export function BetCodes() {
     setSelectedLeagues((prev) => (prev.includes(l) ? prev.filter((v) => v !== l) : [...prev, l]));
   }
 
-  async function runPreview(fetchPreview: () => Promise<BetCodePreview>) {
+  async function runPreview(fetchPreview: () => Promise<SuggestedPicks>) {
     setPreviewing(true);
     setPreviewError(null);
     setEditingPickId(null); // a fresh search is never mid-edit of an existing pick
@@ -251,19 +224,19 @@ export function BetCodes() {
   }
 
   // A pick list handed over via navigation (Guda's "Send to AI Generation",
-  // Markets' "My picks" panel, or any future source) prices immediately on
-  // arrival -- once per navigation, not on every re-render.
+  // Markets' "My picks" panel, or any future source) resolves immediately
+  // on arrival -- once per navigation, not on every re-render.
   useEffect(() => {
     const picks = (location.state as { picks?: BetCodePick[] } | null)?.picks;
     if (!picks || picks.length === 0) return;
     setFromExternalPicks(true);
-    runPreview(() => priceSelections(picks));
+    runPreview(() => resolvePicks(picks));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.state]);
 
   function handlePreview() {
     setFromExternalPicks(false);
-    return runPreview(() => previewBetCode(criteria()));
+    return runPreview(() => suggestPicks(criteria()));
   }
 
   // Fills in the preset's values (so the form reflects what actually ran,
@@ -271,14 +244,13 @@ export function BetCodes() {
   // for "just get me a low-risk slip" rather than four.
   function runPreset(risk: RiskLevel) {
     const p = RISK_PRESETS[risk];
-    setTargetOdds(p.targetOdds);
     setMaxLegs(p.maxLegs);
     setMinProbability(p.minProbability);
     setMarkets(p.markets);
     setActiveRisk(risk);
     setFromExternalPicks(false);
     return runPreview(() =>
-      previewBetCode(criteria({ target_odds: p.targetOdds, max_legs: p.maxLegs, min_probability: p.minProbability, markets: p.markets })),
+      suggestPicks(criteria({ max_legs: p.maxLegs, min_probability: p.minProbability, markets: p.markets })),
     );
   }
 
@@ -288,31 +260,26 @@ export function BetCodes() {
   }
 
   // Drops one leg from the current preview -- client-side only, no new
-  // search. The result card's combined odds/probability and leg table
-  // reflect editedLegs immediately; nothing is saved until Feature/Save is
-  // clicked below.
-  function removeLeg(leg: BetCodeLeg) {
+  // search. The result card's combined probability and leg table reflect
+  // editedLegs immediately; nothing is saved until Feature/Save is clicked
+  // below.
+  function removeLeg(leg: SuggestedLeg) {
     setRemovedLegKeys((prev) => new Set(prev).add(legKey(leg)));
   }
 
-  // Loads an already-featured Admin Pick's legs into the results card as if
-  // they'd just been generated, so the same remove-a-leg UI above can edit
-  // it. Feature this slip becomes Save changes for as long as this stays set.
+  // Loads an already-featured (unpriced) Admin Pick's legs into the
+  // results card as if they'd just been generated, so the same remove-a-leg
+  // UI above can edit it. Feature this slip becomes Save changes for as
+  // long as this stays set. A legacy priced pick (from before this page
+  // dropped odds) isn't editable here -- see the Edit button's own guard.
   function handleEditPick(pick: AdminPick) {
-    // This edit UI is built entirely around real prices (removing a leg
-    // recomputes combined odds) -- only reachable for a priced pick, whose
-    // every leg is guaranteed a real decimal_odds/priced_by by the backend.
-    if (!pick.priced || pick.combined_odds === null) return;
+    if (pick.priced) return;
     setPreview({
       legs: pick.legs.map((l) => ({
         match_id: l.match_id, league: l.league, home_team: l.home_team, away_team: l.away_team,
-        kickoff: l.kickoff, market: l.market, selection: l.selection,
-        model_probability: l.probability, decimal_odds: l.decimal_odds!, priced_by: l.priced_by!,
+        kickoff: l.kickoff, market: l.market, selection: l.selection, model_probability: l.probability,
       })),
-      combined_odds: pick.combined_odds,
       combined_probability: pick.combined_probability,
-      target_odds: pick.combined_odds,
-      met_target: true,
       candidates_considered: pick.legs.length,
       warnings: [],
     });
@@ -330,10 +297,10 @@ export function BetCodes() {
 
   // Promotes the current (possibly leg-edited) preview onto every
   // Dashboard's Admin Picks section, or -- while editing an existing one --
-  // saves those same edits back onto it in place. Either way every leg is
-  // re-priced from scratch server-side, so what actually gets featured is
-  // always the current real price, not whatever the browser last saw --
-  // same reasoning as MatchDetail's Guda Pick toggle.
+  // saves those same edits back onto it in place. Always unpriced: nothing
+  // on this page is priced anymore, so every leg is resolved by model
+  // probability alone (same as Markets' "My picks" panel), never re-priced
+  // from a bookmaker quote.
   async function handleFeatureOrSave() {
     if (editedLegs.length === 0) return;
     const editing = editingPickId !== null;
@@ -375,6 +342,7 @@ export function BetCodes() {
         legs: legsPayload,
         label: label || undefined,
         note: note || undefined,
+        priced: false,
         booking_code: bookingCode,
         booking_code_bookmaker: bookingCodeBookmaker,
       };
@@ -411,7 +379,7 @@ export function BetCodes() {
       <div className="section-header">
         <h2>AI Generation</h2>
         <span className="meta">
-          Combine matches toward a target price, priced from real bookmaker odds -- scoped to{" "}
+          Combine matches by model confidence -- scoped to{" "}
           <strong>
             {selectedLeagues.length === 0
               ? "all leagues"
@@ -424,11 +392,11 @@ export function BetCodes() {
       </div>
 
       <p className="setting-note" style={{ marginBottom: 16 }}>
-        Every leg here is priced from a real, stored bookmaker quote -- there is no estimated or synthetic
-        price. Combining matches multiplies the risk as fast as it multiplies the price: three legs each
-        70% likely land around a 34% chance of all three coming in, whatever the combined odds look like.
-        The number below is calculated, not softened. For a booking code, pick a betting site under the
-        legs -- the site builds the slip at its own odds -- or copy the selections and add them yourself.
+        Every leg here is model probability, not a bookmaker price -- combining matches multiplies the
+        risk exactly as fast as it would multiply a price: three legs each 70% likely land around a
+        34% chance of all three coming in. Nothing here is priced or estimated. Pick a betting site
+        under the legs and it books the slip (and prices it) at its own odds, or copy the selections
+        and add them yourself.
       </p>
 
       <div className="card card-pad" style={{ marginBottom: 20 }}>
@@ -459,20 +427,6 @@ export function BetCodes() {
 
       <div className="card card-pad" style={{ marginBottom: 20 }}>
         <div className="auth-form" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
-          <label>
-            Target combined odds
-            <input
-              type="number"
-              min={1.1}
-              step={0.1}
-              value={targetOdds}
-              onChange={(e) => {
-                setActiveRisk(null);
-                setTargetOdds(Number(e.target.value));
-              }}
-            />
-          </label>
-
           <label>
             Window
             <select
@@ -520,10 +474,7 @@ export function BetCodes() {
 
         <div style={{ marginTop: 14 }}>
           <div className="meta" style={{ marginBottom: 6 }}>
-            Number of legs{" "}
-            <span style={{ fontWeight: 400 }}>
-              (selection stops at whichever comes first: this many legs, or the target odds above)
-            </span>
+            Number of legs
           </div>
           <div className="filter-bar">
             {LEG_COUNT_OPTIONS.map((n) => (
@@ -610,8 +561,8 @@ export function BetCodes() {
         <div className="card card-pad" style={{ marginBottom: 20 }}>
           {fromExternalPicks && (
             <p className="setting-note" style={{ marginBottom: 12 }}>
-              Priced from your selected picks -- same real, stored bookmaker quotes as everything else on
-              this page, just not run through the criteria form below.
+              Resolved from your selected picks -- checked against each match's current prediction, just
+              not run through the criteria form below.
             </p>
           )}
           {editingPickId !== null && (
@@ -626,20 +577,11 @@ export function BetCodes() {
           <div className="section-header" style={{ marginBottom: 12 }}>
             <h3 style={{ margin: 0 }}>
               {editedLegs.length} leg{editedLegs.length === 1 ? "" : "s"}
-              {/* Stopping at the leg count someone asked for isn't a
-                  shortfall -- only flag "short of target" when it fell short
-                  of *both* stopping conditions, i.e. ran out of qualifying
-                  matches before reaching either one. Judged against the
-                  original search result, not a manual edit -- removing a leg
-                  by hand is a deliberate choice, not the search falling
-                  short. */}
-              {!preview.met_target && !(preview.legs.length > 0 && preview.legs.length === maxLegs) ? " (short of target)" : ""}
               {editedLegs.length !== preview.legs.length ? ` -- edited from ${preview.legs.length}` : ""}
             </h3>
             {editedLegs.length > 0 && (
               <span className="meta tabular-nums" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                {editedCombinedOdds.toFixed(2)} combined · {(editedCombinedProbability * 100).toFixed(0)}%
-                combined probability
+                {(editedCombinedProbability * 100).toFixed(0)}% combined probability
                 <span className={`risk-tag ${resultRiskLabel(editedCombinedProbability).tone}`}>
                   {resultRiskLabel(editedCombinedProbability).label}
                 </span>
@@ -653,7 +595,7 @@ export function BetCodes() {
               title={
                 preview.legs.length === 0
                   ? fromExternalPicks
-                    ? "None of those picks have a real, stored bookmaker price -- see the warnings below."
+                    ? "None of those picks matched a real, upcoming outcome -- see the warnings below."
                     : "No matches qualify for these criteria."
                   : "Every leg was removed -- generate again, or cancel editing, to start over."
               }
@@ -669,8 +611,6 @@ export function BetCodes() {
                     <th>Market</th>
                     <th>Selection</th>
                     <th>Probability</th>
-                    <th>Odds</th>
-                    <th>Priced by</th>
                     <th>Kickoff</th>
                     <th></th>
                   </tr>
@@ -689,8 +629,6 @@ export function BetCodes() {
                         <strong>{leg.selection}</strong>
                       </td>
                       <td className="tabular-nums">{(leg.model_probability * 100).toFixed(0)}%</td>
-                      <td className="tabular-nums">{leg.decimal_odds.toFixed(2)}</td>
-                      <td className="sub">{leg.priced_by}</td>
                       <td className="sub">
                         {new Date(leg.kickoff).toLocaleString(undefined, {
                           month: "short",
@@ -725,7 +663,7 @@ export function BetCodes() {
 
           {editedLegs.length > 0 && (
             <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <CopyButton text={formatLegsForCopy(editedLegs, editedCombinedOdds)} label="Copy selections" />
+              <CopyButton text={formatLegsForCopy(editedLegs, editedCombinedProbability)} label="Copy selections" />
               {user?.role === "superadmin" && (
                 <button className="btn ghost" onClick={handleFeatureOrSave} disabled={featuring}>
                   {featuring
@@ -741,7 +679,15 @@ export function BetCodes() {
           )}
 
           {editedLegs.length > 0 && (
-            <SiteCodes legs={editedLegs} book={(sites) => createSiteCodes(criteria(), editedLegs, sites)} />
+            <SiteCodes
+              legs={editedLegs}
+              book={(sites) =>
+                bookPicks(
+                  editedLegs.map((l) => ({ match_id: l.match_id, market: l.market, selection: l.selection })),
+                  sites,
+                )
+              }
+            />
           )}
         </div>
       )}
@@ -767,7 +713,7 @@ export function BetCodes() {
                 )}
                 <span className="sub">
                   {pick.legs.length} leg{pick.legs.length === 1 ? "" : "s"} ·{" "}
-                  {pick.priced && pick.combined_odds !== null ? `${pick.combined_odds.toFixed(2)} odds · ` : "no odds · "}
+                  {pick.priced && pick.combined_odds !== null ? `${pick.combined_odds.toFixed(2)} odds · ` : ""}
                   {(pick.combined_probability * 100).toFixed(0)}% probability
                 </span>
                 {/* pick.risk_tier is combined-probability-based (see
@@ -784,7 +730,7 @@ export function BetCodes() {
                 )}
               </span>
               <div style={{ display: "flex", gap: 6 }}>
-                {pick.priced && (
+                {!pick.priced && (
                   <button
                     className="btn ghost"
                     style={{ padding: "2px 8px", fontSize: 12 }}

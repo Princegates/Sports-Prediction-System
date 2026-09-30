@@ -16,8 +16,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable, Protocol
 
-from app.betcode.providers import BookingCodeError
 from app.betcode.selection import Leg
+
+
+class BookingCodeError(Exception):
+    """A site connection's own step failed for a reason worth showing
+    verbatim -- a refused request, a match or market it couldn't translate,
+    anything short of "not connected yet" (that's ConnectorResult's job, via
+    Site.connected being False, not an exception)."""
 
 
 @dataclass(frozen=True)

@@ -489,27 +489,20 @@ export interface OutcomesResponse {
 
 // --- Booking codes -------------------------------------------------------
 
-export interface BetCodeCriteria {
-  /** Who the generated code is for -- has no bearing on which bookmaker's
-   * prices get used, see price_bookmaker and BetCodeLeg.priced_by. */
-  bookmaker: string;
-  target_odds: number;
-  markets: string[];
+/** What POST /api/betcodes/suggest searches with -- no target price, no
+ * bookmaker: the result is meant to be booked directly with a betting site
+ * (POST /picks), which prices the slip itself. */
+export interface SuggestCriteria {
   min_probability?: number | null;
   max_legs?: number | null;
-  /** Kept for older callers that only ever meant one league; ignored
-   * whenever `leagues` below is non-empty. */
-  league?: string | null;
+  markets: string[];
   /** Empty = every league this deployment has data for; non-empty = any
    * one of these (a match only has one league, so this is a union). */
   leagues?: string[];
   days_ahead: number;
-  /** Whose captured prices to price legs from. Omitted/null = any bookmaker
-   * this project has a real quote from. */
-  price_bookmaker?: string | null;
 }
 
-export interface BetCodeLeg {
+export interface SuggestedLeg {
   match_id: number;
   league: string;
   home_team: string;
@@ -518,18 +511,14 @@ export interface BetCodeLeg {
   market: string;
   selection: string;
   model_probability: number;
-  decimal_odds: number;
-  /** Which bookmaker's stored quote this price came from -- not necessarily
-   * the bookmaker the slip is being generated for. */
-  priced_by: string;
 }
 
-export interface BetCodePreview {
-  legs: BetCodeLeg[];
-  combined_odds: number;
+/** Shared response shape for /suggest and /resolve -- neither prices
+ * anything or combines toward a target; both are previews of what /picks
+ * would book. */
+export interface SuggestedPicks {
+  legs: SuggestedLeg[];
   combined_probability: number;
-  target_odds: number;
-  met_target: boolean;
   candidates_considered: number;
   warnings: string[];
 }
@@ -556,11 +545,6 @@ export interface SiteCode {
   unavailable_reasons?: Record<string, string>;
 }
 
-export interface BookingSlipResult {
-  id: number;
-  status: string;
-  site_codes: SiteCode[];
-}
 
 /** Codes for a member's own picks (POST /api/betcodes/picks): the picks
  * that were booked, each site's answer, and why any pick was left out. */

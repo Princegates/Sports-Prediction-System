@@ -1,12 +1,10 @@
 import type {
   AdminPick,
-  BetCodeCriteria,
-  BetCodeLeg,
   BetCodePick,
-  BetCodePreview,
   BettingSite,
-  BookingSlipResult,
   PicksBooking,
+  SuggestCriteria,
+  SuggestedPicks,
   OutcomesResponse,
   Branding,
   SettingsPayload,
@@ -569,34 +567,28 @@ export function fetchNotice(): Promise<SiteNotice> {
 
 // --- Booking codes -------------------------------------------------------
 
-export function previewBetCode(criteria: BetCodeCriteria): Promise<BetCodePreview> {
-  return post("/api/betcodes/preview", criteria);
+/** Runs the confidence-based selection engine -- safest matches first, up
+ * to a leg cap. No price, no target: the result is meant to be booked
+ * directly with a betting site via bookPicks. */
+export function suggestPicks(criteria: SuggestCriteria): Promise<SuggestedPicks> {
+  return post("/api/betcodes/suggest", criteria);
+}
+
+/** Checks an explicit list of picks -- no search, just "resolve exactly
+ * this against each match's current prediction". What "send to AI
+ * Generation" (from a chat answer or a Markets-page shortlist) calls. */
+export function resolvePicks(picks: BetCodePick[]): Promise<SuggestedPicks> {
+  return post("/api/betcodes/resolve", { picks });
 }
 
 export function fetchBettingSites(): Promise<BettingSite[]> {
   return get("/api/betcodes/sites");
 }
 
-/** Asks each chosen site for its own booking code for exactly these legs. */
-export function createSiteCodes(
-  criteria: BetCodeCriteria,
-  legs: BetCodeLeg[],
-  sites: string[],
-): Promise<BookingSlipResult> {
-  return post("/api/betcodes", { criteria, legs, sites });
-}
-
 /** Books the games and outcomes a member picked, as picked, on each chosen
  * site. No price needed -- each site prices its own slip. */
 export function bookPicks(picks: BetCodePick[], sites: string[]): Promise<PicksBooking> {
   return post("/api/betcodes/picks", { picks, sites });
-}
-
-/** Prices an explicit list of picks -- no search, just "what do these cost
- * right now". What "send to AI Generation" (from a chat answer or a
- * Markets-page shortlist) calls. */
-export function priceSelections(picks: BetCodePick[], priceBookmaker?: string | null): Promise<BetCodePreview> {
-  return post("/api/betcodes/price", { picks, price_bookmaker: priceBookmaker ?? null });
 }
 
 export function fetchOutcomes(params: {

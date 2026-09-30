@@ -664,81 +664,36 @@ class AdminPickOut(BaseModel):
 # --- Booking codes -----------------------------------------------------
 
 
-class BetCodeCriteriaIn(BaseModel):
-    bookmaker: str  # who the generated code is for
-    target_odds: float
-    markets: list[str] = []
+class BetCodePickIn(BaseModel):
+    """An explicit (match, market, selection) -- no search, no criteria,
+    just "resolve exactly this". What a chat picks list or the Markets
+    page's own shortlist sends over; see app.betcode.selection's
+    resolve_legs_unpriced (POST /resolve) and select_legs_by_confidence
+    (POST /suggest)."""
+
+    match_id: int
+    market: str
+    selection: str
+
+
+class SuggestCriteriaIn(BaseModel):
+    """What POST /api/betcodes/suggest searches with -- no target price, no
+    bookmaker: the result is meant to be booked directly with a betting site
+    (POST /picks), which prices the slip itself."""
+
     min_probability: float | None = None
     max_legs: int | None = None
-    # Kept for older callers that only ever meant one league; ignored
-    # whenever `leagues` below is non-empty.
-    league: str | None = None
+    markets: list[str] = []
     # Empty = every league this deployment has data for; non-empty = any one
     # of these (a match only has one league, so this is a union, not an
     # intersection) -- lets AI Generation search several leagues at once
     # without also having to mean "all of them".
     leagues: list[str] = []
     days_ahead: int = 7
-    # Whose captured prices to build legs from. Unset = any bookmaker this
-    # project has a real quote from -- see app.betcode.selection's module
-    # docstring for why that differs from `bookmaker` above.
-    price_bookmaker: str | None = None
 
 
-class BetCodeLegOut(BaseModel):
-    match_id: int
-    league: str
-    home_team: str
-    away_team: str
-    kickoff: dt.datetime
-    market: str
-    selection: str
-    model_probability: float
-    decimal_odds: float
-    priced_by: str  # which bookmaker's stored quote this price came from
-
-
-class BetCodePreviewOut(BaseModel):
-    """The selection step's own output -- what the AI picked and why, before
-    anything is sent anywhere. No provider is called to produce this, so
-    it's free to preview repeatedly while narrowing down criteria."""
-
-    legs: list[BetCodeLegOut]
-    combined_odds: float
-    combined_probability: float
-    target_odds: float
-    met_target: bool
-    candidates_considered: int
-    warnings: list[str]
-
-
-class BetCodePickIn(BaseModel):
-    """An explicit (match, market, selection) to price -- no search, no
-    criteria, just "what does this exact selection cost right now". This is
-    what a chat picks list or the Markets page's own shortlist sends over;
-    see app.betcode.selection.price_legs."""
-
-    match_id: int
-    market: str
-    selection: str
-
-
-class BetCodePriceIn(BaseModel):
+class ResolvePicksIn(BaseModel):
     picks: list[BetCodePickIn]
-    # Same meaning as BetCodeCriteriaIn.price_bookmaker: unset = any
-    # bookmaker this project has a real quote from.
-    price_bookmaker: str | None = None
-
-
-class BetCodeGenerateIn(BaseModel):
-    criteria: BetCodeCriteriaIn
-    # Pass the exact legs a prior /preview call returned, so what gets sent
-    # to the aggregator is provably what was shown on screen -- omit to run
-    # selection fresh instead.
-    legs: list[BetCodeLegOut] | None = None
-    # Betting sites to make codes on (keys from GET /api/betcodes/sites).
-    # Empty = the older single-aggregator path in the settings panel.
-    sites: list[str] = []
 
 
 class BettingSiteOut(BaseModel):
@@ -787,17 +742,13 @@ class PicksBookingOut(BaseModel):
     warnings: list[str]
 
 
-class BetCodeOut(BaseModel):
-    id: int
-    created_at: dt.datetime
-    bookmaker: str
-    legs: list[BetCodeLegOut]
-    combined_odds: float
+class SuggestedPicksOut(BaseModel):
+    """Shared response shape for /suggest (criteria in, legs the engine
+    picked) and /resolve (explicit picks in, the same picks resolved
+    against each match's current prediction) -- neither prices anything or
+    combines toward a target; both are previews of what /picks would book."""
+
+    legs: list[PickedLegOut]
     combined_probability: float
-    expires_at: dt.datetime
-    provider: str
-    status: str
-    booking_code: str | None
-    deep_link: str | None
-    provider_message: str | None
-    site_codes: list[SiteCodeOut] = []
+    candidates_considered: int
+    warnings: list[str]

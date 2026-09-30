@@ -16,9 +16,11 @@ import pytest
 from app.betcode.selection import (
     SlipCriteria,
     build_candidate_legs,
+    build_confidence_candidates,
     price_legs,
     resolve_legs_unpriced,
     select_legs,
+    select_legs_by_confidence,
     select_ranged_leg_slip,
 )
 from app.db.models import Match, MatchOdds, Prediction, Team
@@ -499,6 +501,85 @@ def test_resolve_legs_unpriced_resolves_a_scheduled_match(db_session, three_matc
     assert len(legs) == 1
     assert legs[0].decimal_odds is None
     assert warnings == []
+
+
+# --- select_legs_by_confidence: no price, no target, books directly -------
+#
+# The no-odds sibling used by AI Generation's page and chat's accumulator
+# intent once neither combines toward a priced target anymore -- a match
+# qualifies on model probability alone, so it needs no MatchOdds row at all.
+
+
+def test_confidence_candidates_need_no_stored_price(db_session, three_matches):
+    for m in three_matches:
+        db_session.query(MatchOdds).filter(MatchOdds.match_id == m.id).delete()
+    db_session.commit()
+
+    legs = build_confidence_candidates(db_session, min_probability=0.5)
+    assert len(legs) == 3
+    assert all(leg.decimal_odds is None for leg in legs)
+
+
+def test_confidence_selection_picks_safest_first_up_to_the_cap(db_session, three_matches):
+    # Restricted to Match Result: left unfiltered, Double Chance (also in
+    # DEFAULT_MARKETS) is a probability union of Match Result and is always
+    # at least as likely, so it would legitimately win the "best outcome"
+    # comparison on every match here -- correct behavior, just not what
+    # this test is checking.
+    pick = select_legs_by_confidence(db_session, min_probability=0.5, max_legs=2, markets=("Match Result",))
+    assert [round(leg.model_probability, 2) for leg in pick.legs] == [0.90, 0.85]
+    assert pick.candidates_considered == 3
+
+
+def test_confidence_selection_combined_probability_is_the_product(db_session, three_matches):
+    pick = select_legs_by_confidence(db_session, min_probability=0.5, max_legs=3)
+    expected = math.prod(leg.model_probability for leg in pick.legs)
+    assert pick.combined_probability == pytest.approx(expected)
+
+
+def test_confidence_selection_respects_the_probability_floor(db_session, three_matches):
+    pick = select_legs_by_confidence(db_session, min_probability=0.87, max_legs=10, markets=("Match Result",))
+    assert len(pick.legs) == 1
+    assert pick.legs[0].model_probability == pytest.approx(0.90)
+
+
+def test_confidence_selection_respects_a_market_filter(db_session, three_matches):
+    pick = select_legs_by_confidence(db_session, min_probability=0.5, max_legs=10, markets=("Both Teams To Score",))
+    assert all(leg.market == "Both Teams To Score" for leg in pick.legs)
+
+
+def test_confidence_selection_respects_a_league_filter(db_session, three_matches):
+    pick = select_legs_by_confidence(db_session, min_probability=0.5, max_legs=10, leagues=("Spanish La Liga",))
+    assert pick.legs == []
+    assert pick.candidates_considered == 0
+
+
+def test_confidence_selection_with_no_qualifying_match_warns_plainly(db_session):
+    pick = select_legs_by_confidence(db_session, min_probability=0.5, max_legs=5)
+    assert pick.legs == []
+    assert len(pick.warnings) == 1
+    assert "clears" in pick.warnings[0].lower()
+
+
+def test_confidence_selection_notes_when_more_candidates_exist_than_the_cap(db_session, three_matches):
+    pick = select_legs_by_confidence(db_session, min_probability=0.5, max_legs=1)
+    assert len(pick.legs) == 1
+    assert any("safest" in w.lower() for w in pick.warnings)
+
+
+def test_confidence_selection_warns_about_the_stacking_cost(db_session, three_matches):
+    pick = select_legs_by_confidence(db_session, min_probability=0.5, max_legs=3)
+    assert any("multiplies the risk" in w for w in pick.warnings)
+
+
+def test_confidence_selection_one_leg_per_match_prefers_the_stronger_outcome(db_session, three_matches):
+    """Same rule build_candidate_legs enforces (correlated outcomes on one
+    fixture aren't independent legs) -- here without needing either outcome
+    to have a stored price."""
+
+    pick = select_legs_by_confidence(db_session, min_probability=0.5, max_legs=10)
+    match_ids = [leg.match_id for leg in pick.legs]
+    assert len(match_ids) == len(set(match_ids))
 
 
 # --- select_ranged_leg_slip: fixed leg count, ranged target ---------------

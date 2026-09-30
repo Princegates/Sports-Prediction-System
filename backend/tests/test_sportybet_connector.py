@@ -17,7 +17,7 @@ import requests
 
 from app.betcode import sites
 from app.betcode import sportybet as sb
-from app.betcode.providers import BookingCodeError
+from app.betcode.sites import BookingCodeError
 from app.betcode.selection import Leg
 
 
