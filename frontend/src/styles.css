@@ -1604,10 +1604,11 @@ table.predictions-table.odds-grid .match-col .sub {
 /* A wide table doesn't just need a swipe hint on a phone -- it's genuinely
    the wrong pattern there (seven columns, most of them one cell wide, in a
    scroll strip nobody wants to pan through one-handed). Opt-in per table
-   (`.cards-on-mobile`, currently only the Predictions page's flat/tiers
-   table -- Markets and AI Generation still share `.wide` but haven't had
-   their cells given `data-label`s yet) so the transform below only fires
-   where the JSX actually supplies the `data-label` it reads. */
+   (`.cards-on-mobile`, on the Predictions page's flat/tiers table and the
+   Markets "list by probability" table -- the odds-grid coupon builder is a
+   genuine comparison matrix, not a record list, so it keeps the scroll
+   pattern instead) so the transform below only fires where the JSX
+   actually supplies the `data-label` it reads. */
 @media (max-width: 640px) {
   table.predictions-table.wide.cards-on-mobile {
     min-width: 0;
@@ -1622,7 +1623,11 @@ table.predictions-table.odds-grid .match-col .sub {
   table.predictions-table.wide.cards-on-mobile tr,
   table.predictions-table.wide.cards-on-mobile td {
     display: block;
-    width: 100%;
+    /* !important: a couple of these tds carry their desktop column width as
+       an inline style (e.g. the Markets "Add" button cell), which otherwise
+       beats this same-specificity class rule and stops the cell from
+       stacking full-width. */
+    width: 100% !important;
   }
 
   table.predictions-table.wide.cards-on-mobile tbody tr {

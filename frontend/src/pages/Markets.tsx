@@ -760,9 +760,9 @@ export function Markets() {
                   </span>
                 </div>
 
-                <p className="scroll-hint">Swipe to see every column →</p>
+                <p className="scroll-hint cards-on-mobile-hint">Swipe to see every column →</p>
                 <div className="predictions-table-wrapper">
-                  <table className="predictions-table wide">
+                  <table className="predictions-table wide cards-on-mobile">
                     <thead>
                       <tr>
                         <th>Match</th>
@@ -784,13 +784,13 @@ export function Markets() {
                             onClick={() => navigate(`/app/match/${o.match_id}`)}
                             title={o.definition}
                           >
-                            <td>
+                            <td data-label="Match">
                               <div className="match-cell">
                                 {o.home_team} vs {o.away_team}
                               </div>
                             </td>
-                            <td className="sub">{o.market}</td>
-                            <td>
+                            <td className="sub" data-label="Market">{o.market}</td>
+                            <td data-label="Selection">
                               <strong>{o.selection}</strong>
                               {isHotPick(o.probability, o.data_quality_score, o.model_agreement_score) && (
                                 <span style={{ marginLeft: 6 }}>
@@ -798,11 +798,11 @@ export function Markets() {
                                 </span>
                               )}
                             </td>
-                            <td className="tabular-nums">{(o.probability * 100).toFixed(0)}%</td>
-                            <td>
+                            <td className="tabular-nums" data-label="Probability">{(o.probability * 100).toFixed(0)}%</td>
+                            <td data-label="Confidence">
                               <ConfidenceTag confidence={o.confidence} />
                             </td>
-                            <td className="sub">
+                            <td className="sub" data-label="Kickoff">
                               {new Date(o.kickoff).toLocaleString(undefined, {
                                 month: "short",
                                 day: "numeric",
@@ -810,7 +810,7 @@ export function Markets() {
                                 minute: "2-digit",
                               })}
                             </td>
-                            <td style={{ width: 90 }}>
+                            <td style={{ width: 90 }} data-label="">
                               <button
                                 type="button"
                                 className="btn ghost"
