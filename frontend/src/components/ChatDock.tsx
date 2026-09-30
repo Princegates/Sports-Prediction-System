@@ -4,7 +4,7 @@ import { clearChatHistory, fetchBranding, fetchChatHistory, streamChatMessage } 
 import { Mascot } from "../components/Mascot";
 import { useAuth } from "../lib/AuthContext";
 import { useDraggableFab } from "../lib/useDraggableFab";
-import { formatWhatsapp, whatsappLink } from "../lib/whatsapp";
+import { whatsappLink } from "../lib/whatsapp";
 import type { ChatAnswer, ChatPick, ChatSource } from "../types";
 
 /**
@@ -154,7 +154,7 @@ function SendToGenerationButton({ picks }: { picks: ChatPick[] }) {
 }
 
 export function ChatDock() {
-  const { accessStatus } = useAuth();
+  const { accessStatus, accessLoading } = useAuth();
   const hasAccess = accessStatus?.has_access ?? false;
 
   const [open, setOpen] = useState(readStoredOpen);
@@ -256,7 +256,7 @@ export function ChatDock() {
       // a network error.
       if (!hasAccess) {
         const body = whatsapp
-          ? `Guda's full conversational assistant -- match predictions, team comparisons, live analysis, and everything else it can do -- is a premium feature. Redeem an access code to unlock it.\n\nMessage **${formatWhatsapp(whatsapp)}** on WhatsApp to arrange one -- WhatsApp only, no calls or texts.`
+          ? "Guda's full conversational assistant -- match predictions, team comparisons, live analysis, and everything else it can do -- is a premium feature. Redeem an access code to unlock it.\n\nContact admin on WhatsApp below to arrange one -- WhatsApp only, no calls or texts."
           : "Guda's full conversational assistant is a premium feature. Redeem an access code from the Access page to unlock it.";
         setTurns((prev) => [
           ...prev,
@@ -367,11 +367,13 @@ export function ChatDock() {
           <div>
             <strong>Guda</strong>
             <span>
-              {!hasAccess
-                ? "Premium feature"
-                : contextMatchId
-                  ? "Reading this match's data"
-                  : "Grounded in this system's database"}
+              {accessLoading
+                ? "Checking access…"
+                : !hasAccess
+                  ? "Premium feature"
+                  : contextMatchId
+                    ? "Reading this match's data"
+                    : "Grounded in this system's database"}
             </span>
           </div>
         </div>
@@ -392,7 +394,14 @@ export function ChatDock() {
       </header>
 
       <div className="chat-thread" ref={threadRef}>
-        {turns.length === 0 && !hasAccess && (
+        {turns.length === 0 && accessLoading && (
+          <div className="chat-empty">
+            <Mascot pose="idle" size={56} />
+            <h4>Checking access…</h4>
+          </div>
+        )}
+
+        {turns.length === 0 && !accessLoading && !hasAccess && (
           <div className="chat-empty">
             <Mascot pose="sad" size={56} />
             <h4>Guda is a premium feature</h4>
@@ -407,7 +416,7 @@ export function ChatDock() {
                 target="_blank"
                 rel="noreferrer noopener"
               >
-                Message {formatWhatsapp(whatsapp)} on WhatsApp
+                Contact admin on WhatsApp
               </a>
             )}
           </div>

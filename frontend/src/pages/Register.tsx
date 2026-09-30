@@ -4,7 +4,7 @@ import { fetchBranding, registerAccount } from "../api";
 import { Brand } from "../components/Brand";
 import { Mascot } from "../components/Mascot";
 import { PublicShell } from "../components/PublicShell";
-import { formatWhatsapp, whatsappLink } from "../lib/whatsapp";
+import { whatsappLink } from "../lib/whatsapp";
 
 export function Register() {
   const navigate = useNavigate();
@@ -57,9 +57,9 @@ export function Register() {
                   {whatsapp ? (
                     <>
                       {" "}
-                      -- message{" "}
+                      --{" "}
                       <a href={whatsappLink(whatsapp, "Hi, I'd like an access code for Socca Intelligence.")} target="_blank" rel="noreferrer noopener">
-                        {formatWhatsapp(whatsapp)} on WhatsApp
+                        contact admin on WhatsApp
                       </a>{" "}
                       (WhatsApp only). Once confirmed, they'll hand you an access code.
                     </>

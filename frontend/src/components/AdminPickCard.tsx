@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { AdminPick } from "../types";
 import { useTilt } from "../lib/useTilt";
 import { CopyButton } from "./CopyButton";
-import { formatWhatsapp, whatsappLink } from "../lib/whatsapp";
+import { whatsappLink } from "../lib/whatsapp";
 
 const RISK_LABELS: Record<AdminPick["risk_tier"], string> = {
   low: "Low risk",
@@ -138,7 +138,7 @@ export function AdminPickCard({
               target="_blank"
               rel="noreferrer"
             >
-              Message {formatWhatsapp(whatsapp)} on WhatsApp
+              Contact admin on WhatsApp
             </a>
           )}
         </div>

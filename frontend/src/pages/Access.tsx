@@ -4,7 +4,7 @@ import { fetchBranding, redeemAccessCode } from "../api";
 import { Mascot } from "../components/Mascot";
 import { useTilt } from "../lib/useTilt";
 import { useAuth } from "../lib/AuthContext";
-import { formatWhatsapp, whatsappLink } from "../lib/whatsapp";
+import { whatsappLink } from "../lib/whatsapp";
 
 /**
  * Where a logged-in account without a live grant lands -- redirected here by
@@ -166,7 +166,7 @@ export function Access() {
                     target="_blank"
                     rel="noreferrer noopener"
                   >
-                    Message {formatWhatsapp(whatsapp)} on WhatsApp
+                    Contact admin on WhatsApp
                   </a>
                   <span className="meta">WhatsApp only -- no calls or texts.</span>
                 </div>
@@ -176,35 +176,37 @@ export function Access() {
         </div>
       </section>
 
-      <div className="card card-pad" style={{ maxWidth: 420, margin: "0 auto" }}>
-        <h3 style={{ marginTop: 0, fontSize: 15 }}>Enter access code</h3>
-        <form onSubmit={handleSubmit} className="auth-form">
-          <label>
-            Access code
-            <input
-              required
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              placeholder="XXXX-XXXX-XXXX"
-              autoComplete="off"
-              style={{ textTransform: "uppercase", fontFamily: "monospace", letterSpacing: 1 }}
-            />
-          </label>
+      {!accessLoading && (
+        <div className="card card-pad" style={{ maxWidth: 420, margin: "0 auto" }}>
+          <h3 style={{ marginTop: 0, fontSize: 15 }}>Enter access code</h3>
+          <form onSubmit={handleSubmit} className="auth-form">
+            <label>
+              Access code
+              <input
+                required
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                placeholder="XXXX-XXXX-XXXX"
+                autoComplete="off"
+                style={{ textTransform: "uppercase", fontFamily: "monospace", letterSpacing: 1 }}
+              />
+            </label>
 
-          {errorKind && (
-            <p className="auth-error">
-              <strong>
-                {ERROR_COPY[errorKind].icon} {ERROR_COPY[errorKind].title}
-              </strong>
-              {errorKind === "other" && errorDetail && <><br />{errorDetail}</>}
-            </p>
-          )}
+            {errorKind && (
+              <p className="auth-error">
+                <strong>
+                  {ERROR_COPY[errorKind].icon} {ERROR_COPY[errorKind].title}
+                </strong>
+                {errorKind === "other" && errorDetail && <><br />{errorDetail}</>}
+              </p>
+            )}
 
-          <button className="btn" type="submit" disabled={busy || !code.trim()} style={{ marginTop: 8 }}>
-            {busy ? "Activating..." : "Activate access"}
-          </button>
-        </form>
-      </div>
+            <button className="btn" type="submit" disabled={busy || !code.trim()} style={{ marginTop: 8 }}>
+              {busy ? "Activating..." : "Activate access"}
+            </button>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
