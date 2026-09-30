@@ -372,7 +372,12 @@ def retire_free_fixtures(db: Session, league: str, *, apply: bool = True) -> Cle
             f_id, a_id = merged_into.get(f_id, f_id), merged_into.get(a_id, a_id)
             if f_id == a_id or f_id in ambiguous or a_id in ambiguous:
                 continue
-            if teams[f_id].league != teams[a_id].league or frozenset((f_id, a_id)) in refused:
+            # Only clubs belonging to the league being cleaned. A European
+            # competition's rows are domestic clubs, and a mislabeled Europa
+            # League row once merged Inter into AC Milan this way.
+            if teams[f_id].league != league or teams[a_id].league != league:
+                continue
+            if frozenset((f_id, a_id)) in refused:
                 continue
             reason = _why_not_same_club(db, f_id, a_id)
             if reason:

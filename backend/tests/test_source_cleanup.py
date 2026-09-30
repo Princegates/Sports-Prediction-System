@@ -403,3 +403,25 @@ def test_inter_and_ac_milan_are_never_merged(db_session):
     assert db.get(Match, ids[2]).api_fixture_id == 1550094
     derby = db.query(Match).filter_by(home_team_id=inter.id, away_team_id=milan.id).one()
     assert (derby.home_score, derby.away_score) == (2, 1)
+
+
+def test_a_european_competition_never_merges_domestic_clubs(db_session):
+    """What actually happened once: a mislabeled Europa League row (AC
+    Milan's tie stored under Inter) paired with API-Football's row and the
+    cleanup merged Inter into AC Milan. Clubs are only ever merged by their
+    own league's cleanup."""
+
+    db = db_session
+    uel, it = "UEFA Europa League", "Italian Serie A"
+    inter, milan = _team(db, "FC Internazionale Milano", it), _team(db, "AC Milan", it)
+    porto = _team(db, "FC Porto", "Portuguese Primeira Liga")
+    _match(db, uel, porto, milan, dt.datetime(2026, 9, 24, 19), api_id=1600001, score=(1, 1))
+    mislabeled = _match(db, uel, porto, inter, dt.datetime(2026, 9, 24, 21), score=(1, 1))
+    mislabeled_id = mislabeled.id
+    db.commit()
+
+    report = retire_free_fixtures(db, uel)
+
+    assert not report.teams_merged
+    assert {t.name for t in db.query(Team).filter_by(league=it)} == {"FC Internazionale Milano", "AC Milan"}
+    assert db.get(Match, mislabeled_id) is None
