@@ -1,0 +1,578 @@
+// ==========================================================================
+// CARBON TOKEN BRIDGE
+//
+// Every custom property below is an alias onto a real Carbon token
+// (--cds-*), not a separately-maintained color/spacing/radius scale. This
+// is what makes the full-Carbon adoption reach every page in one pass:
+// the ~60 component/page files that already read var(--bg-surface),
+// var(--space-4), var(--accent) and so on don't need to change what they
+// reference, but the *values* those names resolve to are now entirely
+// Carbon's own -- its palette, its 2/4/8/12/16px spacing scale, its
+// (mostly square) corner radii, and IBM Plex. Carbon's own React
+// components (Button, Tile, DataTable, ...) read --cds-* directly and are
+// unaffected by any of this; this bridge exists only for the bespoke,
+// non-component CSS (cards, the chat dock, the fixture calendar, chart
+// colors) sitting alongside them.
+//
+// Light/dark is Carbon's own `white` and `g100` themes, switched by toggling
+// the .cds--white / .cds--g100 class Carbon's <Theme> component itself
+// would apply -- see main.tsx, which does the same thing at the document
+// level so it applies before React ever mounts.
+//
+// Bound to `body`, not `:root`: that's the element carbonTheme.ts actually
+// puts the .cds--g100/.cds--white class on, and custom properties only
+// inherit downward, so a `:root` (html) block can't see tokens Carbon only
+// defines starting at body -- every var(--cds-*) reference below would
+// resolve to nothing.
+// ==========================================================================
+body {
+  // Surfaces
+  --bg-page: var(--cds-background);
+  --bg-surface: var(--cds-layer-01);
+  --bg-surface-2: var(--cds-layer-02);
+  --bg-surface-3: var(--cds-layer-03);
+  --bg-overlay: var(--cds-overlay);
+  --bg-topbar: var(--cds-background);
+
+  // Ink
+  --text-primary: var(--cds-text-primary);
+  --text-secondary: var(--cds-text-secondary);
+  --text-muted: var(--cds-text-helper);
+
+  // Structure
+  --border: var(--cds-border-subtle-01);
+  --border-strong: var(--cds-border-strong-01);
+  --gridline: var(--cds-border-subtle-01);
+  --baseline: var(--cds-border-subtle-02);
+
+  // Accent -- Carbon's own interactive blue by default, swappable via one
+  // of the 20 accent themes below (body[data-accent="..."], picked in
+  // Settings > Appearance, same as before Carbon). --accent-soft/-strong
+  // and --ai-violet are deliberately *derived from* --accent rather than
+  // given their own per-theme values: since every accent theme only
+  // overrides --accent itself, these three keep following it automatically
+  // in whichever direction the current Carbon theme needs --
+  // color-mix(..., var(--text-primary) ...) lightens toward white in
+  // --cds--g100 and darkens toward near-black in --cds--white, matching
+  // what the old hand-picked light/dark accent-strong pairs did by hand.
+  --accent: var(--cds-link-primary);
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
+  --accent-strong: color-mix(in srgb, var(--accent) 75%, var(--text-primary) 25%);
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
+
+  // Decorative-only (mascot sparkles) -- Carbon's support colors, reused
+  // rather than a separate decorative palette.
+  --spark-lime: var(--cds-support-success);
+  --spark-peach: var(--cds-support-warning);
+  --spark-yellow: var(--cds-support-warning);
+  --spark-neon: var(--cds-support-success);
+
+  // Status (fixed -- never repurposed for series identity)
+  --good: var(--cds-support-success);
+  --good-soft: color-mix(in srgb, var(--cds-support-success) 14%, transparent);
+  --warning: var(--cds-support-warning);
+  --warning-soft: color-mix(in srgb, var(--cds-support-warning) 14%, transparent);
+  --serious: var(--cds-support-warning);
+  --critical: var(--cds-support-error);
+  --critical-soft: color-mix(in srgb, var(--cds-support-error) 14%, transparent);
+  --live: var(--cds-support-error);
+
+  // Scale -- Carbon is a flat, square-cornered system; radius-pill is the
+  // one exception kept for pill-shaped chips/badges.
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-pill: 999px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.15);
+  --shadow-pop: 0 4px 14px rgba(0, 0, 0, 0.28);
+
+  // Type -- IBM Plex Sans for UI/body text (Carbon's own face). Headings
+  // use Plex Serif instead of more Plex Sans -- still the same Plex
+  // superfamily Carbon ships, but a serif display face reads as
+  // considered/editorial rather than the generic geometric-grotesk look
+  // that's become a template-AI tell.
+  --font-sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-display: "IBM Plex Serif", Georgia, "Times New Roman", serif;
+  --font-public-display: var(--font-display);
+  --font-public-body: var(--font-sans);
+  --font-data: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  // Matches Carbon's actual UI Shell dimensions (Header = 3rem, SideNav =
+  // 16rem) now that AppShell/PublicShell render the real components.
+  --topbar-h: 48px;
+  --sidebar-w: 256px;
+
+  font-family: var(--font-sans);
+  background: var(--cds-background);
+  color: var(--cds-text-primary);
+}
+
+// ==========================================================================
+// ACCENT THEMES
+// One admin-controlled, site-wide accent (Settings > Appearance ->
+// default_accent; see lib/accentThemes.ts and main.tsx), switchable "from
+// time to time" without touching Carbon's own light/dark theme. Each block
+// overrides only --accent -- --accent-soft/--accent-strong/--ai-violet*
+// above are already derived from var(--accent), so one line per theme is
+// enough for it to reach every button, link, and highlight that reads the
+// accent tokens, in either Carbon theme.
+// ==========================================================================
+body[data-accent="sunset"] { --accent: #ff6115; }
+body[data-accent="teal"] { --accent: #14b8a6; }
+body[data-accent="violet"] { --accent: #8b5cf6; }
+body[data-accent="berry"] { --accent: #c026d3; }
+body[data-accent="blush"] { --accent: #f472b6; }
+body[data-accent="steel"] { --accent: #64748b; }
+body[data-accent="orchid"] { --accent: #c77dff; }
+body[data-accent="plum"] { --accent: #a873e0; }
+body[data-accent="magenta"] { --accent: #ea4fc0; }
+body[data-accent="grape"] { --accent: #a378e2; }
+body[data-accent="rose"] { --accent: #ff7a9e; }
+body[data-accent="lilac"] { --accent: #b3a0e8; }
+body[data-accent="mulberry"] { --accent: #d46ba6; }
+body[data-accent="amethyst"] { --accent: #b47aec; }
+body[data-accent="wine"] { --accent: #c6789b; }
+body[data-accent="mauve"] { --accent: #a68a96; }
+body[data-accent="cobalt"] { --accent: #2f6fed; }
+body[data-accent="indigo"] { --accent: #6366f1; }
+body[data-accent="cyan"] { --accent: #22d3ee; }
+body[data-accent="denim"] { --accent: #3b6ea5; }
+
+// ==========================================================================
+// Bespoke widgets Carbon has no equivalent for. Structure kept from the
+// previous pass, recolored onto the bridge above so they sit correctly in
+// either Carbon theme.
+// ==========================================================================
+
+// --- Mascot (Guda) -- brand element, orthogonal to Carbon ------------------
+.mascot {
+  position: relative;
+  display: inline-block;
+}
+
+.mascot-frame {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 50%;
+  border: 2px solid var(--cds-border-subtle-01);
+  background: var(--cds-layer-02);
+}
+
+.mascot-hero .mascot-frame {
+  border-radius: 0;
+  border: 1px solid var(--cds-border-subtle-01);
+  aspect-ratio: 550 / 619;
+}
+
+.mascot-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mascot-idle .mascot-frame img { animation: mascot-bob 3.2s ease-in-out infinite; }
+.mascot-thinking .mascot-frame img { animation: mascot-tilt 2.4s ease-in-out infinite; }
+.mascot-celebrating .mascot-frame img { animation: mascot-bounce 0.6s ease-in-out infinite; }
+.mascot-sad .mascot-frame img { animation: none; opacity: 0.85; }
+
+@keyframes mascot-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+@keyframes mascot-tilt {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(-3deg); }
+}
+@keyframes mascot-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+.mascot-sparks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.mascot-sparks i {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  font-style: normal;
+  animation: mascot-twinkle 1.3s ease-in-out infinite;
+}
+
+.mascot-sparks i:nth-child(1) { top: 0%; right: -8%; background: var(--spark-yellow); }
+.mascot-sparks i:nth-child(2) { top: 28%; right: -16%; width: 4px; height: 4px; background: var(--spark-yellow); animation-delay: 0.4s; }
+
+.mascot-sparks-burst i:nth-child(1) { top: -10%; left: 0%; background: var(--spark-lime); }
+.mascot-sparks-burst i:nth-child(2) { top: -12%; right: 0%; width: 7px; height: 7px; background: var(--accent); animation-delay: 0.15s; }
+.mascot-sparks-burst i:nth-child(3) { top: 24%; left: -14%; width: 5px; height: 5px; background: var(--spark-yellow); animation-delay: 0.3s; }
+.mascot-sparks-burst i:nth-child(4) { top: 24%; right: -14%; width: 5px; height: 5px; background: var(--spark-peach); animation-delay: 0.45s; }
+.mascot-sparks-burst i:nth-child(5) { top: 45%; left: 50%; width: 4px; height: 4px; background: var(--spark-neon); animation-delay: 0.6s; }
+
+@keyframes mascot-twinkle {
+  0%, 100% { opacity: 0.4; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+.mascot-hero-stage {
+  display: inline-block;
+  perspective: 900px;
+}
+
+.mascot-hero-stage .mascot {
+  transform-style: preserve-3d;
+  animation: mascot-hero-turn 6s ease-in-out infinite;
+}
+
+@keyframes mascot-hero-turn {
+  0%, 100% { transform: rotateY(-10deg); }
+  50% { transform: rotateY(10deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mascot-frame img,
+  .mascot-hero-stage .mascot {
+    animation: none;
+  }
+}
+
+// --- Public marketing shell --------------------------------------------------
+.public-main {
+  min-height: calc(100vh - var(--topbar-h));
+  padding: var(--space-6) var(--space-5);
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+.public-footer {
+  background: var(--cds-layer-01);
+  border-top: 1px solid var(--cds-border-subtle-01);
+  padding: var(--space-6) var(--space-5) var(--space-5);
+}
+
+.public-footer-grid {
+  display: grid;
+  grid-template-columns: 2fr repeat(3, 1fr);
+  gap: var(--space-6);
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+.public-footer-brand {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.public-footer-brand strong {
+  display: block;
+  margin-bottom: var(--space-2);
+}
+
+.public-footer-brand p {
+  color: var(--cds-text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.public-footer-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.public-footer-col h4 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--cds-text-helper);
+  margin: 0 0 var(--space-1);
+}
+
+.public-footer-col a {
+  color: var(--cds-text-secondary);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.public-footer-col a:hover {
+  color: var(--cds-link-primary);
+  text-decoration: underline;
+}
+
+.public-footer-note {
+  color: var(--cds-text-helper);
+  font-size: 12px;
+}
+
+.public-footer-legal {
+  max-width: 1120px;
+  margin: var(--space-6) auto 0;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--cds-border-subtle-01);
+}
+
+.public-footer-legal p {
+  color: var(--cds-text-helper);
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0 0 var(--space-2);
+}
+
+@media (max-width: 768px) {
+  .public-footer-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+// --- AppShell header bits ----------------------------------------------------
+.app-league-select {
+  width: 200px;
+  align-self: center;
+  margin-right: var(--space-2);
+}
+
+.app-league-select .cds--select-input {
+  height: 2.5rem;
+}
+
+.app-content {
+  min-height: calc(100vh - var(--topbar-h));
+  padding: var(--space-5);
+}
+
+.queue-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  margin-left: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--cds-support-error);
+  color: var(--cds-text-on-color);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+// --- Chat launcher + dock ---------------------------------------------------
+.chat-fab {
+  position: fixed;
+  right: var(--space-5);
+  bottom: var(--space-5);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 10px 16px 10px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--cds-layer-01);
+  border: 1px solid var(--cds-border-strong-01);
+  box-shadow: var(--shadow-pop);
+  color: var(--cds-text-primary);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  transition: border-color 0.14s ease;
+}
+
+.chat-fab:hover { border-color: var(--cds-link-primary); }
+.chat-fab:active { cursor: grabbing; }
+
+.chat-fab kbd {
+  font-family: inherit;
+  font-size: 10.5px;
+  padding: 2px 5px;
+  background: var(--cds-layer-02);
+  color: var(--cds-text-helper);
+  border: 1px solid var(--cds-border-subtle-01);
+}
+
+.chat-dock {
+  position: fixed;
+  right: var(--space-5);
+  bottom: var(--space-5);
+  z-index: 60;
+  width: 400px;
+  max-width: calc(100vw - var(--space-5) * 2);
+  max-height: min(680px, calc(100vh - var(--space-6)));
+  display: flex;
+  flex-direction: column;
+  background: var(--cds-layer-01);
+  border: 1px solid var(--cds-border-strong-01);
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
+  animation: chat-dock-in 0.18s ease;
+}
+
+@keyframes chat-dock-in {
+  0% { opacity: 0; transform: translateY(12px) scale(0.98); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.chat-dock-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--cds-border-subtle-01);
+  background: var(--cds-layer-02);
+}
+
+.chat-dock-title { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.chat-dock-title strong { display: block; font-size: 13.5px; font-weight: 600; line-height: 1.2; }
+.chat-dock-title span { display: block; font-size: 11px; color: var(--cds-text-helper); margin-top: 2px; }
+.chat-dock-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.chat-icon-btn { padding: 5px 9px !important; font-size: 12px !important; }
+
+.chat-thread {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-height: 180px;
+}
+
+.chat-empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--space-2); padding: var(--space-4) var(--space-2); }
+.chat-empty h4 { margin: 0; font-size: 14.5px; font-weight: 600; }
+.chat-empty p { margin: 0; font-size: 12.5px; color: var(--cds-text-helper); line-height: 1.65; max-width: 34ch; }
+
+.chat-turn { display: flex; flex-direction: column; gap: 5px; }
+.chat-turn.user { align-items: flex-end; }
+
+.chat-turn-badge {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--cds-link-primary);
+}
+
+.chat-rewritten-badge {
+  margin-left: 6px;
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--cds-text-helper);
+  cursor: help;
+}
+
+.chat-bubble { max-width: 92%; padding: 10px 13px; font-size: 13px; line-height: 1.65; }
+.chat-bubble.user { background: var(--cds-interactive); color: var(--cds-text-on-color); max-width: 85%; }
+.chat-bubble.assistant { background: var(--cds-layer-02); border: 1px solid var(--cds-border-subtle-01); color: var(--cds-text-primary); max-width: 100%; }
+.chat-bubble.assistant.failed { background: color-mix(in srgb, var(--cds-support-error) 14%, transparent); border-color: var(--cds-support-error); }
+.chat-bubble p { margin: 0 0 var(--space-2); }
+.chat-bubble p:last-child { margin-bottom: 0; }
+
+.chat-bullets { margin: 0 0 var(--space-2); padding-left: var(--space-4); display: flex; flex-direction: column; gap: 4px; }
+.chat-bullets li { font-size: 12.5px; color: var(--cds-text-secondary); line-height: 1.6; }
+
+.chat-caret {
+  display: inline-block;
+  width: 2px;
+  height: 13px;
+  background: var(--cds-link-primary);
+  vertical-align: text-bottom;
+  margin-left: 2px;
+  animation: chat-caret-blink 0.9s step-end infinite;
+}
+
+@keyframes chat-caret-blink { 50% { opacity: 0; } }
+
+.chat-caveat {
+  margin: var(--space-3) 0 0 !important;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--cds-support-warning) 14%, transparent);
+  border-left: 2px solid var(--cds-support-warning);
+  font-size: 11.5px;
+  color: var(--cds-text-secondary);
+}
+
+// --- Markets grid odds cells -------------------------------------------------
+.odds-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  padding: 6px 10px;
+  border: 1px solid var(--cds-border-subtle-01);
+  background: var(--cds-layer-01);
+  color: var(--cds-text-primary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.odds-cell:hover { border-color: var(--cds-border-strong-01); }
+
+.odds-cell.ai-top {
+  border-color: var(--cds-link-primary);
+  background: color-mix(in srgb, var(--cds-link-primary) 12%, transparent);
+  color: var(--cds-link-primary);
+}
+
+.odds-cell.picked {
+  background: var(--cds-interactive);
+  border-color: var(--cds-interactive);
+  color: var(--cds-text-on-color);
+}
+
+.odds-cell.empty { opacity: 0.35; cursor: default; border-style: dashed; }
+
+// --- Fixture calendar --------------------------------------------------------
+.fixture-calendar { max-width: 320px; }
+.fixture-calendar-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-3); }
+.fixture-calendar-header strong { font-size: 14px; }
+.fixture-calendar-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); margin-bottom: var(--space-1); }
+.fixture-calendar-weekdays span { text-align: center; font-size: 11px; color: var(--cds-text-helper); font-weight: 600; }
+.fixture-calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+
+.fixture-calendar-cell {
+  position: relative;
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--cds-text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.fixture-calendar-cell.empty { cursor: default; visibility: hidden; }
+.fixture-calendar-cell:not(:disabled):hover { border-color: var(--cds-border-strong-01); color: var(--cds-text-primary); }
+.fixture-calendar-cell.today .day-number { color: var(--cds-link-primary); font-weight: 700; }
+.fixture-calendar-cell.selected { background: var(--cds-interactive); border-color: var(--cds-interactive); color: var(--cds-text-on-color); }
+.fixture-calendar-cell.selected .day-number { color: var(--cds-text-on-color); }
+.fixture-calendar-cell:disabled { opacity: 0.3; cursor: default; }
+.fixture-calendar-cell.no-fixtures:not(.selected) { color: var(--cds-text-helper); }
+
+.fixture-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--cds-link-primary); }
+.fixture-calendar-cell.selected .fixture-dot { background: var(--cds-text-on-color); }

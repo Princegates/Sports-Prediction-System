@@ -6,13 +6,19 @@ import { AuthProvider } from "./lib/AuthContext";
 import { fetchBranding } from "./api";
 import { isPageTitleActive } from "./lib/pageMeta";
 import { THEME_OVERRIDE_KEY } from "./components/ThemeToggle";
+import { applyCarbonTheme } from "./lib/carbonTheme";
+import "./carbon.scss";
+import "./custom.scss";
 import "./styles.css";
 
-// Accent is admin-controlled, site-wide, with no personal override. Theme
-// (day/night) is: a visitor's own choice, made with ThemeToggle on any
-// public page, is stored under THEME_OVERRIDE_KEY and always wins over the
-// admin's site-wide default once set -- checked first here, and again
-// after the branding fetch below so a slow response can't clobber it.
+// Accent is admin-controlled, site-wide, with no personal override -- a
+// separate axis from Carbon's own light/dark theme (applyCarbonTheme),
+// picked in Settings > Appearance from the 20 body[data-accent="..."]
+// themes custom.scss defines. Theme (day/night) is: a visitor's own choice,
+// made with ThemeToggle on any public page, is stored under
+// THEME_OVERRIDE_KEY and always wins over the admin's site-wide default
+// once set -- checked first here, and again after the branding fetch below
+// so a slow response can't clobber it.
 //
 // A cached copy of the last-fetched branding applies immediately regardless
 // (avoids a flash of the compiled-in default on repeat visits, and covers a
@@ -22,11 +28,17 @@ import "./styles.css";
 try {
   const personalTheme = localStorage.getItem(THEME_OVERRIDE_KEY);
   const cachedTheme = personalTheme || localStorage.getItem("site_theme");
-  if (cachedTheme) document.documentElement.setAttribute("data-theme", cachedTheme);
-  const cachedAccent = localStorage.getItem("site_accent");
-  if (cachedAccent) document.documentElement.setAttribute("data-accent", cachedAccent);
+  if (cachedTheme) {
+    document.documentElement.setAttribute("data-theme", cachedTheme);
+    applyCarbonTheme(cachedTheme);
+  } else {
+    applyCarbonTheme("dark");
+  }
+  document.body.setAttribute("data-accent", localStorage.getItem("site_accent") || "sunset");
 } catch {
   // private-browsing / storage-disabled -- compiled-in defaults apply
+  applyCarbonTheme("dark");
+  document.body.setAttribute("data-accent", "sunset");
 }
 
 // Deliberately not awaited: a slow or failed call must not delay the first
@@ -40,8 +52,10 @@ fetchBranding()
     } catch {
       // private-browsing / storage-disabled -- nothing to honor
     }
-    document.documentElement.setAttribute("data-theme", personalTheme || branding.default_theme);
-    document.documentElement.setAttribute("data-accent", branding.default_accent);
+    const theme = personalTheme || branding.default_theme;
+    document.documentElement.setAttribute("data-theme", theme);
+    applyCarbonTheme(theme);
+    document.body.setAttribute("data-accent", branding.default_accent);
     // A page's own, more specific title (set via usePageMeta) must not be
     // overwritten by this generic one if it already applied.
     if (branding.site_name && !isPageTitleActive()) document.title = branding.site_name;

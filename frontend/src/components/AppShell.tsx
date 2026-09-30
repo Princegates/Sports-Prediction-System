@@ -1,6 +1,21 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { Brand } from "./Brand";
+import {
+  Content,
+  Header,
+  HeaderContainer,
+  HeaderGlobalAction,
+  HeaderGlobalBar,
+  HeaderMenuButton,
+  HeaderName,
+  Select,
+  SelectItem,
+  SideNav,
+  SideNavItems,
+  SideNavLink,
+  SkipToContent,
+} from "@carbon/react";
+import { Search, UserAvatar, Settings as SettingsIcon, Locked, UserFollow } from "@carbon/icons-react";
 import { SearchCommand } from "./SearchCommand";
 import { ChatDock } from "./ChatDock";
 import { useAuth } from "../lib/AuthContext";
@@ -38,41 +53,16 @@ export function leagueLabel(league: string): string {
 interface NavItem {
   to: string;
   label: string;
-  icon: string;
   badge?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { to: "/app", label: "Dashboard", icon: "◆" },
-  { to: "/app/predictions", label: "Predictions", icon: "▤" },
-  { to: "/app/markets", label: "Markets", icon: "◈" },
-  { to: "/app/betcodes", label: "AI Generation", icon: "▦" },
-  { to: "/app/live", label: "Live", icon: "●" },
+  { to: "/app", label: "Dashboard" },
+  { to: "/app/predictions", label: "Predictions" },
+  { to: "/app/markets", label: "Markets" },
+  { to: "/app/betcodes", label: "AI Generation" },
+  { to: "/app/live", label: "Live" },
 ];
-
-function UserMenu() {
-  const { user, logout } = useAuth();
-  const navigate = useNavigate();
-
-  if (!user) return null;
-
-  function handleLogout() {
-    logout();
-    navigate("/login", { replace: true });
-  }
-
-  return (
-    <div className="user-menu">
-      <span className="user-menu-name" title={user.email}>
-        {user.name}
-        {user.role === "superadmin" && <span className="status-tag active" style={{ marginLeft: 6 }}>admin</span>}
-      </span>
-      <button className="btn ghost" onClick={handleLogout}>
-        Sign out
-      </button>
-    </div>
-  );
-}
 
 export function AppShell() {
   // "" ("All leagues") on purpose, not LEAGUES[0] -- Dashboard and Live
@@ -82,20 +72,22 @@ export function AppShell() {
   // league would have silently narrowed what it searches on first load.
   const [league, setLeague] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
-  const { user, accessStatus } = useAuth();
+  const { user, accessStatus, logout } = useAuth();
+  const navigate = useNavigate();
   const needsAccess = user?.role !== "superadmin" && !accessStatus?.has_access;
+
   const navItems =
     user?.role === "superadmin"
       ? [
           ...NAV_ITEMS,
-          { to: "/app/profile", label: "Profile", icon: "◍" },
-          { to: "/app/admin", label: "Admin", icon: "⚙" },
-          { to: "/app/admin/settings", label: "Settings", icon: "⚒" },
+          { to: "/app/profile", label: "Profile" },
+          { to: "/app/admin", label: "Admin" },
+          { to: "/app/admin/settings", label: "Settings" },
         ]
       : [
           ...NAV_ITEMS,
-          { to: "/app/access", label: "Access", icon: "⚿", badge: needsAccess },
-          { to: "/app/profile", label: "Profile", icon: "◍" },
+          { to: "/app/access", label: "Access", badge: needsAccess },
+          { to: "/app/profile", label: "Profile" },
         ];
 
   useEffect(() => {
@@ -109,90 +101,100 @@ export function AppShell() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
+  function handleLogout() {
+    logout();
+    navigate("/login", { replace: true });
+  }
+
   return (
     <LeagueContext.Provider value={{ league, setLeague }}>
-      <div className="app-shell">
-        <aside className="app-sidebar">
-          <Brand to="/app" />
+      <HeaderContainer
+        render={({ isSideNavExpanded, onClickSideNavExpand }: { isSideNavExpanded: boolean; onClickSideNavExpand: () => void }) => (
+          <>
+            <Header aria-label="Socca Intelligence">
+              <SkipToContent />
+              <HeaderMenuButton
+                aria-label={isSideNavExpanded ? "Close menu" : "Open menu"}
+                onClick={onClickSideNavExpand}
+                isActive={isSideNavExpanded}
+                isCollapsible
+              />
+              <HeaderName as={NavLink} to="/app" prefix="">
+                Socca Intelligence
+              </HeaderName>
 
-          <nav className="nav-group">
-            <div className="nav-label">Intelligence</div>
-            {navItems.map((item) => (
-              <NavLink key={item.to} to={item.to} end={item.to === "/app"} className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
-                <span className="nav-icon">{item.icon}</span>
-                {item.label}
-                {item.badge && <span className="queue-badge">!</span>}
-              </NavLink>
-            ))}
-          </nav>
+              <HeaderGlobalBar>
+                <Select
+                  id="league-select"
+                  labelText=""
+                  hideLabel
+                  size="sm"
+                  value={league}
+                  onChange={(e) => setLeague(e.target.value)}
+                  className="app-league-select"
+                >
+                  <SelectItem value="" text="All leagues" />
+                  {LEAGUES.map((l) => (
+                    <SelectItem key={l} value={l} text={l} />
+                  ))}
+                </Select>
+                <HeaderGlobalAction aria-label="Search teams" onClick={() => setSearchOpen(true)}>
+                  <Search size={20} />
+                </HeaderGlobalAction>
+                {user?.role === "superadmin" && (
+                  <HeaderGlobalAction aria-label="Admin" onClick={() => navigate("/app/admin")}>
+                    <SettingsIcon size={20} />
+                  </HeaderGlobalAction>
+                )}
+                {needsAccess && (
+                  <HeaderGlobalAction aria-label="Redeem access" onClick={() => navigate("/app/access")}>
+                    <Locked size={20} />
+                  </HeaderGlobalAction>
+                )}
+                <HeaderGlobalAction aria-label="Profile" onClick={() => navigate("/app/profile")}>
+                  <UserAvatar size={20} />
+                </HeaderGlobalAction>
+                <HeaderGlobalAction aria-label="Sign out" onClick={handleLogout}>
+                  <UserFollow size={20} />
+                </HeaderGlobalAction>
+              </HeaderGlobalBar>
 
-          <nav className="nav-group">
-            <div className="nav-label">Discover</div>
-            <button className="nav-link" style={{ width: "100%", border: "none", background: "none", cursor: "pointer", textAlign: "left" }} onClick={() => setSearchOpen(true)}>
-              <span className="nav-icon">⌕</span>
-              Search teams
-            </button>
-          </nav>
+              <SideNav
+                aria-label="Side navigation"
+                expanded={isSideNavExpanded}
+                isPersistent
+                onSideNavBlur={onClickSideNavExpand}
+                href="#main-content"
+              >
+                <SideNavItems>
+                  {navItems.map((item) => (
+                    <SideNavLink
+                      key={item.to}
+                      as={NavLink}
+                      to={item.to}
+                      end={item.to === "/app"}
+                    >
+                      {item.label}
+                      {item.badge && <span className="queue-badge">!</span>}
+                    </SideNavLink>
+                  ))}
+                </SideNavItems>
+              </SideNav>
+            </Header>
 
-          <UserMenu />
+            <Content id="main-content" className="app-content">
+              <Outlet />
+            </Content>
+          </>
+        )}
+      />
 
-          <div className="sidebar-footer">
-            Predictions are model probabilities based on historical validation, never a guarantee of outcome.
-          </div>
-        </aside>
+      <SearchCommand open={searchOpen} onClose={() => setSearchOpen(false)} leagues={LEAGUES} />
 
-        <div className="app-main">
-          <header className="app-topbar">
-            <div className="topbar-search" onClick={() => setSearchOpen(true)}>
-              <span aria-hidden>⌕</span>
-              <span>Search teams...</span>
-              <kbd>&#8984;K</kbd>
-            </div>
-            <select className="topbar-league" value={league} onChange={(e) => setLeague(e.target.value)} aria-label="Select league">
-              <option value="">All leagues</option>
-              {LEAGUES.map((l) => (
-                <option key={l} value={l}>
-                  {l}
-                </option>
-              ))}
-            </select>
-          </header>
-
-          <header className="mobile-topbar">
-            <Brand to="/app" />
-            <div style={{ display: "flex", gap: 8 }}>
-              <button className="btn ghost" onClick={() => setSearchOpen(true)} aria-label="Search">
-                ⌕
-              </button>
-            </div>
-          </header>
-
-          <div className="tagline-banner">
-            <span className="brand-word tagline-word">Football Prediction AI</span>
-          </div>
-
-          <main className="app-content">
-            <Outlet />
-          </main>
-        </div>
-
-        <nav className="mobile-bottom-nav">
-          {navItems.map((item) => (
-            <NavLink key={item.to} to={item.to} end={item.to === "/app"} className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
-              <span className="nav-icon">{item.icon}</span>
-              {item.label}
-              {item.badge && <span className="queue-badge">!</span>}
-            </NavLink>
-          ))}
-        </nav>
-
-        <SearchCommand open={searchOpen} onClose={() => setSearchOpen(false)} leagues={LEAGUES} />
-
-        {/* Mounted at shell level rather than per page, so the conversation
-            survives navigation between matches -- which is the whole point of
-            being able to ask a follow-up about the fixture you just opened. */}
-        <ChatDock />
-      </div>
+      {/* Mounted at shell level rather than per page, so the conversation
+          survives navigation between matches -- which is the whole point of
+          being able to ask a follow-up about the fixture you just opened. */}
+      <ChatDock />
     </LeagueContext.Provider>
   );
 }

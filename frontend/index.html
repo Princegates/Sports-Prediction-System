@@ -18,7 +18,7 @@
       name="description"
       content="Ensemble football prediction across 18 markets per fixture: Elo, Dixon-Coles Poisson and gradient boosting, blended and calibrated on held-out history. Model probabilities, never guarantees."
     />
-    <meta name="theme-color" content="#0b0c0e" />
+    <meta name="theme-color" content="#161616" />
 
     <!-- Open Graph, so a shared link renders as something other than a bare URL. -->
     <meta property="og:type" content="website" />
@@ -30,24 +30,26 @@
     <meta name="twitter:card" content="summary" />
 
     <!--
-      Inter for body copy (a workhorse UI face built for small sizes and
-      tabular figures -- this project's tables lean on it) and Manrope for
-      headings (a geometric display face with enough contrast against Inter
-      to read as intentional, not just "the same font, bigger") power the
-      signed-in app.
+      IBM Plex Sans (Carbon Design System's own type family) for UI text --
+      adopting Carbon means adopting its typography too, not swapping
+      components in while keeping a different brand face. Plex Mono dresses
+      the data readouts (stat figures, accuracy numbers, odds) the way
+      Carbon's own data-table and code-snippet components use it.
 
-      The public marketing surface (landing page + doc pages) uses its own
-      pairing -- Space Grotesk for display type and Plus Jakarta Sans for
-      body copy -- so the storefront reads as a distinct, premium product
-      identity rather than "the app, but with an H1". JetBrains Mono dresses
-      the data readouts (stat figures, accuracy numbers) for a technical,
-      instrumented feel. Preconnect first since the stylesheet itself blocks
-      first paint until it resolves.
+      Headings use Plex Serif instead of Plex Sans: still the same IBM Plex
+      superfamily Carbon ships (this isn't a departure from Carbon type),
+      but a serif display face reads as considered and editorial rather
+      than the interchangeable geometric-grotesk look (Inter/Manrope/etc.)
+      that's become a tell for template-generated UI.
+
+      Loaded from Google Fonts under the family names custom.scss's
+      --font-sans/--font-display/--font-data tokens reference. Preconnect
+      first since the stylesheet itself blocks first paint until it resolves.
     -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,500;0,600;0,700;1,500&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
 
@@ -58,7 +60,7 @@
     -->
     <link
       rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%233987e5'/%3E%3Cpath d='M9 22V10h2.6l2.9 7.4L17.4 10H20v12h-2.3v-7.6l-2.4 6.1h-1.6l-2.4-6.1V22H9z' fill='white'/%3E%3Ccircle cx='24' cy='10' r='2.4' fill='%239085e9'/%3E%3C/svg%3E"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230f62fe'/%3E%3Cpath d='M9 22V10h2.6l2.9 7.4L17.4 10H20v12h-2.3v-7.6l-2.4 6.1h-1.6l-2.4-6.1V22H9z' fill='white'/%3E%3C/svg%3E"
     />
   </head>
   <body>

@@ -1,7 +1,21 @@
-import { useState, type ReactNode } from "react";
-import { Link, NavLink } from "react-router-dom";
+import type { ReactNode } from "react";
+import { Link, NavLink, useNavigate } from "react-router-dom";
+import {
+  Header,
+  HeaderContainer,
+  HeaderGlobalAction,
+  HeaderGlobalBar,
+  HeaderMenuButton,
+  HeaderMenuItem,
+  HeaderName,
+  HeaderNavigation,
+  SideNav,
+  SideNavItems,
+  SideNavLink,
+  SkipToContent,
+} from "@carbon/react";
+import { Login as LoginIcon, UserFollow } from "@carbon/icons-react";
 import { useAuth } from "../lib/AuthContext";
-import { Brand } from "./Brand";
 import { ThemeToggle } from "./ThemeToggle";
 import { usePageMeta } from "../lib/pageMeta";
 
@@ -13,11 +27,10 @@ import { usePageMeta } from "../lib/pageMeta";
  * when anonymous" through all of that would make both harder to read than
  * two components are.
  *
- * Accent is admin-controlled site-wide, with no toggle here. Theme
- * (day/night) is admin-controlled by default but a visitor can override it
- * for themselves with ThemeToggle in the header -- see main.tsx for how
- * that choice is persisted and kept from being overwritten by the
- * site-wide default.
+ * Theme (day/night) is admin-controlled by default but a visitor can
+ * override it for themselves with ThemeToggle in the header -- see
+ * main.tsx for how that choice is persisted and kept from being
+ * overwritten by the site-wide default.
  *
  * ``title``/``description`` set this page's document title and meta
  * description (see lib/pageMeta) -- required, since every page using this
@@ -40,92 +53,83 @@ export function PublicShell({
 }) {
   usePageMeta(title, description);
   const { user } = useAuth();
-  const [menuOpen, setMenuOpen] = useState(false);
+  const navigate = useNavigate();
 
   return (
     <div className="public-shell">
-      <header className="public-topbar">
-        <Brand to="/" onClick={() => setMenuOpen(false)} />
+      <HeaderContainer
+        render={({ isSideNavExpanded, onClickSideNavExpand }: { isSideNavExpanded: boolean; onClickSideNavExpand: () => void }) => (
+          <Header aria-label="Socca Intelligence">
+            <SkipToContent />
+            <HeaderMenuButton
+              aria-label={isSideNavExpanded ? "Close menu" : "Open menu"}
+              onClick={onClickSideNavExpand}
+              isActive={isSideNavExpanded}
+              isCollapsible
+            />
+            <HeaderName as={NavLink} to="/" prefix="">
+              Socca Intelligence
+            </HeaderName>
 
-        <nav className="public-nav">
-          {PUBLIC_NAV.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === "/"}
-              className={({ isActive }) => `public-nav-link${isActive ? " active" : ""}`}
+            <HeaderNavigation aria-label="Socca Intelligence">
+              {PUBLIC_NAV.map((item) => (
+                <HeaderMenuItem key={item.to} as={NavLink} to={item.to} end={item.to === "/"}>
+                  {item.label}
+                </HeaderMenuItem>
+              ))}
+            </HeaderNavigation>
+
+            <HeaderGlobalBar>
+              <ThemeToggle />
+              {user ? (
+                <HeaderGlobalAction aria-label="Open dashboard" onClick={() => navigate("/app")}>
+                  <LoginIcon size={20} />
+                </HeaderGlobalAction>
+              ) : (
+                <>
+                  <HeaderGlobalAction aria-label="Sign in" onClick={() => navigate("/login")}>
+                    <LoginIcon size={20} />
+                  </HeaderGlobalAction>
+                  <HeaderGlobalAction aria-label="Request access" onClick={() => navigate("/register")}>
+                    <UserFollow size={20} />
+                  </HeaderGlobalAction>
+                </>
+              )}
+            </HeaderGlobalBar>
+
+            <SideNav
+              aria-label="Side navigation"
+              expanded={isSideNavExpanded}
+              isPersistent={false}
+              onSideNavBlur={onClickSideNavExpand}
             >
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
+              <SideNavItems>
+                {PUBLIC_NAV.map((item) => (
+                  <SideNavLink key={item.to} as={NavLink} to={item.to} end={item.to === "/"}>
+                    {item.label}
+                  </SideNavLink>
+                ))}
+                {user ? (
+                  <SideNavLink as={NavLink} to="/app">
+                    Open dashboard
+                  </SideNavLink>
+                ) : (
+                  <>
+                    <SideNavLink as={NavLink} to="/login">
+                      Sign in
+                    </SideNavLink>
+                    <SideNavLink as={NavLink} to="/register">
+                      Request access
+                    </SideNavLink>
+                  </>
+                )}
+              </SideNavItems>
+            </SideNav>
+          </Header>
+        )}
+      />
 
-        <ThemeToggle />
-
-        <div className="public-actions">
-          {user ? (
-            <Link className="btn" to="/app">
-              Open dashboard
-            </Link>
-          ) : (
-            <>
-              <Link className="btn ghost" to="/login">
-                Sign in
-              </Link>
-              <Link className="btn" to="/register">
-                Request access
-              </Link>
-            </>
-          )}
-        </div>
-
-        <button
-          className="public-menu-toggle"
-          onClick={() => setMenuOpen(!menuOpen)}
-          aria-label="Menu"
-          aria-expanded={menuOpen}
-        >
-          {menuOpen ? "✕" : "☰"}
-        </button>
-      </header>
-
-      <div className="tagline-banner">
-        <span className="brand-word tagline-word">Football Prediction AI</span>
-      </div>
-
-      {menuOpen && (
-        <div className="public-mobile-menu">
-          {PUBLIC_NAV.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === "/"}
-              className="public-nav-link"
-              onClick={() => setMenuOpen(false)}
-            >
-              {item.label}
-            </NavLink>
-          ))}
-          <div className="public-mobile-actions">
-            {user ? (
-              <Link className="btn" to="/app" onClick={() => setMenuOpen(false)}>
-                Open dashboard
-              </Link>
-            ) : (
-              <>
-                <Link className="btn ghost" to="/login" onClick={() => setMenuOpen(false)}>
-                  Sign in
-                </Link>
-                <Link className="btn" to="/register" onClick={() => setMenuOpen(false)}>
-                  Request access
-                </Link>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      <main className="public-main">
+      <main className="public-main" id="main-content">
         {children}
       </main>
 

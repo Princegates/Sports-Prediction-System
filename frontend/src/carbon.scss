@@ -1,0 +1,6 @@
+// Carbon Design System entry point: the reset, type scale, grid, and every
+// component's styles, plus the theme tokens (--cds-*) both Theme modes
+// below read from. Everything project-specific lives in custom.scss,
+// loaded after this so it can build on Carbon's own tokens rather than
+// duplicating them.
+@use "@carbon/react";

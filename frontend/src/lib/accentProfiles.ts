@@ -4,17 +4,14 @@ export interface AccentProfile {
   swatch: string;
 }
 
-// "sunset" is the flagship brand look (the site's own orange, paired with
-// the dark-green/cream base in styles.css) and the default. The rest are
-// alternatives for anyone who wants a different accent. No blue options
-// (ocean/cyan/indigo removed entirely, not just demoted) and every profile
-// is a single hue -- styles.css aliases --ai-violet to --accent for all of
-// them, so nothing ever blends two colors.
-//
-// The 10 after steel lean on saturation/lightness rather than hue spacing
-// for distinction: with red/orange/green (status colors + sunset) and blue
-// both off-limits, the only hue room left is a narrow purple-to-pink arc,
-// too narrow to fit 16 total profiles by hue alone.
+// "sunset" is the flagship brand look (the site's own orange) and the
+// default. Every id here must have a matching `body[data-accent="id"]`
+// block in custom.scss -- that's what actually recolors the site; this
+// list only drives the Settings > Appearance dropdown and its swatches.
+// Each profile is a single hue: styles.css aliases --ai-violet to --accent
+// for all of them, so nothing ever blends two colors, and --accent-soft/
+// --accent-strong are derived automatically from --accent (see custom.scss)
+// rather than hand-picked per profile.
 export const ACCENT_PROFILES: AccentProfile[] = [
   { id: "sunset", label: "Sunset", swatch: "#ff6115" },
   { id: "teal", label: "Teal", swatch: "#14b8a6" },
@@ -32,4 +29,8 @@ export const ACCENT_PROFILES: AccentProfile[] = [
   { id: "amethyst", label: "Amethyst", swatch: "#b47aec" },
   { id: "wine", label: "Wine", swatch: "#c6789b" },
   { id: "mauve", label: "Mauve", swatch: "#a68a96" },
+  { id: "cobalt", label: "Cobalt", swatch: "#2f6fed" },
+  { id: "indigo", label: "Indigo", swatch: "#6366f1" },
+  { id: "cyan", label: "Cyan", swatch: "#22d3ee" },
+  { id: "denim", label: "Denim", swatch: "#3b6ea5" },
 ];
