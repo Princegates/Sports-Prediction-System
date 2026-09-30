@@ -16,6 +16,7 @@ const LEAGUES = [
   "Portuguese Primeira Liga",
   "Turkish Süper Lig",
   "UEFA Champions League",
+  "UEFA Europa League",
 ];
 
 interface LeagueContextValue {

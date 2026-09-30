@@ -46,11 +46,17 @@ on:
           "English Premier League" "English Championship" "Spanish La Liga"
           "German Bundesliga" "Italian Serie A" "French Ligue 1"
           "Dutch Eredivisie" "Portuguese Primeira Liga" "Turkish Süper Lig"
-          "UEFA Champions League"
+          "UEFA Champions League" "UEFA Europa League"
       days_ahead:
         description: "How many days of upcoming fixtures to predict"
         required: false
         default: "10"
+      weekly_picks:
+        description: "Rebuild this week's system accumulators on a retrain (skip = keep the published ones)"
+        required: false
+        default: "yes"
+        type: choice
+        options: ["yes", "skip"]
 
 jobs:
   refresh:
@@ -105,8 +111,8 @@ jobs:
           SUPERADMIN_PASSWORD: ${{ secrets.SUPERADMIN_PASSWORD }}
           # Every league the site lists, so none of them goes stale: one
           # API-Football request each per day, and the weekly retrain reads
-          # all ten leagues' history.
-          LEAGUES: ${{ inputs.leagues || '"English Premier League" "English Championship" "Spanish La Liga" "German Bundesliga" "Italian Serie A" "French Ligue 1" "Dutch Eredivisie" "Portuguese Primeira Liga" "Turkish Süper Lig" "UEFA Champions League"' }}
+          # every league's history.
+          LEAGUES: ${{ inputs.leagues || '"English Premier League" "English Championship" "Spanish La Liga" "German Bundesliga" "Italian Serie A" "French Ligue 1" "Dutch Eredivisie" "Portuguese Primeira Liga" "Turkish Süper Lig" "UEFA Champions League" "UEFA Europa League"' }}
           DAYS_AHEAD: ${{ inputs.days_ahead || '10' }}
           # The weekly cron retrains; the daily one doesn't. A manual run says
           # so explicitly.
@@ -148,7 +154,9 @@ jobs:
       # predictions and odds, pooled across every league (never just the
       # ones named in $LEAGUES -- see generate_weekly_picks.py).
       - name: Generate this week's system picks
-        if: ${{ (inputs.mode || (github.event.schedule == '0 3 * * 1' && 'retrain') || 'refresh') == 'retrain' }}
+        # A midweek manual retrain can pass weekly_picks: skip, so the
+        # accumulators members may already have booked aren't swapped out.
+        if: ${{ (inputs.mode || (github.event.schedule == '0 3 * * 1' && 'retrain') || 'refresh') == 'retrain' && inputs.weekly_picks != 'skip' }}
         working-directory: backend
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}

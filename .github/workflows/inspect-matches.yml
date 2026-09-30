@@ -1,0 +1,52 @@
+# Read-only: prints where suspicious stored results came from -- clubs with
+# two matches on one day, fixtures stored twice -- with each row's source,
+# API-Football id and any in-play events recorded against it. Changes nothing.
+name: Inspect matches
+
+on:
+  workflow_dispatch:
+    inputs:
+      leagues:
+        description: "Space-separated, quoted league names"
+        required: false
+        default: '"Spanish La Liga" "Italian Serie A" "French Ligue 1" "English Premier League"'
+      since:
+        description: "Earliest date to look at (YYYY-MM-DD)"
+        required: false
+        default: "2026-08-01"
+      team:
+        description: "Only rows involving a club whose name contains this (blank = all)"
+        required: false
+        default: ""
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Inspect
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          LEAGUES: ${{ inputs.leagues }}
+          SINCE: ${{ inputs.since }}
+          TEAM: ${{ inputs.team }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret is not set."
+            exit 1
+          fi
+          ARGS=(--since "$SINCE")
+          [ -n "$TEAM" ] && ARGS+=(--team "$TEAM")
+          eval "python scripts/inspect_matches.py --leagues $LEAGUES \"\${ARGS[@]}\""

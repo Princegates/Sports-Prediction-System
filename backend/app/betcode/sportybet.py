@@ -77,6 +77,7 @@ TOURNAMENTS = {
     "Dutch Eredivisie": "sr:tournament:37",
     "Portuguese Primeira Liga": "sr:tournament:238",
     "Turkish Süper Lig": "sr:tournament:52",
+    "UEFA Europa League": "sr:tournament:679",
 }
 PAGE_SIZE = 100
 # ~1,200 upcoming football events at 100 a page. Paging stops as soon as
