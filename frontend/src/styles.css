@@ -4544,7 +4544,18 @@ table.admin-table {
 
   /* The dock becomes a near-fullscreen sheet on a phone -- a 400px panel
      floating in a 375px viewport is unusable. Bottom offset clears the
-     app's own mobile bottom nav. */
+     app's own mobile bottom nav.
+
+     max-height is capped against the viewport, same 100vh-overestimates-
+     the-real-visible-area problem as the base .chat-dock rule above (this
+     one overrides it below this breakpoint, so needs the same dvh fix
+     independently -- missed the first time since it's a separate rule
+     lower in the file, not a duplicate of the one already fixed). 82vh of
+     the *layout* viewport (address bar collapsed) can exceed the actual
+     visible height whenever the address bar is showing, which combined
+     with left/right/bottom all pinned to 0 is what reads as "covers the
+     entire screen" -- not just near-fullscreen by design, but taller than
+     the real viewport, pushing content above the visible top edge. */
   .chat-dock {
     right: 0;
     left: 0;
@@ -4552,6 +4563,7 @@ table.admin-table {
     width: 100%;
     max-width: 100%;
     max-height: 82vh;
+    max-height: 82dvh;
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     border-left: none;
     border-right: none;
