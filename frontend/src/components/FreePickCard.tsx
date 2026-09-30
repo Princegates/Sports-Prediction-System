@@ -1,6 +1,8 @@
 import type { FreePick } from "../types";
 import { useTilt } from "../lib/useTilt";
+import { isHotPick } from "../lib/filters";
 import { ConfidenceTag } from "./MostLikelyOutcome";
+import { HotPickBadge } from "./HotPickBadge";
 import { ProbabilityBar } from "./ProbabilityBar";
 
 /**
@@ -46,6 +48,7 @@ export function FreePickCard({ pick }: { pick: FreePick }) {
         <span className="tabular-nums" style={{ marginLeft: 6 }}>
           {(pick.probability * 100).toFixed(0)}%
         </span>
+        {isHotPick(pick.probability, pick.data_quality_score, pick.model_agreement_score) && <HotPickBadge compact />}
       </div>
     </div>
   );

@@ -1118,6 +1118,52 @@ h1, h2, h3, h4 {
   background: var(--critical-soft);
 }
 
+/* Fixed orange/red regardless of the chosen accent theme -- like .live-badge,
+   "hot" is a signal on its own, not a brand color, so it has to read the same
+   whichever of the 20+ accent themes is active. */
+.hot-pick-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #fff;
+  background: linear-gradient(135deg, #ff8a00, #ff3d00);
+  padding: 3px 9px 3px 7px;
+  border-radius: var(--radius-pill);
+  box-shadow: 0 0 0 1px rgba(255, 61, 0, 0.35), 0 0 10px rgba(255, 106, 0, 0.5);
+  animation: hot-pick-charge 1.6s ease-in-out infinite;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.hot-pick-badge.compact {
+  background: none;
+  box-shadow: none;
+  animation: none;
+  padding: 0;
+  font-size: 13px;
+}
+
+.hot-pick-badge .hot-pick-flame {
+  display: inline-block;
+  line-height: 1;
+  animation: hot-pick-flicker 1s ease-in-out infinite;
+}
+
+@keyframes hot-pick-charge {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(255, 61, 0, 0.35), 0 0 8px rgba(255, 106, 0, 0.45); }
+  50% { box-shadow: 0 0 0 1px rgba(255, 61, 0, 0.55), 0 0 16px rgba(255, 106, 0, 0.85); }
+}
+
+@keyframes hot-pick-flicker {
+  0%, 100% { transform: translateY(0) scale(1) rotate(0deg); }
+  30% { transform: translateY(-1px) scale(1.1) rotate(-4deg); }
+  60% { transform: translateY(0.5px) scale(0.94) rotate(3deg); }
+}
+
 .badge-neutral {
   font-size: 11px;
   color: var(--text-muted);

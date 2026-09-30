@@ -492,6 +492,12 @@ class OutcomeOut(BaseModel):
     probability: float
     confidence: str
     data_quality_score: float
+    # Alongside probability and data_quality_score, this is what the frontend's
+    # shared is_hot_pick() gate checks -- the same three-factor bar as
+    # Prediction.model_agreement_score, just carried per outcome here since a
+    # market's own probability (not just the match's single global outcome)
+    # decides whether that specific pick clears it.
+    model_agreement_score: float
     # Selections sharing a group are mutually exclusive and sum to ~1. Ones
     # that don't can all happen in the same match, so stacking them is not a
     # sure thing however good each looks alone.
@@ -549,6 +555,8 @@ class FreePickOut(BaseModel):
     selection: str
     probability: float
     confidence: str
+    data_quality_score: float
+    model_agreement_score: float
 
 
 class FeaturePickIn(BaseModel):

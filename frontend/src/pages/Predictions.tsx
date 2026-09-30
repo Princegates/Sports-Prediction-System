@@ -7,8 +7,10 @@ import { DateStrip, localDayKey } from "../components/DateStrip";
 import { ConfidenceTag } from "../components/MostLikelyOutcome";
 import { ErrorState } from "../components/ErrorState";
 import { EmptyState } from "../components/EmptyState";
+import { HotPickBadge } from "../components/HotPickBadge";
 import { formatSelection, formatSelections } from "../lib/copySelections";
 import { downloadCsv, toCsv } from "../lib/csvExport";
+import { isHotPick } from "../lib/filters";
 import type { BetCodePick, MatchSummary, Prediction } from "../types";
 
 interface Row {
@@ -209,10 +211,22 @@ export function Predictions() {
                     <div className="sub">{match.league}</div>
                   </td>
                   <td>
-                    <div>{prediction.global_outcome.selection}</div>
+                    <div>
+                      {prediction.global_outcome.selection}
+                      {isHotPick(prediction.global_outcome.probability, prediction.data_quality_score, prediction.model_agreement_score) && (
+                        <span style={{ marginLeft: 6 }}>
+                          <HotPickBadge compact />
+                        </span>
+                      )}
+                    </div>
                     {prediction.also_likely.map((o) => (
                       <div className="sub" key={`${o.market}-${o.selection}`}>
                         {o.selection} ({o.market}) — {(o.probability * 100).toFixed(0)}%
+                        {isHotPick(o.probability, prediction.data_quality_score, prediction.model_agreement_score) && (
+                          <span style={{ marginLeft: 4 }}>
+                            <HotPickBadge compact />
+                          </span>
+                        )}
                       </div>
                     ))}
                   </td>

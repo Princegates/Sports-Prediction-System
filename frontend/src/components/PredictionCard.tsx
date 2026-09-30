@@ -69,7 +69,12 @@ export function PredictionCard({ prediction, homeTeam, awayTeam, kickoff, compet
         <ProbabilityBar label="Away" probability={prediction.away_win} variant="away" />
       </div>
 
-      <MostLikelyOutcome outcome={prediction.global_outcome} confidence={prediction.confidence} />
+      <MostLikelyOutcome
+        outcome={prediction.global_outcome}
+        confidence={prediction.confidence}
+        dataQuality={prediction.data_quality_score}
+        modelAgreement={prediction.model_agreement_score}
+      />
     </div>
   );
 }

@@ -294,6 +294,8 @@ export interface FreePick {
   selection: string;
   probability: number;
   confidence: "HIGH" | "MEDIUM" | "LOW";
+  data_quality_score: number;
+  model_agreement_score: number;
 }
 
 /** An outcome a Super Admin chose to promote -- probability is always the
@@ -460,6 +462,7 @@ export interface BettingOutcome {
   probability: number;
   confidence: "HIGH" | "MEDIUM" | "LOW";
   data_quality_score: number;
+  model_agreement_score: number;
   /** Selections sharing a group are mutually exclusive and sum to ~1. */
   group: string;
   definition: string;

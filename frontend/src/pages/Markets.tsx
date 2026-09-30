@@ -5,11 +5,13 @@ import { ConfidenceTag } from "../components/MostLikelyOutcome";
 import { CopyButton } from "../components/CopyButton";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
+import { HotPickBadge } from "../components/HotPickBadge";
 import { MarketPicker, type MarketPreset } from "../components/MarketPicker";
 import { SiteCodes } from "../components/SiteCodes";
 import { dateKeyFromIso, FixtureCalendar } from "../components/FixtureCalendar";
 import { useLeague } from "../components/AppShell";
 import { formatPicksForCopy, readStoredPicks, storePicks } from "../lib/myPicks";
+import { isHotPick } from "../lib/filters";
 import { useAuth } from "../lib/AuthContext";
 import type { BettingOutcome, MarketSummary, MatchSummary, OutcomesResponse } from "../types";
 
@@ -536,6 +538,11 @@ export function Markets() {
                     <td className="sub">{o.market}</td>
                     <td>
                       <strong>{o.selection}</strong>
+                      {isHotPick(o.probability, o.data_quality_score, o.model_agreement_score) && (
+                        <span style={{ marginLeft: 6 }}>
+                          <HotPickBadge compact />
+                        </span>
+                      )}
                     </td>
                     <td className="tabular-nums" style={{ width: 60 }}>
                       {(o.probability * 100).toFixed(0)}%
@@ -680,9 +687,14 @@ export function Markets() {
                                             type="button"
                                             className={`odds-cell${tops.has(key) ? " ai-top" : ""}${isPicked ? " picked" : ""}`}
                                             onClick={() => togglePick(o)}
-                                            title={`${o.market}: ${o.selection} -- ${o.definition} AI probability ${(o.probability * 100).toFixed(0)}%`}
+                                            title={`${o.market}: ${o.selection} -- ${o.definition} AI probability ${(o.probability * 100).toFixed(0)}%${isHotPick(o.probability, o.data_quality_score, o.model_agreement_score) ? " -- hot pick" : ""}`}
                                           >
                                             {(o.probability * 100).toFixed(0)}%
+                                            {isHotPick(o.probability, o.data_quality_score, o.model_agreement_score) && (
+                                              <span style={{ marginLeft: 2 }}>
+                                                <HotPickBadge compact />
+                                              </span>
+                                            )}
                                           </button>
                                         ) : (
                                           <span className="odds-cell empty">—</span>
@@ -780,6 +792,11 @@ export function Markets() {
                             <td className="sub">{o.market}</td>
                             <td>
                               <strong>{o.selection}</strong>
+                              {isHotPick(o.probability, o.data_quality_score, o.model_agreement_score) && (
+                                <span style={{ marginLeft: 6 }}>
+                                  <HotPickBadge compact />
+                                </span>
+                              )}
                             </td>
                             <td className="tabular-nums">{(o.probability * 100).toFixed(0)}%</td>
                             <td>

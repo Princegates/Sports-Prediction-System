@@ -124,6 +124,7 @@ def get_match_outcomes(match: Match = Depends(get_match_or_404), db: Session = D
                 probability=outcome.probability,
                 confidence=prediction.confidence,
                 data_quality_score=prediction.data_quality_score,
+                model_agreement_score=prediction.model_agreement_score,
                 group=outcome.mutually_exclusive_group,
                 definition=outcome.definition,
             )

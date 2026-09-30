@@ -213,6 +213,7 @@ def browse_outcomes(
                     probability=outcome.probability,
                     confidence=prediction.confidence,
                     data_quality_score=prediction.data_quality_score,
+                    model_agreement_score=prediction.model_agreement_score,
                     group=outcome.mutually_exclusive_group,
                     definition=outcome.definition,
                 )
@@ -314,6 +315,8 @@ def free_picks(db: Session = Depends(get_db)) -> list[FreePickOut]:
             selection=prediction.global_outcome_selection,
             probability=prediction.global_outcome_probability,
             confidence=prediction.confidence,
+            data_quality_score=prediction.data_quality_score,
+            model_agreement_score=prediction.model_agreement_score,
         )
         for match, prediction in best_per_league.values()
     ]

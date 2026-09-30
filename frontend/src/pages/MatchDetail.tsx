@@ -22,6 +22,7 @@ import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { FormStrip } from "../components/FormStrip";
 import { GoalCelebration } from "../components/GoalCelebration";
+import { HotPickBadge } from "../components/HotPickBadge";
 import { AiScanningState } from "../components/LoadingSkeleton";
 import { LiveEventControls } from "../components/LiveEventControls";
 import { ModelTransparency } from "../components/ModelTransparency";
@@ -35,6 +36,7 @@ import { ScoreHeatmap } from "../components/ScoreHeatmap";
 import { Tabs } from "../components/Tabs";
 import { TeamComparison } from "../components/TeamComparison";
 import { formatSelection } from "../lib/copySelections";
+import { isHotPick } from "../lib/filters";
 import { useAuth } from "../lib/AuthContext";
 import type {
   BetCodePick,
@@ -243,7 +245,12 @@ export function MatchDetail() {
         </div>
       )}
 
-      <MostLikelyOutcome outcome={latestLive?.global_outcome ?? prediction.global_outcome} confidence={prediction.confidence} />
+      <MostLikelyOutcome
+        outcome={latestLive?.global_outcome ?? prediction.global_outcome}
+        confidence={prediction.confidence}
+        dataQuality={prediction.data_quality_score}
+        modelAgreement={prediction.model_agreement_score}
+      />
 
       <div style={{ display: "flex", justifyContent: "flex-end", margin: "8px 0" }}>
         <CopyButton text={formatSelection(match, prediction)} label="Copy this pick" />
@@ -469,7 +476,14 @@ export function MatchDetail() {
                                     aria-label={`Use ${o.selection} (${o.market}) as this match's leg in AI Generation`}
                                   />
                                 </td>
-                                <td>{o.selection}</td>
+                                <td>
+                                  {o.selection}
+                                  {isHotPick(o.probability, o.data_quality_score, o.model_agreement_score) && (
+                                    <span style={{ marginLeft: 6 }}>
+                                      <HotPickBadge compact />
+                                    </span>
+                                  )}
+                                </td>
                                 <td className="tabular-nums" style={{ width: 80 }}>
                                   {(o.probability * 100).toFixed(0)}%
                                 </td>
