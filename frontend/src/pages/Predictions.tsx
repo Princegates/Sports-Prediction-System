@@ -163,9 +163,9 @@ export function Predictions() {
     const allSelected = rowsToShow.length > 0 && rowsToShow.every((r) => selected.has(r.prediction.match_id));
     return (
       <>
-        <p className="scroll-hint">Swipe to see every column →</p>
+        <p className="scroll-hint cards-on-mobile-hint">Swipe to see every column →</p>
         <div className="predictions-table-wrapper">
-        <table className="predictions-table wide">
+        <table className="predictions-table wide cards-on-mobile">
           <thead>
             <tr>
               <th className="predictions-select-col">
@@ -204,13 +204,13 @@ export function Predictions() {
                       aria-label={`Select ${match.home_team.name} vs ${match.away_team.name} for AI Generation`}
                     />
                   </td>
-                  <td>
+                  <td data-label="Match">
                     <div className="match-cell">
                       {match.home_team.name} vs {match.away_team.name}
                     </div>
                     <div className="sub">{match.league}</div>
                   </td>
-                  <td>
+                  <td data-label="AI Outcome">
                     <div>
                       {prediction.global_outcome.selection}
                       {isHotPick(prediction.global_outcome.probability, prediction.data_quality_score, prediction.model_agreement_score) && (
@@ -230,13 +230,13 @@ export function Predictions() {
                       </div>
                     ))}
                   </td>
-                  <td className="tabular-nums">{(prediction.global_outcome.probability * 100).toFixed(0)}%</td>
-                  <td>
+                  <td className="tabular-nums" data-label="Probability">{(prediction.global_outcome.probability * 100).toFixed(0)}%</td>
+                  <td data-label="Confidence">
                     <ConfidenceTag confidence={prediction.confidence} />
                   </td>
-                  <td>{new Date(match.date).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
-                  <td>{match.status}</td>
-                  <td>
+                  <td data-label="Kickoff">{new Date(match.date).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
+                  <td data-label="Status">{match.status}</td>
+                  <td data-label="">
                     <CopyButton text={formatSelection(match, prediction)} />
                   </td>
                 </tr>
