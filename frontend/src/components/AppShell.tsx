@@ -142,7 +142,17 @@ export function AppShell() {
                 aria-label={isSideNavExpanded ? "Close menu" : "Open menu"}
                 onClick={onClickSideNavExpand}
                 isActive={isSideNavExpanded}
-                isCollapsible
+                // isCollapsible={false} (not the true/shorthand this had)
+                // is what tells HeaderMenuButton to add its own built-in
+                // ${prefix}--header__menu-toggle__hidden class, hiding the
+                // button above the same lg breakpoint SideNav's own
+                // isPersistent already shows the nav at unconditionally.
+                // With isCollapsible true, the button stayed visible and
+                // clickable on desktop, where clicking it flipped on the
+                // dismiss overlay meant for the mobile drawer behind an
+                // already-visible, unrelated sidebar -- with no visible
+                // change to explain what had just happened.
+                isCollapsible={false}
               />
               <HeaderName as={NavLink} to="/app" prefix="">
                 Socca Intelligence
