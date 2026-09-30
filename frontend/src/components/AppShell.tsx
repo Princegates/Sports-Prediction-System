@@ -15,7 +15,7 @@ import {
   SideNavLink,
   SkipToContent,
 } from "@carbon/react";
-import { Search, UserAvatar, Settings as SettingsIcon, Locked, UserFollow } from "@carbon/icons-react";
+import { Search, UserAvatar, Settings as SettingsIcon, Locked, UserFollow, Pin, PinFilled, ChevronRight } from "@carbon/icons-react";
 import { SearchCommand } from "./SearchCommand";
 import { ChatDock } from "./ChatDock";
 import { useAuth } from "../lib/AuthContext";
@@ -47,6 +47,19 @@ function readStoredLeague(): string {
     return stored && LEAGUES.includes(stored) ? stored : "";
   } catch {
     return "";
+  }
+}
+
+const SIDENAV_PIN_STORAGE_KEY = "app_sidenav_pinned";
+
+/** Pinning the desktop nav overrides the hover-reveal rail (below) back to
+ * always-expanded, for anyone who navigates often enough that re-hovering
+ * every time is more friction than the screen space it buys back. */
+function readStoredPinned(): boolean {
+  try {
+    return localStorage.getItem(SIDENAV_PIN_STORAGE_KEY) === "1";
+  } catch {
+    return false;
   }
 }
 
@@ -88,6 +101,7 @@ export function AppShell() {
   // league would have silently narrowed what it searches on first load.
   const [league, setLeague] = useState(readStoredLeague);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [pinned, setPinned] = useState(readStoredPinned);
   const { user, accessStatus, logout } = useAuth();
   const navigate = useNavigate();
   const needsAccess = user?.role !== "superadmin" && !accessStatus?.has_access;
@@ -100,6 +114,14 @@ export function AppShell() {
       // private-browsing / storage-disabled -- just won't persist across reloads
     }
   }, [league]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDENAV_PIN_STORAGE_KEY, pinned ? "1" : "0");
+    } catch {
+      // private-browsing / storage-disabled -- just won't persist across reloads
+    }
+  }, [pinned]);
 
   const navItems =
     user?.role === "superadmin"
@@ -196,7 +218,7 @@ export function AppShell() {
 
               <SideNav
                 aria-label="Side navigation"
-                expanded={isSideNavExpanded}
+                expanded={isSideNavExpanded || pinned}
                 isPersistent
                 isRail
                 className="app-sidenav-rail"
@@ -204,6 +226,18 @@ export function AppShell() {
                 onOverlayClick={() => isSideNavExpanded && onClickSideNavExpand()}
                 href="#main-content"
               >
+                <div className="app-sidenav-pin-row">
+                  <button
+                    type="button"
+                    className="app-sidenav-pin-btn"
+                    aria-pressed={pinned}
+                    aria-label={pinned ? "Unpin sidebar" : "Pin sidebar open"}
+                    onClick={() => setPinned((v) => !v)}
+                  >
+                    {pinned ? <PinFilled size={16} /> : <Pin size={16} />}
+                    {pinned ? "Pinned open" : "Pin open"}
+                  </button>
+                </div>
                 <SideNavItems>
                   {navItems.map((item) => (
                     <SideNavLink
@@ -219,9 +253,26 @@ export function AppShell() {
                   ))}
                 </SideNavItems>
               </SideNav>
+
+              {/* Purely a hint that the thin edge rail (collapsed by default
+                  on desktop) is a nav, not decoration -- hovering it already
+                  expands the real SideNav above without this; clicking it
+                  is a shortcut to pin it open instead of hovering to find
+                  out. Hidden once pinned, since the nav is then always
+                  expanded and there's nothing left to hint at. */}
+              {!pinned && (
+                <button
+                  type="button"
+                  className="app-sidenav-hint"
+                  aria-label="Show sidebar navigation"
+                  onClick={() => setPinned(true)}
+                >
+                  <ChevronRight size={14} />
+                </button>
+              )}
             </Header>
 
-            <Content id="main-content" className="app-content">
+            <Content id="main-content" className={`app-content${pinned ? " app-content--nav-pinned" : ""}`}>
               <Outlet />
             </Content>
           </>

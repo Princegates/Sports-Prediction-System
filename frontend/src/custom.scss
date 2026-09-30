@@ -398,6 +398,87 @@ body[data-accent="denim"] { --accent: #3b6ea5; }
   }
 }
 
+// Pinning locks the nav to its expanded width permanently (expanded prop
+// forced true, see AppShell.tsx) instead of only while it's being hovered
+// or focused -- at that point it's a normal persistent sidebar again, and
+// content needs to give it the full width back rather than just the rail's.
+@media (min-width: 66rem) {
+  .cds--content.app-content.app-content--nav-pinned {
+    margin-inline-start: var(--sidebar-w);
+  }
+}
+
+// The pin toggle lives inside the nav's own expanded panel (only reachable
+// once it's already open via hover/focus/pin) rather than in the header,
+// so it never competes for space with the collapsed rail or the mobile
+// hamburger button.
+.app-sidenav-pin-row {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--space-2) var(--space-3) 0;
+}
+
+.app-sidenav-pin-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.app-sidenav-pin-btn:hover {
+  background: var(--bg-surface-2);
+  color: var(--text-primary);
+}
+
+.app-sidenav-pin-btn[aria-pressed="true"] {
+  color: var(--accent);
+}
+
+// The floating hint that the collapsed rail is a nav, not decoration --
+// see the comment on its JSX in AppShell.tsx for why it exists alongside a
+// rail that's already hoverable on its own. Sits just to the right of the
+// rail, vertically centered, below the rail's own z-index (Carbon's
+// $z-index('header'), 8000) so the real expanded panel simply covers it
+// once opened rather than needing to be hidden by hand.
+.app-sidenav-hint {
+  display: none;
+}
+
+@media (min-width: 66rem) {
+  .app-sidenav-hint {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    z-index: 100;
+    inset-inline-start: var(--sidebar-rail-w);
+    inset-block-start: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 40px;
+    padding: 0;
+    border: none;
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    background: var(--accent);
+    color: #fff;
+    opacity: 0.6;
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+  }
+
+  .app-sidenav-hint:hover {
+    opacity: 1;
+  }
+}
+
 @media (max-width: 65.98rem) {
   .cds--side-nav.app-sidenav-rail:not(.cds--side-nav--expanded) {
     inline-size: 0;
