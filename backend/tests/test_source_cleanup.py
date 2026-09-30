@@ -364,3 +364,42 @@ def test_a_mislabeled_row_never_merges_two_real_clubs(db_session):
     }
     assert db.get(Match, mislabeled_id) is None
     assert db.get(Match, api_id).home_team_id == atleti.id
+
+
+def test_inter_and_ac_milan_are_never_merged(db_session):
+    """Two clubs from one city. An old import stored AC Milan's matches under
+    Inter; cleaning that up must remove the mislabeled copies and leave both
+    clubs exactly as they are."""
+
+    db = db_session
+    it = "Italian Serie A"
+    inter, milan, torino = (_team(db, n, it) for n in ("FC Internazionale Milano", "AC Milan", "Torino FC"))
+    _match(db, it, inter, milan, dt.datetime(2025, 9, 21, 18, 45), score=(2, 1))  # the derby
+    real_inter = _match(db, it, inter, torino, dt.datetime(2026, 8, 30, 18, 45), api_id=1550099, score=(1, 0))
+    wrong = _match(db, it, torino, inter, dt.datetime(2026, 8, 23, 18, 45), api_id=1550094, score=(1, 2),
+                   source="football-data.co.uk")
+    right = _match(db, it, torino, milan, dt.datetime(2026, 8, 23, 20, 45), score=(1, 2))
+    mislabeled_copy = _match(db, it, torino, inter, dt.datetime(2026, 8, 23, 20, 45), score=(1, 2))
+    ids = real_inter.id, wrong.id, right.id, mislabeled_copy.id
+    db.commit()
+
+    client = FakeClient({"fixtures": [
+        {"fixture": {"id": 1550094, "date": "2026-08-23T18:45:00+00:00", "status": {"short": "FT"}},
+         "teams": {"home": {"name": "Torino"}, "away": {"name": "AC Milan"}},
+         "goals": {"home": 1, "away": 2}},
+        {"fixture": {"id": 1550099, "date": "2026-08-30T18:45:00+00:00", "status": {"short": "FT"}},
+         "teams": {"home": {"name": "Inter"}, "away": {"name": "Torino"}},
+         "goals": {"home": 1, "away": 0}},
+    ]})
+    import_fixtures(db, client, league_id=135, season=2026)
+    report = retire_free_fixtures(db, it)
+
+    assert not report.teams_merged
+    clubs = {t.name: t.id for t in db.query(Team).filter_by(league=it)}
+    assert clubs == {"FC Internazionale Milano": inter.id, "AC Milan": milan.id, "Torino FC": torino.id}
+    assert db.get(Match, ids[0]).home_team_id == inter.id, "Inter's own match is untouched"
+    assert db.get(Match, ids[1]) is None and db.get(Match, ids[3]) is None, "the mislabeled copies are gone"
+    assert db.get(Match, ids[2]).away_team_id == milan.id
+    assert db.get(Match, ids[2]).api_fixture_id == 1550094
+    derby = db.query(Match).filter_by(home_team_id=inter.id, away_team_id=milan.id).one()
+    assert (derby.home_score, derby.away_score) == (2, 1)
