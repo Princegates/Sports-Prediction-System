@@ -14,10 +14,10 @@ interface Props {
   variant?: Variant;
 }
 
-const HERO_ASPECT = "550 / 619";
+const HERO_ASPECT = "457 / 503";
 
 /**
- * Guda: an animated 3D-rendered AI-robot photo used as the site's mascot --
+ * Guda: an animated 3D-rendered bunny photo used as the site's mascot --
  * the chat launcher, empty/loading states, the goal celebration overlay, the
  * dashboard hero, and the auth pages. Pose is expressed as CSS motion
  * (float / tilt / bounce / droop) plus a couple of decorative sparkle

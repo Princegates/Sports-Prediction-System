@@ -2414,7 +2414,7 @@ table.admin-table {
 }
 
 /* ==========================================================================
-   MASCOT -- Guda, an animated 3D-rendered AI-robot photo. Pose is expressed
+   MASCOT -- Guda, an animated 3D-rendered bunny photo. Pose is expressed
    as CSS motion (float / tilt / bounce / droop) plus a couple of decorative
    sparkle overlays, since a single photographic render can't be re-posed the
    way the old inline-SVG mascot could.
