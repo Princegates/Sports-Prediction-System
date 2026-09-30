@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   featurePick,
@@ -199,6 +199,29 @@ export function MatchDetail() {
     setSearchParams(next === "Overview" ? {} : { tab: next });
   }
 
+  // A one-finger swipe across the tab panel steps to the adjacent tab --
+  // the tab strip itself already scrolls, but on a phone reaching a tab
+  // several taps to the right of the current one otherwise means tapping
+  // back to the strip for every single step. Mouse drags don't fire touch
+  // events, so this is a no-op on desktop.
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
+  function handlePanelTouchStart(e: React.TouchEvent) {
+    touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }
+  function handlePanelTouchEnd(e: React.TouchEvent) {
+    const start = touchStart.current;
+    touchStart.current = null;
+    if (!start) return;
+    const dx = e.changedTouches[0].clientX - start.x;
+    const dy = e.changedTouches[0].clientY - start.y;
+    // A short drag is a tap or a scroll correction, not a swipe; a mostly
+    // vertical one is the page scrolling, not a tab change.
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    const idx = TAB_NAMES.indexOf(tab);
+    if (dx < 0 && idx < TAB_NAMES.length - 1) changeTab(TAB_NAMES[idx + 1]);
+    else if (dx > 0 && idx > 0) changeTab(TAB_NAMES[idx - 1]);
+  }
+
   if (error) return <ErrorState message={error} />;
   if (!match || !prediction || !stats) return <AiScanningState />;
 
@@ -259,6 +282,7 @@ export function MatchDetail() {
       <div style={{ height: 8 }} />
       <Tabs tabs={TAB_NAMES} active={tab} onChange={changeTab} />
 
+      <div onTouchStart={handlePanelTouchStart} onTouchEnd={handlePanelTouchEnd} style={{ touchAction: "pan-y" }}>
       {tab === "Overview" && (
         <div className="two-col">
           <div className="card card-pad">
@@ -547,6 +571,7 @@ export function MatchDetail() {
           </div>
         </div>
       )}
+      </div>
 
       <div className="disclaimer">
         Model Probability: {(prediction.global_outcome.probability * 100).toFixed(1)}% -- based on historical

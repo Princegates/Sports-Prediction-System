@@ -2198,6 +2198,59 @@ table.predictions-table.odds-grid .match-col .sub {
   }
 }
 
+/* A slip being built while scrolling a long list of matches (Markets'
+   "My picks", AI Generation's leg preview) -- StickySlipBar.tsx. Docked
+   just above the bottom nav rather than replacing it, since both need to
+   stay reachable at once. Desktop never shows this -- the card it
+   summarizes is never far from the pointer there. */
+.sticky-slip-bar {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .sticky-slip-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: calc(66px + env(safe-area-inset-bottom));
+    z-index: 25;
+    background: var(--bg-surface-2);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-lg);
+    padding: 10px 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  }
+
+  .sticky-slip-summary {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .sticky-slip-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .sticky-slip-actions .btn {
+    padding: 6px 10px;
+    font-size: 12.5px;
+  }
+
+  /* Extra breathing room at the bottom of a page that's currently showing
+     the sticky slip bar above the bottom nav, so the last bit of real
+     content (e.g. the tail of a long match list) doesn't scroll in
+     underneath both fixed bars. */
+  .has-sticky-slip-space {
+    padding-bottom: 64px;
+  }
+}
+
 /* ==========================================================================
    AUTH PAGES
    ========================================================================== */
@@ -4839,6 +4892,15 @@ table.admin-table {
     right: var(--space-4);
     bottom: 76px;
     padding: 9px 13px 9px 10px;
+  }
+
+  /* Clears the sticky slip bar too, not just the bottom nav, while one is
+     mounted (StickySlipBar sets this class) -- only takes effect for the
+     launcher's default resting corner; a position the user dragged it to
+     themselves (inline style) overrides this, same as it already overrides
+     the bare 76px above. */
+  body.has-sticky-slip-bar .chat-fab {
+    bottom: 140px;
   }
 
   .chat-fab kbd {

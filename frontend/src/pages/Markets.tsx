@@ -8,6 +8,7 @@ import { ErrorState } from "../components/ErrorState";
 import { HotPickBadge } from "../components/HotPickBadge";
 import { MarketPicker, type MarketPreset } from "../components/MarketPicker";
 import { SiteCodes } from "../components/SiteCodes";
+import { StickySlipBar } from "../components/StickySlipBar";
 import { dateKeyFromIso, FixtureCalendar } from "../components/FixtureCalendar";
 import { useLeague } from "../components/AppShell";
 import { formatPicksForCopy, readStoredPicks, storePicks } from "../lib/myPicks";
@@ -199,6 +200,7 @@ export function Markets() {
   const [view, setView] = useState<MarketView>(stored?.view ?? MARKET_PRESETS[0].view);
   const [days, setDays] = useState(7);
   const [picks, setPicks] = useState<BettingOutcome[]>(readStoredPicks);
+  const picksCardRef = useRef<HTMLDivElement | null>(null);
   const [featuring, setFeaturing] = useState(false);
   // A choice this browser already made outranks the site-wide default.
   const selectionTouchedByUser = useRef(stored !== null);
@@ -434,7 +436,7 @@ export function Markets() {
   }, [otherData, selectedDate]);
 
   return (
-    <div>
+    <div className={picks.length > 0 ? "has-sticky-slip-space" : undefined}>
       <div className="section-header">
         <h2>Betting markets</h2>
         <span className="meta">A bookmaker-style coupon, priced by the model instead of a bookmaker.</span>
@@ -508,7 +510,7 @@ export function Markets() {
       )}
 
       {picks.length > 0 && (
-        <div className="card card-pad" style={{ marginBottom: 20 }}>
+        <div className="card card-pad" style={{ marginBottom: 20 }} ref={picksCardRef}>
           <div className="section-header" style={{ marginBottom: 12 }}>
             <h3 style={{ margin: 0 }}>
               My picks — {picks.length} selection{picks.length === 1 ? "" : "s"}
@@ -602,6 +604,14 @@ export function Markets() {
             }
           />
         </div>
+      )}
+
+      {picks.length > 0 && (
+        <StickySlipBar
+          summary={`${picks.length} pick${picks.length === 1 ? "" : "s"} · ${(picks.reduce((p, o) => p * o.probability, 1) * 100).toFixed(0)}% combined`}
+          copyText={formatPicksForCopy(picks)}
+          onView={() => picksCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+        />
       )}
 
       {view === "coupon" ? (

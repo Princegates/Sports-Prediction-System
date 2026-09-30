@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import {
   createAdminPick,
@@ -13,6 +13,7 @@ import { CopyButton } from "../components/CopyButton";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { SiteCodes } from "../components/SiteCodes";
+import { StickySlipBar } from "../components/StickySlipBar";
 import { LEAGUES, useLeague } from "../components/AppShell";
 import { useAuth } from "../lib/AuthContext";
 import { useIsMobile } from "../lib/useIsMobile";
@@ -167,6 +168,7 @@ export function BetCodes() {
   const step = Math.min(wizardStep, WIZARD_STEPS.length - 1);
 
   const [preview, setPreview] = useState<SuggestedPicks | null>(null);
+  const resultsCardRef = useRef<HTMLDivElement | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
   // Set only when the current preview came from picks handed over by Guda
@@ -392,7 +394,7 @@ export function BetCodes() {
   }
 
   return (
-    <div>
+    <div className={editedLegs.length > 0 ? "has-sticky-slip-space" : undefined}>
       <div className="section-header">
         <h2>AI Generation</h2>
         <span className="meta">
@@ -636,7 +638,7 @@ export function BetCodes() {
       {previewError && <ErrorState message={previewError} />}
 
       {preview && (
-        <div className="card card-pad" style={{ marginBottom: 20 }}>
+        <div className="card card-pad" style={{ marginBottom: 20 }} ref={resultsCardRef}>
           {fromExternalPicks && (
             <p className="setting-note" style={{ marginBottom: 12 }}>
               Resolved from your selected picks -- checked against each match's current prediction, just
@@ -768,6 +770,14 @@ export function BetCodes() {
             />
           )}
         </div>
+      )}
+
+      {editedLegs.length > 0 && (
+        <StickySlipBar
+          summary={`${editedLegs.length} leg${editedLegs.length === 1 ? "" : "s"} · ${(editedCombinedProbability * 100).toFixed(0)}% combined`}
+          copyText={formatLegsForCopy(editedLegs, editedCombinedProbability)}
+          onView={() => resultsCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+        />
       )}
 
       {user?.role === "superadmin" && adminPicks.length > 0 && (
