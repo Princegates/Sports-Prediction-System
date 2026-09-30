@@ -43,8 +43,10 @@ on:
         description: "Space-separated, quoted league names"
         required: false
         default: >-
-          "English Premier League" "Spanish La Liga" "Italian Serie A"
-          "German Bundesliga" "French Ligue 1"
+          "English Premier League" "English Championship" "Spanish La Liga"
+          "German Bundesliga" "Italian Serie A" "French Ligue 1"
+          "Dutch Eredivisie" "Portuguese Primeira Liga" "Turkish Süper Lig"
+          "UEFA Champions League"
       days_ahead:
         description: "How many days of upcoming fixtures to predict"
         required: false
@@ -101,7 +103,10 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           SUPERADMIN_EMAIL: ${{ secrets.SUPERADMIN_EMAIL }}
           SUPERADMIN_PASSWORD: ${{ secrets.SUPERADMIN_PASSWORD }}
-          LEAGUES: ${{ inputs.leagues || '"English Premier League" "Spanish La Liga" "Italian Serie A" "German Bundesliga" "French Ligue 1"' }}
+          # Every league the site lists, so none of them goes stale: one
+          # API-Football request each per day, and the weekly retrain reads
+          # all ten leagues' history.
+          LEAGUES: ${{ inputs.leagues || '"English Premier League" "English Championship" "Spanish La Liga" "German Bundesliga" "Italian Serie A" "French Ligue 1" "Dutch Eredivisie" "Portuguese Primeira Liga" "Turkish Süper Lig" "UEFA Champions League"' }}
           DAYS_AHEAD: ${{ inputs.days_ahead || '10' }}
           # The weekly cron retrains; the daily one doesn't. A manual run says
           # so explicitly.
