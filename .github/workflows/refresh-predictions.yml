@@ -61,9 +61,10 @@ on:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    # A retrain imports ~11,000 matches and fits a model per league; a daily
-    # refresh is minutes. This is the ceiling for the slow case.
-    timeout-minutes: 120
+    # A retrain fits a model per league -- eleven of them now -- and a daily
+    # refresh is minutes. This is the ceiling for the slow case; 120 was set
+    # when the retrain covered five leagues.
+    timeout-minutes: 240
 
     steps:
       - uses: actions/checkout@v4
