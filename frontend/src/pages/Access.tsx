@@ -176,37 +176,39 @@ export function Access() {
         </div>
       </section>
 
-      {!accessLoading && (
-        <div className="card card-pad" style={{ maxWidth: 420, margin: "0 auto" }}>
-          <h3 style={{ marginTop: 0, fontSize: 15 }}>Enter access code</h3>
-          <form onSubmit={handleSubmit} className="auth-form">
-            <label>
-              Access code
-              <input
-                required
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                placeholder="XXXX-XXXX-XXXX"
-                autoComplete="off"
-                style={{ textTransform: "uppercase", fontFamily: "monospace", letterSpacing: 1 }}
-              />
-            </label>
+      {/* Always rendered, regardless of accessLoading -- a slow or stuck
+          access check (a flaky network, a backend hiccup) must never block
+          someone from being able to try a code. The loading card above
+          this can take a while or fail silently; this can't wait on it. */}
+      <div className="card card-pad" style={{ maxWidth: 420, margin: "0 auto" }}>
+        <h3 style={{ marginTop: 0, fontSize: 15 }}>Enter access code</h3>
+        <form onSubmit={handleSubmit} className="auth-form">
+          <label>
+            Access code
+            <input
+              required
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              placeholder="XXXX-XXXX-XXXX"
+              autoComplete="off"
+              style={{ textTransform: "uppercase", fontFamily: "monospace", letterSpacing: 1 }}
+            />
+          </label>
 
-            {errorKind && (
-              <p className="auth-error">
-                <strong>
-                  {ERROR_COPY[errorKind].icon} {ERROR_COPY[errorKind].title}
-                </strong>
-                {errorKind === "other" && errorDetail && <><br />{errorDetail}</>}
-              </p>
-            )}
+          {errorKind && (
+            <p className="auth-error">
+              <strong>
+                {ERROR_COPY[errorKind].icon} {ERROR_COPY[errorKind].title}
+              </strong>
+              {errorKind === "other" && errorDetail && <><br />{errorDetail}</>}
+            </p>
+          )}
 
-            <button className="btn" type="submit" disabled={busy || !code.trim()} style={{ marginTop: 8 }}>
-              {busy ? "Activating..." : "Activate access"}
-            </button>
-          </form>
-        </div>
-      )}
+          <button className="btn" type="submit" disabled={busy || !code.trim()} style={{ marginTop: 8 }}>
+            {busy ? "Activating..." : "Activate access"}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }

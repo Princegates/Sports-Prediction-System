@@ -82,7 +82,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         refreshAccessStatus();
       })
-      .catch(() => clearStoredToken())
+      .catch(() => {
+        // fetchMe failing (an expired/invalid token, a transient network
+        // error) left accessLoading stuck true forever here -- nothing else
+        // in this branch ever resolved it, so the page's own "checking
+        // access" state (and anything gated on it, like Access.tsx's
+        // loading card or the chat dock) never moved past loading without a
+        // full reload.
+        clearStoredToken();
+        setAccessLoading(false);
+      })
       .finally(() => setLoading(false));
   }, [refreshAccessStatus]);
 
