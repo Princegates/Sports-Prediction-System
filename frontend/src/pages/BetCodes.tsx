@@ -15,6 +15,7 @@ import { ErrorState } from "../components/ErrorState";
 import { SiteCodes } from "../components/SiteCodes";
 import { LEAGUES, useLeague } from "../components/AppShell";
 import { useAuth } from "../lib/AuthContext";
+import { useIsMobile } from "../lib/useIsMobile";
 import type { AdminPick, BetCodePick, SuggestCriteria, SuggestedLeg, SuggestedPicks } from "../types";
 
 /** Plain-text description of one selected combo, meant to be pasted
@@ -122,6 +123,15 @@ const RISK_PRESETS: Record<
   },
 };
 
+// The custom-criteria card below is one long form -- six sections plus a
+// Generate button -- which is fine to scroll through on a desktop screen
+// but is a lot of one-handed scrolling on a phone before a first-time user
+// even reaches the button. On mobile only (see useIsMobile), it's split
+// into these steps with Back/Next controls instead; desktop keeps every
+// section visible at once, unchanged. The risk-preset card above stays a
+// single always-visible fast path on both -- it isn't part of this form.
+const WIZARD_STEPS = ["When & where", "Legs & accuracy", "Markets", "Review & generate"] as const;
+
 // Labels the *result*, independent of which preset (if any) produced it --
 // a "High risk" generate that only found 2 very safe legs is honestly a
 // low-risk result, and this says so rather than repeating the input choice.
@@ -148,6 +158,13 @@ export function BetCodes() {
   // cleared the moment any control is touched by hand, so the highlighted
   // chip never claims a match that no longer holds.
   const [activeRisk, setActiveRisk] = useState<RiskLevel | null>(null);
+
+  const isMobile = useIsMobile();
+  const [wizardStep, setWizardStep] = useState(0);
+  // Desktop shows every section regardless of step, so the value doesn't
+  // matter there -- guarded to a valid index anyway in case a resize lands
+  // mid-session on a step a previous (wider or narrower) layout allowed.
+  const step = Math.min(wizardStep, WIZARD_STEPS.length - 1);
 
   const [preview, setPreview] = useState<SuggestedPicks | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -426,133 +443,194 @@ export function BetCodes() {
       </div>
 
       <div className="card card-pad" style={{ marginBottom: 20 }}>
-        <div className="auth-form" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
-          <label>
-            Window
-            <select
-              value={daysAhead}
-              onChange={(e) => {
-                setActiveRisk(null);
-                setDaysAhead(Number(e.target.value));
-              }}
-            >
-              {[3, 7, 14].map((d) => (
-                <option key={d} value={d}>
-                  Next {d} days
-                </option>
+        {isMobile && (
+          <div className="wizard-progress" style={{ marginBottom: 16 }}>
+            <div className="meta" style={{ marginBottom: 6 }}>
+              Step {step + 1} of {WIZARD_STEPS.length} — {WIZARD_STEPS[step]}
+            </div>
+            <div className="wizard-progress-track">
+              {WIZARD_STEPS.map((label, i) => (
+                <span key={label} className={`wizard-progress-dot${i <= step ? " done" : ""}`} />
               ))}
-            </select>
-          </label>
-        </div>
-
-        <div style={{ marginTop: 14 }}>
-          <div className="meta" style={{ marginBottom: 6 }}>
-            Leagues{" "}
-            <span style={{ fontWeight: 400 }}>(none selected = every league; pick as many as you like)</span>
+            </div>
           </div>
-          <div className="filter-bar">
-            <button
-              className={`filter-chip${selectedLeagues.length === 0 ? " active" : ""}`}
-              onClick={() => {
-                setActiveRisk(null);
-                setSelectedLeagues([]);
-              }}
-            >
-              All leagues
+        )}
+
+        {(!isMobile || step === 0) && (
+          <>
+            <div className="auth-form" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+              <label>
+                Window
+                <select
+                  value={daysAhead}
+                  onChange={(e) => {
+                    setActiveRisk(null);
+                    setDaysAhead(Number(e.target.value));
+                  }}
+                >
+                  {[3, 7, 14].map((d) => (
+                    <option key={d} value={d}>
+                      Next {d} days
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div style={{ marginTop: 14 }}>
+              <div className="meta" style={{ marginBottom: 6 }}>
+                Leagues{" "}
+                <span style={{ fontWeight: 400 }}>(none selected = every league; pick as many as you like)</span>
+              </div>
+              <div className="filter-bar">
+                <button
+                  className={`filter-chip${selectedLeagues.length === 0 ? " active" : ""}`}
+                  onClick={() => {
+                    setActiveRisk(null);
+                    setSelectedLeagues([]);
+                  }}
+                >
+                  All leagues
+                </button>
+                {LEAGUES.map((l) => (
+                  <button
+                    key={l}
+                    className={`filter-chip${selectedLeagues.includes(l) ? " active" : ""}`}
+                    onClick={() => toggleLeague(l)}
+                  >
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {(!isMobile || step === 1) && (
+          <>
+            <div style={{ marginTop: isMobile ? 0 : 14 }}>
+              <div className="meta" style={{ marginBottom: 6 }}>
+                Number of legs
+              </div>
+              <div className="filter-bar">
+                {LEG_COUNT_OPTIONS.map((n) => (
+                  <button
+                    key={n}
+                    className={`filter-chip${maxLegs === n ? " active" : ""}`}
+                    onClick={() => {
+                      setActiveRisk(null);
+                      setMaxLegs(n);
+                    }}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ marginTop: 14 }}>
+              <div className="meta" style={{ marginBottom: 6 }}>
+                Minimum accuracy per leg
+              </div>
+              <div className="filter-bar">
+                {ACCURACY_OPTIONS.map((o) => (
+                  <button
+                    key={o.value}
+                    className={`filter-chip${minProbability === o.value ? " active" : ""}`}
+                    onClick={() => {
+                      setActiveRisk(null);
+                      setMinProbability(o.value);
+                    }}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {(!isMobile || step === 2) && (
+          <>
+            <div style={{ marginTop: isMobile ? 0 : 14 }}>
+              <div className="meta" style={{ marginBottom: 6 }}>
+                Markets{" "}
+                <span style={{ fontWeight: 400 }}>
+                  (none selected = match result, double chance, BTTS, draw no bet, and the three main goal lines)
+                </span>
+              </div>
+              <div className="filter-bar">
+                {MARKET_OPTIONS.map((m) => (
+                  <button
+                    key={m.value}
+                    className={`filter-chip${markets.includes(m.value) ? " active" : ""}`}
+                    onClick={() => toggleMarket(m.value)}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ marginTop: 14 }}>
+              <div className="meta" style={{ marginBottom: 6 }}>
+                Half-time markets{" "}
+                <span style={{ fontWeight: 400 }}>(selecting any of these searches half-time outcomes instead)</span>
+              </div>
+              <div className="filter-bar">
+                {HT_MARKET_OPTIONS.map((m) => (
+                  <button
+                    key={m.value}
+                    className={`filter-chip${markets.includes(m.value) ? " active" : ""}`}
+                    onClick={() => toggleMarket(m.value)}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {isMobile && step === 3 && (
+          <div className="wizard-review">
+            <div className="meta" style={{ marginBottom: 6 }}>
+              Ready to generate with:
+            </div>
+            <ul className="wizard-review-list">
+              <li>Next {daysAhead} days</li>
+              <li>{selectedLeagues.length === 0 ? "All leagues" : selectedLeagues.join(", ")}</li>
+              <li>
+                Up to {maxLegs} legs, {(minProbability * 100).toFixed(0)}%+ accuracy each
+              </li>
+              <li>
+                {markets.length === 0
+                  ? "Default markets (match result, double chance, BTTS, draw no bet, main goal lines)"
+                  : markets.join(", ")}
+              </li>
+            </ul>
+          </div>
+        )}
+
+        {/* Back/Next only step through the form above -- Generate always runs
+            the search against whatever criteria are currently set,
+            regardless of which step that leaves visible on mobile. */}
+        <div style={{ marginTop: 16, display: "flex", gap: 10 }}>
+          {isMobile && step > 0 && (
+            <button className="btn ghost" onClick={() => setWizardStep((s) => s - 1)}>
+              ← Back
             </button>
-            {LEAGUES.map((l) => (
-              <button
-                key={l}
-                className={`filter-chip${selectedLeagues.includes(l) ? " active" : ""}`}
-                onClick={() => toggleLeague(l)}
-              >
-                {l}
-              </button>
-            ))}
-          </div>
+          )}
+          {isMobile && step < WIZARD_STEPS.length - 1 ? (
+            <button className="btn" onClick={() => setWizardStep((s) => s + 1)}>
+              Next →
+            </button>
+          ) : (
+            <button className="btn" onClick={handlePreview} disabled={previewing}>
+              {previewing ? "Finding selections…" : "Generate selections"}
+            </button>
+          )}
         </div>
-
-        <div style={{ marginTop: 14 }}>
-          <div className="meta" style={{ marginBottom: 6 }}>
-            Number of legs
-          </div>
-          <div className="filter-bar">
-            {LEG_COUNT_OPTIONS.map((n) => (
-              <button
-                key={n}
-                className={`filter-chip${maxLegs === n ? " active" : ""}`}
-                onClick={() => {
-                  setActiveRisk(null);
-                  setMaxLegs(n);
-                }}
-              >
-                {n}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ marginTop: 14 }}>
-          <div className="meta" style={{ marginBottom: 6 }}>
-            Minimum accuracy per leg
-          </div>
-          <div className="filter-bar">
-            {ACCURACY_OPTIONS.map((o) => (
-              <button
-                key={o.value}
-                className={`filter-chip${minProbability === o.value ? " active" : ""}`}
-                onClick={() => {
-                  setActiveRisk(null);
-                  setMinProbability(o.value);
-                }}
-              >
-                {o.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ marginTop: 14 }}>
-          <div className="meta" style={{ marginBottom: 6 }}>
-            Markets{" "}
-            <span style={{ fontWeight: 400 }}>
-              (none selected = match result, double chance, BTTS, draw no bet, and the three main goal lines)
-            </span>
-          </div>
-          <div className="filter-bar">
-            {MARKET_OPTIONS.map((m) => (
-              <button
-                key={m.value}
-                className={`filter-chip${markets.includes(m.value) ? " active" : ""}`}
-                onClick={() => toggleMarket(m.value)}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ marginTop: 14 }}>
-          <div className="meta" style={{ marginBottom: 6 }}>
-            Half-time markets{" "}
-            <span style={{ fontWeight: 400 }}>(selecting any of these searches half-time outcomes instead)</span>
-          </div>
-          <div className="filter-bar">
-            {HT_MARKET_OPTIONS.map((m) => (
-              <button
-                key={m.value}
-                className={`filter-chip${markets.includes(m.value) ? " active" : ""}`}
-                onClick={() => toggleMarket(m.value)}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <button className="btn" style={{ marginTop: 16 }} onClick={handlePreview} disabled={previewing}>
-          {previewing ? "Finding selections…" : "Generate selections"}
-        </button>
       </div>
 
       {previewError && <ErrorState message={previewError} />}
@@ -602,9 +680,9 @@ export function BetCodes() {
             />
           ) : (
             <>
-              <p className="scroll-hint">Swipe to see every column →</p>
+              <p className="scroll-hint cards-on-mobile-hint">Swipe to see every column →</p>
               <div className="predictions-table-wrapper">
-              <table className="predictions-table wide">
+              <table className="predictions-table wide cards-on-mobile">
                 <thead>
                   <tr>
                     <th>Match</th>
@@ -618,18 +696,18 @@ export function BetCodes() {
                 <tbody>
                   {editedLegs.map((leg) => (
                     <tr key={`${leg.match_id}-${leg.market}-${leg.selection}`}>
-                      <td>
+                      <td data-label="Match">
                         <div className="match-cell">
                           {leg.home_team} vs {leg.away_team}
                         </div>
                         <div className="sub">{leg.league}</div>
                       </td>
-                      <td className="sub">{leg.market}</td>
-                      <td>
+                      <td className="sub" data-label="Market">{leg.market}</td>
+                      <td data-label="Selection">
                         <strong>{leg.selection}</strong>
                       </td>
-                      <td className="tabular-nums">{(leg.model_probability * 100).toFixed(0)}%</td>
-                      <td className="sub">
+                      <td className="tabular-nums" data-label="Probability">{(leg.model_probability * 100).toFixed(0)}%</td>
+                      <td className="sub" data-label="Kickoff">
                         {new Date(leg.kickoff).toLocaleString(undefined, {
                           month: "short",
                           day: "numeric",
@@ -637,7 +715,7 @@ export function BetCodes() {
                           minute: "2-digit",
                         })}
                       </td>
-                      <td>
+                      <td data-label="">
                         <button
                           className="btn ghost"
                           title="Remove this leg"

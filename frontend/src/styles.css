@@ -618,6 +618,35 @@ h1, h2, h3, h4 {
   color: var(--text-secondary);
 }
 
+/* AI Generation's custom-criteria form, split into steps on phone widths
+   (BetCodes.tsx, useIsMobile) -- desktop never renders this, since it
+   shows every section of that form at once. */
+.wizard-progress-track {
+  display: flex;
+  gap: 6px;
+}
+
+.wizard-progress-dot {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+}
+
+.wizard-progress-dot.done {
+  background: var(--accent);
+}
+
+.wizard-review-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .risk-tag {
   display: inline-flex;
   align-items: center;
@@ -1604,11 +1633,12 @@ table.predictions-table.odds-grid .match-col .sub {
 /* A wide table doesn't just need a swipe hint on a phone -- it's genuinely
    the wrong pattern there (seven columns, most of them one cell wide, in a
    scroll strip nobody wants to pan through one-handed). Opt-in per table
-   (`.cards-on-mobile`, on the Predictions page's flat/tiers table and the
-   Markets "list by probability" table -- the odds-grid coupon builder is a
-   genuine comparison matrix, not a record list, so it keeps the scroll
-   pattern instead) so the transform below only fires where the JSX
-   actually supplies the `data-label` it reads. */
+   (`.cards-on-mobile`, on the Predictions page's flat/tiers table, the
+   Markets "list by probability" table, and AI Generation's leg-preview
+   table -- the odds-grid coupon builder is a genuine comparison matrix,
+   not a record list, so it keeps the scroll pattern instead) so the
+   transform below only fires where the JSX actually supplies the
+   `data-label` it reads. */
 @media (max-width: 640px) {
   table.predictions-table.wide.cards-on-mobile {
     min-width: 0;
