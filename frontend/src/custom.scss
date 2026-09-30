@@ -354,6 +354,19 @@ body[data-accent="denim"] { --accent: #3b6ea5; }
   padding: var(--space-5);
 }
 
+// Carbon's own Content margin rule (@carbon/styles ui-shell/content) is a
+// fixed mini-units() figure that assumes SideNav's default rail width, not
+// our actual 256px (--sidebar-w) persistent nav -- it undershoots and lets
+// the nav rail cover the first ~236px of every app page. Override with the
+// real width, only above the breakpoint Carbon's own SideNav CSS treats as
+// "persistent" (66rem/1056px; below it the nav becomes a hamburger-toggled
+// overlay that must not push content over).
+@media (min-width: 66rem) {
+  .cds--content.app-content {
+    margin-inline-start: var(--sidebar-w);
+  }
+}
+
 .queue-badge {
   display: inline-flex;
   align-items: center;
