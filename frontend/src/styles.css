@@ -4140,7 +4140,16 @@ table.admin-table {
   z-index: 60;
   width: 400px;
   max-width: calc(100vw - var(--space-5) * 2);
+  /* 100vh on a phone is the layout viewport (address bar collapsed), taller
+     than what's actually visible whenever the address bar is showing. This
+     panel is anchored to the bottom edge, so overshooting the real visible
+     height pushes its top -- the header, with Guda's mascot -- off-screen
+     above the fold instead of just growing downward. 100dvh tracks the
+     actual visible viewport as the browser chrome shows/hides; the plain
+     vh rule stays first as the fallback for browsers that don't support
+     dvh, which then ignore the second, unrecognized value entirely. */
   max-height: min(680px, calc(100vh - var(--space-6)));
+  max-height: min(680px, calc(100dvh - var(--space-6)));
   display: flex;
   flex-direction: column;
   background: var(--bg-surface);
@@ -4164,6 +4173,11 @@ table.admin-table {
   padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--border);
   background: var(--bg-surface-2);
+  /* Only .chat-thread (flex: 1) is meant to give ground to a long
+     conversation -- without this, a reply long enough to push the flex
+     column past the dock's own max-height could compress the header
+     (and Guda's mascot in it) instead of just scrolling the thread. */
+  flex-shrink: 0;
 }
 
 .chat-dock-title {
@@ -4395,6 +4409,7 @@ table.admin-table {
   flex-wrap: wrap;
   gap: 6px;
   padding: 0 var(--space-4) var(--space-3);
+  flex-shrink: 0;
 }
 
 .chat-error {
@@ -4412,6 +4427,7 @@ table.admin-table {
   padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--border);
   background: var(--bg-surface-2);
+  flex-shrink: 0;
 }
 
 .chat-input-row textarea {
@@ -4456,6 +4472,7 @@ table.admin-table {
   color: var(--text-muted);
   line-height: 1.5;
   text-align: center;
+  flex-shrink: 0;
 }
 
 /* ==========================================================================

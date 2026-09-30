@@ -779,9 +779,12 @@ def _accuracy(db: Session, q: ParsedQuery) -> Answer:
         "",
     ]
 
-    # Explicit labels rather than derived ones: title-casing the stored keys
-    # turns "over_2_5_log_loss" into "Over 2 5 Log Loss", and the goal-line
-    # metrics are exactly the ones a user is most likely to ask about.
+    # Headline 1X2 numbers only -- this is a chat bubble, not the full
+    # backtest report. The per-market breakdowns (over/under, BTTS,
+    # calibration error) and the full league list used to all get dumped
+    # in here too, which made every answer to "how accurate is the model"
+    # several screens long on a phone; that detail already lives on the
+    # linked Methodology page (see `sources` below) for anyone who wants it.
     label_map = {
         "n": ("Matches evaluated", "{:.0f}"),
         "matches": ("Matches evaluated", "{:.0f}"),
@@ -789,22 +792,20 @@ def _accuracy(db: Session, q: ParsedQuery) -> Answer:
         "log_loss": ("1X2 log loss", "{:.4f}"),
         "brier_score": ("1X2 Brier score", "{:.4f}"),
         "brier": ("1X2 Brier score", "{:.4f}"),
-        "calibration_error": ("Calibration error (ECE)", "{:.4f}"),
-        "over_2_5_log_loss": ("Over 2.5 log loss", "{:.4f}"),
-        "over_2_5_brier": ("Over 2.5 Brier score", "{:.4f}"),
-        "btts_log_loss": ("Both-teams-to-score log loss", "{:.4f}"),
-        "btts_brier": ("Both-teams-to-score Brier score", "{:.4f}"),
     }
     # Report in a deliberate order (headline first) rather than dict order.
     ordering = list(label_map)
     for key in sorted(preferred, key=lambda k: (ordering.index(k) if k in ordering else len(ordering), k)):
+        if key not in label_map:
+            continue
         value = preferred[key]
-        label, fmt = label_map.get(key, (key.replace("_", " ").capitalize(), "{:.4f}"))
+        label, fmt = label_map[key]
         lines.append(f"- {label}: {fmt.format(value)}")
 
     if snapshot.leagues:
         lines.append("")
-        lines.append(f"Leagues covered: {', '.join(snapshot.leagues)}.")
+        count = len(snapshot.leagues)
+        lines.append(f"Covers {count} league{'s' if count != 1 else ''} -- see Methodology for the full list and market-by-market numbers.")
 
     lines.append("")
     lines.append(
