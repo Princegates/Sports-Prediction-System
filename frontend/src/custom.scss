@@ -398,6 +398,18 @@ body[data-accent="denim"] { --accent: #3b6ea5; }
   }
 }
 
+// The expanded panel (hover, focus, or pinned) is Carbon's own solid
+// --cds-background by default -- a flat opaque block sitting on top of
+// whatever page content it's covering. A frosted-glass surface instead:
+// still readable (the tint underneath it is the same surface color the
+// rest of the app already uses), but the page keeps showing through, so
+// opening the nav doesn't read as a wall dropped over the dashboard.
+.cds--side-nav.app-sidenav-rail.cds--side-nav--expanded {
+  background: color-mix(in srgb, var(--bg-surface) 78%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
 // Pinning locks the nav to its expanded width permanently (expanded prop
 // forced true, see AppShell.tsx) instead of only while it's being hovered
 // or focused -- at that point it's a normal persistent sidebar again, and
