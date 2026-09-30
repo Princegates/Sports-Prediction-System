@@ -13,6 +13,8 @@ import math
 
 import pytest
 
+import random
+
 from app.betcode.selection import (
     SlipCriteria,
     build_candidate_legs,
@@ -21,6 +23,7 @@ from app.betcode.selection import (
     resolve_legs_unpriced,
     select_legs,
     select_legs_by_confidence,
+    select_random_legs,
     select_ranged_leg_slip,
 )
 from app.db.models import Match, MatchOdds, Prediction, Team
@@ -580,6 +583,76 @@ def test_confidence_selection_one_leg_per_match_prefers_the_stronger_outcome(db_
     pick = select_legs_by_confidence(db_session, min_probability=0.5, max_legs=10)
     match_ids = [leg.match_id for leg in pick.legs]
     assert len(match_ids) == len(set(match_ids))
+
+
+# --- select_random_legs: a drawn, not ranked, slip -------------------------
+
+
+def test_random_selection_draws_a_size_within_the_requested_range(db_session, three_matches):
+    pick = select_random_legs(
+        db_session, min_probability=0.5, min_legs=1, max_legs=3, markets=("Match Result",), rng=random.Random(1),
+    )
+    assert 1 <= len(pick.legs) <= 3
+    assert pick.candidates_considered == 3
+
+
+def test_random_selection_caps_at_however_many_candidates_actually_qualify(db_session, three_matches):
+    # Only 3 matches exist at all, so asking for up to 10 still can't return
+    # more than 3 -- the draw is capped by the pool, not padded to the ask.
+    pick = select_random_legs(db_session, min_probability=0.5, min_legs=5, max_legs=10, rng=random.Random(1))
+    assert len(pick.legs) <= 3
+    assert any("fewer than the usual" in w for w in pick.warnings)
+
+
+def test_random_selection_combined_probability_is_the_product(db_session, three_matches):
+    pick = select_random_legs(
+        db_session, min_probability=0.5, min_legs=3, max_legs=3, markets=("Match Result",), rng=random.Random(2),
+    )
+    expected = math.prod(leg.model_probability for leg in pick.legs)
+    assert pick.combined_probability == pytest.approx(expected)
+
+
+def test_random_selection_one_leg_per_match(db_session, three_matches):
+    pick = select_random_legs(db_session, min_probability=0.5, min_legs=3, max_legs=3, rng=random.Random(3))
+    match_ids = [leg.match_id for leg in pick.legs]
+    assert len(match_ids) == len(set(match_ids))
+
+
+def test_random_selection_respects_the_probability_floor(db_session, three_matches):
+    pick = select_random_legs(
+        db_session, min_probability=0.87, min_legs=1, max_legs=10, markets=("Match Result",), rng=random.Random(4),
+    )
+    assert len(pick.legs) == 1
+    assert pick.legs[0].model_probability == pytest.approx(0.90)
+
+
+def test_random_selection_with_no_qualifying_match_warns_plainly(db_session):
+    pick = select_random_legs(db_session, min_probability=0.5, min_legs=10, max_legs=15)
+    assert pick.legs == []
+    assert pick.candidates_considered == 0
+    assert len(pick.warnings) == 1
+    assert "clears" in pick.warnings[0].lower()
+
+
+def test_random_selection_is_not_always_the_same_slip(db_session, three_matches):
+    """Different rng seeds should be free to draw different subsets/orders --
+    the whole point is that this isn't select_legs_by_confidence's stable
+    safest-first ranking."""
+
+    draws = {
+        tuple(sorted(leg.match_id for leg in select_random_legs(
+            db_session, min_probability=0.5, min_legs=1, max_legs=2, markets=("Match Result",), rng=random.Random(seed),
+        ).legs))
+        for seed in range(20)
+    }
+    assert len(draws) > 1
+
+
+def test_random_selection_notes_it_is_a_draw_not_a_ranking(db_session, three_matches):
+    pick = select_random_legs(
+        db_session, min_probability=0.5, min_legs=3, max_legs=3, markets=("Match Result",), rng=random.Random(5),
+    )
+    assert any("random draw" in w.lower() for w in pick.warnings)
 
 
 # --- select_ranged_leg_slip: fixed leg count, ranged target ---------------

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { fetchFreePicks, fetchMatch, fetchMatches, fetchMostLikely, fetchPrediction } from "../api";
 import { leagueLabel, useLeague } from "../components/AppShell";
 import { AdminPicksSection } from "../components/AdminPicksSection";
+import { RandomPicksSection } from "../components/RandomPicksSection";
 import { WeeklyPicksSection } from "../components/WeeklyPicksSection";
 import { CardGridSkeleton } from "../components/LoadingSkeleton";
 import { EmptyState } from "../components/EmptyState";
@@ -198,6 +199,8 @@ export function Dashboard() {
       <GudaPicksSection />
 
       <AdminPicksSection />
+
+      <RandomPicksSection />
 
       {/* Neither branch below can render yet without knowing hasAccess --
           without this, every visit shows a blank gap under the hero for

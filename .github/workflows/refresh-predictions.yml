@@ -167,6 +167,22 @@ jobs:
             exit 0
           fi
           python scripts/generate_weekly_picks.py
+          python scripts/generate_random_picks.py --which weekly
+
+      # Every run, daily refresh or weekly retrain alike -- "Random Daily
+      # Picks" means reshuffled every day, unlike the weekly draw above.
+      # Runs after the refresh step so it always searches this run's
+      # freshest predictions (see generate_random_picks.py).
+      - name: Generate today's random picks
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret is not set -- nothing to generate."
+            exit 0
+          fi
+          python scripts/generate_random_picks.py --which daily
 
       # Saved even on failure: a run that trained some leagues and then died
       # shouldn't throw away the models it did produce.

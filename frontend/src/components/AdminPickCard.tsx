@@ -38,13 +38,20 @@ function formatKickoff(iso: string): string {
  * *odds* target (5-10) still stacks enough legs to land at a real
  * combined-probability "high" by that unrelated scale -- showing it would
  * contradict the section's own Low/Medium/High odds-band labeling right
- * next to it. */
+ * next to it.
+ *
+ * ``hideRisk`` drops the tag entirely -- RandomPicksSection sets it: a slip
+ * drawn at random, deliberately not ranked or filtered by risk level, would
+ * otherwise show "High risk" on every single one (a 10-15 leg combined
+ * probability is small almost by construction), implying a ranking that was
+ * never applied. */
 export function AdminPickCard({
-  pick, whatsapp, riskOverride,
+  pick, whatsapp, riskOverride, hideRisk,
 }: {
   pick: AdminPick;
   whatsapp?: string | null;
   riskOverride?: AdminPick["risk_tier"];
+  hideRisk?: boolean;
 }) {
   const tilt = useTilt<HTMLDivElement>();
   const [expanded, setExpanded] = useState(false);
@@ -64,10 +71,12 @@ export function AdminPickCard({
         <span className="match-competition">
           {pick.label || `${pick.legs.length}-leg slip`}
         </span>
-        <span className={`risk-tag ${riskTier}`}>
-          <span aria-hidden>◆</span>
-          {RISK_LABELS[riskTier]}
-        </span>
+        {!hideRisk && (
+          <span className={`risk-tag ${riskTier}`}>
+            <span aria-hidden>◆</span>
+            {RISK_LABELS[riskTier]}
+          </span>
+        )}
       </div>
 
       <ol style={{ display: "flex", flexDirection: "column", gap: 8, margin: "8px 0", padding: 0, listStyle: "none" }}>

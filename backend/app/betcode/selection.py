@@ -51,6 +51,7 @@ market is still reachable by asking for it explicitly.
 from __future__ import annotations
 
 import datetime as dt
+import random
 from dataclasses import dataclass, field
 
 from sqlalchemy import select
@@ -783,6 +784,76 @@ def select_legs_by_confidence(
         warnings.append(
             f"Combined probability is {combined_probability:.0%} -- stacking {len(chosen)} legs "
             f"multiplies the risk by about {drop:.0%}, it doesn't add the confidence."
+        )
+
+    return ConfidencePick(
+        legs=chosen,
+        combined_probability=combined_probability,
+        candidates_considered=len(candidates),
+        warnings=warnings,
+    )
+
+
+def select_random_legs(
+    db: Session,
+    *,
+    min_probability: float,
+    min_legs: int,
+    max_legs: int,
+    markets: tuple[str, ...] = (),
+    leagues: tuple[str, ...] = (),
+    league: str | None = None,
+    days_ahead: int = DEFAULT_DAYS_AHEAD,
+    rng: random.Random | None = None,
+) -> ConfidencePick:
+    """select_legs_by_confidence's random sibling: the same qualifying pool
+    (build_confidence_candidates -- one leg per match, a wanted market,
+    min_probability or better), but drawn rather than ranked. Where
+    select_legs_by_confidence always returns the same safest-first slip for
+    a given pool, this returns a different slip -- a different leg count
+    each time too, somewhere between min_legs and max_legs -- every time
+    it's called, for a "wildcard" slip that isn't trying to be the single
+    best combination, just a fair, honestly-labelled one.
+
+    ``rng`` is injectable so a caller (a test, or a script writing several
+    independent slips in one run) can get a reproducible -- or simply
+    distinct -- draw; a fresh ``random.Random()`` is used otherwise.
+    """
+
+    rng = rng or random.Random()
+    candidates = build_confidence_candidates(
+        db, min_probability=min_probability, markets=markets, leagues=leagues, league=league, days_ahead=days_ahead,
+    )
+
+    if not candidates:
+        return ConfidencePick(
+            legs=[],
+            combined_probability=0.0,
+            candidates_considered=0,
+            warnings=[
+                f"No scheduled match in the next {days_ahead} day(s) clears {min_probability:.0%} model "
+                "probability in these markets."
+            ],
+        )
+
+    target_size = rng.randint(min_legs, max_legs) if max_legs > min_legs else min_legs
+    size = min(target_size, len(candidates))
+    chosen = rng.sample(candidates, size)
+
+    combined_probability = 1.0
+    for leg in chosen:
+        combined_probability *= leg.model_probability
+
+    warnings: list[str] = []
+    if len(candidates) < min_legs:
+        warnings.append(
+            f"Only {len(candidates)} matches clear {min_probability:.0%} right now -- fewer than the usual "
+            f"{min_legs}-{max_legs}."
+        )
+    if chosen:
+        warnings.append(
+            f"Combined probability is {combined_probability:.0%} -- a random draw of {len(chosen)} legs, "
+            "not the safest possible combination, and not sorted by risk level."
         )
 
     return ConfidencePick(
