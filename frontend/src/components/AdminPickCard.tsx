@@ -54,12 +54,20 @@ export function AdminPickCard({
   const riskTier = riskOverride ?? pick.risk_tier;
 
   return (
-    <div className="card match-card tilt-card" ref={tilt.ref} onMouseMove={tilt.onMouseMove} onMouseLeave={tilt.onMouseLeave}>
+    <div
+      className="card match-card match-card-static tilt-card"
+      ref={tilt.ref}
+      onMouseMove={tilt.onMouseMove}
+      onMouseLeave={tilt.onMouseLeave}
+    >
       <div className="match-card-top">
         <span className="match-competition">
           {pick.label || `${pick.legs.length}-leg slip`}
         </span>
-        <span className={`risk-tag ${riskTier}`}>{RISK_LABELS[riskTier]}</span>
+        <span className={`risk-tag ${riskTier}`}>
+          <span aria-hidden>◆</span>
+          {RISK_LABELS[riskTier]}
+        </span>
       </div>
 
       <ol style={{ display: "flex", flexDirection: "column", gap: 8, margin: "8px 0", padding: 0, listStyle: "none" }}>

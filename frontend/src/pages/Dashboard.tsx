@@ -53,7 +53,7 @@ export function Dashboard() {
   const { accessStatus, accessLoading } = useAuth();
   const hasAccess = accessStatus?.has_access ?? false;
 
-  const { league } = useLeague();
+  const { league, setLeague } = useLeague();
   const [range, setRange] = useState<RangeFilter>("today");
   const [highConfidenceOnly, setHighConfidenceOnly] = useState(false);
   const [rows, setRows] = useState<Row[] | null>(null);
@@ -141,12 +141,6 @@ export function Dashboard() {
         )}
       </section>
 
-      <GudaPicksSection />
-
-      <WeeklyPicksSection />
-
-      <AdminPicksSection />
-
       {!accessLoading && !hasAccess && (
         <>
           <div
@@ -190,16 +184,32 @@ export function Dashboard() {
           <div className="section-header">
             <h2>Match discovery</h2>
             <div className="filter-bar">
-              <button className={`filter-chip${range === "today" ? " active" : ""}`} onClick={() => setRange("today")}>
+              <button
+                className={`filter-chip${range === "today" ? " active" : ""}`}
+                aria-pressed={range === "today"}
+                onClick={() => setRange("today")}
+              >
                 Today
               </button>
-              <button className={`filter-chip${range === "tomorrow" ? " active" : ""}`} onClick={() => setRange("tomorrow")}>
+              <button
+                className={`filter-chip${range === "tomorrow" ? " active" : ""}`}
+                aria-pressed={range === "tomorrow"}
+                onClick={() => setRange("tomorrow")}
+              >
                 Tomorrow
               </button>
-              <button className={`filter-chip${range === "week" ? " active" : ""}`} onClick={() => setRange("week")}>
+              <button
+                className={`filter-chip${range === "week" ? " active" : ""}`}
+                aria-pressed={range === "week"}
+                onClick={() => setRange("week")}
+              >
                 This Week
               </button>
-              <button className={`filter-chip${highConfidenceOnly ? " active" : ""}`} onClick={() => setHighConfidenceOnly((v) => !v)}>
+              <button
+                className={`filter-chip${highConfidenceOnly ? " active" : ""}`}
+                aria-pressed={highConfidenceOnly}
+                onClick={() => setHighConfidenceOnly((v) => !v)}
+              >
                 High confidence only
               </button>
             </div>
@@ -211,7 +221,38 @@ export function Dashboard() {
             <EmptyState
               icon="◌"
               title={`No ${highConfidenceOnly ? "high-confidence " : ""}matches found for ${leagueLabel(league)} in this range.`}
-              hint="Try a different league, widen the date range, or check back closer to kickoff."
+              hint={
+                <>
+                  <span>Try a different league, widen the date range, or check back closer to kickoff.</span>
+                  <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap", marginTop: 10 }}>
+                    {league && (
+                      <button type="button" className="btn ghost" style={{ padding: "4px 10px", fontSize: 12.5 }} onClick={() => setLeague("")}>
+                        Clear league filter
+                      </button>
+                    )}
+                    {range !== "week" && (
+                      <button
+                        type="button"
+                        className="btn ghost"
+                        style={{ padding: "4px 10px", fontSize: 12.5 }}
+                        onClick={() => setRange("week")}
+                      >
+                        Show this week instead
+                      </button>
+                    )}
+                    {highConfidenceOnly && (
+                      <button
+                        type="button"
+                        className="btn ghost"
+                        style={{ padding: "4px 10px", fontSize: 12.5 }}
+                        onClick={() => setHighConfidenceOnly(false)}
+                      >
+                        Show all confidence levels
+                      </button>
+                    )}
+                  </div>
+                </>
+              }
             />
           )}
           {!error && visibleRows !== null && visibleRows.length > 0 && (
@@ -232,6 +273,12 @@ export function Dashboard() {
           )}
         </>
       )}
+
+      <GudaPicksSection />
+
+      <WeeklyPicksSection />
+
+      <AdminPicksSection />
 
       <SearchCommand open={searchOpen} onClose={() => setSearchOpen(false)} leagues={LEAGUES} />
     </div>

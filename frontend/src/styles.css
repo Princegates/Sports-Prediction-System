@@ -619,6 +619,9 @@ h1, h2, h3, h4 {
 }
 
 .risk-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
