@@ -659,8 +659,10 @@ export function BetCodes() {
               }
             />
           ) : (
-            <div className="predictions-table-wrapper">
-              <table className="predictions-table">
+            <>
+              <p className="scroll-hint">Swipe to see every column →</p>
+              <div className="predictions-table-wrapper">
+              <table className="predictions-table wide">
                 <thead>
                   <tr>
                     <th>Match</th>
@@ -711,7 +713,8 @@ export function BetCodes() {
                   ))}
                 </tbody>
               </table>
-            </div>
+              </div>
+            </>
           )}
 
           {preview.warnings.map((w, i) => (

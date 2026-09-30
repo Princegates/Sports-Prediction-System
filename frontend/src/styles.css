@@ -1199,6 +1199,24 @@ h1, h2, h3, h4 {
   display: none;
 }
 
+/* The native scrollbar is hidden above, so on a phone -- where the tab
+   strip is usually too narrow to show every tab (Overview/AI
+   Prediction/Form/H2H/Live et al) -- there was no cue at all that "Live"
+   and whatever follows it exist off to the right. A generated flex item
+   pinned to the scrollport's own edge via `sticky` (not the page's) fades
+   the last visible tab out and disappears on its own once there's nothing
+   left to scroll to, without any extra markup or JS overflow-detection. */
+.tabs::after {
+  content: "";
+  position: sticky;
+  right: 0;
+  flex: 0 0 20px;
+  margin-left: -20px;
+  align-self: stretch;
+  background: linear-gradient(to right, transparent, var(--bg-page));
+  pointer-events: none;
+}
+
 .tab-button {
   background: none;
   border: none;
@@ -1369,6 +1387,15 @@ table.predictions-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
+}
+
+/* Only a genuinely wide table (7-8 real columns: the main AI Predictions
+   grid, the Markets list-by-probability table, the AI Generation leg
+   preview) needs a floor this size -- it used to sit on the base rule
+   above and force every table sharing this class into horizontal scroll on
+   a phone, including narrow 2-5 column ones (My picks, a match's own
+   market breakdown) that fit a phone screen just fine on their own. */
+table.predictions-table.wide {
   min-width: 760px;
 }
 
@@ -1471,11 +1498,61 @@ table.predictions-table.odds-grid .match-col {
   left: 0;
   z-index: 1;
   background: var(--bg-surface);
-  min-width: 180px;
+  /* A fixed width (not just min-width) matters here: table-layout is auto,
+     so without a cap the browser sizes this column to fit a long two-team
+     name on one line -- 280px+ for some fixtures -- which on a phone-width
+     screen leaves this sticky column covering the entire visible table and
+     every odds cell scrolled out of view with no hint that they exist.
+     Wrapping the team names onto two lines (below) keeps them fully
+     readable at this narrower width. */
+  width: 168px;
+  min-width: 168px;
+  max-width: 168px;
 }
 
 table.predictions-table.odds-grid th.match-col {
   background: var(--bg-surface-2);
+}
+
+table.predictions-table.odds-grid .match-col .match-cell,
+table.predictions-table.odds-grid .match-col .sub {
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+/* A wide table (or the odds grid, whatever its width) still won't fit a
+   phone screen -- it scrolls, but nothing about a plain <table> signals
+   that on its own. Every predictions-table-wrapper that's realistically
+   going to overflow on a phone gets one of these right above it. */
+.scroll-hint {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  .scroll-hint {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin: -4px 0 8px;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  table.predictions-table.odds-grid .match-col {
+    width: 132px;
+    min-width: 132px;
+    max-width: 132px;
+  }
+
+  table.predictions-table.odds-grid .odds-cell {
+    min-width: 40px;
+    padding: 6px 6px;
+  }
+
+  table.predictions-table.odds-grid th.selection-head {
+    min-width: 48px;
+    padding: 10px 6px;
+  }
 }
 
 .odds-cell {

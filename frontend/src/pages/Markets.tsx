@@ -628,6 +628,7 @@ export function Markets() {
                     <div className="sub" style={{ marginBottom: 6, fontWeight: 600 }}>
                       {dateLabel}
                     </div>
+                    <p className="scroll-hint">Swipe to see every market →</p>
                     <div className="predictions-table-wrapper">
                       <table className="predictions-table odds-grid">
                         <thead>
@@ -747,8 +748,9 @@ export function Markets() {
                   </span>
                 </div>
 
+                <p className="scroll-hint">Swipe to see every column →</p>
                 <div className="predictions-table-wrapper">
-                  <table className="predictions-table">
+                  <table className="predictions-table wide">
                     <thead>
                       <tr>
                         <th>Match</th>

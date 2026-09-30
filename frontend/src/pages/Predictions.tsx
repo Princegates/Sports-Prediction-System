@@ -160,8 +160,10 @@ export function Predictions() {
   function renderTable(rowsToShow: Row[]) {
     const allSelected = rowsToShow.length > 0 && rowsToShow.every((r) => selected.has(r.prediction.match_id));
     return (
-      <div className="predictions-table-wrapper">
-        <table className="predictions-table">
+      <>
+        <p className="scroll-hint">Swipe to see every column →</p>
+        <div className="predictions-table-wrapper">
+        <table className="predictions-table wide">
           <thead>
             <tr>
               <th className="predictions-select-col">
@@ -228,7 +230,8 @@ export function Predictions() {
             })}
           </tbody>
         </table>
-      </div>
+        </div>
+      </>
     );
   }
 
@@ -236,7 +239,7 @@ export function Predictions() {
     <div>
       <div className="section-header">
         <h2>AI Predictions</h2>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
           <span className="meta">{visible ? `${visible.length} matches` : "Loading..."}</span>
           {visible && visible.length > 0 && (
             <>
