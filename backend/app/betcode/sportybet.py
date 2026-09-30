@@ -410,6 +410,18 @@ def _unavailable_event_ids(data: dict) -> set[str]:
     return ids
 
 
+class _BizRejected(BookingCodeError):
+    """``orders/share`` refused the whole request (a non-OK ``bizCode``).
+
+    Distinct from the plain ``BookingCodeError`` a network failure, an HTTP
+    error, or an unparseable reply raises: those say nothing about which
+    selection is at fault, so retrying a smaller slip wouldn't help. A
+    ``bizCode`` refusal often does come down to one selection SportyBet
+    won't take (a line it doesn't list for that match) while the rest of
+    the slip is fine, so this is the one worth bisecting.
+    """
+
+
 class SportyBetConnector:
     def __init__(self, session: requests.Session | None = None) -> None:
         if session is None:
@@ -422,13 +434,16 @@ class SportyBetConnector:
         known = [leg for leg in legs if translated[leg.match_id] is not None]
         event_ids = self._events.find_all(known) if known else {}
 
-        selections, booked = [], {}
+        selections: list[dict] = []
+        selection_match_ids: list[int] = []
+        booked: dict[str, int] = {}
         for leg in known:
             event_id = event_ids.get(leg.match_id)
             if event_id is None:
                 continue
             market_id, specifier, outcome_id = translated[leg.match_id]
             selections.append({"eventId": event_id, "marketId": market_id, "specifier": specifier, "outcomeId": outcome_id})
+            selection_match_ids.append(leg.match_id)
             booked[event_id] = leg.match_id
 
         if not selections:
@@ -437,23 +452,30 @@ class SportyBetConnector:
                 "the matches may not be open on it yet, or the markets aren't ones this connection books."
             )
 
-        data = self._share(selections)
+        try:
+            data, rejected_indices = self._share_dropping_bad(list(enumerate(selections)))
+        except _BizRejected as exc:
+            raise BookingCodeError(str(exc)) from exc
+        site_rejected = {selection_match_ids[i] for i in rejected_indices}
+
         code = data.get("shareCode")
         if not code:
             raise BookingCodeError(f"{SITE_NAME} accepted the slip but sent back no booking code.")
 
         refused = {booked[e] for e in _unavailable_event_ids(data) if e in booked}
-        if len(refused) == len(booked):
+        if len(refused) + len(site_rejected) == len(booked):
             raise BookingCodeError(f"{SITE_NAME} has none of these picks open for booking right now.")
 
         link = str(data.get("shareURL") or SHARE_LINK.format(code=code))
         if link.startswith("http://"):
             link = "https://" + link.removeprefix("http://")
-        included = set(booked.values()) - refused
+        included = set(booked.values()) - refused - site_rejected
         reasons = {}
         for leg in legs:
             if translated[leg.match_id] is None:
                 reasons[leg.match_id] = f"{SITE_NAME} has no bet that settles like {leg.market}: {leg.selection}."
+            elif leg.match_id in site_rejected:
+                reasons[leg.match_id] = f"{SITE_NAME} doesn't offer this exact market for this match, so it was left out."
             elif leg.match_id in refused:
                 reasons[leg.match_id] = (
                     f"{SITE_NAME} wouldn't take this pick -- the market may be closed or not offered for this match."
@@ -465,6 +487,38 @@ class SportyBetConnector:
             unavailable_match_ids=[leg.match_id for leg in legs if leg.match_id not in included],
             reasons=reasons,
         )
+
+    def _share_dropping_bad(self, items: list[tuple[int, dict]]) -> tuple[dict, set[int]]:
+        """Book as much of ``items`` as SportyBet will take in one slip.
+
+        ``items`` pairs each selection with its position in the caller's
+        original list, so a dropped selection can be reported back by that
+        position however deep the recursion goes. Returns the successful
+        reply and the positions dropped because a ``bizCode`` refusal, isolated
+        by bisection, pinned the fault on them -- never a position that
+        merely sat in a request that also had other things wrong with it.
+        """
+        try:
+            return self._share([selection for _, selection in items]), set()
+        except _BizRejected:
+            if len(items) == 1:
+                raise
+
+        mid = len(items) // 2
+        dropped: set[int] = set()
+        kept: list[tuple[int, dict]] = []
+        for half in (items[:mid], items[mid:]):
+            try:
+                _, half_dropped = self._share_dropping_bad(half)
+            except _BizRejected:
+                dropped.update(index for index, _ in half)
+                continue
+            dropped |= half_dropped
+            kept.extend(item for item in half if item[0] not in half_dropped)
+
+        if not kept:
+            raise _BizRejected(f"{SITE_NAME} has none of these picks open for booking right now.")
+        return self._share([selection for _, selection in kept]), dropped
 
     def _share(self, selections: list[dict]) -> dict:
         try:
@@ -481,7 +535,7 @@ class SportyBetConnector:
         except ValueError as exc:
             raise BookingCodeError(f"{SITE_NAME} sent a booking reply this connection can't read.") from exc
         if payload.get("bizCode") != _OK:
-            raise BookingCodeError(f"{SITE_NAME} wouldn't book this slip: {payload.get('message') or 'no reason given'}.")
+            raise _BizRejected(f"{SITE_NAME} wouldn't book this slip: {payload.get('message') or 'no reason given'}.")
         return payload.get("data") or {}
 
 

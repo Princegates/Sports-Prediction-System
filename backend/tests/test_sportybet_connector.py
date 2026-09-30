@@ -104,7 +104,7 @@ class _Session:
             self.league_posts.append({"json": json, "headers": headers})
             return self.leagues.get(json[0]["tournamentId"][0][0], _Response(payload={"bizCode": 10000, "data": []}))
         self.posts.append({"url": url, "json": json, "headers": headers})
-        return self.share
+        return self.share(json["selections"]) if callable(self.share) else self.share
 
 
 def _leg(match_id: int, home: str, away: str, kickoff: dt.datetime, market="Match Result", selection="Home Win") -> Leg:
@@ -370,6 +370,71 @@ def test_the_sites_refusal_reason_is_passed_on():
 
     with pytest.raises(BookingCodeError, match="Selections have expired"):
         sb.SportyBetConnector(session).create_code([_leg(1, "Manchester United FC", "Tottenham Hotspur FC", MAN_UTD_SPURS)])
+
+
+def _reject_containing(bad_event_id: str, message: str = "invalid event data, no market there"):
+    """A share reply that hard-rejects any request touching ``bad_event_id``.
+
+    Mirrors what SportyBet's live API actually does: refuse the whole
+    request, with no way to tell from that one reply which selection it
+    didn't like.
+    """
+
+    def respond(selections):
+        if any(s["eventId"] == bad_event_id for s in selections):
+            return _Response(payload={"bizCode": 4200, "message": message})
+        return _Response(payload=_share_reply())
+
+    return respond
+
+
+def test_one_bad_market_in_a_slip_is_dropped_and_the_rest_still_books():
+    session = _Session(share=_reject_containing("sr:match:72478622"))
+    legs = [
+        _leg(1, "Manchester United FC", "Tottenham Hotspur FC", MAN_UTD_SPURS),
+        _leg(2, "Real Madrid", "Villarreal CF", REAL_VILLARREAL, "Total Goals 2.5", "Over 2.5"),
+    ]
+
+    result = sb.SportyBetConnector(session).create_code(legs)
+
+    assert result.code == "9Y8YN0"
+    assert result.unavailable_match_ids == [2]
+    assert "doesn't offer this exact market" in result.reasons[2]
+    assert 1 not in result.reasons
+    assert session.posts[-1]["json"]["selections"] == [
+        {"eventId": "sr:match:72221308", "marketId": "1", "specifier": None, "outcomeId": "1"},
+    ]
+
+
+def test_several_bad_markets_are_isolated_from_a_larger_slip():
+    session = _Session(share=_reject_containing("sr:match:72478622"))
+    legs = [
+        _leg(1, "Manchester United FC", "Tottenham Hotspur FC", MAN_UTD_SPURS),
+        _leg(2, "Aston Villa", "Brentford FC", VILLA_BRENTFORD),
+        _leg(3, "Real Madrid", "Villarreal CF", REAL_VILLARREAL, "Total Goals 2.5", "Over 2.5"),
+        _leg(4, "Cologne", "Borussia M´gladbach", KOLN_GLADBACH),
+    ]
+
+    result = sb.SportyBetConnector(session).create_code(legs)
+
+    assert result.code == "9Y8YN0"
+    assert result.unavailable_match_ids == [3]
+    assert "doesn't offer this exact market" in result.reasons[3]
+    for match_id in (1, 2, 4):
+        assert match_id not in result.reasons
+    booked_events = {s["eventId"] for s in session.posts[-1]["json"]["selections"]}
+    assert booked_events == {"sr:match:72221308", "sr:match:72221294", "sr:match:72513234"}
+
+
+def test_a_slip_thats_entirely_bad_still_raises_without_a_code():
+    session = _Session(share=lambda selections: _Response(payload={"bizCode": 4200, "message": "no market there"}))
+    legs = [
+        _leg(1, "Manchester United FC", "Tottenham Hotspur FC", MAN_UTD_SPURS),
+        _leg(2, "Real Madrid", "Villarreal CF", REAL_VILLARREAL, "Total Goals 2.5", "Over 2.5"),
+    ]
+
+    with pytest.raises(BookingCodeError, match="none of these picks open"):
+        sb.SportyBetConnector(session).create_code(legs)
 
 
 @pytest.mark.parametrize("session,expected", [
