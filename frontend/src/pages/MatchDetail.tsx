@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   featurePick,
   fetchFeaturedPicksAdmin,
@@ -37,6 +37,7 @@ import { TeamComparison } from "../components/TeamComparison";
 import { formatSelection } from "../lib/copySelections";
 import { useAuth } from "../lib/AuthContext";
 import type {
+  BetCodePick,
   FeaturedPick,
   HeadToHeadMatch,
   LivePrediction,
@@ -53,6 +54,7 @@ export function MatchDetail() {
   const { user } = useAuth();
   const { id } = useParams();
   const matchId = Number(id);
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialTab = searchParams.get("tab") ?? "Overview";
   const [tab, setTab] = useState(TAB_NAMES.includes(initialTab) ? initialTab : "Overview");
@@ -71,6 +73,11 @@ export function MatchDetail() {
   const [goalTeam, setGoalTeam] = useState("");
   const [featuredPicks, setFeaturedPicks] = useState<FeaturedPick[]>([]);
   const [pickBusy, setPickBusy] = useState<string | null>(null);
+  // A match contributes at most one leg to a slip -- two outcomes on the same
+  // fixture are correlated, not independent, and the booking engine only
+  // keeps the first ref for a match anyway. So picking a market here replaces
+  // any earlier pick from this same page rather than adding alongside it.
+  const [selectedPick, setSelectedPick] = useState<{ market: string; selection: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -150,6 +157,16 @@ export function MatchDetail() {
     } finally {
       setPickBusy(null);
     }
+  }
+
+  function togglePick(market: string, selection: string) {
+    setSelectedPick((prev) => (prev && prev.market === market && prev.selection === selection ? null : { market, selection }));
+  }
+
+  function sendPickToGeneration() {
+    if (!selectedPick) return;
+    const picks: BetCodePick[] = [{ match_id: matchId, market: selectedPick.market, selection: selectedPick.selection }];
+    navigate("/app/betcodes", { state: { picks } });
   }
 
   async function handleEditFeaturedNote(pick: FeaturedPick) {
@@ -395,11 +412,29 @@ export function MatchDetail() {
 
       {tab === "Markets" && (
         <div className="card card-pad">
-          <h3 style={{ marginBottom: 4, fontSize: 15 }}>Every market for this fixture</h3>
-          <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 0, marginBottom: 16 }}>
-            Grouped the way the model groups them: selections in the same group are mutually exclusive and add
-            up to 100%, except Correct Score -- most matches land on none of the scores listed.
-          </p>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+            <div>
+              <h3 style={{ marginBottom: 4, fontSize: 15 }}>Every market for this fixture</h3>
+              <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 0, marginBottom: 4 }}>
+                Grouped the way the model groups them: selections in the same group are mutually exclusive and add
+                up to 100%, except Correct Score -- most matches land on none of the scores listed.
+              </p>
+              <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 0, marginBottom: 16 }}>
+                Check a selection to use it as this match's leg in AI Generation -- checking another replaces it,
+                since a slip only takes one pick per match.
+              </p>
+            </div>
+            {selectedPick && (
+              <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                <button type="button" className="btn ghost" onClick={() => setSelectedPick(null)}>
+                  Clear selection
+                </button>
+                <button type="button" className="btn" onClick={sendPickToGeneration}>
+                  Send pick to AI Generation
+                </button>
+              </div>
+            )}
+          </div>
           {!outcomes && <p className="badge-neutral">Loading markets…</p>}
           {outcomes && outcomes.markets.length === 0 && (
             <EmptyState icon="◌" title="Not enough history yet to offer markets for this fixture." />
@@ -423,8 +458,17 @@ export function MatchDetail() {
                           .map((o) => {
                             const featured = user?.role === "superadmin" ? findFeatured(o.market, o.selection) : undefined;
                             const key = `${o.market}|${o.selection}`;
+                            const checked = selectedPick?.market === o.market && selectedPick?.selection === o.selection;
                             return (
                               <tr key={o.selection} title={o.definition}>
+                                <td style={{ width: 28 }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => togglePick(o.market, o.selection)}
+                                    aria-label={`Use ${o.selection} (${o.market}) as this match's leg in AI Generation`}
+                                  />
+                                </td>
                                 <td>{o.selection}</td>
                                 <td className="tabular-nums" style={{ width: 80 }}>
                                   {(o.probability * 100).toFixed(0)}%
