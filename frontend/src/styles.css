@@ -1445,6 +1445,18 @@ table.predictions-table.wide {
   font-size: 11.5px;
 }
 
+.predictions-table th.predictions-select-col,
+.predictions-table td.predictions-select-col {
+  width: 1%;
+  padding-right: 4px;
+  padding-left: 16px;
+  cursor: default;
+}
+
+.predictions-table th.predictions-select-col:hover {
+  color: var(--text-muted);
+}
+
 /* Markets page coupon: a match per row, a block of probability boxes for
    each market ticked in the dropdown, the model's own selection in each
    block highlighted -- see Markets.tsx. Overrides the

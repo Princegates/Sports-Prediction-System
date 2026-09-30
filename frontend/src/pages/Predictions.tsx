@@ -9,7 +9,7 @@ import { ErrorState } from "../components/ErrorState";
 import { EmptyState } from "../components/EmptyState";
 import { formatSelection, formatSelections } from "../lib/copySelections";
 import { downloadCsv, toCsv } from "../lib/csvExport";
-import type { MatchSummary, Prediction } from "../types";
+import type { BetCodePick, MatchSummary, Prediction } from "../types";
 
 interface Row {
   prediction: Prediction;
@@ -57,7 +57,42 @@ export function Predictions() {
   const [viewMode, setViewMode] = useState<ViewMode>("table");
   const [rows, setRows] = useState<Row[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Keyed by match_id rather than kept as a plain array so toggling one row
+  // doesn't need a linear scan, and keyed by the row's own snapshot (not
+  // looked back up in `rows` at send time) so a selection survives a filter
+  // change even if the row briefly drops out of `visible`.
+  const [selected, setSelected] = useState<Map<number, Row>>(new Map());
   const navigate = useNavigate();
+
+  function toggleSelected(row: Row) {
+    setSelected((prev) => {
+      const next = new Map(prev);
+      if (next.has(row.prediction.match_id)) next.delete(row.prediction.match_id);
+      else next.set(row.prediction.match_id, row);
+      return next;
+    });
+  }
+
+  function toggleSelectAll(rowsToToggle: Row[]) {
+    setSelected((prev) => {
+      const allSelected = rowsToToggle.length > 0 && rowsToToggle.every((r) => prev.has(r.prediction.match_id));
+      const next = new Map(prev);
+      for (const r of rowsToToggle) {
+        if (allSelected) next.delete(r.prediction.match_id);
+        else next.set(r.prediction.match_id, r);
+      }
+      return next;
+    });
+  }
+
+  function sendSelectedToGeneration() {
+    const picks: BetCodePick[] = [...selected.values()].map((r) => ({
+      match_id: r.prediction.match_id,
+      market: r.prediction.global_outcome.market,
+      selection: r.prediction.global_outcome.selection,
+    }));
+    navigate("/app/betcodes", { state: { picks } });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -123,6 +158,7 @@ export function Predictions() {
   }
 
   function renderTable(rowsToShow: Row[]) {
+    const allSelected = rowsToShow.length > 0 && rowsToShow.every((r) => selected.has(r.prediction.match_id));
     return (
       <>
         <p className="scroll-hint">Swipe to see every column →</p>
@@ -130,6 +166,14 @@ export function Predictions() {
         <table className="predictions-table wide">
           <thead>
             <tr>
+              <th className="predictions-select-col">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={() => toggleSelectAll(rowsToShow)}
+                  aria-label="Select all rows for AI Generation"
+                />
+              </th>
               <th>Match</th>
               <th>AI Outcome</th>
               <th onClick={viewMode === "table" ? () => toggleSort("probability") : undefined}>
@@ -150,6 +194,14 @@ export function Predictions() {
               const { prediction, match } = row;
               return (
                 <tr key={prediction.match_id} onClick={() => navigate(`/app/match/${prediction.match_id}`)}>
+                  <td className="predictions-select-col" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={selected.has(prediction.match_id)}
+                      onChange={() => toggleSelected(row)}
+                      aria-label={`Select ${match.home_team.name} vs ${match.away_team.name} for AI Generation`}
+                    />
+                  </td>
                   <td>
                     <div className="match-cell">
                       {match.home_team.name} vs {match.away_team.name}
@@ -198,6 +250,16 @@ export function Predictions() {
                 onClick={() => downloadCsv(`predictions-${day ?? "all"}.csv`, toCsv(visible))}
               >
                 Export CSV
+              </button>
+            </>
+          )}
+          {selected.size > 0 && (
+            <>
+              <button type="button" className="btn ghost" onClick={() => setSelected(new Map())}>
+                Clear selection
+              </button>
+              <button type="button" className="btn" onClick={sendSelectedToGeneration}>
+                Send {selected.size} pick{selected.size === 1 ? "" : "s"} to AI Generation
               </button>
             </>
           )}
