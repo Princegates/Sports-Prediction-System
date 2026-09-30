@@ -59,7 +59,7 @@ export function WeeklyPicksSection() {
   if (!picks || picks.length === 0) return null;
 
   return (
-    <>
+    <div className="section-reveal">
       <div className="section-header">
         <h2>This Week's Picks</h2>
         <span className="meta">
@@ -71,6 +71,6 @@ export function WeeklyPicksSection() {
           <AdminPickCard key={pick.id} pick={pick} whatsapp={whatsapp} riskOverride={tierOf(pick) ?? undefined} />
         ))}
       </div>
-    </>
+    </div>
   );
 }

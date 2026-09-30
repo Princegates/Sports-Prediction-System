@@ -40,6 +40,29 @@ async function loadForDate(league: string, date: string): Promise<Row[]> {
   return matches.map((match, i) => ({ match, prediction: predictions[i] }));
 }
 
+const RANGE_STORAGE_KEY = "dashboard_range";
+const HIGH_CONFIDENCE_STORAGE_KEY = "dashboard_high_confidence_only";
+
+/** Match discovery's own filters survive a reload, same reasoning as the
+ * league selector (AppShell.tsx) -- otherwise every visit resets to
+ * "Today, any confidence" and a returning user re-does the same clicks. */
+function readStoredRange(): RangeFilter {
+  try {
+    const stored = localStorage.getItem(RANGE_STORAGE_KEY);
+    return stored === "tomorrow" || stored === "week" ? stored : "today";
+  } catch {
+    return "today";
+  }
+}
+
+function readStoredHighConfidenceOnly(): boolean {
+  try {
+    return localStorage.getItem(HIGH_CONFIDENCE_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 async function loadForWeek(league: string): Promise<Row[]> {
   const predictions = await fetchMostLikely(league, 7, 24);
   const matches = await Promise.all(predictions.map((p) => fetchMatch(p.match_id)));
@@ -54,9 +77,14 @@ export function Dashboard() {
   const hasAccess = accessStatus?.has_access ?? false;
 
   const { league, setLeague } = useLeague();
-  const [range, setRange] = useState<RangeFilter>("today");
-  const [highConfidenceOnly, setHighConfidenceOnly] = useState(false);
+  const [range, setRange] = useState<RangeFilter>(readStoredRange);
+  const [highConfidenceOnly, setHighConfidenceOnly] = useState<boolean>(readStoredHighConfidenceOnly);
   const [rows, setRows] = useState<Row[] | null>(null);
+  // Distinct from `rows === null`: that's "never loaded yet" (shows the
+  // skeleton); this is "a fetch triggered by a filter change is in flight"
+  // (keeps the current cards on screen with a small "Updating..." instead
+  // of blanking the whole grid back to a skeleton on every filter click).
+  const [filtersLoading, setFiltersLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
 
@@ -64,15 +92,41 @@ export function Dashboard() {
   const [freeError, setFreeError] = useState<string | null>(null);
 
   useEffect(() => {
+    try {
+      localStorage.setItem(RANGE_STORAGE_KEY, range);
+    } catch {
+      // private-browsing / storage-disabled -- just won't persist across reloads
+    }
+  }, [range]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(HIGH_CONFIDENCE_STORAGE_KEY, highConfidenceOnly ? "1" : "0");
+    } catch {
+      // private-browsing / storage-disabled -- just won't persist across reloads
+    }
+  }, [highConfidenceOnly]);
+
+  useEffect(() => {
     if (accessLoading || !hasAccess) return;
     let cancelled = false;
-    setRows(null);
+    setFiltersLoading(true);
     setError(null);
 
     function load() {
       const loader =
         range === "today" ? loadForDate(league, dateOffset(0)) : range === "tomorrow" ? loadForDate(league, dateOffset(1)) : loadForWeek(league);
-      loader.then((r) => !cancelled && setRows(r)).catch((err) => !cancelled && setError(String(err)));
+      loader
+        .then((r) => {
+          if (cancelled) return;
+          setRows(r);
+          setFiltersLoading(false);
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          setError(String(err));
+          setFiltersLoading(false);
+        });
     }
 
     load();
@@ -141,6 +195,11 @@ export function Dashboard() {
         )}
       </section>
 
+      {/* Neither branch below can render yet without knowing hasAccess --
+          without this, every visit shows a blank gap under the hero for
+          however long the access check takes. */}
+      {accessLoading && <CardGridSkeleton />}
+
       {!accessLoading && !hasAccess && (
         <>
           <div
@@ -182,7 +241,14 @@ export function Dashboard() {
       {hasAccess && (
         <>
           <div className="section-header">
-            <h2>Match discovery</h2>
+            <h2>
+              Match discovery
+              {filtersLoading && rows !== null && (
+                <span className="meta" role="status" style={{ marginLeft: 10, fontWeight: 400 }}>
+                  Updating…
+                </span>
+              )}
+            </h2>
             <div className="filter-bar">
               <button
                 className={`filter-chip${range === "today" ? " active" : ""}`}

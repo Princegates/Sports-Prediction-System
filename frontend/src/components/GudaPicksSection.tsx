@@ -33,7 +33,7 @@ export function GudaPicksSection() {
   if (!picks || picks.length === 0) return null;
 
   return (
-    <>
+    <div className="section-reveal">
       <div className="section-header">
         <h2>Guda Picks</h2>
         <span className="meta">Outcomes our team is watching this week</span>
@@ -43,6 +43,6 @@ export function GudaPicksSection() {
           <GudaPickCard key={pick.id} pick={pick} />
         ))}
       </div>
-    </>
+    </div>
   );
 }

@@ -34,6 +34,22 @@ const LEAGUES = [
   "UEFA Europa League",
 ];
 
+const LEAGUE_STORAGE_KEY = "app_league";
+
+/** The topbar league selector survives a reload -- otherwise every visit
+ * (or filter change elsewhere that triggers one) silently drops back to
+ * "All leagues" and the user re-picks the same one again. Falls back to ""
+ * ("all leagues") for a value that's missing, unreadable (private browsing),
+ * or no longer a real league (list changed since it was saved). */
+function readStoredLeague(): string {
+  try {
+    const stored = localStorage.getItem(LEAGUE_STORAGE_KEY);
+    return stored && LEAGUES.includes(stored) ? stored : "";
+  } catch {
+    return "";
+  }
+}
+
 interface LeagueContextValue {
   // "" means "all leagues" -- every league-scoped page treats a falsy
   // league as no filter (see fetchMatches/fetchMostLikely in api.ts), so
@@ -70,11 +86,20 @@ export function AppShell() {
   // falsy, and AI Generation previously defaulted to "any league" before it
   // was wired to this shared selector, so defaulting here to one specific
   // league would have silently narrowed what it searches on first load.
-  const [league, setLeague] = useState("");
+  const [league, setLeague] = useState(readStoredLeague);
   const [searchOpen, setSearchOpen] = useState(false);
   const { user, accessStatus, logout } = useAuth();
   const navigate = useNavigate();
   const needsAccess = user?.role !== "superadmin" && !accessStatus?.has_access;
+
+  useEffect(() => {
+    try {
+      if (league) localStorage.setItem(LEAGUE_STORAGE_KEY, league);
+      else localStorage.removeItem(LEAGUE_STORAGE_KEY);
+    } catch {
+      // private-browsing / storage-disabled -- just won't persist across reloads
+    }
+  }, [league]);
 
   const navItems =
     user?.role === "superadmin"

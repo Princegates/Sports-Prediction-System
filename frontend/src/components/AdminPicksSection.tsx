@@ -47,7 +47,7 @@ export function AdminPicksSection() {
   if (!picks || picks.length === 0) return null;
 
   return (
-    <>
+    <div className="section-reveal">
       <div className="section-header">
         <h2>Admin Picks</h2>
         <span className="meta">Multi-leg slips our team has put together, risk factor included</span>
@@ -57,6 +57,6 @@ export function AdminPicksSection() {
           <AdminPickCard key={pick.id} pick={pick} whatsapp={whatsapp} />
         ))}
       </div>
-    </>
+    </div>
   );
 }

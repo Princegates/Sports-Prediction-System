@@ -2980,6 +2980,17 @@ table.admin-table {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* GudaPicksSection/WeeklyPicksSection/AdminPicksSection each fetch
+   independently and render nothing until their own request resolves, so
+   whichever finishes last would otherwise just snap into place below
+   content the user is already reading. A short reveal on arrival reads as
+   "this just came in" instead of an abrupt layout jump -- reuses fade-up
+   rather than a new animation for the same motion language as the rest of
+   the page. Respects the global prefers-reduced-motion override above. */
+.section-reveal {
+  animation: fade-up 0.4s cubic-bezier(0.16, 0.8, 0.3, 1) both;
+}
+
 .landing-hero {
   position: relative;
   display: grid;
