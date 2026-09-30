@@ -189,6 +189,7 @@ export function AppShell() {
                 expanded={isSideNavExpanded}
                 isPersistent
                 onSideNavBlur={onClickSideNavExpand}
+                onOverlayClick={() => isSideNavExpanded && onClickSideNavExpand()}
                 href="#main-content"
               >
                 <SideNavItems>
@@ -198,6 +199,7 @@ export function AppShell() {
                       as={NavLink}
                       to={item.to}
                       end={item.to === "/app"}
+                      onClick={() => isSideNavExpanded && onClickSideNavExpand()}
                     >
                       {item.label}
                       {item.badge && <span className="queue-badge">!</span>}
