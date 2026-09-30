@@ -4091,12 +4091,21 @@ table.admin-table {
 /* ==========================================================================
    AI CHAT DOCK
    A floating assistant available on every signed-in page.
+
+   Stacking: this sits well above Carbon's own fixed Header (z-index 8000
+   in Carbon's own scale) on purpose. A shorter viewport (a small laptop, a
+   zoomed-in browser, a phone) can leave less room below the header than the
+   dock wants, and without a z-index that clears the header, the header
+   paints over the dock's own top edge -- clipping Guda's mascot, name and
+   close button behind the app chrome even though the dock is correctly
+   sized and positioned underneath. Every earlier "the mascot / header is
+   cut off" report traced back to this, not to the dock's sizing math.
    ========================================================================== */
 .chat-fab {
   position: fixed;
   right: var(--space-5);
   bottom: var(--space-5);
-  z-index: 60;
+  z-index: 8500;
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -4107,16 +4116,17 @@ table.admin-table {
   box-shadow: var(--shadow-pop);
   color: var(--text-primary);
   font-family: inherit;
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 560;
   cursor: grab;
   touch-action: none;
   user-select: none;
-  transition: border-color 0.14s ease;
+  transition: border-color 0.14s ease, box-shadow 0.14s ease;
 }
 
 .chat-fab:hover {
-  border-color: var(--ai-violet);
+  border-color: var(--accent);
+  box-shadow: var(--shadow-pop), 0 0 0 3px var(--accent-soft);
 }
 
 .chat-fab:active {
@@ -4125,7 +4135,7 @@ table.admin-table {
 
 .chat-fab kbd {
   font-family: inherit;
-  font-size: 10.5px;
+  font-size: 10px;
   padding: 2px 5px;
   border-radius: 4px;
   background: var(--bg-surface-3);
@@ -4137,8 +4147,8 @@ table.admin-table {
   position: fixed;
   right: var(--space-5);
   bottom: var(--space-5);
-  z-index: 60;
-  width: 400px;
+  z-index: 8500;
+  width: 380px;
   max-width: calc(100vw - var(--space-5) * 2);
   /* 100vh on a phone is the layout viewport (address bar collapsed), taller
      than what's actually visible whenever the address bar is showing. This
@@ -4148,14 +4158,14 @@ table.admin-table {
      actual visible viewport as the browser chrome shows/hides; the plain
      vh rule stays first as the fallback for browsers that don't support
      dvh, which then ignore the second, unrecognized value entirely. */
-  max-height: min(680px, calc(100vh - var(--space-6)));
-  max-height: min(680px, calc(100dvh - var(--space-6)));
+  max-height: min(640px, calc(100vh - var(--space-6)));
+  max-height: min(640px, calc(100dvh - var(--space-6)));
   display: flex;
   flex-direction: column;
   background: var(--bg-surface);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-pop);
+  box-shadow: var(--shadow-pop), 0 24px 48px -16px rgb(0 0 0 / 0.35);
   overflow: hidden;
   animation: chat-dock-in 0.18s ease;
 }
@@ -4172,7 +4182,7 @@ table.admin-table {
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--border);
-  background: var(--bg-surface-2);
+  background: linear-gradient(180deg, var(--accent-soft), var(--bg-surface-2));
   /* Only .chat-thread (flex: 1) is meant to give ground to a long
      conversation -- without this, a reply long enough to push the flex
      column past the dock's own max-height could compress the header
@@ -4187,16 +4197,20 @@ table.admin-table {
   min-width: 0;
 }
 
+.chat-dock-title .mascot-frame {
+  box-shadow: 0 0 0 2px var(--bg-surface), 0 0 0 3px var(--accent);
+}
+
 .chat-dock-title strong {
   display: block;
-  font-size: 13.5px;
+  font-size: 12.5px;
   font-weight: 620;
   line-height: 1.2;
 }
 
 .chat-dock-title span {
   display: block;
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--text-muted);
   margin-top: 2px;
 }
@@ -4209,7 +4223,7 @@ table.admin-table {
 
 .chat-icon-btn {
   padding: 5px 9px !important;
-  font-size: 12px !important;
+  font-size: 11.5px !important;
 }
 
 .chat-thread {
@@ -4218,7 +4232,7 @@ table.admin-table {
   padding: var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-3);
   min-height: 180px;
 }
 
@@ -4233,22 +4247,22 @@ table.admin-table {
 
 .chat-empty h4 {
   margin: 0;
-  font-size: 14.5px;
+  font-size: 13px;
   font-weight: 620;
 }
 
 .chat-empty p {
   margin: 0;
-  font-size: 12.5px;
+  font-size: 11.5px;
   color: var(--text-muted);
-  line-height: 1.65;
+  line-height: 1.6;
   max-width: 34ch;
 }
 
 .chat-turn {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
 }
 
 .chat-turn.user {
@@ -4256,16 +4270,16 @@ table.admin-table {
 }
 
 .chat-turn-badge {
-  font-size: 9.5px;
+  font-size: 9px;
   font-weight: 700;
-  letter-spacing: 0.09em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--ai-violet);
+  color: var(--accent-strong);
 }
 
 .chat-rewritten-badge {
   margin-left: 6px;
-  font-size: 9.5px;
+  font-size: 9px;
   font-weight: 500;
   letter-spacing: 0;
   text-transform: none;
@@ -4275,10 +4289,10 @@ table.admin-table {
 
 .chat-bubble {
   max-width: 92%;
-  padding: 10px 13px;
+  padding: 9px 12px;
   border-radius: var(--radius-md);
-  font-size: 13px;
-  line-height: 1.65;
+  font-size: 12.5px;
+  line-height: 1.55;
 }
 
 .chat-bubble.user {
@@ -4309,25 +4323,29 @@ table.admin-table {
   margin-bottom: 0;
 }
 
+.chat-bubble strong {
+  font-weight: 650;
+}
+
 .chat-bullets {
   margin: 0 0 var(--space-2);
   padding-left: var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
 .chat-bullets li {
-  font-size: 12.5px;
+  font-size: 12px;
   color: var(--text-secondary);
-  line-height: 1.6;
+  line-height: 1.55;
 }
 
 .chat-caret {
   display: inline-block;
   width: 2px;
-  height: 13px;
-  background: var(--ai-violet);
+  height: 12px;
+  background: var(--accent);
   vertical-align: text-bottom;
   margin-left: 2px;
   animation: chat-caret-blink 0.9s step-end infinite;
@@ -4339,13 +4357,13 @@ table.admin-table {
 
 .chat-caveat {
   margin: var(--space-3) 0 0 !important;
-  padding: 8px 10px;
+  padding: 7px 9px;
   background: var(--warning-soft);
   border-left: 2px solid var(--warning);
   border-radius: 4px;
-  font-size: 11.5px;
+  font-size: 11px;
   color: var(--text-secondary);
-  line-height: 1.55;
+  line-height: 1.5;
 }
 
 .chat-sources {
@@ -4359,7 +4377,7 @@ table.admin-table {
 }
 
 .chat-sources-label {
-  font-size: 10.5px;
+  font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--text-muted);
@@ -4368,7 +4386,7 @@ table.admin-table {
 
 .chat-source-chip {
   font-family: inherit;
-  font-size: 11.5px;
+  font-size: 11px;
   padding: 3px 9px;
   border-radius: var(--radius-pill);
   background: var(--accent-soft);
@@ -4412,12 +4430,17 @@ table.admin-table {
   flex-shrink: 0;
 }
 
+.chat-suggestions .prompt-chip {
+  font-size: 11.5px;
+  padding: 5px 11px;
+}
+
 .chat-error {
   margin: 0 var(--space-4) var(--space-3);
   padding: 8px 10px;
   background: var(--critical-soft);
   border-radius: var(--radius-sm);
-  font-size: 11.5px;
+  font-size: 11px;
   color: var(--critical);
 }
 
@@ -4433,21 +4456,23 @@ table.admin-table {
 .chat-input-row textarea {
   flex: 1;
   resize: none;
-  min-height: 38px;
+  min-height: 36px;
   max-height: 120px;
-  padding: 9px 11px;
-  border-radius: var(--radius-sm);
+  padding: 8px 11px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--bg-surface);
   color: var(--text-primary);
   font-family: inherit;
-  font-size: 13px;
+  font-size: 12.5px;
   line-height: 1.5;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
 }
 
 .chat-input-row textarea:focus {
   outline: none;
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .chat-input-row textarea:disabled {
@@ -4457,6 +4482,7 @@ table.admin-table {
 .chat-send {
   align-self: flex-end;
   flex-shrink: 0;
+  font-size: 12.5px;
 }
 
 .chat-send:disabled {
@@ -4466,9 +4492,9 @@ table.admin-table {
 
 .chat-disclaimer {
   margin: 0;
-  padding: 8px var(--space-4) var(--space-3);
+  padding: 7px var(--space-4) var(--space-3);
   background: var(--bg-surface-2);
-  font-size: 10.5px;
+  font-size: 10px;
   color: var(--text-muted);
   line-height: 1.5;
   text-align: center;

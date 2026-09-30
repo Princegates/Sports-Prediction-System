@@ -364,7 +364,7 @@ export function ChatDock() {
     <div className="chat-dock" role="dialog" aria-label="Guda">
       <header className="chat-dock-head">
         <div className="chat-dock-title">
-          <Mascot pose={busy ? "thinking" : "idle"} size={28} />
+          <Mascot pose={busy ? "thinking" : "idle"} size={38} />
           <div>
             <strong>Guda</strong>
             <span>
