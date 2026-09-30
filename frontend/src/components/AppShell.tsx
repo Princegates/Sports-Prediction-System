@@ -18,6 +18,7 @@ import {
 import { Search, UserAvatar, Settings as SettingsIcon, Locked, UserFollow, Pin, PinFilled, ChevronRight } from "@carbon/icons-react";
 import { SearchCommand } from "./SearchCommand";
 import { ChatDock } from "./ChatDock";
+import { MobileBottomNav } from "./MobileBottomNav";
 import { useAuth } from "../lib/AuthContext";
 
 const LEAGUES = [
@@ -177,7 +178,13 @@ export function AppShell() {
                 isCollapsible={false}
               />
               <HeaderName as={NavLink} to="/app" prefix="">
-                Socca Intelligence
+                {/* The full wordmark and the league select together need more
+                    width than a phone screen has -- shortened here rather
+                    than letting the header overflow and clip its own
+                    right-side icons off the edge (see the phone breakpoint
+                    that also shrinks .app-league-select). */}
+                <span className="app-brand-full">Socca Intelligence</span>
+                <span className="app-brand-short">Socca</span>
               </HeaderName>
 
               <HeaderGlobalBar>
@@ -275,6 +282,8 @@ export function AppShell() {
             <Content id="main-content" className={`app-content${pinned ? " app-content--nav-pinned" : ""}`}>
               <Outlet />
             </Content>
+
+            <MobileBottomNav />
           </>
         )}
       />

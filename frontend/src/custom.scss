@@ -354,6 +354,42 @@ body[data-accent="denim"] { --accent: #3b6ea5; }
   height: 2.5rem;
 }
 
+// The short brand wordmark only shows once the phone breakpoint below hides
+// the full one -- keeping both in the DOM (rather than swapping the text
+// with JS) means nothing shifts on resize and a screen reader still gets
+// one name, not two.
+.app-brand-short {
+  display: none;
+}
+
+// The full wordmark plus a 200px select genuinely don't fit a phone-width
+// header alongside the hamburger and the global action icons -- without
+// this the header overflows sideways and clips its own right-side icons
+// (profile, sign out, ...) off the edge of the screen rather than wrapping.
+@media (max-width: 640px) {
+  .app-brand-full {
+    display: none;
+  }
+
+  .app-brand-short {
+    display: inline;
+  }
+
+  .app-league-select {
+    // Just wide enough to read as a control to tap, not to show a whole
+    // league name -- the select's own dropdown lists every league in full
+    // regardless of how narrow its closed trigger is.
+    width: 52px;
+    margin-right: var(--space-1);
+  }
+
+  .app-league-select .cds--list-box__label {
+    padding-right: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
 .app-content {
   min-height: calc(100vh - var(--topbar-h));
   padding: var(--space-5);

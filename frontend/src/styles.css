@@ -2040,30 +2040,14 @@ table.predictions-table.odds-grid .match-col .sub {
 /* ==========================================================================
    RESPONSIVE
    ========================================================================== */
-@media (max-width: 900px) {
-  .app-sidebar {
-    display: none;
-  }
-
-  .app-topbar {
-    display: none;
-  }
-
-  .mobile-topbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--space-3) var(--space-4);
-    border-bottom: 1px solid var(--border);
-    position: sticky;
-    top: 0;
-    background: var(--bg-topbar);
-    backdrop-filter: blur(10px);
-    z-index: 20;
-  }
-
+/* A phone-width bottom tab bar for the five pages a member opens most
+   (MobileBottomNav.tsx) -- one tap each, instead of the extra tap the side
+   nav's hamburger costs on every single page change. Tablet and desktop
+   keep the hamburger-only nav; a tablet has the width to spare and this
+   bar would just compete with it for the same screen edge. */
+@media (max-width: 640px) {
   .app-content {
-    padding: var(--space-4) var(--space-4) 100px;
+    padding: var(--space-4) var(--space-4) 84px;
   }
 
   .mobile-bottom-nav {
@@ -2072,25 +2056,46 @@ table.predictions-table.odds-grid .match-col .sub {
     bottom: 0;
     left: 0;
     right: 0;
-    background: var(--bg-topbar);
-    backdrop-filter: blur(12px);
+    background: color-mix(in srgb, var(--bg-surface) 88%, transparent);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
     border-top: 1px solid var(--border);
-    padding: 8px 4px calc(8px + env(safe-area-inset-bottom));
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
     z-index: 30;
   }
 
-  .mobile-bottom-nav .nav-link {
+  .mobile-bottom-nav-link {
     flex: 1;
+    display: flex;
     flex-direction: column;
-    gap: 3px;
+    align-items: center;
+    gap: 2px;
     text-align: center;
     font-size: 10.5px;
+    font-weight: 500;
     padding: 6px 2px;
     border-radius: var(--radius-sm);
+    text-decoration: none;
+    color: var(--text-muted);
   }
 
-  .mobile-bottom-nav .nav-icon {
-    font-size: 17px;
+  .mobile-bottom-nav-link.active {
+    color: var(--accent);
+  }
+
+  .mobile-bottom-nav-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 20px;
+  }
+
+  .mobile-bottom-nav-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--live);
+    animation: pulse-dot 1.4s ease-in-out infinite;
   }
 }
 
