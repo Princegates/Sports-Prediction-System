@@ -109,6 +109,11 @@ body {
   // 16rem) now that AppShell/PublicShell render the real components.
   --topbar-h: 48px;
   --sidebar-w: 256px;
+  // AppShell's desktop nav collapses to this width at rest (a bare hover/
+  // focus target, not an icon rail -- see the .app-sidenav-rail rules
+  // below) and expands back to --sidebar-w only while it's actually being
+  // used.
+  --sidebar-rail-w: 6px;
 
   font-family: var(--font-sans);
   background: var(--cds-background);
@@ -354,16 +359,48 @@ body[data-accent="denim"] { --accent: #3b6ea5; }
   padding: var(--space-5);
 }
 
-// Carbon's own Content margin rule (@carbon/styles ui-shell/content) is a
-// fixed mini-units() figure that assumes SideNav's default rail width, not
-// our actual 256px (--sidebar-w) persistent nav -- it undershoots and lets
-// the nav rail cover the first ~236px of every app page. Override with the
-// real width, only above the breakpoint Carbon's own SideNav CSS treats as
-// "persistent" (66rem/1056px; below it the nav becomes a hamburger-toggled
-// overlay that must not push content over).
+// The desktop nav is a hover-reveal rail (isRail, below), not a fixed
+// permanent sidebar: collapsed to a thin edge by default so the page gets
+// full width while nothing is being picked, and only flies out to its full
+// 256px width -- as a fixed-position overlay on top of the content, not by
+// pushing it over -- while the pointer (or keyboard focus, for anyone
+// tabbing through it) is actually on it. Content's margin only needs to
+// clear the permanent collapsed sliver, not the occasional hover-expanded
+// width. Carbon's own Content margin rule (@carbon/styles ui-shell/content)
+// assumes neither figure, so it's overridden outright, only above the
+// breakpoint Carbon's own SideNav CSS treats as "persistent" (66rem/1056px;
+// below it the nav is a hamburger-toggled drawer that must not push content
+// over at all).
 @media (min-width: 66rem) {
   .cds--content.app-content {
-    margin-inline-start: var(--sidebar-w);
+    margin-inline-start: var(--sidebar-rail-w);
+  }
+}
+
+// Carbon's own .cds--side-nav--rail collapsed width (mini-units(6), 48px)
+// assumes icon-only nav items to show at that width -- ours are plain text
+// links with no icons, so at 48px they'd just show clipped, unreadable
+// fragments of each label instead of reading as "collapsed". Shrink the
+// collapsed state down to a thin, deliberately-bare hover/focus target
+// instead (the expanded-on-hover width is untouched -- that's Carbon's own
+// .cds--side-nav--expanded rule, unaffected by this). Scoped to >=66rem:
+// Carbon's own .cds--side-nav--rail width isn't breakpoint-scoped, so
+// without this override it would also override the mobile drawer's
+// closed (0-width) state below that.
+@media (min-width: 66rem) {
+  .cds--side-nav.app-sidenav-rail:not(.cds--side-nav--expanded) {
+    inline-size: var(--sidebar-rail-w);
+    // A sliver this thin in Carbon's own side-nav background (same as the
+    // page background) would be invisible, not just unobtrusive -- nothing
+    // left to show a pointer where to find it again.
+    background: var(--accent);
+    opacity: 0.5;
+  }
+}
+
+@media (max-width: 65.98rem) {
+  .cds--side-nav.app-sidenav-rail:not(.cds--side-nav--expanded) {
+    inline-size: 0;
   }
 }
 

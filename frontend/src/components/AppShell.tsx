@@ -198,6 +198,8 @@ export function AppShell() {
                 aria-label="Side navigation"
                 expanded={isSideNavExpanded}
                 isPersistent
+                isRail
+                className="app-sidenav-rail"
                 onSideNavBlur={onClickSideNavExpand}
                 onOverlayClick={() => isSideNavExpanded && onClickSideNavExpand()}
                 href="#main-content"
