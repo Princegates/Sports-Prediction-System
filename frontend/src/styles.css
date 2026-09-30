@@ -1,8 +1,8 @@
 /* ==========================================================================
    DESIGN TOKENS
-   All --bg-*/--text-*/--accent-*/--space-*/--radius-*/--font-*/etc. custom
+   All --bg, --text, --accent, --space, --radius, --font (etc.) custom
    properties this file uses are defined in custom.scss, aliased onto real
-   Carbon (--cds-*) tokens -- that's the single source of truth for palette,
+   Carbon (--cds) tokens -- that is the single source of truth for palette,
    spacing, and type now. Nothing below this comment needs its own :root.
    ========================================================================== */
 
