@@ -17,12 +17,22 @@ interface Props {
 export function PredictionCard({ prediction, homeTeam, awayTeam, kickoff, competition, isLive, liveScore }: Props) {
   const navigate = useNavigate();
   const tilt = useTilt<HTMLDivElement>();
+  const goToMatch = () => navigate(`/app/match/${prediction.match_id}`);
 
   return (
     <div
       ref={tilt.ref}
       className="card match-card tilt-card"
-      onClick={() => navigate(`/app/match/${prediction.match_id}`)}
+      role="button"
+      tabIndex={0}
+      aria-label={`View prediction for ${homeTeam} vs ${awayTeam}`}
+      onClick={goToMatch}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          goToMatch();
+        }
+      }}
       onMouseMove={tilt.onMouseMove}
       onMouseLeave={tilt.onMouseLeave}
     >

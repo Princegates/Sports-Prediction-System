@@ -112,10 +112,12 @@ export function Dashboard() {
 
         {hasAccess && (
           <>
-            <div className="ai-search" onClick={() => setSearchOpen(true)}>
-              <span className="icon">◈</span>
+            <button type="button" className="ai-search" onClick={() => setSearchOpen(true)}>
+              <span className="icon" aria-hidden>
+                ◈
+              </span>
               <span className="placeholder">Search for a team to see its full AI profile...</span>
-            </div>
+            </button>
 
             <div className="example-prompts">
               {EXAMPLE_PROMPTS.map((prompt) => (
