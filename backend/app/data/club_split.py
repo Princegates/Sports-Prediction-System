@@ -118,32 +118,36 @@ def split_club(
                 if not candidates:
                     report.unmatched.append(f"{label}: not stored")
                     continue
-                if len(candidates) > 1:
-                    report.ambiguous.append(f"{label}: {len(candidates)} stored rows fit")
+                # Several rows fitting is fine when they're copies of one
+                # another -- the same fixture stored twice is still this
+                # club's fixture. Rows that differ can't be told apart.
+                shapes = {(m.home_team_id, m.away_team_id, m.home_score, m.away_score) for m in candidates}
+                if len(shapes) > 1:
+                    report.ambiguous.append(f"{label}: {len(candidates)} different stored rows fit")
                     continue
 
-                match = candidates[0]
-                changed = False
-                if home.id == restored.id and match.home_team_id == merged.id:
-                    match.home_team_id = restored.id
-                    changed = True
-                if away.id == restored.id and match.away_team_id == merged.id:
-                    match.away_team_id = restored.id
-                    changed = True
-                if not changed:
-                    report.already_right += 1
-                    continue
-                # Its Elo snapshot follows, except in a derby against the
-                # survivor, where both snapshots point at the survivor and
-                # can't be told apart -- a retrain rebuilds Elo from scratch.
-                if merged.id not in (match.home_team_id, match.away_team_id):
-                    db.execute(
-                        update(EloHistory)
-                        .where(EloHistory.match_id == match.id, EloHistory.team_id == merged.id)
-                        .values(team_id=restored.id)
-                    )
-                report.reassigned += 1
-                report.per_competition[competition] = report.per_competition.get(competition, 0) + 1
+                for match in candidates:
+                    changed = False
+                    if home.id == restored.id and match.home_team_id == merged.id:
+                        match.home_team_id = restored.id
+                        changed = True
+                    if away.id == restored.id and match.away_team_id == merged.id:
+                        match.away_team_id = restored.id
+                        changed = True
+                    if not changed:
+                        report.already_right += 1
+                        continue
+                    # Its Elo snapshot follows, except in a derby against the
+                    # survivor, where both snapshots point at the survivor and
+                    # can't be told apart -- a retrain rebuilds Elo from scratch.
+                    if merged.id not in (match.home_team_id, match.away_team_id):
+                        db.execute(
+                            update(EloHistory)
+                            .where(EloHistory.match_id == match.id, EloHistory.team_id == merged.id)
+                            .values(team_id=restored.id)
+                        )
+                    report.reassigned += 1
+                    report.per_competition[competition] = report.per_competition.get(competition, 0) + 1
 
     report.requests_used = client.quota.used_this_run
     if apply:

@@ -18,11 +18,11 @@ on:
       restore_name:
         description: "Name for the club being separated out"
         required: false
-        default: "Inter"
+        default: "FC Internazionale Milano"
       restore_aliases:
         description: "Other spellings of that club, space-separated and quoted"
         required: false
-        default: '"FC Internazionale Milano" "Internazionale" "Inter Milan"'
+        default: '"Inter" "Internazionale" "Inter Milan"'
       competitions:
         description: "Competitions to check, space-separated and quoted"
         required: false

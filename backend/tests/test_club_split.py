@@ -56,6 +56,8 @@ def test_inter_is_separated_back_out_of_ac_milan(db_session):
     milan_home = match(IT, dt.datetime(2024, 10, 6, 20, 45), merged, torino, (1, 1))   # really Milan
     derby = match(IT, dt.datetime(2024, 11, 3, 20, 45), merged, merged, (1, 2))       # Inter vs Milan
     inter_euro = match(UEL, dt.datetime(2026, 9, 24, 21, 0), porto, merged, (0, 3))    # really Inter
+    copy_a = match(IT, dt.datetime(2025, 3, 8, 20, 45), merged, torino, (3, 2))        # Inter, stored twice
+    copy_b = match(IT, dt.datetime(2025, 3, 8, 20, 45), merged, torino, (3, 2))
     db.add(EloHistory(team_id=merged.id, match_id=inter_home.id, date=inter_home.date,
                       rating_before=1600, rating_after=1610))
     db.commit()
@@ -65,25 +67,26 @@ def test_inter_is_separated_back_out_of_ac_milan(db_session):
             _fixture(1, "2024-10-05T18:45:00", "Inter", "Napoli", (2, 0)),
             _fixture(2, "2024-10-06T18:45:00", "AC Milan", "Torino", (1, 1)),
             _fixture(3, "2024-11-03T19:45:00", "Inter", "AC Milan", (1, 2)),
+            _fixture(5, "2025-03-08T19:45:00", "Inter", "Torino", (3, 2)),
         ],
         3: [_fixture(4, "2026-09-24T19:00:00", "FC Porto", "Inter", (0, 3))],
     })
 
-    dry = split_club(db, client, league=IT, merged_name="AC Milan", restore_name="Inter",
-                     restore_aliases=["FC Internazionale Milano"], competitions=[IT, UEL], seasons=[2024])
-    assert dry.reassigned == 3
+    dry = split_club(db, client, league=IT, merged_name="AC Milan", restore_name="FC Internazionale Milano",
+                     restore_aliases=["Inter", "Internazionale"], competitions=[IT, UEL], seasons=[2024])
+    assert dry.reassigned == 5
     db.expire_all()
-    assert db.query(Team).filter_by(league=IT, name="Inter").count() == 0, "a dry run writes nothing"
+    assert db.query(Team).filter_by(league=IT, name="FC Internazionale Milano").count() == 0, "a dry run writes nothing"
 
-    report = split_club(db, client, league=IT, merged_name="AC Milan", restore_name="Inter",
-                        restore_aliases=["FC Internazionale Milano"], competitions=[IT, UEL], seasons=[2024],
+    report = split_club(db, client, league=IT, merged_name="AC Milan", restore_name="FC Internazionale Milano",
+                        restore_aliases=["Inter", "Internazionale"], competitions=[IT, UEL], seasons=[2024],
                         apply=True)
 
-    assert report.created and report.reassigned == 3
-    inter = db.query(Team).filter_by(league=IT, name="Inter").one()
+    assert report.created and report.reassigned == 5
+    inter = db.query(Team).filter_by(league=IT, name="FC Internazionale Milano").one()
     milan = db.query(Team).filter_by(league=IT, name="AC Milan").one()
     assert "FC Internazionale Milano" not in milan.aliases
-    assert "FC Internazionale Milano" in inter.aliases
+    assert "Inter" in inter.aliases
 
     assert db.get(Match, inter_home.id).home_team_id == inter.id
     assert db.get(Match, milan_home.id).home_team_id == milan.id, "Milan's own match stays"
@@ -91,12 +94,14 @@ def test_inter_is_separated_back_out_of_ac_milan(db_session):
     assert (d.home_team_id, d.away_team_id) == (inter.id, milan.id)
     assert db.get(Match, inter_euro.id).away_team_id == inter.id
     assert db.query(EloHistory).filter_by(match_id=inter_home.id).one().team_id == inter.id
+    assert {db.get(Match, m.id).home_team_id for m in (copy_a, copy_b)} == {inter.id}, "both copies are Inter's"
 
     index = TeamIndex(db)
     assert index.resolve("Inter", prefer_league=IT).id == inter.id
     assert index.resolve("AC Milan", prefer_league=IT).id == milan.id
+    assert index.resolve("Inter Club d'Escaldes") is None, "an Andorran club is not Inter"
 
-    again = split_club(db, client, league=IT, merged_name="AC Milan", restore_name="Inter",
-                       restore_aliases=["FC Internazionale Milano"], competitions=[IT, UEL], seasons=[2024],
+    again = split_club(db, client, league=IT, merged_name="AC Milan", restore_name="FC Internazionale Milano",
+                       restore_aliases=["Inter", "Internazionale"], competitions=[IT, UEL], seasons=[2024],
                        apply=True)
-    assert again.reassigned == 0 and again.already_right == 3, "safe to re-run"
+    assert again.reassigned == 0 and again.already_right == 5, "safe to re-run"
