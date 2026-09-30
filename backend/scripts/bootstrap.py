@@ -28,6 +28,7 @@ the admin account is created non-interactively.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import os
 import subprocess
 import sys
@@ -37,10 +38,25 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-# Seasons worth importing by default: enough history to train on, plus the
-# current one so there are fixtures to predict.
-DEFAULT_SEASONS = ["2021-22", "2022-23", "2023-24", "2024-25", "2025-26", "2026-27"]
 DEFAULT_LEAGUES = ["English Premier League"]
+
+# Fixtures and results come from API-Football alone. The free feeds
+# (openfootball, TheSportsDB) used to fill this step, and running both at once
+# stored every match twice under two spellings of each club -- see
+# app/data/source_cleanup.py. One request per league per season, so a daily
+# refresh of every league costs about ten requests of a 7,500 daily budget.
+API_FOOTBALL_MAX_REQUESTS = 200
+
+
+def season_start_year(season: str) -> int:
+    """API-Football names a season by the year it starts: "2025-26" -> 2025."""
+
+    return int(season.split("-")[0])
+
+
+def current_season_start(today: dt.date | None = None) -> int:
+    today = today or dt.date.today()
+    return today.year if today.month >= 7 else today.year - 1
 
 
 def run(label: str, args: list[str], required: bool = True) -> bool:
@@ -71,7 +87,9 @@ def run(label: str, args: list[str], required: bool = True) -> bool:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--leagues", nargs="+", default=DEFAULT_LEAGUES)
-    parser.add_argument("--seasons", nargs="+", default=DEFAULT_SEASONS)
+    parser.add_argument("--seasons", nargs="+", default=None,
+                        help="Seasons to import, e.g. 2025-26 or 2025. Default: the current season only; "
+                             "pass earlier ones to backfill history on a fresh database.")
     parser.add_argument("--days-ahead", type=int, default=14)
     parser.add_argument("--skip-training", action="store_true", help="Import data but don't train or backtest")
     parser.add_argument("--skip-data", action="store_true", help="Train on data already imported")
@@ -80,7 +98,8 @@ def main() -> None:
 
     print("Bootstrapping AI Football Prediction & Analytics System")
     print(f"  leagues: {', '.join(args.leagues)}")
-    print(f"  seasons: {', '.join(args.seasons)}")
+    seasons = [season_start_year(s) for s in args.seasons] if args.seasons else [current_season_start()]
+    print(f"  seasons: {', '.join(str(s) for s in seasons)}")
 
     # Import the app late so a missing dependency surfaces as a clear error
     # here rather than a traceback from inside a subprocess.
@@ -103,19 +122,51 @@ def main() -> None:
     init_db(engine)
     print("-- schema ready")
 
+    cleaned_leagues: list[str] = []
     if not args.skip_data:
+        from app.data.providers.api_football import LEAGUE_IDS
+
+        api_leagues = [lg for lg in args.leagues if lg in LEAGUE_IDS]
         for league in args.leagues:
+            if league not in LEAGUE_IDS:
+                print(f"\n!! {league}: no API-Football league id known -- not imported", file=sys.stderr, flush=True)
+        if api_leagues:
             run(
-                f"Importing {league}",
-                ["scripts/fetch_openfootball_data.py", "--league", league, "--seasons", *args.seasons],
+                "Importing fixtures and results from API-Football",
+                [
+                    "scripts/import_api_football.py",
+                    "--leagues", *api_leagues,
+                    "--seasons", *[str(s) for s in seasons],
+                    "--max-requests", str(API_FOOTBALL_MAX_REQUESTS),
+                ],
                 required=False,
             )
+        # Folds what the free feeds stored into API-Football's rows, for every
+        # league rather than just this run's: it spends no API requests, and a
+        # league API-Football has never returned fixtures for is left exactly
+        # as it is.
+        changed_file = ROOT / ".retired_leagues.txt"
+        changed_file.unlink(missing_ok=True)
+        run(
+            "Retiring duplicates left by the free fixture feeds",
+            [
+                "scripts/retire_free_fixtures.py", "--leagues", *LEAGUE_IDS, "--apply",
+                "--changed-leagues-file", str(changed_file),
+            ],
+            required=False,
+        )
+        if changed_file.exists():
+            # A merged club's upcoming predictions were built on half its
+            # history -- rebuild them even for a league this run didn't import.
+            cleaned_leagues = [lg for lg in changed_file.read_text().splitlines() if lg]
+            changed_file.unlink()
 
     # None when training didn't run this time (a daily refresh reusing models
     # a weekly retrain produced); True/False when it did. Predicting with a
     # model whose training just failed buries the failure behind numbers that
     # look perfectly plausible, so that case is skipped loudly.
     trained: bool | None = None
+    prediction_leagues = [*args.leagues, *(lg for lg in cleaned_leagues if lg not in args.leagues)]
     if not args.skip_training:
         # One ML model per league, not pooled. An earlier version of this ran
         # `backtest.py --pool-leagues` for the multi-league case, on the
@@ -163,7 +214,7 @@ def main() -> None:
             flush=True,
         )
     else:
-        for league in args.leagues:
+        for league in prediction_leagues:
             run(
                 f"Generating predictions for {league}",
                 [

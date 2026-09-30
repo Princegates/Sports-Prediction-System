@@ -104,6 +104,13 @@ class TeamIndex:
         self._by_canonical: dict[str, Team] = {}
         for team in self._teams:
             self._by_canonical.setdefault(canonical_alias(team.name), team)
+        # Stored aliases after every real name, so a name never loses to an
+        # alias. A club merged by app.data.source_cleanup keeps its other
+        # spellings here -- without this, the next import that used one of
+        # them would start a fresh, history-less row for the club all over.
+        for team in self._teams:
+            for alias in team.aliases or []:
+                self._by_canonical.setdefault(canonical_alias(alias), team)
 
     def create(self, name: str, league: str) -> Team:
         """Add a new club, for a domestic league importing for the first time.
@@ -264,6 +271,17 @@ def import_fixtures(
         if m.status == "SCHEDULED":
             scheduled_by_pair.setdefault((m.home_team_id, m.away_team_id), []).append(m)
 
+    # Results another feed already stored, not yet tied to a provider
+    # fixture. openfootball kept local kickoff times as if they were UTC, so
+    # its rows sit an hour or two off the provider's; an exact-timestamp key
+    # would store every one of those results a second time and the model
+    # would learn each of them twice.
+    unclaimed_results: dict[tuple[int, int], list[Match]] = {}
+    for m in stored:
+        if m.status == "FINISHED" and m.api_fixture_id is None:
+            unclaimed_results.setdefault((m.home_team_id, m.away_team_id), []).append(m)
+    SAME_RESULT_WINDOW = dt.timedelta(days=1)
+
     for row in rows:
         report.considered += 1
         fixture = row.get("fixture") or {}
@@ -310,6 +328,17 @@ def import_fixtures(
                 if abs(candidate.date - kickoff) <= RESCHEDULE_WINDOW:
                     match = candidate
                     pending.remove(candidate)  # claimed; a later provider row must not also snap onto it
+                    break
+
+        if match is None and finished:
+            # Two results between the same clubs, same direction, within a
+            # day of each other and with the same score are one match.
+            done = unclaimed_results.get((home.id, away.id)) or []
+            for candidate in done:
+                same_score = (candidate.home_score, candidate.away_score) == (goals.get("home"), goals.get("away"))
+                if same_score and abs(candidate.date - kickoff) <= SAME_RESULT_WINDOW:
+                    match = candidate
+                    done.remove(candidate)
                     break
 
         if match is None:

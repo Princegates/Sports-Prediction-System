@@ -13,9 +13,10 @@ calls are spaced to respect the per-minute cap. Callers get an exception they
 can catch and degrade from -- never a silent partial result, which is the
 failure mode that would quietly corrupt a day's predictions.
 
-This provider is a supplement, not a replacement. openfootball supplies the
-historical bulk for free and without limits; this is spent only on what that
-cannot do -- European competitions, lineups, injuries and market odds.
+This is the project's only fixture and result source. It started as a
+supplement to openfootball's free season files, but running both stored every
+match twice under two spellings of each club (see app/data/source_cleanup.py),
+so the daily refresh now imports from here alone.
 """
 
 from __future__ import annotations
@@ -36,6 +37,7 @@ DIRECT_HOST = "v3.football.api-sports.io"
 # API-Football's own league ids. Fixed by the provider, not by us.
 LEAGUE_IDS: dict[str, int] = {
     "English Premier League": 39,
+    "English Championship": 40,
     "Spanish La Liga": 140,
     "Italian Serie A": 135,
     "German Bundesliga": 78,

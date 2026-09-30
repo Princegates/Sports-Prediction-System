@@ -20,4 +20,5 @@ frontend/.env
 *.log
 .pytest_cache/
 backend/model_artifacts/
+backend/.retired_leagues.txt
 *.joblib

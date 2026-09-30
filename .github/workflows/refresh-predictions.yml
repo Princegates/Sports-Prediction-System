@@ -3,8 +3,9 @@
 # Two schedules, because the two halves of the job cost wildly different
 # amounts:
 #
-#   - DAILY refresh: pull new results, regenerate predictions. Reads the
-#     matches that changed. Cheap.
+#   - DAILY refresh: pull this season's fixtures and results from
+#     API-Football (the only fixture source), regenerate predictions. Reads
+#     the matches that changed. Cheap.
 #   - WEEKLY retrain: rebuild Elo, refit the models and calibrators, backtest.
 #     Reads every match in every league.
 #
@@ -112,10 +113,16 @@ jobs:
             exit 0
           fi
 
+          # Fixtures and results come from API-Football only (one request per
+          # league per season). refresh/retrain import the current season;
+          # seed also backfills the five before it, for a fresh database.
           case "$MODE" in
-            retrain|seed) FLAGS="" ;;
-            refresh)      FLAGS="--skip-training" ;;
-            *)            echo "Unknown mode: $MODE" >&2; exit 1 ;;
+            retrain) FLAGS="" ;;
+            refresh) FLAGS="--skip-training" ;;
+            seed)
+              Y=$(date -u +%Y); [ "$(date -u +%-m)" -lt 7 ] && Y=$((Y - 1))
+              FLAGS="--seasons $(seq -s ' ' $((Y - 5)) $Y)" ;;
+            *)       echo "Unknown mode: $MODE" >&2; exit 1 ;;
           esac
 
           echo "Mode: $MODE"

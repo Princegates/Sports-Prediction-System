@@ -81,10 +81,19 @@ text on any failure — so the assistant costs nothing to run.
 
 ## Zero-cost by design
 
-Every data source and every piece of infrastructure in this build is free.
-There are two interchangeable historical/fixture providers -- use whichever
-one your network can actually reach (some sandboxes/corporate networks only
-allow GitHub, in which case openfootball is the one that works):
+> **Fixtures and results now come from API-Football only.** The daily
+> refresh (`scripts/bootstrap.py`, run by `refresh-predictions.yml`) imports
+> each league's current season from API-Football -- one request per league --
+> and no longer touches the free feeds below. Running both at once stored
+> every match twice under two spellings of each club; the refresh also folds
+> anything the free feeds left behind into API-Football's rows
+> (`app/data/source_cleanup.py`, dry run: `scripts/retire_free_fixtures.py`).
+> The free providers stay in the codebase for manual historical backfills.
+
+Every data source and every piece of infrastructure in this build was
+originally free. There are two interchangeable historical/fixture providers
+-- use whichever one your network can actually reach (some sandboxes/corporate
+networks only allow GitHub, in which case openfootball is the one that works):
 
 | Need                     | Source                                                                 | Cost |
 |---------------------------|-------------------------------------------------------------------------|------|
