@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { fetchMatch, fetchMostLikely } from "../api";
 import { LEAGUES, leagueLabel, useLeague } from "../components/AppShell";
 import { CopyButton } from "../components/CopyButton";
@@ -197,6 +197,12 @@ export function Predictions() {
           )}
         </div>
       </div>
+
+      <p className="setting-note" style={{ marginBottom: 16 }}>
+        These are the system's own top-rated picks, ranked by model confidence. Want to build your
+        own selections instead? Head to <Link to="/app/markets">Markets</Link> to browse every
+        outcome across every match and choose for yourself.
+      </p>
 
       <div className="filter-bar" style={{ marginBottom: 20 }}>
         {(["ALL", "HIGH", "MEDIUM", "LOW"] as ConfidenceFilter[]).map((c) => (

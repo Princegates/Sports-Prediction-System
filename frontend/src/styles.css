@@ -4773,6 +4773,13 @@ table.admin-table {
   max-width: 70ch;
 }
 
+.setting-note a {
+  color: var(--accent-strong);
+  font-weight: 560;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .settings-actions {
   display: flex;
   align-items: center;
