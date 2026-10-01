@@ -484,6 +484,10 @@ h1, h2, h3, h4 {
 .market-picker-search {
   width: 100%;
   box-sizing: border-box;
+  /* iOS Safari zooms the whole page in on focusing any text input under
+     16px -- this one autofocuses the instant the panel opens, so without
+     this override that zoom fired immediately every time, on every phone. */
+  font-size: 16px;
 }
 
 .market-picker-presets {
