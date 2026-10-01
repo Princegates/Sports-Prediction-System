@@ -578,17 +578,6 @@ export function Markets() {
                 {featuring ? "Featuring…" : "★ Feature as Admin Pick (no odds)"}
               </button>
             )}
-            <button
-              type="button"
-              className="btn ghost"
-              onClick={() =>
-                navigate("/app/betcodes", {
-                  state: { picks: picks.map((p) => ({ match_id: p.match_id, market: p.market, selection: p.selection })) },
-                })
-              }
-            >
-              Send {picks.length} pick{picks.length === 1 ? "" : "s"} to AI Generation
-            </button>
             <button type="button" className="btn ghost" onClick={() => setPicks([])}>
               Clear all
             </button>
