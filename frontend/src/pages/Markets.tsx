@@ -645,79 +645,140 @@ export function Markets() {
                     <div className="sub" style={{ marginBottom: 6, fontWeight: 600 }}>
                       {dateLabel}
                     </div>
-                    <p className="scroll-hint">Swipe to see every market →</p>
-                    <div className="predictions-table-wrapper">
-                      <table className="predictions-table odds-grid">
-                        <thead>
-                          <tr>
-                            <th rowSpan={2} className="match-col">
-                              Match
-                            </th>
-                            {gridMarkets.map((g) => (
-                              <th key={g.market} colSpan={g.columns.length} className="market-head">
-                                {g.market}
+                    <div className="coupon-table-desktop">
+                      <p className="scroll-hint">Swipe to see every market →</p>
+                      <div className="predictions-table-wrapper">
+                        <table className="predictions-table odds-grid">
+                          <thead>
+                            <tr>
+                              <th rowSpan={2} className="match-col">
+                                Match
                               </th>
-                            ))}
-                          </tr>
-                          <tr>
-                            {gridMarkets.flatMap((g) =>
-                              g.columns.map((c, i) => (
-                                <th
-                                  key={cellKey(c.market, c.selection)}
-                                  className={`selection-head tabular-nums${i === 0 ? " market-start" : ""}`}
-                                  title={c.selection}
-                                >
-                                  {c.header}
+                              {gridMarkets.map((g) => (
+                                <th key={g.market} colSpan={g.columns.length} className="market-head">
+                                  {g.market}
                                 </th>
-                              )),
-                            )}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {rows.map((row) => {
-                            const tops = new Set(highlightGroups.map((g) => topKeyIn(row, g)).filter(Boolean) as string[]);
-                            const picked = pickedFor(row.match_id);
-                            return (
-                              <tr key={row.match_id}>
-                                <td className="match-col">
-                                  <div className="match-cell" style={{ cursor: "pointer" }} onClick={() => navigate(`/app/match/${row.match_id}`)}>
-                                    {row.home_team} vs {row.away_team}
-                                  </div>
-                                  <div className="sub">{formatTime(row.kickoff)}</div>
-                                </td>
-                                {gridMarkets.flatMap((g) =>
-                                  g.columns.map((c, i) => {
+                              ))}
+                            </tr>
+                            <tr>
+                              {gridMarkets.flatMap((g) =>
+                                g.columns.map((c, i) => (
+                                  <th
+                                    key={cellKey(c.market, c.selection)}
+                                    className={`selection-head tabular-nums${i === 0 ? " market-start" : ""}`}
+                                    title={c.selection}
+                                  >
+                                    {c.header}
+                                  </th>
+                                )),
+                              )}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rows.map((row) => {
+                              const tops = new Set(highlightGroups.map((g) => topKeyIn(row, g)).filter(Boolean) as string[]);
+                              const picked = pickedFor(row.match_id);
+                              return (
+                                <tr key={row.match_id}>
+                                  <td className="match-col">
+                                    <div className="match-cell" style={{ cursor: "pointer" }} onClick={() => navigate(`/app/match/${row.match_id}`)}>
+                                      {row.home_team} vs {row.away_team}
+                                    </div>
+                                    <div className="sub">{formatTime(row.kickoff)}</div>
+                                  </td>
+                                  {gridMarkets.flatMap((g) =>
+                                    g.columns.map((c, i) => {
+                                      const key = cellKey(c.market, c.selection);
+                                      const o = row.cells.get(key);
+                                      const isPicked = !!o && picked?.market === o.market && picked?.selection === o.selection;
+                                      return (
+                                        <td key={key} className={i === 0 ? "market-start" : undefined} style={{ textAlign: "center" }}>
+                                          {o ? (
+                                            <button
+                                              type="button"
+                                              className={`odds-cell${tops.has(key) ? " ai-top" : ""}${isPicked ? " picked" : ""}`}
+                                              onClick={() => togglePick(o)}
+                                              title={`${o.market}: ${o.selection} -- ${o.definition} AI probability ${(o.probability * 100).toFixed(0)}%${isHotPick(o.probability, o.data_quality_score, o.model_agreement_score) ? " -- hot pick" : ""}`}
+                                            >
+                                              {(o.probability * 100).toFixed(0)}%
+                                              {isHotPick(o.probability, o.data_quality_score, o.model_agreement_score) && (
+                                                <span style={{ marginLeft: 2 }}>
+                                                  <HotPickBadge compact />
+                                                </span>
+                                              )}
+                                            </button>
+                                          ) : (
+                                            <span className="odds-cell empty">—</span>
+                                          )}
+                                        </td>
+                                      );
+                                    }),
+                                  )}
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Sportsbook-style list for phone widths -- the grid
+                        above needs a horizontal swipe once more than one or
+                        two markets are ticked, which isn't how a betting
+                        app's coupon reads on a phone. One card per match
+                        instead, each ticked market as its own labeled row of
+                        outcome buttons read top to bottom, never sideways. */}
+                    <div className="coupon-mobile-list">
+                      {rows.map((row) => {
+                        const tops = new Set(highlightGroups.map((g) => topKeyIn(row, g)).filter(Boolean) as string[]);
+                        const picked = pickedFor(row.match_id);
+                        return (
+                          <div className="coupon-mobile-card" key={row.match_id}>
+                            <div className="coupon-mobile-match" onClick={() => navigate(`/app/match/${row.match_id}`)}>
+                              <div className="match-cell">
+                                {row.home_team} vs {row.away_team}
+                              </div>
+                              <div className="sub">{formatTime(row.kickoff)}</div>
+                            </div>
+                            {gridMarkets.map((g) => (
+                              <div className="coupon-mobile-market" key={g.market}>
+                                <div className="coupon-mobile-market-label">{g.market}</div>
+                                <div className="coupon-mobile-odds-row">
+                                  {g.columns.map((c) => {
                                     const key = cellKey(c.market, c.selection);
                                     const o = row.cells.get(key);
                                     const isPicked = !!o && picked?.market === o.market && picked?.selection === o.selection;
-                                    return (
-                                      <td key={key} className={i === 0 ? "market-start" : undefined} style={{ textAlign: "center" }}>
-                                        {o ? (
-                                          <button
-                                            type="button"
-                                            className={`odds-cell${tops.has(key) ? " ai-top" : ""}${isPicked ? " picked" : ""}`}
-                                            onClick={() => togglePick(o)}
-                                            title={`${o.market}: ${o.selection} -- ${o.definition} AI probability ${(o.probability * 100).toFixed(0)}%${isHotPick(o.probability, o.data_quality_score, o.model_agreement_score) ? " -- hot pick" : ""}`}
-                                          >
-                                            {(o.probability * 100).toFixed(0)}%
-                                            {isHotPick(o.probability, o.data_quality_score, o.model_agreement_score) && (
-                                              <span style={{ marginLeft: 2 }}>
-                                                <HotPickBadge compact />
-                                              </span>
-                                            )}
-                                          </button>
-                                        ) : (
-                                          <span className="odds-cell empty">—</span>
-                                        )}
-                                      </td>
+                                    return o ? (
+                                      <button
+                                        key={key}
+                                        type="button"
+                                        className={`odds-cell coupon-mobile-odds-btn${tops.has(key) ? " ai-top" : ""}${isPicked ? " picked" : ""}`}
+                                        onClick={() => togglePick(o)}
+                                        title={`${o.market}: ${o.selection} -- ${o.definition} AI probability ${(o.probability * 100).toFixed(0)}%${isHotPick(o.probability, o.data_quality_score, o.model_agreement_score) ? " -- hot pick" : ""}`}
+                                      >
+                                        <span className="coupon-mobile-odds-label">{c.header}</span>
+                                        <span className="coupon-mobile-odds-value">
+                                          {(o.probability * 100).toFixed(0)}%
+                                          {isHotPick(o.probability, o.data_quality_score, o.model_agreement_score) && (
+                                            <span style={{ marginLeft: 2 }}>
+                                              <HotPickBadge compact />
+                                            </span>
+                                          )}
+                                        </span>
+                                      </button>
+                                    ) : (
+                                      <span key={key} className="odds-cell coupon-mobile-odds-btn empty">
+                                        <span className="coupon-mobile-odds-label">{c.header}</span>
+                                        <span className="coupon-mobile-odds-value">—</span>
+                                      </span>
                                     );
-                                  }),
-                                )}
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
+                                  })}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 ))}

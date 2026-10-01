@@ -1595,6 +1595,72 @@ table.predictions-table.odds-grid .match-col .sub {
   overflow-wrap: break-word;
 }
 
+/* The coupon builder's per-match card list for phone widths (Markets.tsx,
+   the "coupon" view) -- a sportsbook-style list (team names, then each
+   ticked market as its own row of outcome buttons) instead of the grid
+   table above, which needs a horizontal swipe the moment more than one or
+   two markets are selected. Hidden above the phone breakpoint, where
+   .coupon-table-desktop takes over instead -- see the media query below. */
+.coupon-mobile-list {
+  display: none;
+}
+
+.coupon-mobile-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  margin-bottom: 12px;
+}
+
+.coupon-mobile-match {
+  cursor: pointer;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.coupon-mobile-market + .coupon-mobile-market {
+  margin-top: 12px;
+}
+
+.coupon-mobile-market-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.coupon-mobile-odds-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* The grid's plain odds-cell is just a centered number -- here each button
+   also carries its own outcome label (c.header), since there's no shared
+   header row above a card list the way the grid's <thead> provides one. */
+.coupon-mobile-odds-btn {
+  flex: 1 1 72px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 6px;
+}
+
+.coupon-mobile-odds-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.coupon-mobile-odds-btn.ai-top .coupon-mobile-odds-label,
+.coupon-mobile-odds-btn.picked .coupon-mobile-odds-label {
+  color: inherit;
+  opacity: 0.8;
+}
+
 /* A wide table (or the odds grid, whatever its width) still won't fit a
    phone screen -- it scrolls, but nothing about a plain <table> signals
    that on its own. Every predictions-table-wrapper that's realistically
@@ -1635,11 +1701,18 @@ table.predictions-table.odds-grid .match-col .sub {
    scroll strip nobody wants to pan through one-handed). Opt-in per table
    (`.cards-on-mobile`, on the Predictions page's flat/tiers table, the
    Markets "list by probability" table, and AI Generation's leg-preview
-   table -- the odds-grid coupon builder is a genuine comparison matrix,
-   not a record list, so it keeps the scroll pattern instead) so the
-   transform below only fires where the JSX actually supplies the
-   `data-label` it reads. */
+   table -- the odds-grid coupon builder gets its own sportsbook-style card
+   list instead, see .coupon-mobile-list above) so the transform below only
+   fires where the JSX actually supplies the `data-label` it reads. */
 @media (max-width: 640px) {
+  .coupon-table-desktop {
+    display: none;
+  }
+
+  .coupon-mobile-list {
+    display: block;
+  }
+
   table.predictions-table.wide.cards-on-mobile {
     min-width: 0;
   }
