@@ -1709,14 +1709,16 @@ table.predictions-table.odds-grid .match-col .sub {
   cursor: pointer;
 }
 
-/* A wide table doesn't just need a swipe hint on a phone -- it's genuinely
-   the wrong pattern there (seven columns, most of them one cell wide, in a
-   scroll strip nobody wants to pan through one-handed). Opt-in per table
-   (`.cards-on-mobile`, on the Predictions page's flat/tiers table, the
-   Markets "list by probability" table, and AI Generation's leg-preview
-   table -- the odds-grid coupon builder gets its own sportsbook-style card
-   list instead, see .coupon-mobile-list above) so the transform below only
-   fires where the JSX actually supplies the `data-label` it reads. */
+/* A table that needs a horizontal swipe isn't a genuine phone pattern --
+   most of that scroll strip is one narrow cell at a time. Opt-in per table
+   (`.cards-on-mobile`, on the Predictions page's flat/tiers table, both of
+   Markets' own tables ("list by probability" and the narrower "My picks"
+   summary), and AI Generation's leg-preview table -- the odds-grid coupon
+   builder gets its own sportsbook-style card list instead, see
+   .coupon-mobile-list above) so the transform below only fires where the
+   JSX actually supplies the `data-label` it reads. Not tied to `.wide`:
+   that class is about the desktop column-width floor, unrelated to
+   whether a table wants this phone treatment. */
 @media (max-width: 640px) {
   .coupon-table-desktop {
     display: none;
@@ -1726,18 +1728,18 @@ table.predictions-table.odds-grid .match-col .sub {
     display: block;
   }
 
-  table.predictions-table.wide.cards-on-mobile {
+  table.predictions-table.cards-on-mobile {
     min-width: 0;
   }
 
-  table.predictions-table.wide.cards-on-mobile thead {
+  table.predictions-table.cards-on-mobile thead {
     display: none;
   }
 
-  table.predictions-table.wide.cards-on-mobile,
-  table.predictions-table.wide.cards-on-mobile tbody,
-  table.predictions-table.wide.cards-on-mobile tr,
-  table.predictions-table.wide.cards-on-mobile td {
+  table.predictions-table.cards-on-mobile,
+  table.predictions-table.cards-on-mobile tbody,
+  table.predictions-table.cards-on-mobile tr,
+  table.predictions-table.cards-on-mobile td {
     display: block;
     /* !important: a couple of these tds carry their desktop column width as
        an inline style (e.g. the Markets "Add" button cell), which otherwise
@@ -1746,12 +1748,12 @@ table.predictions-table.odds-grid .match-col .sub {
     width: 100% !important;
   }
 
-  table.predictions-table.wide.cards-on-mobile tbody tr {
+  table.predictions-table.cards-on-mobile tbody tr {
     position: relative;
     padding: 14px 16px 14px 40px;
   }
 
-  table.predictions-table.wide.cards-on-mobile td {
+  table.predictions-table.cards-on-mobile td {
     padding: 3px 0;
     border-bottom: none;
   }
@@ -1760,7 +1762,7 @@ table.predictions-table.odds-grid .match-col .sub {
      labels the way the "table -> definition list" version of this pattern
      usually does would leave almost no width for the value itself once a
      checkbox indent is added on the left). */
-  table.predictions-table.wide.cards-on-mobile td[data-label]:not([data-label=""])::before {
+  table.predictions-table.cards-on-mobile td[data-label]:not([data-label=""])::before {
     content: attr(data-label);
     display: block;
     font-size: 10px;
@@ -1773,7 +1775,7 @@ table.predictions-table.odds-grid .match-col .sub {
   /* The row checkbox has no label of its own to show -- pulled out of flow
      into the top-left corner the rest of the card's padding already leaves
      for it, rather than appearing as just another labeled field. */
-  table.predictions-table.wide.cards-on-mobile td.predictions-select-col {
+  table.predictions-table.cards-on-mobile td.predictions-select-col {
     position: absolute;
     top: 14px;
     left: 12px;

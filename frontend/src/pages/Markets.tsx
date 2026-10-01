@@ -527,18 +527,18 @@ export function Markets() {
           </p>
 
           <div className="predictions-table-wrapper">
-            <table className="predictions-table">
+            <table className="predictions-table cards-on-mobile">
               <tbody>
                 {picks.map((o) => (
                   <tr key={o.match_id}>
-                    <td>
+                    <td data-label="Match">
                       <div className="match-cell">
                         {o.home_team} vs {o.away_team}
                       </div>
                       <div className="sub">{o.league}</div>
                     </td>
-                    <td className="sub">{o.market}</td>
-                    <td>
+                    <td className="sub" data-label="Market">{o.market}</td>
+                    <td data-label="Selection">
                       <strong>{o.selection}</strong>
                       {isHotPick(o.probability, o.data_quality_score, o.model_agreement_score) && (
                         <span style={{ marginLeft: 6 }}>
@@ -546,10 +546,10 @@ export function Markets() {
                         </span>
                       )}
                     </td>
-                    <td className="tabular-nums" style={{ width: 60 }}>
+                    <td className="tabular-nums" style={{ width: 60 }} data-label="Probability">
                       {(o.probability * 100).toFixed(0)}%
                     </td>
-                    <td style={{ width: 40 }}>
+                    <td style={{ width: 40 }} data-label="">
                       <button
                         type="button"
                         className="btn ghost"
