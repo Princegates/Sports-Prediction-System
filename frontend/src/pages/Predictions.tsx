@@ -8,7 +8,7 @@ import { ConfidenceTag } from "../components/MostLikelyOutcome";
 import { ErrorState } from "../components/ErrorState";
 import { EmptyState } from "../components/EmptyState";
 import { HotPickBadge } from "../components/HotPickBadge";
-import { formatSelection, formatSelections } from "../lib/copySelections";
+import { formatSelections } from "../lib/copySelections";
 import { downloadCsv, toCsv } from "../lib/csvExport";
 import { isHotPick } from "../lib/filters";
 import type { BetCodePick, MatchSummary, Prediction } from "../types";
@@ -188,7 +188,6 @@ export function Predictions() {
                 Kickoff {viewMode === "table" && sortKey === "kickoff" ? (sortDir === 1 ? "↑" : "↓") : ""}
               </th>
               <th>Status</th>
-              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -236,9 +235,6 @@ export function Predictions() {
                   </td>
                   <td data-label="Kickoff">{new Date(match.date).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
                   <td data-label="Status">{match.status}</td>
-                  <td data-label="">
-                    <CopyButton text={formatSelection(match, prediction)} />
-                  </td>
                 </tr>
               );
             })}
