@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.auth.passwords import hash_password
-from app.db.models import User
+from app.db.models import AuditLog, User
 from tests.test_api import _seed_league
 
 
@@ -129,6 +129,59 @@ def test_login_rejects_wrong_password(db_session):
     assert response.status_code == 401
 
 
+def test_successful_login_is_audit_logged(db_session):
+    from app.main import app
+
+    client = TestClient(app)
+    payload = {"email": "audited-login@example.com", "name": "Audited", "password": "a-good-password"}
+    client.post("/api/auth/register", json=payload)
+    db_session.query(AuditLog).delete()  # drop the registration entry, isolate the login
+    db_session.commit()
+
+    response = client.post("/api/auth/login", json={"email": payload["email"], "password": payload["password"]})
+    assert response.status_code == 200
+
+    entry = db_session.query(AuditLog).filter(AuditLog.action == "account.login").one()
+    assert entry.actor_email == payload["email"]
+    assert entry.target_user_id is not None
+
+
+def test_failed_login_is_audit_logged_even_for_an_unknown_email(db_session):
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/auth/login", json={"email": "nobody-here@example.com", "password": "whatever-123"}
+    )
+    assert response.status_code == 401
+
+    entry = db_session.query(AuditLog).filter(AuditLog.action == "account.login_failed").one()
+    assert entry.actor_email == "nobody-here@example.com"
+    assert entry.actor_user_id is None
+
+
+def test_suspended_login_attempt_is_audit_logged_as_blocked_not_failed(db_session):
+    from app.main import app
+
+    admin = _make_superadmin(db_session)
+    client = TestClient(app)
+    payload = {"email": "blocked-login@example.com", "name": "Blocked", "password": "a-good-password"}
+    client.post("/api/auth/register", json=payload)
+
+    admin_login = client.post("/api/auth/login", json={"email": admin.email, "password": "admin-password-1"})
+    admin_headers = {"Authorization": f"Bearer {admin_login.json()['access_token']}"}
+    users = client.get("/api/admin/users", headers=admin_headers).json()
+    user_id = next(row["id"] for row in users if row["email"] == payload["email"])
+    client.post(f"/api/admin/users/{user_id}/suspend", headers=admin_headers)
+
+    response = client.post("/api/auth/login", json={"email": payload["email"], "password": payload["password"]})
+    assert response.status_code == 403
+
+    entry = db_session.query(AuditLog).filter(AuditLog.action == "account.login_blocked").one()
+    assert entry.target_user_id == user_id
+    assert entry.detail["reason"] == "suspended"
+
+
 def test_full_register_login_trial_flow(db_session):
     """Registering and logging in no longer needs a superadmin in the loop,
     and the prediction surface isn't locked immediately either -- a
@@ -204,6 +257,28 @@ def test_update_profile_changes_name(db_session, auth_headers):
 
     me_resp = client.get("/api/auth/me", headers=auth_headers)
     assert me_resp.json()["name"] == "New Name"
+
+
+def test_update_profile_name_change_is_audit_logged(db_session, auth_headers):
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.patch("/api/auth/profile", json={"name": "Renamed Person"}, headers=auth_headers)
+    assert response.status_code == 200
+
+    entry = db_session.query(AuditLog).filter(AuditLog.action == "account.profile_updated").one()
+    assert entry.detail["to"] == "Renamed Person"
+
+
+def test_update_profile_is_not_logged_when_the_name_does_not_change(db_session, auth_headers):
+    from app.main import app
+
+    client = TestClient(app)
+    me = client.get("/api/auth/me", headers=auth_headers).json()
+    response = client.patch("/api/auth/profile", json={"name": me["name"]}, headers=auth_headers)
+    assert response.status_code == 200
+
+    assert db_session.query(AuditLog).filter(AuditLog.action == "account.profile_updated").count() == 0
 
 
 def test_update_profile_rejects_empty_name(db_session, auth_headers):

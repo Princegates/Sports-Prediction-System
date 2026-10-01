@@ -31,7 +31,7 @@ from app.api.schemas import (
     TestEmailOut,
 )
 from app.betcode import reachability
-from app.db.models import AccessCode, AccessGrant, AppSetting, Match, Prediction, User
+from app.db.models import AccessCode, AccessGrant, AppSetting, AuditLog, Match, Prediction, User
 from app.model_store import MODEL_DIR
 
 router = APIRouter(prefix="/api/admin", tags=["settings"], dependencies=[Depends(require_superadmin)])
@@ -95,12 +95,29 @@ def update_settings(
             updates.pop(spec.key)
 
     try:
-        if payload.reset:
-            app_settings.reset(db, payload.reset)
-        if updates:
-            app_settings.set_values(db, updates, updated_by_user_id=admin.id)
+        reset_keys = app_settings.reset(db, payload.reset) if payload.reset else []
+        changed_keys = app_settings.set_values(db, updates, updated_by_user_id=admin.id) if updates else []
     except app_settings.SettingError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # Key names only, never values -- several settings are secrets (SMTP
+    # password, Resend API key), and this stays one unconditional log line
+    # rather than a second place that has to know which keys those are.
+    if changed_keys or reset_keys:
+        detail: dict[str, list[str]] = {}
+        if changed_keys:
+            detail["changed"] = sorted(changed_keys)
+        if reset_keys:
+            detail["reset"] = sorted(reset_keys)
+        db.add(
+            AuditLog(
+                actor_user_id=admin.id,
+                actor_email=admin.email,
+                action="settings.updated",
+                detail=detail,
+            )
+        )
+        db.commit()
 
     return read_settings(db)
 

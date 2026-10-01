@@ -30,6 +30,20 @@ from app.db.models import AuditLog, Match, MatchView, User
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
+
+def _client_ip(request: Request) -> str | None:
+    """Same precedence as rate_limit.client_key -- the left-most
+    X-Forwarded-For entry when present (any real deployment sits behind a
+    proxy), falling back to the direct peer. Client-controlled and therefore
+    spoofable like any IP in a header, but still the useful signal for
+    spotting where a run of failed logins is coming from."""
+
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else None
+
+
 NO_ACCESS_MESSAGE = (
     "Sign in and redeem an access code to unlock the platform. Codes are issued by a Super Admin once "
     "payment is confirmed outside the platform."
@@ -138,11 +152,43 @@ def login(payload: LoginIn, request: Request, db: Session = Depends(get_db)) -> 
 
     email = payload.email.strip().lower()
     user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
+    ip = _client_ip(request)
 
     if user is None or not verify_password(payload.password, user.password_hash):
+        db.add(
+            AuditLog(
+                actor_user_id=user.id if user else None,
+                actor_email=email,
+                action="account.login_failed",
+                target_user_id=user.id if user else None,
+                detail={"ip": ip} if ip else None,
+            )
+        )
+        db.commit()
         raise HTTPException(status_code=401, detail="Incorrect email or password")
     if user.status == "suspended":
+        db.add(
+            AuditLog(
+                actor_user_id=user.id,
+                actor_email=user.email,
+                action="account.login_blocked",
+                target_user_id=user.id,
+                detail={"reason": "suspended", "ip": ip} if ip else {"reason": "suspended"},
+            )
+        )
+        db.commit()
         raise HTTPException(status_code=403, detail="Your account has been suspended.")
+
+    db.add(
+        AuditLog(
+            actor_user_id=user.id,
+            actor_email=user.email,
+            action="account.login",
+            target_user_id=user.id,
+            detail={"ip": ip} if ip else None,
+        )
+    )
+    db.commit()
 
     token = create_token({"user_id": user.id, "role": user.role}, settings.secret_key, settings.session_ttl_seconds)
     return TokenOut(access_token=token, user=user_to_schema(user))
@@ -220,7 +266,18 @@ def update_profile(
     name = payload.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Name cannot be empty")
+    previous_name = user.name
     user.name = name
+    if name != previous_name:
+        db.add(
+            AuditLog(
+                actor_user_id=user.id,
+                actor_email=user.email,
+                action="account.profile_updated",
+                target_user_id=user.id,
+                detail={"from": previous_name, "to": name},
+            )
+        )
     db.commit()
     db.refresh(user)
     return user_to_schema(user)

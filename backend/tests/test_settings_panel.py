@@ -21,7 +21,7 @@ from app.assistant import llm
 from app.auth.passwords import hash_password
 from app.auth.tokens import create_token
 from app.config import get_settings
-from app.db.models import AppSetting, User
+from app.db.models import AppSetting, AuditLog, User
 from app.main import app
 
 client = TestClient(app)
@@ -142,6 +142,43 @@ def test_nothing_is_written_when_one_field_in_a_batch_is_invalid(db_session, adm
     )
     assert response.status_code == 400
     assert db_session.get(AppSetting, "site_name") is None, "a half-applied batch left one field saved"
+
+
+# --- audit trail --------------------------------------------------------
+
+
+def test_changing_a_setting_is_audit_logged_by_key_name_only(db_session, admin):
+    response = client.patch(
+        "/api/admin/settings",
+        json={"values": {"registration_open": False, "smtp_password": "hunter2-app-password"}},
+        headers=_headers(admin),
+    )
+    assert response.status_code == 200
+
+    entry = db_session.query(AuditLog).filter(AuditLog.action == "settings.updated").one()
+    assert sorted(entry.detail["changed"]) == ["registration_open", "smtp_password"]
+    # The secret's value never reaches the log, only the fact that it changed.
+    assert "hunter2-app-password" not in str(entry.detail)
+
+
+def test_resetting_a_setting_is_audit_logged(db_session, admin):
+    client.patch("/api/admin/settings", json={"values": {"registration_open": False}}, headers=_headers(admin))
+    db_session.query(AuditLog).delete()
+    db_session.commit()
+
+    response = client.patch(
+        "/api/admin/settings", json={"reset": ["registration_open"]}, headers=_headers(admin)
+    )
+    assert response.status_code == 200
+
+    entry = db_session.query(AuditLog).filter(AuditLog.action == "settings.updated").one()
+    assert entry.detail["reset"] == ["registration_open"]
+
+
+def test_a_no_op_settings_patch_is_not_audit_logged(db_session, admin):
+    response = client.patch("/api/admin/settings", json={"values": {}}, headers=_headers(admin))
+    assert response.status_code == 200
+    assert db_session.query(AuditLog).filter(AuditLog.action == "settings.updated").count() == 0
 
 
 # --- the settings actually do something --------------------------------

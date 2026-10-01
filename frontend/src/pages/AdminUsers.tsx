@@ -28,6 +28,11 @@ const FILTERS: { label: string; value: UserStatus | "all" }[] = [
 
 const ACTION_LABELS: Record<string, string> = {
   "account.registered": "registered",
+  "account.login": "signed in",
+  "account.login_failed": "sign-in failed",
+  "account.login_blocked": "sign-in blocked (suspended)",
+  "account.password_changed": "password changed",
+  "account.profile_updated": "profile updated",
   "user.suspended": "suspended",
   "user.reinstated": "reinstated",
   "user.promoted": "promoted to admin",
@@ -35,8 +40,18 @@ const ACTION_LABELS: Record<string, string> = {
   "access_code.created": "access code generated",
   "access_code.revoked": "access code revoked",
   "access_code.redeemed": "access code redeemed",
+  "access_code.resent": "access code resent",
+  "access_code.revealed": "access code revealed",
   "access_grant.extended": "access extended",
   "access_grant.revoked": "access revoked",
+  "settings.updated": "settings changed",
+  "match.live_cleared": "live events cleared",
+  "featured_pick.created": "guda pick created",
+  "featured_pick.updated": "guda pick updated",
+  "featured_pick.removed": "guda pick removed",
+  "admin_pick.created": "admin pick created",
+  "admin_pick.updated": "admin pick updated",
+  "admin_pick.removed": "admin pick removed",
 };
 
 const ACCESS_TONE: Record<AdminUser["access_status"], string> = {
@@ -149,7 +164,10 @@ export function AdminUsers() {
 
   useEffect(() => {
     if (!showAudit) return;
-    fetchAuditLog(40).then(setAudit).catch(() => setAudit([]));
+    // 100, not the old 40 -- sign-ins now write a row on every attempt, so a
+    // smaller window filled up with logins faster than it used to and
+    // pushed rarer admin actions off the bottom.
+    fetchAuditLog(100).then(setAudit).catch(() => setAudit([]));
   }, [showAudit, users]);
 
   async function withBusy(id: number, action: () => Promise<AdminUser>) {
@@ -582,13 +600,14 @@ export function AdminUsers() {
 
       <div className="admin-audit">
         <button className="btn ghost" onClick={() => setShowAudit(!showAudit)} aria-expanded={showAudit}>
-          {showAudit ? "Hide" : "Show"} access audit log
+          {showAudit ? "Hide" : "Show"} activity log
         </button>
         {showAudit && (
           <>
             <p className="admin-audit-note">
-              Append-only record of every registration, status change and access-code action. A user or
-              code row only ever shows its current state -- this preserves the full sequence.
+              Append-only record of sign-ins, registrations, status and settings changes, and
+              every access-code and curated-pick action. A user or code row only ever shows its current
+              state -- this preserves the full sequence.
             </p>
             <div className="card admin-table-wrapper">
               <table className="admin-table">
