@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.access import AccessCodeError, current_grant, issue_signup_trial
+from app.access import AccessCodeError, current_grant, ensure_referral_code, grant_referral_bonus, issue_signup_trial
 from app import app_settings, mailer
 from app.api.deps import get_current_user, get_db
 from app.api.rate_limit import enforce
@@ -101,11 +101,30 @@ def register(payload: RegisterIn, request: Request, db: Session = Depends(get_db
     if existing is not None:
         raise HTTPException(status_code=409, detail="An account with this email already exists")
 
+    # Resolved before the new account is created, not after: a mistyped
+    # code should fail the signup cleanly rather than create the account
+    # and only then tell the referee -- and possibly the referrer -- that
+    # the bonus they expected silently didn't happen. Ignored entirely
+    # (never even looked up) while the program is switched off, so a stale
+    # shared link doesn't error out someone who has no idea referrals were
+    # ever involved.
+    referrer: User | None = None
+    referral_enabled = bool(app_settings.get_value(db, "referral_enabled"))
+    raw_referral_code = (payload.referral_code or "").strip().upper()
+    if referral_enabled and raw_referral_code:
+        referrer = db.execute(select(User).where(User.referral_code == raw_referral_code)).scalar_one_or_none()
+        if referrer is None:
+            raise HTTPException(
+                status_code=400,
+                detail="That referral code wasn't found -- leave it blank to continue without one.",
+            )
+
     user = User(
         email=email,
         name=payload.name.strip() or email,
         password_hash=hash_password(payload.password),
         date_of_birth=payload.date_of_birth,
+        referred_by_user_id=referrer.id if referrer else None,
         role="user",
         status="active",
     )
@@ -123,6 +142,11 @@ def register(payload: RegisterIn, request: Request, db: Session = Depends(get_db
     )
     db.commit()
 
+    # Every account gets its own code to hand out from day one, including
+    # one that arrived via somebody else's -- there's no reason referring
+    # should be one-directional.
+    ensure_referral_code(db, user)
+
     # A brand-new account gets a taste of full access with no code, so it
     # isn't bounced straight to a paywall before it has seen anything --
     # then reverts to the free tier once the trial runs out, same as any
@@ -138,6 +162,20 @@ def register(payload: RegisterIn, request: Request, db: Session = Depends(get_db
         except AccessCodeError:
             trial_days = 0
 
+    # Stacks on top of the trial grant just issued above (see
+    # grant_referral_bonus's own docstring on why that's safe) -- never
+    # blocks registration, same reasoning as the trial itself: the account
+    # the referral code pointed to is real (resolved earlier), so failure
+    # here would only be the same astronomically unlikely collision case.
+    referral_bonus_days = 0
+    if referrer is not None:
+        referral_bonus_days = int(app_settings.get_value(db, "referral_bonus_days") or 0)
+        if referral_bonus_days > 0:
+            try:
+                grant_referral_bonus(db, referrer=referrer, referee=user, bonus_days=referral_bonus_days)
+            except AccessCodeError:
+                referral_bonus_days = 0
+
     # Best-effort: a bounced welcome email is a courtesy lost, not a code
     # lost, so it never affects the response -- unlike an access-code send,
     # there's nothing here worth reporting back to the caller.
@@ -148,15 +186,18 @@ def register(payload: RegisterIn, request: Request, db: Session = Depends(get_db
         )
         mailer.send_email(email, subject, body, db=db)
 
+    total_days = trial_days + referral_bonus_days
     message = (
-        f"Account created. You have full access for the next {trial_days} day{'s' if trial_days != 1 else ''} "
+        f"Account created. You have full access for the next {total_days} day{'s' if total_days != 1 else ''} "
         "to explore -- redeem a code any time to keep it going once the trial ends."
-        if trial_days
+        if total_days
         else (
             "Account created. Sign in, then redeem your access code to unlock predictions -- if you "
             "haven't arranged payment yet, do that with a Super Admin first."
         )
     )
+    if referral_bonus_days:
+        message += f" Your referral bonus added {referral_bonus_days} extra day{'s' if referral_bonus_days != 1 else ''} for both of you."
 
     return RegisterOut(
         message=message,

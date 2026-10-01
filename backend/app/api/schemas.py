@@ -67,6 +67,10 @@ class RegisterIn(BaseModel):
     name: str
     password: str
     date_of_birth: dt.date
+    # Another account's referral_code -- optional, and invalid rather than
+    # silently ignored if it doesn't resolve, so a typo doesn't cost the
+    # referee their bonus without either side knowing.
+    referral_code: str | None = None
 
 
 class LoginIn(BaseModel):
@@ -83,6 +87,10 @@ class UserOut(BaseModel):
     theme: str | None = None
     accent_profile: str | None = None
     created_at: dt.datetime
+    # This account's own code for referring others -- see
+    # app.access.ensure_referral_code. Optional only in the schema sense
+    # (every real account has one by the time anything reads it back).
+    referral_code: str | None = None
 
 
 class PreferencesIn(BaseModel):
@@ -477,6 +485,11 @@ class BrandingOut(BaseModel):
     # Which Markets page coupon tab (match_result/double_chance/btts/
     # draw_no_bet/other) opens by default -- see app_settings.py.
     default_market_tab: str
+    # Whether entering a referral code at signup currently earns the bonus
+    # below -- the Register page only shows the referral field and its
+    # "both of you get N days" copy when this is true.
+    referral_enabled: bool
+    referral_bonus_days: int
 
 
 # --- Outcome browser -------------------------------------------------------

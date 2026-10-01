@@ -1,11 +1,60 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { changePassword, fetchMatchHistory } from "../api";
+import { changePassword, fetchBranding, fetchMatchHistory } from "../api";
 import { Mascot } from "../components/Mascot";
+import { CopyButton } from "../components/CopyButton";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { useAuth } from "../lib/AuthContext";
-import type { MatchHistoryEntry } from "../types";
+import { whatsappLink } from "../lib/whatsapp";
+import type { Branding, MatchHistoryEntry } from "../types";
+
+/** A referral section only makes sense once there's a real bonus a shared
+ * code would earn -- hidden entirely while a superadmin has turned the
+ * program off (Settings -> Access -> Reward referrals), same as the
+ * matching field on Register.tsx. */
+function ReferAFriend({ code }: { code: string }) {
+  const [branding, setBranding] = useState<Branding | null>(null);
+
+  useEffect(() => {
+    fetchBranding().then(setBranding).catch(() => {});
+  }, []);
+
+  if (!branding?.referral_enabled) return null;
+
+  const link = `${window.location.origin}/register?ref=${code}`;
+  const bonusDays = branding.referral_bonus_days;
+  const shareMessage =
+    `I'm using Socca Intelligence for AI football predictions -- sign up with my code ${code} and we both get ` +
+    `${bonusDays} bonus day${bonusDays === 1 ? "" : "s"} of full access: ${link}`;
+
+  return (
+    <div className="card card-pad" style={{ marginBottom: 24 }}>
+      <h3 style={{ marginTop: 0, fontSize: 14 }}>Refer a friend</h3>
+      <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 0 }}>
+        Share your code -- when someone signs up with it, you both get {bonusDays} bonus day{bonusDays === 1 ? "" : "s"}{" "}
+        of access, stacked on top of whatever you already have.
+      </p>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+        <span className="status-tag active" style={{ fontSize: 16, letterSpacing: "0.08em", padding: "6px 14px" }}>
+          {code}
+        </span>
+        <CopyButton text={code} label="Copy code" />
+      </div>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <CopyButton text={link} label="Copy link" className="btn ghost" />
+        <a
+          className="btn"
+          href={whatsappLink("", shareMessage)}
+          target="_blank"
+          rel="noreferrer noopener"
+        >
+          Share on WhatsApp
+        </a>
+      </div>
+    </div>
+  );
+}
 
 function EditNameForm() {
   const { user, updateProfile } = useAuth();
@@ -153,6 +202,8 @@ export function Profile() {
           <ChangePasswordForm />
         </div>
       </div>
+
+      {user.referral_code && <ReferAFriend code={user.referral_code} />}
 
       <div className="section-header">
         <h2>Recently analyzed</h2>

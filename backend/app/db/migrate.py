@@ -73,6 +73,11 @@ _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     # Collected starting with the under-18 signup gate -- null for every
     # account that registered before it existed, see User.date_of_birth.
     ("users", "date_of_birth", "DATE"),
+    # Referral program -- see User.referral_code / referred_by_user_id and
+    # _backfill_referral_codes below (the bare ALTER TABLE here can't add
+    # the unique index too; that comes after every row has a value).
+    ("users", "referral_code", "VARCHAR(16)"),
+    ("users", "referred_by_user_id", "INTEGER"),
 ]
 
 
@@ -162,6 +167,45 @@ def _migrate_pending_users_to_active(engine: Engine) -> None:
         conn.execute(text("UPDATE users SET status = 'active' WHERE status = 'pending'"))
 
 
+def _backfill_referral_codes(engine: Engine) -> None:
+    """Gives every account that predates the referral program its own code,
+    then locks in uniqueness with an index -- can't be done in the same
+    step as adding the bare column (ensure_schema above), since a freshly
+    added column is NULL on every existing row and a unique index over all-
+    NULL values would be pointless, not because it would fail (most engines
+    treat NULL as distinct from NULL for uniqueness) but because the whole
+    point is every account actually having a usable code afterward.
+
+    Idempotent: a row that already has one is left alone, and creating the
+    index again once it exists is a no-op (IF NOT EXISTS).
+    """
+
+    inspector = inspect(engine)
+    if "users" not in inspector.get_table_names():
+        return
+
+    # Imported here, not at module scope, for the same reason init_db's own
+    # Base import is local: app.access imports app.db.models, which this
+    # module's sibling relationship with models.py makes a cycle risk at
+    # import time otherwise.
+    from app.access import generate_referral_code_string
+
+    with engine.begin() as conn:
+        existing_codes = {row[0] for row in conn.execute(text("SELECT referral_code FROM users WHERE referral_code IS NOT NULL"))}
+        rows = conn.execute(text("SELECT id FROM users WHERE referral_code IS NULL")).fetchall()
+        for (user_id,) in rows:
+            for _ in range(5):
+                candidate = generate_referral_code_string()
+                if candidate not in existing_codes:
+                    existing_codes.add(candidate)
+                    break
+            else:
+                continue  # astronomically unlikely; this row waits for the lazy fallback instead
+            conn.execute(text("UPDATE users SET referral_code = :code WHERE id = :id"), {"code": candidate, "id": user_id})
+
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_referral_code ON users (referral_code)"))
+
+
 def init_db(engine: Engine) -> None:
     """Bring a database up to date: create missing tables, add columns that
     existing tables are missing, and run one-time data migrations.
@@ -180,4 +224,5 @@ def init_db(engine: Engine) -> None:
     Base.metadata.create_all(bind=engine)
     ensure_schema(engine)
     _migrate_pending_users_to_active(engine)
+    _backfill_referral_codes(engine)
     _enable_row_level_security(engine)

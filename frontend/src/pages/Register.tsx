@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { fetchBranding, registerAccount } from "../api";
 import { Brand } from "../components/Brand";
 import { Mascot } from "../components/Mascot";
 import { PublicShell } from "../components/PublicShell";
 import { whatsappLink } from "../lib/whatsapp";
+import type { Branding } from "../types";
 
 const MINIMUM_AGE_YEARS = 18;
 
@@ -21,27 +22,40 @@ function maxDateOfBirth(): string {
 
 export function Register() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
+  // Prefilled from a shared referral link (/register?ref=CODE) -- still a
+  // plain editable field, since someone might instead type in a code a
+  // friend read out to them rather than clicking a link at all.
+  const [referralCode, setReferralCode] = useState(() => searchParams.get("ref") ?? "");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
-  const [whatsapp, setWhatsapp] = useState<string | null>(null);
+  const [branding, setBranding] = useState<Branding | null>(null);
 
   useEffect(() => {
     fetchBranding()
-      .then((b) => setWhatsapp(b.contact_whatsapp || null))
+      .then(setBranding)
       .catch(() => {});
   }, []);
+
+  const whatsapp = branding?.contact_whatsapp || null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setBusy(true);
     try {
-      const result = await registerAccount({ email, name, password, date_of_birth: dateOfBirth });
+      const result = await registerAccount({
+        email,
+        name,
+        password,
+        date_of_birth: dateOfBirth,
+        referral_code: referralCode.trim() || undefined,
+      });
       setDone(result.message);
     } catch (err) {
       setError(String(err instanceof Error ? err.message : err));
@@ -136,6 +150,24 @@ export function Register() {
           <p className="setting-note" style={{ marginTop: -8 }}>
             You must be at least {MINIMUM_AGE_YEARS} to create an account.
           </p>
+
+          {branding?.referral_enabled && (
+            <>
+              <label>
+                Referral code (optional)
+                <input
+                  value={referralCode}
+                  onChange={(e) => setReferralCode(e.target.value)}
+                  placeholder="e.g. 7P3K9QX"
+                  style={{ textTransform: "uppercase" }}
+                />
+              </label>
+              <p className="setting-note" style={{ marginTop: -8 }}>
+                Got one from a friend? Enter it and you'll both get {branding.referral_bonus_days} bonus day
+                {branding.referral_bonus_days === 1 ? "" : "s"} of access.
+              </p>
+            </>
+          )}
 
           {error && <p className="auth-error">{error}</p>}
 

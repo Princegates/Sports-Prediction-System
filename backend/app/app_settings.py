@@ -133,6 +133,14 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 default=True),
     SettingSpec("trial_duration_days", "int", "access", "Trial length (days)",
                 default=5, minimum=1, maximum=30),
+    SettingSpec("referral_enabled", "bool", "access", "Reward referrals",
+                "Every account gets its own referral code (Profile -> Refer a friend). When a new "
+                "signup enters someone else's code, both accounts get the bonus below added to their "
+                "access. Turning this off doesn't remove anyone's code -- it just stops new signups "
+                "from earning the bonus by entering one.",
+                default=True),
+    SettingSpec("referral_bonus_days", "int", "access", "Referral bonus (days, each side)",
+                default=3, minimum=1, maximum=30),
     SettingSpec("contact_whatsapp", "str", "access", "WhatsApp contact for access requests",
                 "Shown wherever an account needs a Super Admin for a code -- the welcome email, "
                 "the locked-access page, and registration. Digits with country code, no spaces "

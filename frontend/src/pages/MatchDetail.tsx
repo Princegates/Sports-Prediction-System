@@ -33,10 +33,12 @@ import { ProbabilityBar } from "../components/ProbabilityBar";
 import { ProbabilityTimeline } from "../components/ProbabilityTimeline";
 import { RadialGauge } from "../components/RadialGauge";
 import { ScoreHeatmap } from "../components/ScoreHeatmap";
+import { ShareButton } from "../components/ShareButton";
 import { Tabs } from "../components/Tabs";
 import { TeamComparison } from "../components/TeamComparison";
 import { formatSelection } from "../lib/copySelections";
 import { isHotPick } from "../lib/filters";
+import { buildShareMessage } from "../lib/shareText";
 import { useAuth } from "../lib/AuthContext";
 import type {
   BetCodePick,
@@ -275,7 +277,8 @@ export function MatchDetail() {
         modelAgreement={prediction.model_agreement_score}
       />
 
-      <div style={{ display: "flex", justifyContent: "flex-end", margin: "8px 0" }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, margin: "8px 0" }}>
+        <ShareButton text={buildShareMessage(formatSelection(match, prediction), user?.referral_code)} label="Share this pick" />
         <CopyButton text={formatSelection(match, prediction)} label="Copy this pick" />
       </div>
 

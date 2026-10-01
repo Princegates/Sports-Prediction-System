@@ -8,9 +8,12 @@ import { ConfidenceTag } from "../components/MostLikelyOutcome";
 import { ErrorState } from "../components/ErrorState";
 import { EmptyState } from "../components/EmptyState";
 import { HotPickBadge } from "../components/HotPickBadge";
+import { ShareButton } from "../components/ShareButton";
 import { formatSelections } from "../lib/copySelections";
 import { downloadCsv, toCsv } from "../lib/csvExport";
 import { isHotPick } from "../lib/filters";
+import { buildShareMessage } from "../lib/shareText";
+import { useAuth } from "../lib/AuthContext";
 import type { BetCodePick, MatchSummary, Prediction } from "../types";
 
 interface Row {
@@ -51,6 +54,7 @@ const TIERS: { min: number; max: number; label: string; note?: string }[] = [
 ];
 
 export function Predictions() {
+  const { user } = useAuth();
   const { league } = useLeague();
   const [day, setDay] = useState<string | null>(null);
   const [confidence, setConfidence] = useState<ConfidenceFilter>("ALL");
@@ -264,6 +268,12 @@ export function Predictions() {
           <span className="meta">{visible ? `${visible.length} matches` : "Loading..."}</span>
           {visible && visible.length > 0 && (
             <>
+              <ShareButton
+                text={buildShareMessage(
+                  `Socca Intelligence found ${visible.length} AI-rated match${visible.length === 1 ? "" : "es"} today.`,
+                  user?.referral_code,
+                )}
+              />
               <CopyButton text={formatSelections(visible)} label="Copy all selections" />
               <button
                 type="button"

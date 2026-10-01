@@ -27,6 +27,10 @@ _ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 _SEGMENTS = 3
 _SEGMENT_LENGTH = 4
 
+# Shorter and un-dashed, unlike an access code -- this one is meant to sit
+# in a URL (?ref=CODE) and get typed from memory, not read off a screenshot.
+_REFERRAL_CODE_LENGTH = 7
+
 
 class AccessCodeError(Exception):
     """A redemption or admin action was rejected for a reason the caller
@@ -330,3 +334,69 @@ def redeem_access_code(db: Session, user: User, raw_code: str) -> AccessGrant:
     db.commit()
     db.refresh(grant)
     return grant
+
+
+def generate_referral_code_string() -> str:
+    return "".join(secrets.choice(_ALPHABET) for _ in range(_REFERRAL_CODE_LENGTH))
+
+
+def ensure_referral_code(db: Session, user: User) -> str:
+    """This account's own referral code, generating and persisting one on
+    first use if it doesn't have one yet.
+
+    Generation isn't part of the column's default because a default only
+    fires on insert -- it can't backfill a row that already existed before
+    this feature did. migrate.py's one-time backfill covers every row at
+    startup; this is the lazy fallback for the (practically impossible)
+    case of a row that somehow slipped past it, and the path a brand-new
+    registration uses to get its first code.
+    """
+
+    if user.referral_code:
+        return user.referral_code
+
+    for _ in range(5):
+        candidate = generate_referral_code_string()
+        if db.execute(select(User).where(User.referral_code == candidate)).scalar_one_or_none() is None:
+            break
+    else:
+        raise AccessCodeError("Could not generate a unique referral code -- try again.")
+
+    user.referral_code = candidate
+    db.commit()
+    db.refresh(user)
+    return candidate
+
+
+def grant_referral_bonus(db: Session, *, referrer: User, referee: User, bonus_days: int) -> None:
+    """Both sides of a successful referral get ``bonus_days`` added to their
+    access -- the referrer for bringing someone in, the referee for using
+    their code. Goes through the same create-then-redeem path as
+    ``issue_signup_trial``, so it stacks on whatever each account already
+    has (see ``redeem_access_code``'s own stacking logic) rather than
+    overwriting it: the referrer doesn't lose unused time, and the
+    referee's bonus lands right on top of the signup trial they just got.
+    """
+
+    for beneficiary, role in ((referrer, "referrer"), (referee, "referee")):
+        code = create_access_code(
+            db,
+            beneficiary,
+            duration_days=bonus_days,
+            redemption_limit=1,
+            assigned_user_id=beneficiary.id,
+            assigned_email=beneficiary.email,
+            notes=f"Referral bonus ({role})",
+        )
+        redeem_access_code(db, beneficiary, code.code)
+
+    db.add(
+        AuditLog(
+            actor_user_id=referee.id,
+            actor_email=referee.email,
+            action="referral.bonus_granted",
+            target_user_id=referrer.id,
+            detail={"bonus_days": bonus_days, "referrer_email": referrer.email, "referee_email": referee.email},
+        )
+    )
+    db.commit()

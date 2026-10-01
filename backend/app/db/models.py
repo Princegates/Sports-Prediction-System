@@ -55,6 +55,23 @@ class User(Base):
     # once when the account was created.
     date_of_birth: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
 
+    # This account's own code for referring others (Profile -> Refer a
+    # friend) -- every account gets one, generated at registration and
+    # backfilled onto older rows by migrate.py, so "do I have a code to
+    # share" is never a question the UI has to handle. Nullable only for
+    # the brief window between a row being inserted and
+    # app.access.ensure_referral_code filling it in. ``unique=True`` here
+    # covers a fresh install (create_all bakes it into the table from the
+    # start); an existing database instead gets the column added bare and
+    # a matching unique index created by hand once migrate.py has
+    # backfilled every row -- ALTER TABLE ADD COLUMN can't add a unique
+    # constraint in the same step as adding the column to a populated table.
+    referral_code: Mapped[str | None] = mapped_column(String(16), unique=True, nullable=True)
+    # Set once, at registration, from whichever account's code was entered
+    # (if any) -- never changed afterward, so "who referred this account"
+    # stays answerable regardless of what happens to either account later.
+    referred_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
 
 

@@ -81,6 +81,7 @@ export interface User {
   theme: string | null;
   accent_profile: string | null;
   created_at: string;
+  referral_code: string | null;
 }
 
 export interface MatchHistoryEntry {
@@ -447,6 +448,8 @@ export interface Branding {
   registration_open: boolean;
   contact_whatsapp: string;
   default_market_tab: string;
+  referral_enabled: boolean;
+  referral_bonus_days: number;
 }
 
 // --- Outcome browser -------------------------------------------------------
