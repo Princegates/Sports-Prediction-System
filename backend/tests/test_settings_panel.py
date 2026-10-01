@@ -187,7 +187,7 @@ def test_a_no_op_settings_patch_is_not_audit_logged(db_session, admin):
 def test_closing_registration_blocks_sign_ups(db_session, admin):
     open_attempt = client.post(
         "/api/auth/register",
-        json={"email": "first@example.com", "name": "First", "password": "a-good-password"},
+        json={"email": "first@example.com", "name": "First", "password": "a-good-password", "date_of_birth": "1990-01-01"},
     )
     assert open_attempt.status_code == 200, open_attempt.text
 
@@ -195,7 +195,7 @@ def test_closing_registration_blocks_sign_ups(db_session, admin):
 
     closed = client.post(
         "/api/auth/register",
-        json={"email": "second@example.com", "name": "Second", "password": "a-good-password"},
+        json={"email": "second@example.com", "name": "Second", "password": "a-good-password", "date_of_birth": "1990-01-01"},
     )
     assert closed.status_code == 403
     assert "closed" in closed.json()["detail"].lower()

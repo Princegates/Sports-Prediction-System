@@ -37,7 +37,7 @@ def _headers(user: User) -> dict:
 def test_registering_grants_immediate_access(db_session):
     register = client.post(
         "/api/auth/register",
-        json={"email": "new.member@example.com", "name": "New Member", "password": "a-good-password"},
+        json={"email": "new.member@example.com", "name": "New Member", "password": "a-good-password", "date_of_birth": "1990-01-01"},
     )
     assert register.status_code == 200, register.text
     assert "full access for the next 5 days" in register.json()["message"]
@@ -62,7 +62,7 @@ def test_the_trial_length_follows_the_admin_setting(db_session):
 
     register = client.post(
         "/api/auth/register",
-        json={"email": "week-trial@example.com", "name": "Week Trial", "password": "a-good-password"},
+        json={"email": "week-trial@example.com", "name": "Week Trial", "password": "a-good-password", "date_of_birth": "1990-01-01"},
     )
     assert "full access for the next 7 days" in register.json()["message"]
 
@@ -79,7 +79,7 @@ def test_turning_the_trial_off_leaves_new_signups_on_the_free_tier(db_session):
 
     register = client.post(
         "/api/auth/register",
-        json={"email": "no.trial@example.com", "name": "No Trial", "password": "a-good-password"},
+        json={"email": "no.trial@example.com", "name": "No Trial", "password": "a-good-password", "date_of_birth": "1990-01-01"},
     )
     assert register.status_code == 200
     assert "redeem your access code" in register.json()["message"]
@@ -98,7 +98,7 @@ def test_a_lapsed_trial_reverts_to_the_free_tier_on_the_next_sign_in(db_session)
 
     register = client.post(
         "/api/auth/register",
-        json={"email": "lapsed@example.com", "name": "Lapsed", "password": "a-good-password"},
+        json={"email": "lapsed@example.com", "name": "Lapsed", "password": "a-good-password", "date_of_birth": "1990-01-01"},
     )
     assert register.status_code == 200
 

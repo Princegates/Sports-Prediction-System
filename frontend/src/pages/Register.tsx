@@ -6,11 +6,25 @@ import { Mascot } from "../components/Mascot";
 import { PublicShell } from "../components/PublicShell";
 import { whatsappLink } from "../lib/whatsapp";
 
+const MINIMUM_AGE_YEARS = 18;
+
+/** Today minus 18 years, as a YYYY-MM-DD string -- the date input's own
+ * ``max`` so most browsers refuse to let the picker land on a too-recent
+ * date at all. The server re-checks this regardless (see routes_auth.py's
+ * register()), since nothing stops a hand-crafted request from skipping
+ * the input entirely. */
+function maxDateOfBirth(): string {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() - MINIMUM_AGE_YEARS);
+  return d.toISOString().slice(0, 10);
+}
+
 export function Register() {
   const navigate = useNavigate();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
@@ -27,7 +41,7 @@ export function Register() {
     setError(null);
     setBusy(true);
     try {
-      const result = await registerAccount({ email, name, password });
+      const result = await registerAccount({ email, name, password, date_of_birth: dateOfBirth });
       setDone(result.message);
     } catch (err) {
       setError(String(err instanceof Error ? err.message : err));
@@ -108,6 +122,20 @@ export function Register() {
             Password
             <input type="password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
           </label>
+          <label>
+            Date of birth
+            <input
+              type="date"
+              required
+              max={maxDateOfBirth()}
+              value={dateOfBirth}
+              onChange={(e) => setDateOfBirth(e.target.value)}
+              autoComplete="bday"
+            />
+          </label>
+          <p className="setting-note" style={{ marginTop: -8 }}>
+            You must be at least {MINIMUM_AGE_YEARS} to create an account.
+          </p>
 
           {error && <p className="auth-error">{error}</p>}
 

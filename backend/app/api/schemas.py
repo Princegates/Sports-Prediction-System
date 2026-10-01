@@ -66,6 +66,7 @@ class RegisterIn(BaseModel):
     email: str
     name: str
     password: str
+    date_of_birth: dt.date
 
 
 class LoginIn(BaseModel):

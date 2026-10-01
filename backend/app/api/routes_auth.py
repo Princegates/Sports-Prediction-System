@@ -44,6 +44,20 @@ def _client_ip(request: Request) -> str | None:
     return request.client.host if request.client else None
 
 
+MINIMUM_AGE_YEARS = 18
+
+
+def _age_years(born: dt.date, as_of: dt.date) -> int:
+    """Whole years elapsed, correctly handling a birthday that hasn't
+    happened yet this year (a naive ``as_of.year - born.year`` overstates
+    age by one for anyone whose birthday is still ahead of today)."""
+
+    years = as_of.year - born.year
+    if (as_of.month, as_of.day) < (born.month, born.day):
+        years -= 1
+    return years
+
+
 NO_ACCESS_MESSAGE = (
     "Sign in and redeem an access code to unlock the platform. Codes are issued by a Super Admin once "
     "payment is confirmed outside the platform."
@@ -74,6 +88,15 @@ def register(payload: RegisterIn, request: Request, db: Session = Depends(get_db
     if len(payload.password) < 8:
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
 
+    today = dt.date.today()
+    if payload.date_of_birth > today:
+        raise HTTPException(status_code=400, detail="Date of birth cannot be in the future")
+    if _age_years(payload.date_of_birth, today) < MINIMUM_AGE_YEARS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"You must be at least {MINIMUM_AGE_YEARS} years old to create an account.",
+        )
+
     existing = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
     if existing is not None:
         raise HTTPException(status_code=409, detail="An account with this email already exists")
@@ -82,6 +105,7 @@ def register(payload: RegisterIn, request: Request, db: Session = Depends(get_db
         email=email,
         name=payload.name.strip() or email,
         password_hash=hash_password(payload.password),
+        date_of_birth=payload.date_of_birth,
         role="user",
         status="active",
     )

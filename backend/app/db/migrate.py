@@ -70,6 +70,9 @@ _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     ("admin_picks", "source", "VARCHAR(32)"),
     # Per-site booking codes -- see BookingSlip.site_codes.
     ("booking_slips", "site_codes", "JSON"),
+    # Collected starting with the under-18 signup gate -- null for every
+    # account that registered before it existed, see User.date_of_birth.
+    ("users", "date_of_birth", "DATE"),
 ]
 
 

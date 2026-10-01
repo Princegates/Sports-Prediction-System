@@ -99,7 +99,7 @@ def test_registration_is_audited(db_session):
     rate_limit.reset()
     response = client.post(
         "/api/auth/register",
-        json={"email": "newcomer@example.com", "name": "Newcomer", "password": "a-good-password"},
+        json={"email": "newcomer@example.com", "name": "Newcomer", "password": "a-good-password", "date_of_birth": "1990-01-01"},
     )
     assert response.status_code == 200
 
@@ -190,7 +190,7 @@ def test_account_status_reports_active_during_the_signup_trial(db_session):
     rate_limit.reset()
     client.post(
         "/api/auth/register",
-        json={"email": "waiting@example.com", "name": "Waiting", "password": "a-good-password"},
+        json={"email": "waiting@example.com", "name": "Waiting", "password": "a-good-password", "date_of_birth": "1990-01-01"},
     )
 
     response = client.post(
@@ -213,7 +213,7 @@ def test_account_status_reports_no_access_when_the_trial_is_off(db_session, admi
 
     client.post(
         "/api/auth/register",
-        json={"email": "no-trial-status@example.com", "name": "No Trial", "password": "a-good-password"},
+        json={"email": "no-trial-status@example.com", "name": "No Trial", "password": "a-good-password", "date_of_birth": "1990-01-01"},
     )
 
     response = client.post(
@@ -266,13 +266,13 @@ def test_registration_is_rate_limited(db_session):
     for i in range(settings.register_rate_limit_attempts):
         response = client.post(
             "/api/auth/register",
-            json={"email": f"spam{i}@example.com", "name": "Spam", "password": "a-good-password"},
+            json={"email": f"spam{i}@example.com", "name": "Spam", "password": "a-good-password", "date_of_birth": "1990-01-01"},
         )
         assert response.status_code == 200
 
     blocked = client.post(
         "/api/auth/register",
-        json={"email": "spam-over@example.com", "name": "Spam", "password": "a-good-password"},
+        json={"email": "spam-over@example.com", "name": "Spam", "password": "a-good-password", "date_of_birth": "1990-01-01"},
     )
     assert blocked.status_code == 429
 

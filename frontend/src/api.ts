@@ -114,7 +114,7 @@ export function onAuthLogout(handler: () => void): () => void {
 
 // --- Auth ------------------------------------------------------------
 
-export function registerAccount(payload: { email: string; name: string; password: string }) {
+export function registerAccount(payload: { email: string; name: string; password: string; date_of_birth: string }) {
   return post<{ message: string; user: User }>("/api/auth/register", payload);
 }
 

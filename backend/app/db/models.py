@@ -5,6 +5,7 @@ import datetime as dt
 from sqlalchemy import (
     JSON,
     Boolean,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -45,6 +46,14 @@ class User(Base):
     # browser) so they follow the user across devices.
     theme: Mapped[str | None] = mapped_column(String(16), nullable=True)
     accent_profile: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    # Collected at registration and checked there (app.access's age gate) --
+    # nullable only because an account created before this column existed,
+    # or by scripts/create_superadmin.py's operator-run bootstrap, has none.
+    # Never re-checked after signup: there is no feature here that needs to
+    # know a returning user's *current* age, only that they cleared the bar
+    # once when the account was created.
+    date_of_birth: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
 
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
 

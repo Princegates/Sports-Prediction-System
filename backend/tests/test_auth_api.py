@@ -1,8 +1,14 @@
+import datetime as dt
+
 from fastapi.testclient import TestClient
 
 from app.auth.passwords import hash_password
 from app.db.models import AuditLog, User
 from tests.test_api import _seed_league
+
+# Comfortably over the 18-year minimum, so a test exercising something else
+# (a duplicate email, a short password) never trips the age gate instead.
+ADULT_DOB = "1990-01-01"
 
 
 def _make_superadmin(db_session) -> User:
@@ -19,7 +25,7 @@ def test_register_creates_active_user(db_session):
     client = TestClient(app)
     response = client.post(
         "/api/auth/register",
-        json={"email": "New.User@Example.com", "name": "New User", "password": "a-good-password"},
+        json={"email": "New.User@Example.com", "name": "New User", "password": "a-good-password", "date_of_birth": ADULT_DOB},
     )
     assert response.status_code == 200
     body = response.json()
@@ -31,7 +37,82 @@ def test_register_rejects_short_password(db_session):
     from app.main import app
 
     client = TestClient(app)
-    response = client.post("/api/auth/register", json={"email": "a@b.com", "name": "A", "password": "short"})
+    response = client.post(
+        "/api/auth/register", json={"email": "a@b.com", "name": "A", "password": "short", "date_of_birth": ADULT_DOB}
+    )
+    assert response.status_code == 400
+
+
+def test_register_rejects_someone_under_18(db_session):
+    from app.main import app
+
+    client = TestClient(app)
+    seventeen_years_ago = dt.date.today().replace(year=dt.date.today().year - 17)
+    response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "minor@example.com",
+            "name": "Minor",
+            "password": "a-good-password",
+            "date_of_birth": seventeen_years_ago.isoformat(),
+        },
+    )
+    assert response.status_code == 400
+    assert "18" in response.json()["detail"]
+
+
+def test_register_accepts_someone_who_turns_18_today(db_session):
+    from app.main import app
+
+    client = TestClient(app)
+    today = dt.date.today()
+    turns_18_today = today.replace(year=today.year - 18)
+    response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "just-eighteen@example.com",
+            "name": "Just Eighteen",
+            "password": "a-good-password",
+            "date_of_birth": turns_18_today.isoformat(),
+        },
+    )
+    assert response.status_code == 200
+
+
+def test_register_rejects_someone_who_turns_18_tomorrow(db_session):
+    """One day short of 18 -- catches a naive year-subtraction age check,
+    which would wrongly accept this."""
+    from app.main import app
+
+    client = TestClient(app)
+    tomorrow = dt.date.today() + dt.timedelta(days=1)
+    turns_18_tomorrow = tomorrow.replace(year=tomorrow.year - 18)
+    response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "almost-eighteen@example.com",
+            "name": "Almost Eighteen",
+            "password": "a-good-password",
+            "date_of_birth": turns_18_tomorrow.isoformat(),
+        },
+    )
+    assert response.status_code == 400
+
+
+def test_register_rejects_a_date_of_birth_in_the_future(db_session):
+    from app.main import app
+
+    client = TestClient(app)
+    tomorrow = dt.date.today() + dt.timedelta(days=1)
+    response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "time-traveler@example.com",
+            "name": "Time Traveler",
+            "password": "a-good-password",
+            "date_of_birth": tomorrow.isoformat(),
+        },
+    )
     assert response.status_code == 400
 
 
@@ -39,7 +120,7 @@ def test_register_rejects_duplicate_email(db_session):
     from app.main import app
 
     client = TestClient(app)
-    payload = {"email": "dup@example.com", "name": "Dup", "password": "a-good-password"}
+    payload = {"email": "dup@example.com", "name": "Dup", "password": "a-good-password", "date_of_birth": ADULT_DOB}
     assert client.post("/api/auth/register", json=payload).status_code == 200
     assert client.post("/api/auth/register", json=payload).status_code == 409
 
@@ -59,7 +140,7 @@ def test_register_sends_a_welcome_email_when_mail_is_configured(db_session, monk
     client = TestClient(app)
     response = client.post(
         "/api/auth/register",
-        json={"email": "Welcome.User@Example.com", "name": "Welcome User", "password": "a-good-password"},
+        json={"email": "Welcome.User@Example.com", "name": "Welcome User", "password": "a-good-password", "date_of_birth": ADULT_DOB},
     )
 
     assert response.status_code == 200
@@ -80,7 +161,7 @@ def test_register_does_not_call_send_email_when_mail_is_not_configured(db_sessio
     client = TestClient(app)
     response = client.post(
         "/api/auth/register",
-        json={"email": "no.mail@example.com", "name": "No Mail", "password": "a-good-password"},
+        json={"email": "no.mail@example.com", "name": "No Mail", "password": "a-good-password", "date_of_birth": ADULT_DOB},
     )
     assert response.status_code == 200
 
@@ -92,7 +173,7 @@ def test_login_succeeds_immediately_after_register(db_session):
     from app.main import app
 
     client = TestClient(app)
-    payload = {"email": "newcomer@example.com", "name": "Newcomer", "password": "a-good-password"}
+    payload = {"email": "newcomer@example.com", "name": "Newcomer", "password": "a-good-password", "date_of_birth": ADULT_DOB}
     client.post("/api/auth/register", json=payload)
 
     response = client.post("/api/auth/login", json={"email": payload["email"], "password": payload["password"]})
@@ -104,7 +185,7 @@ def test_login_rejects_suspended_user(db_session):
 
     admin = _make_superadmin(db_session)
     client = TestClient(app)
-    payload = {"email": "suspended@example.com", "name": "Suspended", "password": "a-good-password"}
+    payload = {"email": "suspended@example.com", "name": "Suspended", "password": "a-good-password", "date_of_birth": ADULT_DOB}
     client.post("/api/auth/register", json=payload)
 
     admin_login = client.post("/api/auth/login", json={"email": admin.email, "password": "admin-password-1"})
@@ -122,7 +203,7 @@ def test_login_rejects_wrong_password(db_session):
     from app.main import app
 
     client = TestClient(app)
-    payload = {"email": "wrongpw@example.com", "name": "X", "password": "a-good-password"}
+    payload = {"email": "wrongpw@example.com", "name": "X", "password": "a-good-password", "date_of_birth": ADULT_DOB}
     client.post("/api/auth/register", json=payload)
 
     response = client.post("/api/auth/login", json={"email": payload["email"], "password": "not-the-password"})
@@ -133,7 +214,7 @@ def test_successful_login_is_audit_logged(db_session):
     from app.main import app
 
     client = TestClient(app)
-    payload = {"email": "audited-login@example.com", "name": "Audited", "password": "a-good-password"}
+    payload = {"email": "audited-login@example.com", "name": "Audited", "password": "a-good-password", "date_of_birth": ADULT_DOB}
     client.post("/api/auth/register", json=payload)
     db_session.query(AuditLog).delete()  # drop the registration entry, isolate the login
     db_session.commit()
@@ -165,7 +246,7 @@ def test_suspended_login_attempt_is_audit_logged_as_blocked_not_failed(db_sessio
 
     admin = _make_superadmin(db_session)
     client = TestClient(app)
-    payload = {"email": "blocked-login@example.com", "name": "Blocked", "password": "a-good-password"}
+    payload = {"email": "blocked-login@example.com", "name": "Blocked", "password": "a-good-password", "date_of_birth": ADULT_DOB}
     client.post("/api/auth/register", json=payload)
 
     admin_login = client.post("/api/auth/login", json={"email": admin.email, "password": "admin-password-1"})
@@ -194,7 +275,7 @@ def test_full_register_login_trial_flow(db_session):
 
     register_resp = client.post(
         "/api/auth/register",
-        json={"email": "flow@example.com", "name": "Flow User", "password": "a-good-password"},
+        json={"email": "flow@example.com", "name": "Flow User", "password": "a-good-password", "date_of_birth": ADULT_DOB},
     )
     assert register_resp.json()["user"]["status"] == "active"
 
