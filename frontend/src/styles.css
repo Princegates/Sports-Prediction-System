@@ -1696,6 +1696,19 @@ table.predictions-table.odds-grid .match-col .sub {
   }
 }
 
+.mobile-select-all-btn {
+  display: none;
+  align-items: center;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent);
+  background: none;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
 /* A wide table doesn't just need a swipe hint on a phone -- it's genuinely
    the wrong pattern there (seven columns, most of them one cell wide, in a
    scroll strip nobody wants to pan through one-handed). Opt-in per table
@@ -1770,6 +1783,13 @@ table.predictions-table.odds-grid .match-col .sub {
 
   .cards-on-mobile-hint {
     display: none;
+  }
+
+  /* Stands in for the hidden <thead>'s select-all checkbox -- see
+     Predictions.tsx's renderTable. */
+  .mobile-select-all-btn {
+    display: inline-flex;
+    margin-bottom: 10px;
   }
 }
 

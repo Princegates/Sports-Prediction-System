@@ -164,6 +164,17 @@ export function Predictions() {
     return (
       <>
         <p className="scroll-hint cards-on-mobile-hint">Swipe to see every column →</p>
+        {/* The table's own select-all checkbox sits in <thead>, which the
+            phone card view hides (cards-on-mobile) along with the rest of
+            the header row -- this stands in for it there, since otherwise
+            selecting every row on a phone means tapping each card one at a
+            time. Shown only on phone (styles.css); desktop keeps the
+            checkbox in the header exactly as before. */}
+        {rowsToShow.length > 0 && (
+          <button type="button" className="mobile-select-all-btn" onClick={() => toggleSelectAll(rowsToShow)}>
+            {allSelected ? "Deselect all" : `Select all ${rowsToShow.length}`}
+          </button>
+        )}
         <div className="predictions-table-wrapper">
         <table className="predictions-table wide cards-on-mobile">
           <thead>
