@@ -57,3 +57,88 @@ def test_init_db_runs_end_to_end_on_sqlite_without_error():
 
     migrate.init_db(engine)
     Base.metadata.drop_all(bind=engine)
+
+
+def test_a_broken_schema_patch_never_blocks_the_others(monkeypatch, db_session):
+    """Regression test: ensure_schema used to run every ADD COLUMN in one
+    transaction, so a single failing statement rolled every other column
+    back too. In production this combined with a *different* bug (a
+    now-removed migration step that could raise before ensure_schema ever
+    ran) to leave admin_picks, booking_slips and featured_picks missing
+    their result-tracking columns entirely -- every endpoint touching them
+    failed with psycopg2.errors.UndefinedColumn until a deploy happened to
+    get through cleanly. Each statement must now run in its own transaction
+    and a failure must only skip that one column."""
+
+    from sqlalchemy import text as sa_text
+
+    original_add_columns = migrate._ADDED_COLUMNS
+    monkeypatch.setattr(
+        migrate,
+        "_ADDED_COLUMNS",
+        [
+            ("users", "_test_col_a", "VARCHAR(16)"),
+            ("users", "_test_col_b", "THIS IS NOT A VALID TYPE("),  # deliberately broken
+            ("users", "_test_col_c", "VARCHAR(16)"),
+        ],
+    )
+    try:
+        migrate.ensure_schema(engine)  # must not raise
+    finally:
+        monkeypatch.setattr(migrate, "_ADDED_COLUMNS", original_add_columns)
+
+    with engine.connect() as conn:
+        columns = {row[1] for row in conn.execute(sa_text("PRAGMA table_info(users)"))}
+    assert "_test_col_a" in columns
+    assert "_test_col_c" in columns
+    assert "_test_col_b" not in columns
+
+
+def test_booking_slips_combined_odds_nullable_fix_is_a_noop_on_sqlite(db_session):
+    migrate._make_booking_slips_combined_odds_nullable(engine)  # must not raise
+
+
+def test_booking_slips_combined_odds_nullable_fix_runs_on_postgres(monkeypatch, db_session):
+    captured: list[str] = []
+
+    class FakeConn:
+        def execute(self, stmt) -> None:
+            captured.append(str(stmt))
+
+    class FakeBeginCtx:
+        def __enter__(self):
+            return FakeConn()
+
+        def __exit__(self, *exc) -> bool:
+            return False
+
+    class FakeInspector:
+        def get_table_names(self):
+            return ["booking_slips"]
+
+        def get_columns(self, table):
+            return [{"name": "combined_odds", "nullable": False}]
+
+    with monkeypatch.context() as m:
+        m.setattr(engine.dialect, "name", "postgresql", raising=False)
+        m.setattr(engine, "begin", lambda: FakeBeginCtx())
+        m.setattr(migrate, "inspect", lambda eng: FakeInspector())
+        migrate._make_booking_slips_combined_odds_nullable(engine)
+
+    assert len(captured) == 1
+    assert "ALTER TABLE booking_slips ALTER COLUMN combined_odds DROP NOT NULL" in captured[0]
+
+
+def test_booking_slips_combined_odds_nullable_fix_never_raises(monkeypatch, db_session):
+    """Defense in depth: whatever goes wrong here must never stop
+    ensure_schema's own columns (run before this, per init_db) from having
+    already been applied -- see the regression test above for why that
+    ordering matters."""
+
+    def boom(eng):
+        raise RuntimeError("simulated failure")
+
+    with monkeypatch.context() as m:
+        m.setattr(engine.dialect, "name", "postgresql", raising=False)
+        m.setattr(migrate, "inspect", boom)
+        migrate._make_booking_slips_combined_odds_nullable(engine)  # must not raise

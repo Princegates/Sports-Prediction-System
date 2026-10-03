@@ -7,8 +7,12 @@ before those columns existed needs this to catch up.
 
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
+
+logger = logging.getLogger(__name__)
 
 
 # Columns added to existing tables after they were first created, as
@@ -102,6 +106,13 @@ def ensure_schema(engine: Engine) -> None:
     existing one, so a database created before a column was added needs this
     to catch up. Every column here is nullable, which is what makes applying
     it to a live, populated database safe.
+
+    Each ADD COLUMN runs in its own transaction and a failure on one is
+    logged and skipped rather than raised -- this used to run every
+    statement in one transaction, so a single bad one (a column type a
+    specific Postgres version rejects, a brief connection drop) rolled back
+    every other column too, silently leaving a production database on an
+    old schema until the next deploy happened to succeed end to end.
     """
 
     inspector = inspect(engine)
@@ -117,10 +128,12 @@ def ensure_schema(engine: Engine) -> None:
             continue
         statements.append(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}")
 
-    if statements:
-        with engine.begin() as conn:
-            for statement in statements:
+    for statement in statements:
+        try:
+            with engine.begin() as conn:
                 conn.execute(text(statement))
+        except Exception:
+            logger.exception("Schema patch failed, skipping: %s", statement)
 
 
 def _enable_row_level_security(engine: Engine) -> None:
@@ -180,34 +193,40 @@ def _migrate_pending_users_to_active(engine: Engine) -> None:
         conn.execute(text("UPDATE users SET status = 'active' WHERE status = 'pending'"))
 
 
-def _rebuild_empty_booking_slips_table(engine: Engine) -> None:
-    """booking_slips predates any code that actually wrote to it -- nothing
-    ever called ``db.add(BookingSlip(...))`` until routes_betcodes.book_picks
-    started doing so for the results-tracking feature -- and was defined
-    with ``combined_odds`` NOT NULL, which doesn't fit that flow: a code
-    booked directly on a betting site has no price of our own to combine
-    (the site prices its own slip). Since the table is guaranteed empty in
-    every real deployment, dropping and recreating it from the current model
-    (``combined_odds`` now nullable, plus the ``result``/``leg_results``/
-    ``settled_at`` columns ensure_schema's plain ADD COLUMN can't fix a NOT
-    NULL constraint for) is simpler and safer than a dialect-specific ALTER
-    COLUMN -- SQLite can't do that at all without a full table rebuild.
-    Skips, leaving ensure_schema's ADD COLUMN pass to add what it can,
-    if the table unexpectedly already has rows.
+def _make_booking_slips_combined_odds_nullable(engine: Engine) -> None:
+    """``combined_odds`` was NOT NULL from when booking_slips was defined for
+    a removed booking-code-aggregator flow that always had a price. The
+    current direct-to-site flow (routes_betcodes.book_picks) has no price of
+    its own to combine -- each site prices its own slip -- so it needs this
+    column nullable.
+
+    Postgres can do this in place with a plain ALTER COLUMN; SQLite can't
+    without a full table rebuild, so this is a no-op there (every SQLite
+    database -- local dev, tests -- is created fresh via create_all from the
+    current, already-nullable model definition, so there's nothing to fix).
+
+    Best-effort and deliberately never raises: this is a secondary cleanup,
+    never allowed to block ensure_schema's column additions below, which is
+    why it only ever runs after them (see init_db) -- an earlier version of
+    this function did a DROP+CREATE TABLE *before* ensure_schema and, by
+    failing on a production database for reasons that were never fully
+    pinned down, silently prevented every column ensure_schema was supposed
+    to add, anywhere, for as long as it kept failing.
     """
 
-    inspector = inspect(engine)
-    if "booking_slips" not in inspector.get_table_names():
+    if engine.dialect.name != "postgresql":
         return
-    with engine.begin() as conn:
-        count = conn.execute(text("SELECT COUNT(*) FROM booking_slips")).scalar()
-    if count:
-        return
-
-    from app.db.models import BookingSlip
-
-    BookingSlip.__table__.drop(bind=engine)
-    BookingSlip.__table__.create(bind=engine)
+    try:
+        inspector = inspect(engine)
+        if "booking_slips" not in inspector.get_table_names():
+            return
+        columns = {c["name"]: c for c in inspector.get_columns("booking_slips")}
+        if columns.get("combined_odds", {}).get("nullable", True):
+            return  # already nullable, or column doesn't exist yet (ensure_schema adds it)
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE booking_slips ALTER COLUMN combined_odds DROP NOT NULL"))
+    except Exception:
+        logger.exception("Could not make booking_slips.combined_odds nullable -- leaving it as-is")
 
 
 def _backfill_referral_codes(engine: Engine) -> None:
@@ -265,8 +284,12 @@ def init_db(engine: Engine) -> None:
     from app.db.models import Base
 
     Base.metadata.create_all(bind=engine)
-    _rebuild_empty_booking_slips_table(engine)
+    # ensure_schema is the one step every other endpoint depends on being
+    # current (it adds every column a model gained after its table already
+    # existed) -- it must run unconditionally, before anything that could
+    # itself fail, so a secondary cleanup below can never block it again.
     ensure_schema(engine)
+    _make_booking_slips_combined_odds_nullable(engine)
     _migrate_pending_users_to_active(engine)
     _backfill_referral_codes(engine)
     _enable_row_level_security(engine)
