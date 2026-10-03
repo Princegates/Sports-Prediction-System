@@ -43,6 +43,15 @@ else:
     # keeps the pool from holding connections the server has already gone.
     engine_kwargs["pool_pre_ping"] = True
     engine_kwargs["pool_recycle"] = 280
+    # SQLAlchemy's own defaults (pool_size=5, max_overflow=10) let this one
+    # process hold up to 15 connections open -- which is the *entire*
+    # project-wide client cap on Supabase's free-tier session-mode pooler by
+    # itself, with nothing left for a second request, the live-sync
+    # background loop, or anyone else connecting to the same project. This
+    # workload (a handful of concurrent requests, no high-throughput OLTP)
+    # has no real use for that many anyway.
+    engine_kwargs["pool_size"] = 3
+    engine_kwargs["max_overflow"] = 2
 
     if uses_transaction_pooler(database_url):
         # A transaction-mode pooler gives each transaction whichever backend
