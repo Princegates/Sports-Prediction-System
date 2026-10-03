@@ -44,6 +44,17 @@ else:
     engine_kwargs["pool_pre_ping"] = True
     engine_kwargs["pool_recycle"] = 280
 
+    # A connection that can't be established at all -- a sleeping database,
+    # an unreachable host, a firewall silently dropping packets -- has no
+    # bound here otherwise, so it hangs on the OS's own TCP timeout, which
+    # can run well past a minute. That hang happens at import time (see
+    # app.main._try_init_database, called before the app object even
+    # exists), before the process binds its port -- so a host's deploy
+    # health check sees nothing yet and a slow database makes every deploy
+    # look stuck, not just database-dependent requests. A short, explicit
+    # timeout turns that into a fast failure the retry loop can act on.
+    connect_args: dict = {"connect_timeout": 10}
+
     if uses_transaction_pooler(database_url):
         # A transaction-mode pooler hands each transaction whichever backend
         # connection is free rather than dedicating one per client for the
@@ -68,7 +79,7 @@ else:
         # this workload is a few hundred queries per refresh, not a
         # high-throughput OLTP service -- and it only applies when actually
         # connecting through such a pooler.
-        engine_kwargs["connect_args"] = {"prepare_threshold": None}
+        connect_args["prepare_threshold"] = None
     else:
         # No pooler in front (or a session-mode one, which dedicates one
         # real backend connection per client for its whole session): stay
@@ -78,6 +89,8 @@ else:
         # process claim the entire budget by itself.
         engine_kwargs["pool_size"] = 3
         engine_kwargs["max_overflow"] = 2
+
+    engine_kwargs["connect_args"] = connect_args
 
 engine = create_engine(database_url, **engine_kwargs)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
