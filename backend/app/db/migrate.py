@@ -88,13 +88,13 @@ _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     # as a valid state.
     ("admin_picks", "result", "VARCHAR(16) DEFAULT 'pending'"),
     ("admin_picks", "leg_results", "JSON"),
-    ("admin_picks", "settled_at", "DATETIME"),
+    ("admin_picks", "settled_at", "TIMESTAMP"),
     ("booking_slips", "result", "VARCHAR(16) DEFAULT 'pending'"),
     ("booking_slips", "leg_results", "JSON"),
-    ("booking_slips", "settled_at", "DATETIME"),
+    ("booking_slips", "settled_at", "TIMESTAMP"),
     ("featured_picks", "probability_at_pick", "FLOAT"),
     ("featured_picks", "result", "VARCHAR(16) DEFAULT 'pending'"),
-    ("featured_picks", "settled_at", "DATETIME"),
+    ("featured_picks", "settled_at", "TIMESTAMP"),
 ]
 
 

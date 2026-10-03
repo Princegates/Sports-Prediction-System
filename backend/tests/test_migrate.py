@@ -142,3 +142,19 @@ def test_booking_slips_combined_odds_nullable_fix_never_raises(monkeypatch, db_s
         m.setattr(engine.dialect, "name", "postgresql", raising=False)
         m.setattr(migrate, "inspect", boom)
         migrate._make_booking_slips_combined_odds_nullable(engine)  # must not raise
+
+
+def test_no_added_column_uses_a_datetime_type_postgres_does_not_have():
+    """Regression test for the bug that actually broke production here:
+    "DATETIME" is a SQLite/MySQL type name, not a real Postgres one (Postgres
+    only has TIMESTAMP). SQLite's lenient type-affinity rules accept it
+    silently, so this is invisible to the whole rest of this test suite --
+    three ADD COLUMN statements used it, each one failed against the real
+    production database, and -- thanks to ensure_schema's one-statement-at-
+    a-time transactions (see the test above) -- only those three columns
+    were ever missing, but every endpoint touching them broke until this was
+    caught by hand reading Render's logs. A plain string search is a cheap,
+    permanent guard against writing "DATETIME" in this list again."""
+
+    offending = [(table, column) for table, column, column_type in migrate._ADDED_COLUMNS if "DATETIME" in column_type.upper()]
+    assert offending == [], f"Use TIMESTAMP, not DATETIME (Postgres has no such type): {offending}"
