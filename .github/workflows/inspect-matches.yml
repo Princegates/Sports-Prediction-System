@@ -49,4 +49,11 @@ jobs:
           fi
           ARGS=(--since "$SINCE")
           [ -n "$TEAM" ] && ARGS+=(--team "$TEAM")
-          eval "python scripts/inspect_matches.py --leagues $LEAGUES \"\${ARGS[@]}\""
+
+          # LEAGUES arrives as a shell-quoted-looking string ("a" "b c") so
+          # the input box can take a list -- tokenized via xargs rather than
+          # `eval` so a value containing `;` or `$(...)` is just a league
+          # name, never something this step executes with DATABASE_URL in
+          # its environment.
+          mapfile -t LEAGUES_ARR < <(xargs -n1 <<<"$LEAGUES")
+          python scripts/inspect_matches.py --leagues "${LEAGUES_ARR[@]}" "${ARGS[@]}"

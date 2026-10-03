@@ -72,13 +72,26 @@ jobs:
           SEASONS: ${{ inputs.seasons }}
           DAYS_AHEAD: ${{ inputs.days_ahead }}
           MAX_REQUESTS: ${{ inputs.max_requests }}
+          ODDS: ${{ inputs.odds }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
-          FLAGS="--days-ahead $DAYS_AHEAD"
-          [ "${{ inputs.odds }}" = "yes" ] && FLAGS="$FLAGS --odds"
-          [ "${{ inputs.dry_run }}" = "yes" ] && FLAGS="$FLAGS --dry-run"
-          [ -n "$SEASONS" ] && FLAGS="$FLAGS --seasons $SEASONS"
+          FLAGS=(--days-ahead "$DAYS_AHEAD" --max-requests "$MAX_REQUESTS")
+          [ "$ODDS" = "yes" ] && FLAGS+=(--odds)
+          [ "$DRY_RUN" = "yes" ] && FLAGS+=(--dry-run)
 
-          eval "python scripts/import_api_football.py --max-requests $MAX_REQUESTS $FLAGS --leagues $LEAGUES"
+          # LEAGUES/SEASONS arrive as shell-quoted-looking strings ("a" "b c")
+          # so the input box can take a list -- tokenized via xargs rather
+          # than `eval` so a value containing `;` or `$(...)` is just a
+          # league name, never something this step executes with
+          # DATABASE_URL in its environment. Guarded on non-blank first --
+          # `xargs -n1 <<<""` still runs once on bash's own trailing newline,
+          # which would otherwise hand --leagues a single empty-string value
+          # instead of falling through to the script's own default leagues.
+          LEAGUES_ARR=(); [ -n "$LEAGUES" ] && mapfile -t LEAGUES_ARR < <(xargs -n1 <<<"$LEAGUES")
+          [ -n "$SEASONS" ] && { mapfile -t SEASONS_ARR < <(xargs -n1 <<<"$SEASONS"); FLAGS+=(--seasons "${SEASONS_ARR[@]}"); }
+          [ ${#LEAGUES_ARR[@]} -gt 0 ] && FLAGS+=(--leagues "${LEAGUES_ARR[@]}")
+
+          python scripts/import_api_football.py "${FLAGS[@]}"
 
       # Every import checks its own work. Attaching a tie to the wrong club is
       # invisible in the data -- the fixture looks entirely normal -- so it has
@@ -90,7 +103,9 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           LEAGUES: ${{ inputs.leagues }}
         run: |
-          eval "set -- $LEAGUES"
-          for league in "$@"; do
+          # Same tokenizing as the Import step above, not `eval` -- see its
+          # comment for why.
+          LEAGUES_ARR=(); [ -n "$LEAGUES" ] && mapfile -t LEAGUES_ARR < <(xargs -n1 <<<"$LEAGUES")
+          for league in "${LEAGUES_ARR[@]}"; do
             python scripts/audit_european_fixtures.py --league "$league"
           done

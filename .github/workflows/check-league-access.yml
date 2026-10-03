@@ -46,7 +46,18 @@ jobs:
           SEARCH: ${{ inputs.search }}
           COUNTRY: ${{ inputs.country }}
         run: |
-          FLAGS=""
-          [ -n "$SEARCH" ] && FLAGS="$FLAGS --search $SEARCH"
-          [ -n "$COUNTRY" ] && FLAGS="$FLAGS --country $COUNTRY"
-          eval "python scripts/check_league_access.py $FLAGS"
+          # SEARCH/COUNTRY arrive as shell-quoted-looking strings ("a" "b c")
+          # so the input box can take a list -- tokenized via xargs rather
+          # than `eval` so a value containing `;` or `$(...)` is just a
+          # search term, never something this step executes with
+          # DATABASE_URL in its environment.
+          ARGS=()
+          if [ -n "$SEARCH" ]; then
+            mapfile -t SEARCH_ARR < <(xargs -n1 <<<"$SEARCH")
+            ARGS+=(--search "${SEARCH_ARR[@]}")
+          fi
+          if [ -n "$COUNTRY" ]; then
+            mapfile -t COUNTRY_ARR < <(xargs -n1 <<<"$COUNTRY")
+            ARGS+=(--country "${COUNTRY_ARR[@]}")
+          fi
+          python scripts/check_league_access.py "${ARGS[@]}"

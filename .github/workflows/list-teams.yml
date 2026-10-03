@@ -34,4 +34,10 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           LIKE: ${{ inputs.like }}
         run: |
-          eval "python scripts/list_teams.py --like $LIKE"
+          # LIKE arrives as a shell-quoted-looking string ("a" "b c") so the
+          # input box can take a list -- tokenized via xargs rather than
+          # `eval` so a value containing `;` or `$(...)` is just a substring
+          # to search for, never something this step executes with
+          # DATABASE_URL in its environment.
+          mapfile -t LIKE_ARR < <(xargs -n1 <<<"$LIKE")
+          python scripts/list_teams.py --like "${LIKE_ARR[@]}"

@@ -128,12 +128,14 @@ jobs:
           # Fixtures and results come from API-Football only (one request per
           # league per season). refresh/retrain import the current season;
           # seed also backfills the five before it, for a fresh database.
+          FLAGS=(--days-ahead "$DAYS_AHEAD")
           case "$MODE" in
-            retrain) FLAGS="" ;;
-            refresh) FLAGS="--skip-training" ;;
+            retrain) ;;
+            refresh) FLAGS+=(--skip-training) ;;
             seed)
               Y=$(date -u +%Y); [ "$(date -u +%-m)" -lt 7 ] && Y=$((Y - 1))
-              FLAGS="--seasons $(seq -s ' ' $((Y - 5)) $Y)" ;;
+              mapfile -t SEED_SEASONS < <(seq $((Y - 5)) $Y)
+              FLAGS+=(--seasons "${SEED_SEASONS[@]}") ;;
             *)       echo "Unknown mode: $MODE" >&2; exit 1 ;;
           esac
 
@@ -145,9 +147,14 @@ jobs:
             echo "::warning::gradient-boosting component. Run this workflow with mode=retrain."
           fi
 
-          # eval so the quoted, space-separated league names survive as
-          # separate argv entries rather than becoming one long string.
-          eval "python scripts/bootstrap.py --days-ahead $DAYS_AHEAD $FLAGS --leagues $LEAGUES"
+          # LEAGUES arrives as a shell-quoted-looking string ("a" "b c") so
+          # the input box can take a list -- tokenized via xargs rather than
+          # `eval` (which this used to use) so a value containing `;` or
+          # `$(...)` is just a league name, never something this step
+          # executes with SUPERADMIN_PASSWORD and DATABASE_URL both in its
+          # environment.
+          mapfile -t LEAGUES_ARR < <(xargs -n1 <<<"$LEAGUES")
+          python scripts/bootstrap.py "${FLAGS[@]}" --leagues "${LEAGUES_ARR[@]}"
 
       # Only on the weekly retrain, not the daily refresh -- "every match
       # week" means once a week, not reshuffled every morning. Runs after

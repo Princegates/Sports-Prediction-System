@@ -46,7 +46,17 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           LEAGUE: ${{ inputs.league }}
+          # Routed through env rather than spliced into the script text
+          # directly (`[ "${{ inputs.list_all }}" = ... ]`, what this used to
+          # do): GitHub substitutes `${{ }}` as raw text before bash ever
+          # parses the line, so a value containing a `"` can break out of
+          # that quoting and inject shell syntax straight into this step --
+          # `type: choice` narrows what the UI offers but isn't a trusted
+          # enforcement boundary against a workflow_dispatch fired via the
+          # API. `$LIST_ALL` below is just an environment variable's value,
+          # never re-spliced into the script.
+          LIST_ALL: ${{ inputs.list_all }}
         run: |
           FLAGS=""
-          [ "${{ inputs.list_all }}" = "yes" ] && FLAGS="--list"
+          [ "$LIST_ALL" = "yes" ] && FLAGS="--list"
           python scripts/audit_european_fixtures.py --league "$LEAGUE" $FLAGS

@@ -50,9 +50,18 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           HOLDOUT_FROM: ${{ inputs.holdout_from }}
+          # Routed through env rather than spliced into the script text
+          # directly (what this used to do): GitHub substitutes `${{ }}` as
+          # raw text before bash ever parses the line, so a value containing
+          # a `"` can break out of that quoting and inject shell syntax
+          # straight into this step -- `type: choice` narrows what the UI
+          # offers but isn't a trusted enforcement boundary against a
+          # workflow_dispatch fired via the API.
+          SAVE: ${{ inputs.save }}
+          FORCE: ${{ inputs.force }}
         run: |
-          FLAGS=""
-          [ "${{ inputs.save }}" = "yes" ] && FLAGS="$FLAGS --save"
-          [ "${{ inputs.force }}" = "yes" ] && FLAGS="$FLAGS --force"
-          [ -n "$HOLDOUT_FROM" ] && FLAGS="$FLAGS --holdout-from $HOLDOUT_FROM"
-          python scripts/fit_league_strength.py $FLAGS
+          FLAGS=()
+          [ "$SAVE" = "yes" ] && FLAGS+=(--save)
+          [ "$FORCE" = "yes" ] && FLAGS+=(--force)
+          [ -n "$HOLDOUT_FROM" ] && FLAGS+=(--holdout-from "$HOLDOUT_FROM")
+          python scripts/fit_league_strength.py "${FLAGS[@]}"

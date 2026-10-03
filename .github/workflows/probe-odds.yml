@@ -44,8 +44,17 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           BET_NAME: ${{ inputs.bet_name }}
+          # Routed through env rather than spliced into the script text
+          # directly (what this used to do, with no type: choice restriction
+          # on any of the three): GitHub substitutes `${{ }}` as raw text
+          # before bash ever parses the line, so a value containing a `"`
+          # can break out of the array literal's quoting and inject shell
+          # syntax straight into this step.
+          LEAGUE_ID: ${{ inputs.league_id }}
+          SEASON: ${{ inputs.season }}
+          DATE: ${{ inputs.date }}
         run: |
-          ARGS=(--league-id "${{ inputs.league_id }}" --season "${{ inputs.season }}" --date "${{ inputs.date }}")
+          ARGS=(--league-id "$LEAGUE_ID" --season "$SEASON" --date "$DATE")
           if [ -n "$BET_NAME" ]; then
             ARGS+=(--bet-name "$BET_NAME")
           fi

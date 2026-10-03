@@ -70,8 +70,29 @@ jobs:
             echo "DATABASE_URL secret is not set."
             exit 1
           fi
-          FLAGS=""
-          [ "$APPLY" = "yes" ] && FLAGS="--apply"
-          eval "python scripts/split_merged_club.py --league \"\$LEAGUE\" --merged-name \"\$MERGED\" \
-            --restore-name \"\$RESTORE\" --restore-aliases $ALIASES --competitions $COMPETITIONS \
-            --seasons $SEASONS $FLAGS"
+          FLAGS=()
+          [ "$APPLY" = "yes" ] && FLAGS+=(--apply)
+
+          # ALIASES/COMPETITIONS/SEASONS arrive as a shell-quoted-looking
+          # string ("a" "b c") so this workflow's own input box can take a
+          # list -- turning that into real argv entries used to go through
+          # `eval`, which executes anything embedded in the value (a backtick,
+          # `$(...)`, or `;`) with this step's own DATABASE_URL secret in
+          # scope. `xargs` parses the same quoting but only ever runs `echo`
+          # with the result, so it tokenizes without ever executing what it
+          # tokenizes. Declared empty first and only populated when non-blank
+          # -- `xargs -n1 <<<""` still runs `echo` once on bash's own
+          # trailing newline, which would otherwise hand
+          # --restore-aliases a single empty-string value instead of none.
+          ALIASES_ARR=(); [ -n "$ALIASES" ] && mapfile -t ALIASES_ARR < <(xargs -n1 <<<"$ALIASES")
+          COMPETITIONS_ARR=(); [ -n "$COMPETITIONS" ] && mapfile -t COMPETITIONS_ARR < <(xargs -n1 <<<"$COMPETITIONS")
+          SEASONS_ARR=(); [ -n "$SEASONS" ] && mapfile -t SEASONS_ARR < <(xargs -n1 <<<"$SEASONS")
+
+          python scripts/split_merged_club.py \
+            --league "$LEAGUE" \
+            --merged-name "$MERGED" \
+            --restore-name "$RESTORE" \
+            --restore-aliases "${ALIASES_ARR[@]}" \
+            --competitions "${COMPETITIONS_ARR[@]}" \
+            --seasons "${SEASONS_ARR[@]}" \
+            "${FLAGS[@]}"
