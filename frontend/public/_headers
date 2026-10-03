@@ -1,0 +1,26 @@
+# Security response headers for Cloudflare Pages. Static -- Pages serves
+# this file's rules on every response with no build step, which is why it
+# lives in public/ rather than being generated.
+#
+# connect-src and img-src name *.onrender.com because that's where the
+# backend actually lives (DEPLOYMENT.md's own "note the service URL" step
+# hands out a random onrender.com subdomain, not a fixed one) -- if the API
+# ever moves to a custom domain, update this line to match or requests to it
+# will be silently blocked by the browser, not the server.
+#
+# style-src needs 'unsafe-inline': the app uses React's inline style={{...}}
+# extensively (every page in src/pages, src/components), which CSP treats as
+# untrusted unless explicitly allowed. That's a real trade-off -- an
+# attacker who achieves HTML injection could still inject a <style> tag or
+# style attribute -- but script-src (the much higher-value target for an
+# attacker: arbitrary JS reads localStorage, including the session token)
+# stays locked to 'self' with no such exception, and nothing in this
+# codebase uses dangerouslySetInnerHTML or innerHTML (verified during the
+# audit that added this file), so there's no injection point for either to
+# land through in the first place.
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://*.onrender.com; connect-src 'self' https://*.onrender.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'

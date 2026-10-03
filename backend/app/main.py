@@ -159,6 +159,33 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def _security_headers(request: Request, call_next):
+    """Headers a browser honors on every response, API or not.
+
+    No Content-Security-Policy here -- CSP is about what a *page* is allowed
+    to load, and the one HTML this service ever serves to a browser directly
+    is /docs (Swagger UI), which loads its own JS/CSS from a CDN; a strict
+    default-src would break it for no real benefit, since the actual
+    frontend is a separate static site that sets its own CSP (see
+    frontend/public/_headers). X-Frame-Options and nosniff carry no such
+    tradeoff -- they're free, and they still protect /docs and this API's
+    own JSON error pages from being framed or MIME-sniffed into something
+    they're not.
+    """
+
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    # Render terminates TLS in front of this process, so every request a
+    # browser actually makes is HTTPS even though uvicorn itself sees HTTP --
+    # safe to tell the browser to enforce that for a year regardless.
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+
+
 # /api/auth/* (register/login/status) and /api/public/* (landing-page figures)
 # are intentionally open. /api/access/* needs only a logged-in account (an
 # expired user must still be able to redeem a new code). Teams, matches and
