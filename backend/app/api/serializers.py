@@ -110,7 +110,7 @@ def match_to_schema(match: Match) -> MatchOut:
     )
 
 
-def prediction_to_schema(prediction: Prediction) -> PredictionOut:
+def prediction_to_schema(prediction: Prediction, match: Match) -> PredictionOut:
     # Pure arithmetic over columns already loaded -- no extra query, same as
     # every other caller of outcomes_from_prediction. Cheap even across a
     # whole day's fixtures.
@@ -121,6 +121,7 @@ def prediction_to_schema(prediction: Prediction) -> PredictionOut:
 
     return PredictionOut(
         match_id=prediction.match_id,
+        match=match_to_schema(match),
         created_at=prediction.created_at,
         model_version=prediction.model_version,
         home_win=prediction.home_win,

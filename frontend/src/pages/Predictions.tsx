@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { fetchMatch, fetchMostLikely } from "../api";
+import { fetchMostLikely } from "../api";
 import { LEAGUES, leagueLabel, useLeague } from "../components/AppShell";
 import { CopyButton } from "../components/CopyButton";
 import { DateStrip, localDayKey } from "../components/DateStrip";
@@ -107,12 +107,10 @@ export function Predictions() {
 
     const leaguesToFetch = league === "" ? LEAGUES : [league];
     Promise.all(leaguesToFetch.map((l) => fetchMostLikely(l, HORIZON_DAYS, 80).catch(() => [])))
-      .then(async (perLeague) => {
+      .then((perLeague) => {
         if (cancelled) return;
         const predictions = perLeague.flat();
-        const matches = await Promise.all(predictions.map((p) => fetchMatch(p.match_id)));
-        if (cancelled) return;
-        setRows(predictions.map((prediction, i) => ({ prediction, match: matches[i] })));
+        setRows(predictions.map((prediction) => ({ prediction, match: prediction.match })));
       })
       .catch((err) => !cancelled && setError(String(err)));
 

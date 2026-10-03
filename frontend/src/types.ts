@@ -30,6 +30,10 @@ export interface GlobalOutcome {
 
 export interface Prediction {
   match_id: number;
+  /** Embedded so a list of predictions never needs a separate
+   * /api/matches/{id} request per row just for team names and kickoff
+   * time -- see the backend's PredictionOut for why that mattered. */
+  match: MatchSummary;
   created_at: string;
   model_version: string;
   home_win: number;

@@ -84,7 +84,7 @@ def get_match_prediction(
     if prediction is None:
         prediction = build_prediction_for_match(db, match)
 
-    return prediction_to_schema(prediction)
+    return prediction_to_schema(prediction, match)
 
 
 @router.get("/{match_id}/outcomes", response_model=OutcomesOut)
@@ -162,7 +162,7 @@ def get_match_prediction_history(match: Match = Depends(get_match_or_404), db: S
     rows = db.execute(
         select(Prediction).where(Prediction.match_id == match.id).order_by(Prediction.created_at.asc())
     ).scalars()
-    return [prediction_to_schema(p) for p in rows]
+    return [prediction_to_schema(p, match) for p in rows]
 
 
 @router.get("/{match_id}/statistics")

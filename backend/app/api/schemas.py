@@ -37,6 +37,14 @@ class GlobalOutcomeOut(BaseModel):
 
 class PredictionOut(BaseModel):
     match_id: int
+    # Embedded rather than left for the caller to fetch separately: a page
+    # listing predictions (AI Predictions, Dashboard) used to fire one
+    # /api/matches/{id} request per row just for team names and kickoff
+    # time -- fine for a handful of matches, but "All leagues" easily means
+    # hundreds of predictions, so hundreds of extra requests racing each
+    # other for a database connection at once. This comes along for free in
+    # the same query that already builds the prediction.
+    match: MatchOut
     created_at: dt.datetime
     model_version: str
     home_win: float

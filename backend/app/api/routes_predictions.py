@@ -69,7 +69,8 @@ def predictions_today(league: str | None = None, db: Session = Depends(get_db)) 
 
     matches = db.execute(stmt).scalars().all()
     predictions = _build_all(db, matches)
-    return [prediction_to_schema(p) for p in predictions]
+    match_by_id = {m.id: m for m in matches}
+    return [prediction_to_schema(p, match_by_id[p.match_id]) for p in predictions]
 
 
 @router.get("/high-confidence", response_model=list[PredictionOut], dependencies=[Depends(require_active_access)])
@@ -92,7 +93,8 @@ def predictions_high_confidence(
         for p in predictions
         if is_high_confidence(p.global_outcome_probability, p.data_quality_score, p.model_agreement_score)
     ]
-    return [prediction_to_schema(p) for p in filtered]
+    match_by_id = {m.id: m for m in matches}
+    return [prediction_to_schema(p, match_by_id[p.match_id]) for p in filtered]
 
 
 @router.get("/most-likely", response_model=list[PredictionOut], dependencies=[Depends(require_active_access)])
@@ -112,7 +114,8 @@ def predictions_most_likely(
     matches = db.execute(stmt).scalars().all()
     predictions = _build_all(db, matches)
     predictions.sort(key=lambda p: p.global_outcome_probability, reverse=True)
-    return [prediction_to_schema(p) for p in predictions[:limit]]
+    match_by_id = {m.id: m for m in matches}
+    return [prediction_to_schema(p, match_by_id[p.match_id]) for p in predictions[:limit]]
 
 
 @router.get("/outcomes", response_model=OutcomesOut, dependencies=[Depends(require_active_access)])

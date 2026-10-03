@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchFreePicks, fetchMatch, fetchMatches, fetchMostLikely, fetchPrediction } from "../api";
+import { fetchFreePicks, fetchMatches, fetchMostLikely, fetchPrediction } from "../api";
 import { leagueLabel, useLeague } from "../components/AppShell";
 import { AdminPicksSection } from "../components/AdminPicksSection";
 import { RandomPicksSection } from "../components/RandomPicksSection";
@@ -66,9 +66,8 @@ function readStoredHighConfidenceOnly(): boolean {
 
 async function loadForWeek(league: string): Promise<Row[]> {
   const predictions = await fetchMostLikely(league, 7, 24);
-  const matches = await Promise.all(predictions.map((p) => fetchMatch(p.match_id)));
   return predictions
-    .map((prediction, i) => ({ prediction, match: matches[i] }))
+    .map((prediction) => ({ prediction, match: prediction.match }))
     .filter((r) => r.match.status !== "FINISHED")
     .sort((a, b) => new Date(a.match.date).getTime() - new Date(b.match.date).getTime());
 }
