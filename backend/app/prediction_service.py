@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.db.models import Match, Prediction
 from app.explain import generate_explanation
+from app.features.squad_strength import absence_probability_nudge, team_absence_impact
 from app.features.team_stats import compute_team_form, matches_played_before
 from app.model_store import load_calibrators, load_ensemble_weights, load_ml_model
 from app.outcomes.engine import select_global_most_likely
@@ -55,6 +56,21 @@ def build_prediction_for_match(
         feature_cache=feature_cache,
         strength=strength,
     )
+
+    # Applied after the ensemble blend rather than as a model input -- see
+    # app.features.squad_strength's own module docstring for why this isn't
+    # an ML feature yet. Mutating result in place before the outcome
+    # registry is built below means every market derived from home/draw/away
+    # (correct score, totals, the global pick) reflects the adjusted
+    # numbers, not the pre-adjustment ones.
+    home_absences = team_absence_impact(db, match.home_team_id, as_of, match)
+    away_absences = team_absence_impact(db, match.away_team_id, as_of, match)
+    shift = absence_probability_nudge(home_absences, away_absences)
+    if shift:
+        home_win = max(0.0, min(1.0, result.home_win + shift))
+        away_win = max(0.0, min(1.0, result.away_win - shift))
+        total = home_win + result.draw + away_win
+        result.home_win, result.draw, result.away_win = home_win / total, result.draw / total, away_win / total
 
     matches_home = matches_played_before(db, match.home_team_id, as_of, match.league)
     matches_away = matches_played_before(db, match.away_team_id, as_of, match.league)
@@ -102,9 +118,18 @@ def build_prediction_for_match(
         away_form,
         elo_diff,
         calibrated.home_advantage,
+        home_absences,
+        away_absences,
     )
     if calibrated.applied:
-        explanation = f"{explanation} Ratings are calibrated across leagues: {calibrated.note}."
+        # Appended as a factor rather than string-formatted onto the dict
+        # (what this used to do -- `f"{explanation} ..."` stringifies the
+        # whole {"positive": [...], "negative": [...]} structure, which then
+        # got stored in a column the API and frontend both expect to still
+        # be that same dict shape). Calibration is genuinely neutral info,
+        # not a reason either side wins, but the schema only has these two
+        # buckets to put it in.
+        explanation["positive"].append(f"Ratings are calibrated across leagues: {calibrated.note}.")
 
     prediction = Prediction(
         match_id=match.id,

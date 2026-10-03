@@ -104,6 +104,26 @@ jobs:
           fi
           python scripts/check_database_url.py
 
+      # Before prediction generation, not after -- predictions read stored
+      # absences (app.prediction_service), they never fetch from the
+      # provider themselves, so this has to land first or the day's
+      # predictions go out blind to anyone reported out since yesterday.
+      - name: Import injuries/suspensions
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          LEAGUES: ${{ inputs.leagues || '"English Premier League" "English Championship" "Spanish La Liga" "German Bundesliga" "Italian Serie A" "French Ligue 1" "Dutch Eredivisie" "Portuguese Primeira Liga" "Turkish Süper Lig" "UEFA Champions League" "UEFA Europa League"' }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret is not set -- nothing to import."
+            exit 0
+          fi
+          # Shell-quoted-looking string ("a" "b c"), tokenized via xargs
+          # rather than eval -- same reasoning as every other league list in
+          # this repo's workflows (see the command-injection fix history).
+          mapfile -t LEAGUES_ARR < <(xargs -n1 <<<"$LEAGUES")
+          python scripts/import_injuries.py --leagues "${LEAGUES_ARR[@]}"
+
       - name: Refresh data, models and predictions
         working-directory: backend
         env:

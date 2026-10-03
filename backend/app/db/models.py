@@ -338,6 +338,80 @@ class Match(Base):
         return self.home_score is not None and self.away_score is not None
 
 
+class Player(Base):
+    """A squad member, identified by API-Football's own player id -- the one
+    stable key available for this, since this project resolves *teams* by
+    fuzzy name matching (TeamIndex) rather than storing a provider id for
+    them. ``team_id`` is this player's most recently seen club; a transfer
+    just moves it, same as a real-world squad list, since nothing here needs
+    to reconstruct which club a player was at on some past date."""
+
+    __tablename__ = "players"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    api_player_id: Mapped[int] = mapped_column(Integer, unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(128), index=True)
+    team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True, index=True)
+
+    team: Mapped[Team | None] = relationship(foreign_keys=[team_id])
+
+
+class PlayerAbsence(Base):
+    """A reported injury or suspension, from API-Football's ``/injuries``
+    endpoint -- one row per (player, team, fixture) the provider lists as a
+    missing fixture, not a running "is this player currently fit" flag.
+    ``match_id`` is null when the provider's row names a fixture this project
+    holds no row for (a league it doesn't track, a fixture not yet imported);
+    kept anyway so a report fetched slightly ahead of the fixture import
+    isn't silently dropped, just unusable until the match exists.
+
+    This table is overwritten wholesale per (league, season) fetch -- see
+    app.data.squad_ingest.import_injuries -- rather than diffed, since a
+    player who recovers simply stops appearing in the provider's list and
+    there is no "resolved" event to react to instead."""
+
+    __tablename__ = "player_absences"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    player_id: Mapped[int] = mapped_column(ForeignKey("players.id"), index=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), index=True)
+    match_id: Mapped[int | None] = mapped_column(ForeignKey("matches.id"), nullable=True, index=True)
+    # Provider's own free-text reason ("Knee Injury", "Suspended", ...) --
+    # shown verbatim in the explanation rather than classified, since the
+    # model only needs "this player is out", not why.
+    reason: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    fetched_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+    player: Mapped[Player] = relationship(foreign_keys=[player_id])
+    team: Mapped[Team] = relationship(foreign_keys=[team_id])
+
+
+class MatchLineup(Base):
+    """One player's appearance in a match's lineup, starter or substitute.
+
+    Stored for finished matches too, not only upcoming ones -- this table
+    *is* the "who normally starts for this team" history
+    (app.features.squad_strength reads it), and it only becomes useful once
+    enough of it has accumulated. There was nothing to backfill it from when
+    this was built, so it starts empty and fills in as real matches get
+    ingested going forward."""
+
+    __tablename__ = "match_lineups"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    match_id: Mapped[int] = mapped_column(ForeignKey("matches.id"), index=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), index=True)
+    player_id: Mapped[int] = mapped_column(ForeignKey("players.id"), index=True)
+    is_starter: Mapped[bool] = mapped_column(Boolean, default=True)
+    fetched_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+    match: Mapped[Match] = relationship(foreign_keys=[match_id])
+    team: Mapped[Team] = relationship(foreign_keys=[team_id])
+    player: Mapped[Player] = relationship(foreign_keys=[player_id])
+
+    __table_args__ = (UniqueConstraint("match_id", "player_id", name="uq_match_lineup_player"),)
+
+
 class EloHistory(Base):
     """Point-in-time Elo snapshot, recorded after each match a team plays.
 

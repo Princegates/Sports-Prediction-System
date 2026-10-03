@@ -23,8 +23,11 @@ from app.api.routes_teams import router as teams_router
 from app.config import get_settings
 from app.data.api_football_ingest import run_live_sync_from_settings
 from app.data.providers.api_football import ApiFootballError, QuotaExceeded
+from app.data.squad_ingest import run_lineup_check_from_settings
 from app.db.migrate import init_db
+from app.db.models import Match
 from app.db.session import SessionLocal, engine
+from app.prediction_service import build_prediction_for_match
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +68,64 @@ async def _live_sync_loop() -> None:
         except Exception:  # noqa: BLE001 -- one bad poll must not kill the loop
             logger.exception("Live match sync loop hit an unexpected error")
         await asyncio.sleep(LIVE_SYNC_INTERVAL_SECONDS)
+
+
+# Official lineups land roughly 60-75 minutes before kickoff, never earlier
+# and never revised after -- the daily prediction batch runs hours or days
+# before that, so it can only ever know about injuries/suspensions reported
+# ahead of time (see app.features.squad_strength), not a last-minute
+# tactical rest. Same 5-minute cadence as the live-score poll above: a
+# lineup can't change faster than that, so there's nothing to gain from
+# checking more often, and this shares that loop's own request budget.
+LINEUP_CHECK_INTERVAL_SECONDS = 300.0
+LINEUP_CHECK_WINDOW_MINUTES = 90
+
+
+def _run_lineup_check_once() -> None:
+    db = SessionLocal()
+    try:
+        run = run_lineup_check_from_settings(db, window_minutes=LINEUP_CHECK_WINDOW_MINUTES)
+        if run is None:
+            return
+        for match_id in run.newly_confirmed:
+            match = db.get(Match, match_id)
+            if match is None:
+                continue
+            try:
+                # A new Prediction snapshot, not an edit to the existing one
+                # -- the same history every other re-generation already
+                # produces (see /api/matches/{id}/prediction-history), so a
+                # pre-lineup prediction a user already saw stays on the
+                # record rather than silently changing under them.
+                build_prediction_for_match(db, match)
+            except Exception:  # noqa: BLE001 -- one match's failure must not strand the rest, nor get silently retried forever
+                # import_lineup already marked this match's lineup as
+                # fetched, so a bare `continue` here would mean this match
+                # never gets another chance at regeneration once the next
+                # poll sees already_had_lineup and skips re-fetching --
+                # logged loudly rather than silently dropped for exactly
+                # that reason.
+                logger.exception("Could not regenerate prediction for match %d after lineup confirmation", match_id)
+    except (ApiFootballError, QuotaExceeded) as exc:
+        logger.warning("Lineup check skipped: %s", exc)
+        return
+    finally:
+        db.close()
+
+    if run.newly_confirmed:
+        logger.info(
+            "Lineup check: %d match(es) considered, %d prediction(s) regenerated on confirmed lineup",
+            run.considered, len(run.newly_confirmed),
+        )
+
+
+async def _lineup_check_loop() -> None:
+    while True:
+        try:
+            await asyncio.to_thread(_run_lineup_check_once)
+        except Exception:  # noqa: BLE001 -- one bad poll must not kill the loop
+            logger.exception("Lineup check loop hit an unexpected error")
+        await asyncio.sleep(LINEUP_CHECK_INTERVAL_SECONDS)
 
 # Schema state, reported by /api/health.
 _DB_LOCK = threading.Lock()
@@ -131,13 +192,15 @@ if settings.secret_key_is_default:
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
-    task = asyncio.create_task(_live_sync_loop())
+    tasks = [asyncio.create_task(_live_sync_loop()), asyncio.create_task(_lineup_check_loop())]
     try:
         yield
     finally:
-        task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await task
+        for task in tasks:
+            task.cancel()
+        for task in tasks:
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
 
 
 app = FastAPI(
