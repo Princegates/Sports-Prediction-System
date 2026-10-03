@@ -510,92 +510,6 @@ export function Markets() {
       )}
 
       {picks.length > 0 && (
-        <div className="card card-pad" style={{ marginBottom: 20 }} ref={picksCardRef}>
-          <div className="section-header" style={{ marginBottom: 12 }}>
-            <h3 style={{ margin: 0 }}>
-              My picks — {picks.length} selection{picks.length === 1 ? "" : "s"}
-            </h3>
-            <span className="meta tabular-nums">
-              {(picks.reduce((p, o) => p * o.probability, 1) * 100).toFixed(0)}% combined probability
-            </span>
-          </div>
-
-          <p className="setting-note" style={{ marginBottom: 12 }}>
-            Picked while browsing -- the percentages are the model's probability, not bookmaker odds.
-            Get a booking code for these picks below: the betting site builds the slip and sets its own
-            odds, which you'll see when you open it there. Or copy them and add them yourself.
-          </p>
-
-          <div className="predictions-table-wrapper">
-            <table className="predictions-table cards-on-mobile">
-              <tbody>
-                {picks.map((o) => (
-                  <tr key={o.match_id}>
-                    <td data-label="Match">
-                      <div className="match-cell">
-                        {o.home_team} vs {o.away_team}
-                      </div>
-                      <div className="sub">{o.league}</div>
-                    </td>
-                    <td className="sub" data-label="Market">{o.market}</td>
-                    <td data-label="Selection">
-                      <strong>{o.selection}</strong>
-                      {isHotPick(o.probability, o.data_quality_score, o.model_agreement_score) && (
-                        <span style={{ marginLeft: 6 }}>
-                          <HotPickBadge compact />
-                        </span>
-                      )}
-                    </td>
-                    <td className="tabular-nums" style={{ width: 60 }} data-label="Probability">
-                      {(o.probability * 100).toFixed(0)}%
-                    </td>
-                    <td style={{ width: 40 }} data-label="">
-                      <button
-                        type="button"
-                        className="btn ghost"
-                        style={{ padding: "2px 8px", fontSize: 12 }}
-                        onClick={() => togglePick(o)}
-                        aria-label="Remove"
-                      >
-                        ✕
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <CopyButton text={formatPicksForCopy(picks)} label="Copy selections" />
-            {user?.role === "superadmin" && (
-              <button
-                type="button"
-                className="btn ghost"
-                onClick={handleFeatureAsAdminPick}
-                disabled={featuring}
-              >
-                {featuring ? "Featuring…" : "★ Feature as Admin Pick (no odds)"}
-              </button>
-            )}
-            <button type="button" className="btn ghost" onClick={() => setPicks([])}>
-              Clear all
-            </button>
-          </div>
-
-          <SiteCodes
-            legs={picks}
-            book={(sites) =>
-              bookPicks(
-                picks.map((p) => ({ match_id: p.match_id, market: p.market, selection: p.selection })),
-                sites,
-              )
-            }
-          />
-        </div>
-      )}
-
-      {picks.length > 0 && (
         <StickySlipBar
           summary={`${picks.length} pick${picks.length === 1 ? "" : "s"} · ${(picks.reduce((p, o) => p * o.probability, 1) * 100).toFixed(0)}% combined`}
           copyText={formatPicksForCopy(picks)}
@@ -905,6 +819,99 @@ export function Markets() {
         outcomes from different markets can all happen in the same match — stacking them multiplies the
         risk, it doesn't add the confidence.
       </p>
+
+      {/* Rendered after the browsing list rather than above it: picking an
+          outcome while scrolled deep into that list used to insert this
+          whole card above it, shoving everything the user was looking at
+          further down the page every time. StickySlipBar (shown as soon as
+          the first pick is made, further up) already surfaces a summary
+          without disturbing scroll position -- its "View" button scrolls
+          down to this card on demand instead. */}
+      {picks.length > 0 && (
+        <div className="card card-pad" style={{ marginTop: 20 }} ref={picksCardRef}>
+          <div className="section-header" style={{ marginBottom: 12 }}>
+            <h3 style={{ margin: 0 }}>
+              My picks — {picks.length} selection{picks.length === 1 ? "" : "s"}
+            </h3>
+            <span className="meta tabular-nums">
+              {(picks.reduce((p, o) => p * o.probability, 1) * 100).toFixed(0)}% combined probability
+            </span>
+          </div>
+
+          <p className="setting-note" style={{ marginBottom: 12 }}>
+            Picked while browsing -- the percentages are the model's probability, not bookmaker odds.
+            Get a booking code for these picks below: the betting site builds the slip and sets its own
+            odds, which you'll see when you open it there. Or copy them and add them yourself.
+          </p>
+
+          <div className="predictions-table-wrapper">
+            <table className="predictions-table cards-on-mobile">
+              <tbody>
+                {picks.map((o) => (
+                  <tr key={o.match_id}>
+                    <td data-label="Match">
+                      <div className="match-cell">
+                        {o.home_team} vs {o.away_team}
+                      </div>
+                      <div className="sub">{o.league}</div>
+                    </td>
+                    <td className="sub" data-label="Market">{o.market}</td>
+                    <td data-label="Selection">
+                      <strong>{o.selection}</strong>
+                      {isHotPick(o.probability, o.data_quality_score, o.model_agreement_score) && (
+                        <span style={{ marginLeft: 6 }}>
+                          <HotPickBadge compact />
+                        </span>
+                      )}
+                    </td>
+                    <td className="tabular-nums" style={{ width: 60 }} data-label="Probability">
+                      {(o.probability * 100).toFixed(0)}%
+                    </td>
+                    <td style={{ width: 40 }} data-label="">
+                      <button
+                        type="button"
+                        className="btn ghost"
+                        style={{ padding: "2px 8px", fontSize: 12 }}
+                        onClick={() => togglePick(o)}
+                        aria-label="Remove"
+                      >
+                        ✕
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <CopyButton text={formatPicksForCopy(picks)} label="Copy selections" />
+            {user?.role === "superadmin" && (
+              <button
+                type="button"
+                className="btn ghost"
+                onClick={handleFeatureAsAdminPick}
+                disabled={featuring}
+              >
+                {featuring ? "Featuring…" : "★ Feature as Admin Pick (no odds)"}
+              </button>
+            )}
+            <button type="button" className="btn ghost" onClick={() => setPicks([])}>
+              Clear all
+            </button>
+          </div>
+
+          <SiteCodes
+            legs={picks}
+            book={(sites) =>
+              bookPicks(
+                picks.map((p) => ({ match_id: p.match_id, market: p.market, selection: p.selection })),
+                sites,
+              )
+            }
+          />
+        </div>
+      )}
     </div>
   );
 }
