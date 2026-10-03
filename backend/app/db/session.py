@@ -43,19 +43,21 @@ else:
     # keeps the pool from holding connections the server has already gone.
     engine_kwargs["pool_pre_ping"] = True
     engine_kwargs["pool_recycle"] = 280
-    # SQLAlchemy's own defaults (pool_size=5, max_overflow=10) let this one
-    # process hold up to 15 connections open -- which is the *entire*
-    # project-wide client cap on Supabase's free-tier session-mode pooler by
-    # itself, with nothing left for a second request, the live-sync
-    # background loop, or anyone else connecting to the same project. This
-    # workload (a handful of concurrent requests, no high-throughput OLTP)
-    # has no real use for that many anyway.
-    engine_kwargs["pool_size"] = 3
-    engine_kwargs["max_overflow"] = 2
 
     if uses_transaction_pooler(database_url):
-        # A transaction-mode pooler gives each transaction whichever backend
-        # is free, so a statement prepared on one is absent from the next.
+        # A transaction-mode pooler hands each transaction whichever backend
+        # connection is free rather than dedicating one per client for the
+        # whole session -- Supabase's own pooler multiplexes up to 200 app-
+        # side connections like this one down onto a much smaller real
+        # Postgres pool (15 on a Micro instance). A page that opens several
+        # match detail requests in parallel (the Predictions page does) can
+        # genuinely need more than a handful at once, and the pooler is
+        # exactly what makes that safe to allow for.
+        engine_kwargs["pool_size"] = 10
+        engine_kwargs["max_overflow"] = 10
+
+        # The same pooler also gives each transaction whichever backend is
+        # free, so a statement prepared on one is absent from the next.
         # psycopg3 prepares automatically once a query has run five times
         # (prepare_threshold=5), which makes this fail *late* and look
         # random: the app works, then the queries it runs most often start
@@ -67,6 +69,15 @@ else:
         # high-throughput OLTP service -- and it only applies when actually
         # connecting through such a pooler.
         engine_kwargs["connect_args"] = {"prepare_threshold": None}
+    else:
+        # No pooler in front (or a session-mode one, which dedicates one
+        # real backend connection per client for its whole session): stay
+        # well under Supabase's free-tier session-mode cap of 15 *for the
+        # whole project*, not just this process -- SQLAlchemy's own
+        # defaults (pool_size=5, max_overflow=10 => up to 15) would let one
+        # process claim the entire budget by itself.
+        engine_kwargs["pool_size"] = 3
+        engine_kwargs["max_overflow"] = 2
 
 engine = create_engine(database_url, **engine_kwargs)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
