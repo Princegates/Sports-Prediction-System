@@ -27,7 +27,11 @@
       property="og:description"
       content="Three statistical models, blended and calibrated, scored across 18 markets per match — with the reasoning and the confidence shown. Probabilities, never guarantees."
     />
-    <meta name="twitter:card" content="summary" />
+    <meta property="og:image" content="https://soccaintel.com/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://soccaintel.com/og-image.png" />
 
     <!--
       IBM Plex Sans (Carbon Design System's own type family) for UI text --
@@ -58,19 +62,26 @@
       /favicon.ico probe, which 404s on every page load otherwise. Inline so it
       costs no extra request and needs no binary asset in the repo.
 
-      A simple soccer-ball glyph (white circle + one center pentagon facet,
-      the same minimal convention most sports-app icons reduce to) on a
-      rounded-square badge in the site's own brand orange (#ff6115, "sunset"
-      -- see lib/accentProfiles.ts) rather than the Carbon-blue default,
-      matching the .brand-mark badge already used elsewhere (Login, footer).
-      Checked at 16/32/64/256px on both dark and light tab backgrounds
-      before shipping -- the pentagon is the part that has to survive being
-      shrunk to a real favicon's actual size, not just look good at scale.
+      The full logo mark: a soccer ball (center pentagon + two rim panels,
+      clipped to the ball's own circle so they read as panels wrapping a
+      sphere rather than a flat shape) with a thin orbit ring and a lit
+      satellite dot sweeping around it -- the "AI watching the match" layer,
+      kept visually separate from the ball itself. Rounded-square badge in
+      the site's own brand orange (#ff6115, "sunset" -- see
+      lib/accentProfiles.ts), matching the .brand-mark badge used elsewhere
+      (Login, footer). The full vector lives at /brand/icon.svg; apple-touch
+      and PNG app-icon sizes are pre-rendered there too since iOS/Android
+      don't accept an SVG for those. Checked at 16/32/64/512px on both dark
+      and light tab backgrounds before shipping -- the ball's panels are the
+      part that has to survive being shrunk to a real favicon's actual size.
     -->
     <link
       rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23ff6115'/%3E%3Ccircle cx='16' cy='16' r='12.5' fill='%23fff'/%3E%3Cpolygon points='16,10.8 21.1,14.5 19.15,20.5 12.85,20.5 10.9,14.5' fill='%23161616'/%3E%3C/svg%3E"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0' y1='0' x2='200' y2='200' gradientUnits='userSpaceOnUse'%3E%3Cstop offset='0%25' stop-color='%23ff6115'/%3E%3Cstop offset='100%25' stop-color='%23ff8b54'/%3E%3C/linearGradient%3E%3CclipPath id='ballClip'%3E%3Ccircle cx='100' cy='100' r='46'/%3E%3C/clipPath%3E%3C/defs%3E%3Crect x='0' y='0' width='200' height='200' rx='46' fill='url(%23bg)'/%3E%3Cpath d='M 168.48 122.25 A 72 72 0 1 1 122.25 31.52' fill='none' stroke='%23ffffff' stroke-opacity='0.85' stroke-width='3.5' stroke-linecap='round'/%3E%3Ccircle cx='168.48' cy='122.25' r='7' fill='%23fff'/%3E%3Ccircle cx='168.48' cy='122.25' r='3.2' fill='%23ff6115'/%3E%3Ccircle cx='100' cy='100' r='46' fill='%23ffffff'/%3E%3Cg clip-path='url(%23ballClip)' fill='%232a2320' fill-opacity='0.92'%3E%3Cpolygon points='100.00,83.00 116.17,94.75 109.99,113.75 90.01,113.75 83.83,94.75'/%3E%3Cpolygon points='75.80,67.72 86.17,81.98 75.80,96.25 59.03,90.80 59.03,73.17'/%3E%3Cpolygon points='113.16,117.64 129.58,116.50 135.75,131.76 123.14,142.33 109.18,133.61'/%3E%3C/g%3E%3Ccircle cx='100' cy='100' r='46' fill='none' stroke='%232a2320' stroke-opacity='0.18' stroke-width='2'/%3E%3C/svg%3E"
     />
+    <link rel="apple-touch-icon" href="/brand/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/brand/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/brand/icon-512.png" />
   </head>
   <body>
     <div id="root"></div>
