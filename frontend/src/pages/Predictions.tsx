@@ -36,6 +36,12 @@ type SortKey = "kickoff" | "probability" | "confidence";
 
 const CONFIDENCE_RANK = { HIGH: 3, MEDIUM: 2, LOW: 1 };
 
+// Rendering every match in the horizon at once got sluggish once a popular
+// league had dozens of fixtures in the window -- this caps what's actually
+// drawn to the DOM, independent of how many match the current filters
+// (the header count, CSV export and copy-all still cover the full set).
+const PAGE_SIZE = 10;
+
 // Confidence tiers: each match's own probability, unmodified, bucketed for
 // browsing from near-certain down to high-risk. Deliberately not a way to
 // combine several picks into one -- multiplying independent probabilities
@@ -63,6 +69,7 @@ export function Predictions() {
   const [viewMode, setViewMode] = useState<ViewMode>("table");
   const [rows, setRows] = useState<Row[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   // Keyed by match_id rather than kept as a plain array so toggling one row
   // doesn't need a linear scan, and keyed by the row's own snapshot (not
   // looked back up in `rows` at send time) so a selection survives a filter
@@ -139,9 +146,18 @@ export function Predictions() {
     return filtered;
   }, [rows, confidence, day, sortKey, sortDir]);
 
+  // A new filter (or league, via a fresh `rows`) is a fresh list to browse --
+  // starting it part-way through "load more" progress from the last one
+  // would strand the user on page 3 of a list that no longer matches.
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [rows, confidence, day]);
+
+  const paged = useMemo(() => (visible ? visible.slice(0, visibleCount) : null), [visible, visibleCount]);
+
   const tieredGroups = useMemo(() => {
-    if (!visible) return [];
-    const byProbabilityDesc = [...visible].sort(
+    if (!paged) return [];
+    const byProbabilityDesc = [...paged].sort(
       (a, b) => b.prediction.global_outcome.probability - a.prediction.global_outcome.probability,
     );
     return TIERS.map((tier) => ({
@@ -150,7 +166,7 @@ export function Predictions() {
         (r) => r.prediction.global_outcome.probability >= tier.min && r.prediction.global_outcome.probability < tier.max,
       ),
     })).filter((tier) => tier.rows.length > 0);
-  }, [visible]);
+  }, [paged]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
@@ -324,17 +340,17 @@ export function Predictions() {
         <EmptyState icon="◌" title={`No predictions match these filters for ${leagueLabel(league)}.`} />
       )}
 
-      {!error && visible !== null && visible.length > 0 && viewMode === "table" && (
+      {!error && paged !== null && visible !== null && visible.length > 0 && viewMode === "table" && (
         <>
           <p className="setting-note" style={{ marginBottom: 12 }}>
             Each row shows the model's top pick plus up to two more outcomes it also rates highly for that
             match -- three separate readings of the same fixture, not one bet built from all three.
           </p>
-          {renderTable(visible)}
+          {renderTable(paged)}
         </>
       )}
 
-      {!error && visible !== null && visible.length > 0 && viewMode === "tiers" && (
+      {!error && paged !== null && visible !== null && visible.length > 0 && viewMode === "tiers" && (
         <>
           <p className="setting-note" style={{ marginBottom: 16 }}>
             Each match's own probability, grouped from near-certain down to high-risk. These are not
@@ -354,6 +370,14 @@ export function Predictions() {
             </div>
           ))}
         </>
+      )}
+
+      {!error && visible !== null && visible.length > visibleCount && (
+        <div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}>
+          <button type="button" className="btn ghost" onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}>
+            Load 10 more ({visible.length - visibleCount} remaining)
+          </button>
+        </div>
       )}
     </div>
   );
