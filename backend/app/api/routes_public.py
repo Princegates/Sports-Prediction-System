@@ -33,8 +33,8 @@ from app.api.schemas import (
 )
 from app import app_settings
 from app.assistant import retrieval
-from app.db.models import AdminPick, Match, Prediction, User
-from app.pick_settlement import settle_admin_pick
+from app.db.models import AdminPick, FeaturedPick, Match, Prediction, User
+from app.pick_settlement import settle_admin_pick, settle_featured_pick
 
 router = APIRouter(prefix="/api/public", tags=["public"])
 
@@ -141,35 +141,46 @@ def public_track_record(db: Session = Depends(get_db)) -> TrackRecordOut:
 
 @router.get("/admin-picks-track-record", response_model=AdminPickTrackRecordOut)
 def admin_pick_track_record(db: Session = Depends(get_db)) -> AdminPickTrackRecordOut:
-    """How the Super Admin's own curated picks have actually done -- a
-    second, independent verifiable record alongside /track-record's model
-    calls, for the picks a human chose to put their name behind. Aggregate
+    """How the Super Admin's own curated picks have actually done -- Admin
+    Picks (multi-leg combos) and Guda Picks (single outcomes) combined into
+    one record, since both are the same thing from a trust standpoint: a
+    human choosing to put their name behind a call. A second, independent
+    verifiable record alongside /track-record's model calls. Aggregate
     counts only: which teams, markets and selections were picked stays
-    behind the login, same as everywhere else on this router."""
+    behind the login, same as everywhere else on this router. Each pick
+    type is counted only while its own enabled setting is on."""
 
     values = app_settings.all_values(db)
-    if not values.get("admin_picks_enabled", True):
-        return AdminPickTrackRecordOut(has_data=False)
+    settled: list[AdminPick | FeaturedPick] = []
 
-    picks = db.execute(select(AdminPick).where(AdminPick.result != "pending")).scalars().all()
-    pending = db.execute(select(AdminPick).where(AdminPick.result == "pending")).scalars().all()
-    for pick in pending:
-        if settle_admin_pick(db, pick):
-            picks.append(pick)
-    if picks:
+    if values.get("admin_picks_enabled", True):
+        settled.extend(db.execute(select(AdminPick).where(AdminPick.result != "pending")).scalars().all())
+        pending = db.execute(select(AdminPick).where(AdminPick.result == "pending")).scalars().all()
+        for pick in pending:
+            if settle_admin_pick(db, pick):
+                settled.append(pick)
+
+    if values.get("guda_picks_enabled", True):
+        settled.extend(db.execute(select(FeaturedPick).where(FeaturedPick.result != "pending")).scalars().all())
+        pending_featured = db.execute(select(FeaturedPick).where(FeaturedPick.result == "pending")).scalars().all()
+        for pick in pending_featured:
+            if settle_featured_pick(db, pick):
+                settled.append(pick)
+
+    if settled:
         db.commit()
 
-    if not picks:
+    if not settled:
         return AdminPickTrackRecordOut(has_data=False)
 
-    won = sum(1 for p in picks if p.result == "won")
-    lost = sum(1 for p in picks if p.result == "lost")
-    unresolved = sum(1 for p in picks if p.result == "unresolved")
+    won = sum(1 for p in settled if p.result == "won")
+    lost = sum(1 for p in settled if p.result == "lost")
+    unresolved = sum(1 for p in settled if p.result == "unresolved")
     decided = won + lost
 
     return AdminPickTrackRecordOut(
         has_data=True,
-        settled_count=len(picks),
+        settled_count=len(settled),
         won=won,
         lost=lost,
         unresolved=unresolved,

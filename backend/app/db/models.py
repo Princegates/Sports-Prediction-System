@@ -419,11 +419,21 @@ class FeaturedPick(Base):
     Deliberately a reference (match + market + selection), never a copied
     probability -- the whole point is that this stays a real, current model
     output an admin chose to promote, not a frozen number or a freely
-    authored claim. The probability shown to users is always recomputed
-    from the match's latest Prediction at read time (see
-    outcomes.registry.find_outcome); if that outcome ever stops existing
-    (e.g. the match finished and its live markets no longer apply), it
-    simply drops out of the list rather than showing something stale.
+    authored claim. While ``result`` is "pending", the probability shown to
+    users is always recomputed from the match's latest Prediction at read
+    time (see outcomes.registry.find_outcome); ``probability_at_pick`` is a
+    one-time snapshot taken when the pick was created/promoted, used only
+    once it's settled (the live Prediction/outcome can no longer be trusted
+    to still describe a finished match the same way).
+
+    Once the match finishes, app.pick_settlement.settle_featured_pick grades
+    the single (market, selection) against the real final score
+    (app.outcomes.grading) and freezes ``result``/``settled_at`` -- from
+    that point the pick is shown from this frozen state instead of being
+    re-resolved live (which would otherwise make it vanish the moment the
+    match finishes), so a visitor can see what was picked and what actually
+    happened. Counted in the same public track record as AdminPick; see
+    routes_public.admin_pick_track_record.
     """
 
     __tablename__ = "featured_picks"
@@ -432,6 +442,10 @@ class FeaturedPick(Base):
     match_id: Mapped[int] = mapped_column(ForeignKey("matches.id"), index=True)
     market: Mapped[str] = mapped_column(String(64))
     selection: Mapped[str] = mapped_column(String(64))
+    probability_at_pick: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # pending | won | lost | unresolved -- see app.pick_settlement.
+    result: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    settled_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     note: Mapped[str | None] = mapped_column(String(280), nullable=True)
     created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)

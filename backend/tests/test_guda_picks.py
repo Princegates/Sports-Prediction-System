@@ -322,3 +322,90 @@ def test_a_pick_drops_out_the_moment_its_match_finishes(db_session, admin, upcom
     db_session.commit()
 
     assert client.get("/api/predictions/guda-picks", headers=auth_headers).json() == []
+
+
+# --- Result tracking / settlement (app.pick_settlement) --------------------
+
+
+def _finish(db, match: Match, home_score: int, away_score: int) -> None:
+    match.status = "FINISHED"
+    match.home_score = home_score
+    match.away_score = away_score
+    db.commit()
+
+
+def test_a_won_pick_stays_visible_past_its_expiry_with_a_frozen_result(db_session, admin, upcoming_match, auth_headers):
+    created = _feature(admin, upcoming_match.id, market="Both Teams To Score", selection="Yes")
+    pick = db_session.get(FeaturedPick, created["id"])
+    pick.expires_at = dt.datetime.utcnow() - dt.timedelta(days=5)
+    db_session.commit()
+    _finish(db_session, upcoming_match, 2, 1)  # both teams scored -- BTTS Yes wins
+
+    body = client.get("/api/predictions/guda-picks", headers=auth_headers).json()
+    assert len(body) == 1
+    assert body[0]["result"] == "won"
+    assert body[0]["settled_at"] is not None
+    assert body[0]["probability"] == pytest.approx(created["probability"])
+
+
+def test_a_lost_pick_stays_visible_as_lost_not_dropped(db_session, admin, upcoming_match, auth_headers):
+    _feature(admin, upcoming_match.id, market="Both Teams To Score", selection="Yes")
+    _finish(db_session, upcoming_match, 2, 0)  # away team never scored -- BTTS Yes loses
+
+    body = client.get("/api/predictions/guda-picks", headers=auth_headers).json()
+    assert len(body) == 1
+    assert body[0]["result"] == "lost"
+
+
+def test_an_ungradeable_market_is_unresolved_until_an_admin_resolves_it(db_session, admin, upcoming_match, auth_headers):
+    # Inserted directly: a minimal test Prediction has no Poisson lambda
+    # data, so the matrix-derived "Winning Margin" market (used here
+    # specifically because app.outcomes.grading doesn't cover it) never
+    # resolves through find_outcome via the normal creation endpoint.
+    pick = FeaturedPick(
+        match_id=upcoming_match.id, market="Winning Margin", selection="Home by exactly 2",
+        probability_at_pick=0.2, created_by_user_id=admin.id, expires_at=upcoming_match.date + dt.timedelta(days=2),
+    )
+    db_session.add(pick)
+    db_session.commit()
+    db_session.refresh(pick)
+    _finish(db_session, upcoming_match, 2, 0)
+
+    body = client.get("/api/predictions/guda-picks", headers=auth_headers).json()
+    assert body[0]["result"] == "unresolved"
+
+    response = client.patch(
+        f"/api/admin/featured-picks/{pick.id}/result", json={"result": "won"}, headers=_headers(admin)
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["result"] == "won"
+
+    log = db_session.query(AuditLog).filter(AuditLog.action == "featured_pick.result_set").one()
+    assert log.detail["result"] == "won"
+
+
+def test_a_settled_result_is_frozen_and_never_regraded(db_session, admin, upcoming_match, auth_headers):
+    _feature(admin, upcoming_match.id, market="Both Teams To Score", selection="Yes")
+    _finish(db_session, upcoming_match, 2, 1)  # won
+
+    first = client.get("/api/predictions/guda-picks", headers=auth_headers).json()
+    assert first[0]["result"] == "won"
+
+    _finish(db_session, upcoming_match, 2, 0)  # a later score "correction"
+
+    second = client.get("/api/predictions/guda-picks", headers=auth_headers).json()
+    assert second[0]["result"] == "won"
+
+
+def test_public_admin_pick_track_record_includes_featured_picks(db_session, admin, upcoming_match):
+    _feature(admin, upcoming_match.id, market="Both Teams To Score", selection="Yes")
+    _finish(db_session, upcoming_match, 2, 1)  # won
+
+    response = client.get("/api/public/admin-picks-track-record")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["has_data"] is True
+    assert body["settled_count"] == 1
+    assert body["won"] == 1
+    assert body["hit_rate"] == 1.0
+    assert "picks" not in body

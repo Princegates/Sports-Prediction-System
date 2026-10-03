@@ -340,6 +340,16 @@ export function unfeaturePick(pickId: number): Promise<void> {
   return del(`/api/admin/featured-picks/${pickId}`);
 }
 
+/** Manual settlement override -- the fallback for a market
+ * app.outcomes.grading doesn't auto-grade ("unresolved"), or to correct a
+ * mistake. "pending" un-freezes the pick for re-settling from scratch. */
+export function setFeaturedPickResult(
+  pickId: number,
+  result: "pending" | "won" | "lost" | "unresolved",
+): Promise<FeaturedPick> {
+  return patch(`/api/admin/featured-picks/${pickId}/result`, { result });
+}
+
 /** Whole multi-leg slips a Super Admin has chosen to highlight -- combined
  * odds, combined probability and risk tier are all recomputed live, same
  * "never a snapshot" reasoning as fetchGudaPicks. */

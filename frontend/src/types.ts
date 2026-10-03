@@ -299,9 +299,9 @@ export interface FreePick {
   model_agreement_score: number;
 }
 
-/** An outcome a Super Admin chose to promote -- probability is always the
- * match's current recomputed value, never a snapshot from when it was
- * featured. */
+/** An outcome a Super Admin chose to promote -- probability is the match's
+ * current recomputed value while `result` is "pending", a frozen snapshot
+ * from when it was featured once settled. */
 export interface FeaturedPick {
   id: number;
   match: MatchSummary;
@@ -309,6 +309,10 @@ export interface FeaturedPick {
   selection: string;
   probability: number;
   note: string | null;
+  // "pending" | "won" | "lost" | "unresolved" -- see app.pick_settlement.
+  // Frozen once it leaves "pending".
+  result: "pending" | "won" | "lost" | "unresolved";
+  settled_at: string | null;
   created_at: string;
   expires_at: string;
 }

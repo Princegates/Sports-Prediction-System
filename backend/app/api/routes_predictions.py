@@ -23,7 +23,7 @@ from app.api.serializers import admin_pick_to_schema, featured_pick_to_schema, p
 from app.betcode.selection import price_legs, resolve_legs_unpriced
 from app.db.models import AdminPick, FeaturedPick, Match, Prediction, User
 from app.outcomes.registry import NOT_A_FULL_PARTITION_GROUPS, find_outcome, outcomes_from_prediction
-from app.pick_settlement import frozen_admin_pick_legs, settle_admin_pick
+from app.pick_settlement import frozen_admin_pick_legs, settle_admin_pick, settle_featured_pick
 from app.prediction_models.ml_model import FeatureCachePool
 from app.prediction_service import build_prediction_for_match
 from app.quality import is_high_confidence
@@ -330,9 +330,13 @@ def guda_picks(user: User = Depends(get_current_user), db: Session = Depends(get
     """Outcomes a Super Admin has chosen to highlight, for the Dashboard's
     Guda Picks section. Whether a free-tier account (rather than one with
     redeemed access) sees this at all is the operator's call -- see the
-    guda_picks_enabled/guda_picks_free_tier_visible settings -- but the
-    outcome shown is always the match's current real probability, never a
-    frozen number, so it drops out on its own the moment it stops applying.
+    guda_picks_enabled/guda_picks_free_tier_visible settings. While a pick
+    is pending, the probability shown is always the match's current real
+    probability, never a frozen number. Once its match finishes, it settles
+    instead (app.pick_settlement) and stays visible with its frozen won/
+    lost result for up to 14 days -- that result, not just the live pick,
+    is the whole point of a Dashboard trust signal. The full history lives
+    at GET /api/public/admin-picks-track-record, unbounded by this window.
     """
 
     values = app_settings.all_values(db)
@@ -346,15 +350,39 @@ def guda_picks(user: User = Depends(get_current_user), db: Session = Depends(get
             return []
 
     now = dt.datetime.utcnow()
+    recent_cutoff = now - dt.timedelta(days=14)
     picks = db.execute(
-        select(FeaturedPick).where(FeaturedPick.expires_at > now).order_by(FeaturedPick.created_at.desc())
+        select(FeaturedPick)
+        .where(or_(FeaturedPick.result == "pending", FeaturedPick.expires_at > now, FeaturedPick.settled_at > recent_cutoff))
+        .order_by(FeaturedPick.created_at.desc())
     ).scalars().all()
 
     out: list[FeaturedPickOut] = []
     for pick in picks:
         match = db.get(Match, pick.match_id)
-        if match is None or match.status == "FINISHED":
+        if match is None:
             continue
+
+        if settle_featured_pick(db, pick):
+            db.commit()
+
+        if pick.result != "pending":
+            if pick.expires_at <= now and (pick.settled_at is None or pick.settled_at <= recent_cutoff):
+                continue
+            out.append(featured_pick_to_schema(pick, match, pick.probability_at_pick or 0.0))
+            continue
+
+        if pick.expires_at <= now:
+            continue
+
+        if match.status == "FINISHED":
+            # Status flipped before scores were recorded (settle_featured_pick
+            # needs match.is_finished, which checks scores, not status) --
+            # same ambiguous-window gap AdminPick's live resolvers have via
+            # their own status=="FINISHED" check. Hidden until it can settle
+            # for real, rather than shown live past kickoff with no result.
+            continue
+
         prediction = db.execute(
             select(Prediction).where(Prediction.match_id == match.id).order_by(Prediction.created_at.desc())
         ).scalars().first()

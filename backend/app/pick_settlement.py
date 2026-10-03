@@ -23,7 +23,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.betcode.selection import Leg
-from app.db.models import AdminPick, BookingSlip, Match
+from app.db.models import AdminPick, BookingSlip, FeaturedPick, Match
 from app.outcomes.grading import grade_outcome
 
 # A pick's overall result, derived from its legs:
@@ -104,6 +104,32 @@ def settle_admin_pick(db: Session, pick: AdminPick) -> bool:
 
 def settle_booking_slip(db: Session, slip: BookingSlip) -> bool:
     return _settle(db, slip)
+
+
+def settle_featured_pick(db: Session, pick: FeaturedPick) -> bool:
+    """FeaturedPick is a single (match, market, selection), not a list of
+    legs, so it skips the accumulator logic _settle/_grade_legs use for
+    AdminPick/BookingSlip: no "any leg lost fails the whole combo" case,
+    just one outcome graded once its one match finishes."""
+
+    if pick.result != RESULT_PENDING:
+        return False
+
+    match = db.get(Match, pick.match_id)
+    if match is None or not match.is_finished:
+        return False
+
+    verdict = grade_outcome(
+        pick.market,
+        pick.selection,
+        home_score=match.home_score,
+        away_score=match.away_score,
+        ht_home_score=match.ht_home_score,
+        ht_away_score=match.ht_away_score,
+    )
+    pick.result = RESULT_WON if verdict is True else RESULT_LOST if verdict is False else RESULT_UNRESOLVED
+    pick.settled_at = dt.datetime.utcnow()
+    return True
 
 
 def frozen_admin_pick_legs(db: Session, pick: AdminPick) -> list[Leg]:

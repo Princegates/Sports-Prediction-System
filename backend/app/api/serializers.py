@@ -178,6 +178,8 @@ def featured_pick_to_schema(pick: FeaturedPick, match: Match, probability: float
         selection=pick.selection,
         probability=probability,
         note=pick.note,
+        result=pick.result,
+        settled_at=pick.settled_at,
         created_at=pick.created_at,
         expires_at=pick.expires_at,
     )

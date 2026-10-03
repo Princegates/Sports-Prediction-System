@@ -596,12 +596,23 @@ class FeaturedPickOut(BaseModel):
     match: MatchOut
     market: str
     selection: str
-    # Recomputed from the match's latest Prediction at read time, never a
-    # stored snapshot -- see FeaturedPick's docstring for why.
+    # Recomputed from the match's latest Prediction at read time while
+    # result is "pending" -- the frozen probability_at_pick snapshot once
+    # settled. See FeaturedPick's docstring for why.
     probability: float
     note: str | None
+    # pending | won | lost | unresolved -- see app.pick_settlement.
+    result: str
+    settled_at: dt.datetime | None
     created_at: dt.datetime
     expires_at: dt.datetime
+
+
+class FeaturedPickResultIn(BaseModel):
+    """A Super Admin's manual settlement override for a Guda Pick -- same
+    reasoning as AdminPickResultIn."""
+
+    result: str  # pending | won | lost | unresolved
 
 
 class AdminPickLegIn(BaseModel):

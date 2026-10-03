@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { fetchGudaPicks } from "../api";
+import { fetchGudaPicks, setFeaturedPickResult } from "../api";
+import { useAuth } from "../lib/AuthContext";
 import { GudaPickCard } from "./GudaPickCard";
 import type { FeaturedPick } from "../types";
 
@@ -8,7 +9,9 @@ import type { FeaturedPick } from "../types";
  * turned the whole thing off) is a normal, unremarkable state, not
  * something worth a "nothing here yet" card. */
 export function GudaPicksSection() {
+  const { user } = useAuth();
   const [picks, setPicks] = useState<FeaturedPick[] | null>(null);
+  const [busyId, setBusyId] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -30,6 +33,18 @@ export function GudaPicksSection() {
     };
   }, []);
 
+  async function handleSetResult(pickId: number, result: "won" | "lost") {
+    setBusyId(pickId);
+    try {
+      const updated = await setFeaturedPickResult(pickId, result);
+      setPicks((prev) => (prev ? prev.map((p) => (p.id === pickId ? updated : p)) : prev));
+    } catch (err) {
+      window.alert(String(err instanceof Error ? err.message : err));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   if (!picks || picks.length === 0) return null;
 
   return (
@@ -40,7 +55,12 @@ export function GudaPicksSection() {
       </div>
       <div className="grid">
         {picks.map((pick) => (
-          <GudaPickCard key={pick.id} pick={pick} />
+          <GudaPickCard
+            key={pick.id}
+            pick={pick}
+            onSetResult={user?.role === "superadmin" ? handleSetResult : undefined}
+            busy={busyId === pick.id}
+          />
         ))}
       </div>
     </div>

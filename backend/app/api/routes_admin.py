@@ -27,6 +27,7 @@ from app.api.schemas import (
     AuditLogOut,
     ExtendGrantIn,
     FeaturedPickOut,
+    FeaturedPickResultIn,
     FeaturePickIn,
     FeaturePickUpdateIn,
     MatchOut,
@@ -39,7 +40,7 @@ from app.config import get_settings
 from app import mailer
 from app.db.models import AccessCode, AccessGrant, AdminPick, AuditLog, ChatMessage, FeaturedPick, LivePrediction, Match, Prediction, User
 from app.outcomes.registry import find_outcome
-from app.pick_settlement import frozen_admin_pick_legs, settle_admin_pick
+from app.pick_settlement import frozen_admin_pick_legs, settle_admin_pick, settle_featured_pick
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_superadmin)])
 
@@ -471,6 +472,7 @@ def create_featured_pick(
         match_id=match.id,
         market=payload.market,
         selection=payload.selection,
+        probability_at_pick=outcome.probability,
         note=note,
         created_by_user_id=admin.id,
         expires_at=match.date + dt.timedelta(days=2),
@@ -507,9 +509,30 @@ def update_featured_pick(
     db.commit()
     db.refresh(pick)
 
+    resolved = _resolve_featured_pick(db, pick)
+    if resolved is None:
+        raise HTTPException(status_code=404, detail="This pick's match no longer exists.")
+    return resolved
+
+
+def _resolve_featured_pick(db: Session, pick: FeaturedPick) -> FeaturedPickOut | None:
+    """Settles the pick first (a no-op once it's already left "pending").
+    Still pending -> probability recomputed live from the match's current
+    Prediction (0.0 if it no longer resolves -- the admin view shows the
+    pick either way, unlike the public guda_picks(), which drops it).
+    Settled -> served from the probability_at_pick snapshot instead, never
+    re-resolved (the match has finished; live resolution would fail)."""
+
     match = db.get(Match, pick.match_id)
     if match is None:
-        raise HTTPException(status_code=404, detail="This pick's match no longer exists.")
+        return None
+
+    if settle_featured_pick(db, pick):
+        db.commit()
+
+    if pick.result != "pending":
+        return featured_pick_to_schema(pick, match, pick.probability_at_pick or 0.0)
+
     prediction = _latest_prediction(db, match.id)
     outcome = find_outcome(prediction, pick.market, pick.selection) if prediction else None
     return featured_pick_to_schema(pick, match, outcome.probability if outcome else 0.0)
@@ -517,21 +540,47 @@ def update_featured_pick(
 
 @router.get("/featured-picks", response_model=list[FeaturedPickOut])
 def list_featured_picks(db: Session = Depends(get_db)) -> list[FeaturedPickOut]:
-    """Every currently-featured pick, including ones near expiry -- for the
-    admin panel's own management view. Skips one whose outcome no longer
-    resolves (match deleted, or a prediction that no longer carries it)
-    rather than erroring the whole list."""
+    """Every currently-featured pick, including ones near expiry and every
+    settled one regardless of expiry -- for the admin panel's own
+    management view. Skips one whose match no longer exists rather than
+    erroring the whole list."""
 
     picks = db.execute(select(FeaturedPick).order_by(FeaturedPick.created_at.desc())).scalars().all()
     out: list[FeaturedPickOut] = []
     for pick in picks:
-        match = db.get(Match, pick.match_id)
-        if match is None:
-            continue
-        prediction = _latest_prediction(db, match.id)
-        outcome = find_outcome(prediction, pick.market, pick.selection) if prediction else None
-        out.append(featured_pick_to_schema(pick, match, outcome.probability if outcome else 0.0))
+        resolved = _resolve_featured_pick(db, pick)
+        if resolved is not None:
+            out.append(resolved)
     return out
+
+
+@router.patch("/featured-picks/{pick_id}/result", response_model=FeaturedPickOut)
+def set_featured_pick_result(
+    pick_id: int,
+    payload: FeaturedPickResultIn,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> FeaturedPickOut:
+    """Manual settlement override -- the fallback for a market
+    app.outcomes.grading doesn't auto-grade (stuck at "unresolved"), or to
+    correct a mistake. Setting "pending" un-freezes the pick so the next
+    read re-settles it from scratch."""
+
+    pick = db.get(FeaturedPick, pick_id)
+    if pick is None:
+        raise HTTPException(status_code=404, detail=f"Featured pick {pick_id} not found")
+    if payload.result not in {"pending", "won", "lost", "unresolved"}:
+        raise HTTPException(status_code=400, detail="result must be one of pending, won, lost, unresolved")
+
+    pick.result = payload.result
+    pick.settled_at = None if payload.result == "pending" else dt.datetime.utcnow()
+    _record(db, admin, "featured_pick.result_set", detail={"featured_pick_id": pick_id, "result": payload.result})
+    db.commit()
+
+    resolved = _resolve_featured_pick(db, pick)
+    if resolved is None:
+        raise HTTPException(status_code=404, detail="This pick's match no longer exists.")
+    return resolved
 
 
 @router.delete("/featured-picks/{pick_id}", status_code=204)
