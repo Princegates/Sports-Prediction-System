@@ -446,21 +446,38 @@ class AdminPick(Base):
     FeaturedPick's single (match, market, selection) "Guda Pick".
 
     Same grounding rule as FeaturedPick, applied per leg: ``legs`` is a list
-    of ``{match_id, market, selection}`` references, never a stored
-    probability or price. The combined probability (and, when ``priced``,
-    the combined odds and risk tier) shown to users are always recomputed
-    live from each leg's current Prediction and -- when ``priced`` -- its
-    MatchOdds (see app.betcode.selection.price_legs /
-    resolve_legs_unpriced) -- if even one leg stops resolving (outcome no
-    longer valid, price pulled), the whole combo drops out rather than
-    showing a stale or partial slip that no longer matches what was
-    actually promoted.
+    of ``{match_id, market, selection}`` references (plus, since each leg is
+    first resolved at creation time anyway, a frozen
+    ``probability_at_pick``/``decimal_odds_at_pick`` snapshot used only once
+    the pick is settled -- see below). While ``result`` is "pending", the
+    combined probability (and, when ``priced``, the combined odds and risk
+    tier) shown to users are always recomputed live from each leg's current
+    Prediction and -- when ``priced`` -- its MatchOdds (see
+    app.betcode.selection.price_legs / resolve_legs_unpriced) -- if even one
+    leg stops resolving (outcome no longer valid, price pulled), the whole
+    combo drops out rather than showing a stale or partial slip that no
+    longer matches what was actually promoted.
+
+    Once every leg's match has finished, app.pick_settlement.settle_admin_pick
+    grades each leg against the real final score (app.outcomes.grading) and
+    freezes ``result``/``leg_results``/``settled_at`` -- from that point the
+    pick is shown from this frozen state instead of being re-resolved live
+    (which would otherwise make it vanish the moment its match finishes,
+    long before ``expires_at``), so a visitor can see what was picked and
+    what actually happened. This is the platform's public track record for
+    its curated picks; see routes_public.admin_pick_track_record.
     """
 
     __tablename__ = "admin_picks"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     legs: Mapped[list] = mapped_column(JSON)
+    # pending | won | lost | unresolved -- see app.pick_settlement.
+    result: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    # Parallel to ``legs`` once settled (same order, one of "won"/"lost"/
+    # "unresolved"); null while result is still "pending".
+    leg_results: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    settled_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     # False for a slip an operator chose to show by model probability alone,
     # with no bookmaker quote required per leg (see resolve_legs_unpriced) --
     # the path Markets' "My picks" panel uses, since most browsed outcomes
@@ -586,6 +603,14 @@ class BookingSlip(Base):
     Nothing in this codebase invents one: a code that looks real but was not
     issued by a bookmaker fails silently when someone tries to use it, which
     is worse than the honest "no aggregator configured" this shows instead.
+
+    Every code a member generates (routes_betcodes.book_picks) is recorded
+    here against their account -- this is their own results history, not
+    just the admin's. ``result``/``leg_results``/``settled_at`` work exactly
+    as on AdminPick (see app.pick_settlement): once every leg's match has
+    finished, each selection is graded against the real score and the slip's
+    result is frozen rather than ever recomputed, so "my codes" always shows
+    what actually happened to what was actually picked.
     """
 
     __tablename__ = "booking_slips"
@@ -603,12 +628,21 @@ class BookingSlip(Base):
     # [{match_id, league, home_team, away_team, kickoff, market, selection,
     #   model_probability, decimal_odds}, ...] -- see build note above.
     legs: Mapped[list] = mapped_column(JSON)
-    combined_odds: Mapped[float] = mapped_column(Float)
+    # Null for a slip booked through the current direct-to-site flow
+    # (routes_betcodes.book_picks), which has no price of its own to combine
+    # -- each site prices its own slip when it's opened. Only ever set for a
+    # slip from the removed booking-code-aggregator flow this table
+    # predates.
+    combined_odds: Mapped[float | None] = mapped_column(Float, nullable=True)
     # Product of each leg's own model probability. Matches are independent
     # events and every leg is a different match (selection.py enforces one
     # leg per match), so multiplying them is valid -- not an approximation
     # the way combining markets on the *same* match would be.
     combined_probability: Mapped[float] = mapped_column(Float)
+    # pending | won | lost | unresolved -- see app.pick_settlement.
+    result: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    leg_results: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    settled_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
     # A slip is worthless once its earliest match kicks off.
     expires_at: Mapped[dt.datetime] = mapped_column(DateTime, index=True)

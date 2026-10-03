@@ -10,6 +10,18 @@ const RISK_LABELS: Record<AdminPick["risk_tier"], string> = {
   high: "High risk",
 };
 
+const RESULT_LABELS: Record<"won" | "lost" | "unresolved", string> = {
+  won: "Won",
+  lost: "Lost",
+  unresolved: "Confirming result",
+};
+
+const LEG_RESULT_ICONS: Record<"won" | "lost" | "unresolved", string> = {
+  won: "✓",
+  lost: "✗",
+  unresolved: "?",
+};
+
 // Legs shown before the list is collapsed behind a "Show all" toggle -- a
 // slip can carry up to 30 (MAX_ADMIN_PICK_LEGS on the backend), which is
 // unreadable as one uninterrupted block.
@@ -71,12 +83,17 @@ export function AdminPickCard({
         <span className="match-competition">
           {pick.label || `${pick.legs.length}-leg slip`}
         </span>
-        {!hideRisk && (
-          <span className={`risk-tag ${riskTier}`}>
-            <span aria-hidden>◆</span>
-            {RISK_LABELS[riskTier]}
-          </span>
-        )}
+        <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {pick.result !== "pending" && (
+            <span className={`result-tag ${pick.result}`}>{RESULT_LABELS[pick.result]}</span>
+          )}
+          {!hideRisk && pick.result === "pending" && (
+            <span className={`risk-tag ${riskTier}`}>
+              <span aria-hidden>◆</span>
+              {RISK_LABELS[riskTier]}
+            </span>
+          )}
+        </span>
       </div>
 
       <ol style={{ display: "flex", flexDirection: "column", gap: 8, margin: "8px 0", padding: 0, listStyle: "none" }}>
@@ -87,6 +104,11 @@ export function AdminPickCard({
             </span>
             <span>
               {leg.home_team} vs {leg.away_team}
+              {leg.result && (
+                <span className={`leg-result-icon ${leg.result}`} title={RESULT_LABELS[leg.result]}>
+                  {LEG_RESULT_ICONS[leg.result]}
+                </span>
+              )}
               <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
                 {leg.market}: {leg.selection} · {formatKickoff(leg.kickoff)}
               </div>

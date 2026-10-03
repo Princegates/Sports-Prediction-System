@@ -374,3 +374,109 @@ def test_no_connected_site_books_nothing_without_inventing_a_code(auth_headers, 
 
     assert body["site_codes"][0]["status"] == "not_connected"
     assert body["site_codes"][0]["code"] is None
+
+
+# --- Every booked code is recorded, and its results tracked -----------------
+
+
+def _book(headers, match, market="Match Result", selection="Home Win", sites_list=("sportybet_gh",)):
+    return client.post(
+        "/api/betcodes/picks",
+        json={"picks": [{"match_id": match.id, "market": market, "selection": selection}], "sites": list(sites_list)},
+        headers=headers,
+    )
+
+
+def test_booking_a_pick_records_it_against_the_members_account(db_session, auth_headers, upcoming_match, sites):
+    from app.db.models import BookingSlip, User
+
+    sites(sportybet_gh=_FakeConnector("REC001"))
+    response = _book(auth_headers, upcoming_match)
+    assert response.status_code == 200, response.text
+
+    user = db_session.query(User).filter(User.email == "test-user@example.com").one()
+    slips = db_session.query(BookingSlip).filter(BookingSlip.user_id == user.id).all()
+    assert len(slips) == 1
+    assert slips[0].status == "code_ready"
+    assert slips[0].booking_code == "REC001"
+    assert slips[0].result == "pending"
+    assert slips[0].legs[0]["market"] == "Match Result"
+
+
+def test_my_codes_requires_authentication():
+    assert client.get("/api/betcodes/mine").status_code == 401
+
+
+def test_my_codes_lists_most_recent_first(auth_headers, upcoming_match, sites):
+    sites(sportybet_gh=_FakeConnector("FIRST01"))
+    _book(auth_headers, upcoming_match)
+    sites(sportybet_gh=_FakeConnector("SECOND1"))
+    _book(auth_headers, upcoming_match, market="Both Teams To Score", selection="Yes")
+
+    body = client.get("/api/betcodes/mine", headers=auth_headers).json()
+    assert len(body) == 2
+    assert body[0]["legs"][0]["selection"] == "Yes"  # most recent first
+    assert body[0]["result"] == "pending"
+    assert body[0]["site_codes"][0]["code"] == "SECOND1"
+
+
+def test_my_codes_only_shows_the_calling_members_own_slips(db_session, auth_headers, upcoming_match, sites):
+    from app.auth.passwords import hash_password
+    from app.auth.tokens import create_token
+    from app.config import get_settings
+    from app.db.models import User
+    from tests.conftest import grant_active_access
+
+    other = User(
+        email="other-member@example.com", name="Other", password_hash=hash_password("a-good-password"),
+        role="user", status="active",
+    )
+    db_session.add(other)
+    db_session.commit()
+    db_session.refresh(other)
+    grant_active_access(db_session, other)
+    settings = get_settings()
+    other_headers = {
+        "Authorization": f"Bearer {create_token({'user_id': other.id, 'role': other.role}, settings.secret_key, settings.session_ttl_seconds)}"
+    }
+
+    sites(sportybet_gh=_FakeConnector())
+    _book(auth_headers, upcoming_match)
+    _book(other_headers, upcoming_match, market="Both Teams To Score", selection="Yes")
+
+    mine = client.get("/api/betcodes/mine", headers=auth_headers).json()
+    assert len(mine) == 1
+    assert mine[0]["legs"][0]["selection"] == "Home Win"
+
+    others = client.get("/api/betcodes/mine", headers=other_headers).json()
+    assert len(others) == 1
+    assert others[0]["legs"][0]["selection"] == "Yes"
+
+
+def test_a_settled_won_code_shows_in_my_codes_history(db_session, auth_headers, upcoming_match, sites):
+    sites(sportybet_gh=_FakeConnector("WON0001"))
+    _book(auth_headers, upcoming_match)
+
+    upcoming_match.status = "FINISHED"
+    upcoming_match.home_score = 2
+    upcoming_match.away_score = 0
+    db_session.commit()
+
+    body = client.get("/api/betcodes/mine", headers=auth_headers).json()
+    assert body[0]["result"] == "won"
+    assert body[0]["settled_at"] is not None
+    assert body[0]["legs"][0]["result"] == "won"
+
+
+def test_a_settled_lost_code_stays_visible_as_lost(db_session, auth_headers, upcoming_match, sites):
+    sites(sportybet_gh=_FakeConnector("LOST0001"))
+    _book(auth_headers, upcoming_match)  # picked Home Win
+
+    upcoming_match.status = "FINISHED"
+    upcoming_match.home_score = 0
+    upcoming_match.away_score = 2
+    db_session.commit()
+
+    body = client.get("/api/betcodes/mine", headers=auth_headers).json()
+    assert body[0]["result"] == "lost"
+    assert body[0]["legs"][0]["result"] == "lost"

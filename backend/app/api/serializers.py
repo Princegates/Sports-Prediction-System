@@ -223,6 +223,7 @@ def admin_pick_to_schema(pick: AdminPick, legs: list[Leg], *, viewer_has_premium
                 probability=leg.model_probability,
                 decimal_odds=leg.decimal_odds,
                 priced_by=leg.priced_by,
+                result=leg.leg_result,
             )
             for leg in legs
         ],
@@ -236,6 +237,8 @@ def admin_pick_to_schema(pick: AdminPick, legs: list[Leg], *, viewer_has_premium
         has_booking_code=bool(pick.booking_code and pick.booking_code_bookmaker),
         booking_code=pick.booking_code if viewer_has_premium else None,
         booking_code_bookmaker=pick.booking_code_bookmaker if viewer_has_premium else None,
+        result=pick.result,
+        settled_at=pick.settled_at,
         created_at=pick.created_at,
         expires_at=pick.expires_at,
     )

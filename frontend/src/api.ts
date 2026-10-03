@@ -1,7 +1,9 @@
 import type {
   AdminPick,
+  AdminPickTrackRecord,
   BetCodePick,
   BettingSite,
+  MyBookingSlip,
   PicksBooking,
   SuggestCriteria,
   SuggestedPicks,
@@ -391,6 +393,31 @@ export function fetchAdminPicksAdmin(): Promise<AdminPick[]> {
 
 export function deleteAdminPick(pickId: number): Promise<void> {
   return del(`/api/admin/admin-picks/${pickId}`);
+}
+
+/** Manual settlement override -- the fallback for a leg on a market
+ * app.outcomes.grading doesn't auto-grade ("unresolved"), or to correct a
+ * mistake. "pending" un-freezes the pick for re-settling from scratch. */
+export function setAdminPickResult(
+  pickId: number,
+  result: "pending" | "won" | "lost" | "unresolved",
+): Promise<AdminPick> {
+  return patch(`/api/admin/admin-picks/${pickId}/result`, { result });
+}
+
+/** The platform's public, verifiable record for its curated Admin Picks --
+ * aggregate win/loss counts only, no login required. See
+ * AdminPickTrackRecord's own docstring for why no selections are included. */
+export function fetchAdminPickTrackRecord(): Promise<AdminPickTrackRecord> {
+  return get("/api/public/admin-picks-track-record");
+}
+
+/** A member's own generated-code history, most recent first -- every code
+ * they've ever booked through bookPicks, settled against real results once
+ * its matches finish. Nothing is cherry-picked: a loss stays visible
+ * exactly like a win. */
+export function fetchMyBookingSlips(): Promise<MyBookingSlip[]> {
+  return get("/api/betcodes/mine");
 }
 
 export function redeemAccessCode(code: string): Promise<AccessGrant> {

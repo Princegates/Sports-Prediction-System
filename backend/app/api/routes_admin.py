@@ -22,6 +22,7 @@ from app.api.schemas import (
     AdminOverviewOut,
     AdminPickIn,
     AdminPickOut,
+    AdminPickResultIn,
     AdminUserOut,
     AuditLogOut,
     ExtendGrantIn,
@@ -38,6 +39,7 @@ from app.config import get_settings
 from app import mailer
 from app.db.models import AccessCode, AccessGrant, AdminPick, AuditLog, ChatMessage, FeaturedPick, LivePrediction, Match, Prediction, User
 from app.outcomes.registry import find_outcome
+from app.pick_settlement import frozen_admin_pick_legs, settle_admin_pick
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_superadmin)])
 
@@ -618,7 +620,18 @@ def create_admin_pick(
     legs, label, note, booking_code, booking_code_bookmaker = _validate_admin_pick_payload(payload, db)
 
     pick = AdminPick(
-        legs=[{"match_id": leg.match_id, "market": leg.market, "selection": leg.selection} for leg in legs],
+        legs=[
+            {
+                "match_id": leg.match_id,
+                "market": leg.market,
+                "selection": leg.selection,
+                # Snapshot, used only once the pick settles and can no
+                # longer be re-resolved live -- see frozen_admin_pick_legs.
+                "probability_at_pick": leg.model_probability,
+                "decimal_odds_at_pick": leg.decimal_odds,
+            }
+            for leg in legs
+        ],
         priced=payload.priced,
         label=label,
         note=note,
@@ -654,7 +667,21 @@ def update_admin_pick(
 
     legs, label, note, booking_code, booking_code_bookmaker = _validate_admin_pick_payload(payload, db)
 
-    pick.legs = [{"match_id": leg.match_id, "market": leg.market, "selection": leg.selection} for leg in legs]
+    pick.legs = [
+        {
+            "match_id": leg.match_id,
+            "market": leg.market,
+            "selection": leg.selection,
+            "probability_at_pick": leg.model_probability,
+            "decimal_odds_at_pick": leg.decimal_odds,
+        }
+        for leg in legs
+    ]
+    # The legs just changed, so any previous settlement no longer describes
+    # what this pick actually contains -- re-settle from scratch.
+    pick.result = "pending"
+    pick.leg_results = None
+    pick.settled_at = None
     pick.priced = payload.priced
     pick.label = label
     pick.note = note
@@ -668,10 +695,18 @@ def update_admin_pick(
 
 
 def _resolve_admin_pick(db: Session, pick: AdminPick) -> AdminPickOut | None:
-    """Re-resolves every leg live -- priced from MatchOdds when
+    """Settles the pick first (a no-op once it's already left "pending").
+    Still pending -> re-resolves every leg live, priced from MatchOdds when
     ``pick.priced``, by model probability alone otherwise; ``None`` when
     even one no longer resolves, so the whole combo drops out rather than
-    showing a partial slip."""
+    showing a partial slip. Settled -> served from its frozen legs instead,
+    never re-resolved (the match has finished; live resolution would fail)."""
+
+    if settle_admin_pick(db, pick):
+        db.commit()
+
+    if pick.result != "pending":
+        return admin_pick_to_schema(pick, frozen_admin_pick_legs(db, pick))
 
     refs = [(leg["match_id"], leg["market"], leg["selection"]) for leg in pick.legs]
     legs, _warnings = price_legs(db, refs) if pick.priced else resolve_legs_unpriced(db, refs)
@@ -682,9 +717,10 @@ def _resolve_admin_pick(db: Session, pick: AdminPick) -> AdminPickOut | None:
 
 @router.get("/admin-picks", response_model=list[AdminPickOut])
 def list_admin_picks(db: Session = Depends(get_db)) -> list[AdminPickOut]:
-    """Every currently-featured slip, including ones near expiry -- for the
-    admin management view. Skips one that no longer fully resolves rather
-    than erroring the whole list."""
+    """Every currently-featured slip, including ones near expiry and every
+    settled one regardless of expiry -- for the admin management view.
+    Skips a still-pending one that no longer fully resolves rather than
+    erroring the whole list."""
 
     picks = db.execute(select(AdminPick).order_by(AdminPick.created_at.desc())).scalars().all()
     out: list[AdminPickOut] = []
@@ -693,6 +729,40 @@ def list_admin_picks(db: Session = Depends(get_db)) -> list[AdminPickOut]:
         if resolved is not None:
             out.append(resolved)
     return out
+
+
+@router.patch("/admin-picks/{pick_id}/result", response_model=AdminPickOut)
+def set_admin_pick_result(
+    pick_id: int,
+    payload: AdminPickResultIn,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> AdminPickOut:
+    """Manual settlement override -- the fallback for a leg on a market
+    app.outcomes.grading doesn't auto-grade (stuck at "unresolved"), or to
+    correct a mistake. Setting "pending" un-freezes the pick so the next
+    read re-settles it from scratch."""
+
+    pick = db.get(AdminPick, pick_id)
+    if pick is None:
+        raise HTTPException(status_code=404, detail=f"Admin pick {pick_id} not found")
+    if payload.result not in {"pending", "won", "lost", "unresolved"}:
+        raise HTTPException(status_code=400, detail="result must be one of pending, won, lost, unresolved")
+
+    pick.result = payload.result
+    pick.settled_at = None if payload.result == "pending" else dt.datetime.utcnow()
+    if payload.result == "pending":
+        pick.leg_results = None
+    _record(db, admin, "admin_pick.result_set", detail={"admin_pick_id": pick_id, "result": payload.result})
+    db.commit()
+
+    resolved = _resolve_admin_pick(db, pick)
+    if resolved is None:
+        # Only reachable if an admin force-reset a finished pick to
+        # "pending" and its legs no longer live-resolve -- fall back to the
+        # frozen (now-stale) legs rather than erroring the response.
+        return admin_pick_to_schema(pick, frozen_admin_pick_legs(db, pick))
+    return resolved
 
 
 @router.delete("/admin-picks/{pick_id}", status_code=204)

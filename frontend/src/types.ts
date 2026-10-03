@@ -325,6 +325,9 @@ export interface AdminPickLeg {
   // Both null together on an unpriced pick's leg -- see AdminPick.priced.
   decimal_odds: number | null;
   priced_by: string | null;
+  // "won" | "lost" | "unresolved" once the owning pick's result leaves
+  // "pending"; null on every still-live leg.
+  result: "won" | "lost" | "unresolved" | null;
 }
 
 /** A whole multi-leg slip a Super Admin chose to promote -- distinct from
@@ -355,8 +358,25 @@ export interface AdminPick {
   has_booking_code: boolean;
   booking_code: string | null;
   booking_code_bookmaker: string | null;
+  // "pending" | "won" | "lost" | "unresolved" -- see AdminPickLeg.result.
+  // Frozen once it leaves "pending": legs then show what was actually
+  // picked and what actually happened, not a live re-resolve.
+  result: "pending" | "won" | "lost" | "unresolved";
+  settled_at: string | null;
   created_at: string;
   expires_at: string;
+}
+
+/** Aggregate-only public trust record for curated Admin Picks -- no team
+ * names, markets or selections (those stay behind the login as the
+ * product), just settled win/loss counts. See GET /api/public/admin-picks-track-record. */
+export interface AdminPickTrackRecord {
+  has_data: boolean;
+  settled_count: number;
+  won: number;
+  lost: number;
+  unresolved: number;
+  hit_rate: number;
 }
 
 // --- Admin ---------------------------------------------------------------
@@ -554,11 +574,39 @@ export interface SiteCode {
 
 /** Codes for a member's own picks (POST /api/betcodes/picks): the picks
  * that were booked, each site's answer, and why any pick was left out. */
+export interface PickedLeg {
+  match_id: number;
+  league: string;
+  home_team: string;
+  away_team: string;
+  kickoff: string;
+  market: string;
+  selection: string;
+  model_probability: number;
+  // "won" | "lost" | "unresolved" once the owning slip settles; null while
+  // still pending, and always null on a fresh /suggest, /resolve or /picks
+  // response -- only "my codes" history populates it.
+  result: "won" | "lost" | "unresolved" | null;
+}
+
 export interface PicksBooking {
-  legs: { match_id: number; league: string; home_team: string; away_team: string; kickoff: string;
-          market: string; selection: string; model_probability: number }[];
+  legs: PickedLeg[];
   site_codes: SiteCode[];
   warnings: string[];
+}
+
+/** One entry in a member's own "my codes" results history (GET
+ * /api/betcodes/mine) -- every code they've ever generated, with what
+ * actually happened once it settles. Never cherry-picked: a loss stays
+ * visible exactly like a win. */
+export interface MyBookingSlip {
+  id: number;
+  legs: PickedLeg[];
+  combined_probability: number;
+  site_codes: SiteCode[];
+  result: "pending" | "won" | "lost" | "unresolved";
+  created_at: string;
+  settled_at: string | null;
 }
 
 /** An explicit (match, market, selection) to price -- no search, just "what

@@ -649,11 +649,28 @@ class AdminPickLegOut(BaseModel):
     # Both None together on an unpriced pick's leg -- see AdminPickOut.priced.
     decimal_odds: float | None
     priced_by: str | None
+    # "won" | "lost" | "unresolved" once AdminPickOut.result leaves
+    # "pending"; null on every still-live leg. See app.pick_settlement.
+    result: str | None = None
+
+
+class AdminPickResultIn(BaseModel):
+    """A Super Admin's manual settlement override -- the fallback for a leg
+    on a market app.outcomes.grading doesn't auto-grade (result stuck at
+    "unresolved"), or to correct a mistake. Setting "pending" un-freezes the
+    pick so it's re-resolved live and re-graded again at the next settle."""
+
+    result: str  # pending | won | lost | unresolved
 
 
 class AdminPickOut(BaseModel):
     id: int
     legs: list[AdminPickLegOut]
+    # pending | won | lost | unresolved -- see app.pick_settlement. Frozen
+    # once it leaves "pending": the legs above then come from what was
+    # actually picked and what actually happened, not a live re-resolve.
+    result: str
+    settled_at: dt.datetime | None
     # Whether this slip was priced from real bookmaker quotes at all --
     # combined_odds is only ever present when this is True.
     priced: bool
@@ -753,6 +770,11 @@ class PickedLegOut(BaseModel):
     market: str
     selection: str
     model_probability: float
+    # "won" | "lost" | "unresolved" once the owning slip has settled, null
+    # while still pending -- only ever populated on a "my codes" history
+    # entry (GET /api/betcodes/mine), never on /suggest, /resolve or /picks,
+    # which are always freshly booked and so always still pending.
+    result: str | None = None
 
 
 class PicksBookingOut(BaseModel):
@@ -774,3 +796,33 @@ class SuggestedPicksOut(BaseModel):
     combined_probability: float
     candidates_considered: int
     warnings: list[str]
+
+
+class MyBookingSlipOut(BaseModel):
+    """One entry in a member's own "my codes" results history -- every code
+    they've ever generated through /api/betcodes/picks, with what actually
+    happened once it settles. See BookingSlip and app.pick_settlement."""
+
+    id: int
+    legs: list[PickedLegOut]
+    combined_probability: float
+    site_codes: list[SiteCodeOut]
+    result: str  # pending | won | lost | unresolved
+    created_at: dt.datetime
+    settled_at: dt.datetime | None
+
+
+class AdminPickTrackRecordOut(BaseModel):
+    """The platform's public, verifiable record for its curated Admin
+    Picks -- aggregate counts only, no team names, markets or selections:
+    same rule as the rest of this file (routes_public's module docstring),
+    those stay behind the login as the product. Every settled pick is
+    counted, win or lose, so there's no cherry-picking only the wins. See
+    routes_public.admin_pick_track_record."""
+
+    has_data: bool
+    settled_count: int = 0
+    won: int = 0
+    lost: int = 0
+    unresolved: int = 0
+    hit_rate: float = 0.0  # won / (won + lost); unresolved excluded

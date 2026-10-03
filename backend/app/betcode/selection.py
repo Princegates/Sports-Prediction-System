@@ -149,6 +149,12 @@ class Leg:
     # from behind the criteria's own (possibly unset) price_bookmaker. None
     # exactly when decimal_odds is None.
     priced_by: str | None = None
+    # "won" | "lost" | "unresolved" once the owning pick has settled (see
+    # app.pick_settlement), None on every live/pending leg. Never persisted
+    # by as_json() -- a leg is only ever built already-settled when a caller
+    # (routes_admin/_resolve_admin_pick, routes_betcodes's "my codes") passes
+    # it in explicitly for display; this is never the shape stored on disk.
+    leg_result: str | None = None
 
     def as_json(self) -> dict:
         return {

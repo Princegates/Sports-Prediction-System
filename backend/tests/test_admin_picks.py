@@ -552,3 +552,177 @@ def test_editing_can_remove_a_booking_code(db_session, admin, two_matches):
     body = response.json()
     assert body["has_booking_code"] is False
     assert body["booking_code"] is None
+
+
+# --- Result tracking / settlement (app.pick_settlement) --------------------
+
+
+def _finish(db, match: Match, home_score: int, away_score: int) -> None:
+    match.status = "FINISHED"
+    match.home_score = home_score
+    match.away_score = away_score
+    db.commit()
+
+
+def test_a_won_pick_is_shown_past_its_expiry_with_a_frozen_result(db_session, admin, two_matches, auth_headers):
+    created = _create(admin, _legs(two_matches))
+    pick = db_session.get(AdminPick, created["id"])
+    pick.expires_at = dt.datetime.utcnow() - dt.timedelta(days=5)
+    db_session.commit()
+    for match in two_matches:
+        _finish(db_session, match, 2, 0)  # Home Win, as every leg picked
+
+    body = client.get("/api/predictions/admin-picks", headers=auth_headers).json()
+    assert len(body) == 1
+    assert body[0]["result"] == "won"
+    assert body[0]["settled_at"] is not None
+    assert all(leg["result"] == "won" for leg in body[0]["legs"])
+    # Team names/market/selection still show correctly from the frozen snapshot.
+    assert body[0]["legs"][0]["market"] == "Match Result"
+
+
+def test_a_lost_pick_stays_visible_as_lost_not_dropped(db_session, admin, two_matches, auth_headers):
+    created = _create(admin, _legs(two_matches))
+    for match in two_matches:
+        _finish(db_session, match, 0, 1)  # Away Win -- every leg's "Home Win" pick loses
+
+    body = client.get("/api/predictions/admin-picks", headers=auth_headers).json()
+    assert len(body) == 1
+    assert body[0]["result"] == "lost"
+    assert all(leg["result"] == "lost" for leg in body[0]["legs"])
+
+
+def test_one_lost_leg_fails_the_whole_combo(db_session, admin, two_matches, auth_headers):
+    _create(admin, _legs(two_matches))
+    _finish(db_session, two_matches[0], 2, 0)  # wins
+    _finish(db_session, two_matches[1], 0, 1)  # loses
+
+    body = client.get("/api/predictions/admin-picks", headers=auth_headers).json()
+    assert body[0]["result"] == "lost"
+    results = {leg["match_id"]: leg["result"] for leg in body[0]["legs"]}
+    assert results[two_matches[0].id] == "won"
+    assert results[two_matches[1].id] == "lost"
+
+
+def test_still_scheduled_matches_keep_the_pick_pending(db_session, admin, two_matches, auth_headers):
+    _create(admin, _legs(two_matches))
+    # Neither match has kicked off yet.
+
+    body = client.get("/api/predictions/admin-picks", headers=auth_headers).json()
+    assert body[0]["result"] == "pending"
+
+
+def test_a_combo_with_mixed_kickoffs_hides_until_every_leg_finishes(db_session, admin, two_matches, auth_headers):
+    """Known limitation: once ANY leg's match finishes, that leg can no
+    longer be live-resolved (price_legs/resolve_legs_unpriced reject a
+    finished match), but the pick as a whole can't settle either until
+    EVERY leg finishes -- so it's hidden from this live feed in between,
+    reappearing once the last leg's match ends and it settles. The admin
+    management view (list_admin_picks) has no such gap."""
+
+    _create(admin, _legs(two_matches))
+    _finish(db_session, two_matches[0], 2, 0)
+    # two_matches[1] is still scheduled.
+
+    assert client.get("/api/predictions/admin-picks", headers=auth_headers).json() == []
+
+
+def test_an_ungradeable_market_is_unresolved_until_an_admin_resolves_it(db_session, admin, two_matches, auth_headers):
+    # Inserted directly rather than through the creation endpoint: a
+    # minimal test Prediction has no Poisson lambda data, so the matrix-
+    # derived "Winning Margin" market (used here specifically because
+    # app.outcomes.grading doesn't cover it) never resolves through
+    # find_outcome. Settlement doesn't care how a pick was created, only
+    # what's in its stored legs.
+    match = two_matches[0]
+    pick = AdminPick(
+        legs=[{"match_id": match.id, "market": "Winning Margin", "selection": "Home by exactly 2",
+               "probability_at_pick": 0.2, "decimal_odds_at_pick": None}],
+        priced=False, created_by_user_id=admin.id, expires_at=match.date + dt.timedelta(days=2),
+    )
+    db_session.add(pick)
+    db_session.commit()
+    db_session.refresh(pick)
+    _finish(db_session, match, 2, 0)
+
+    body = client.get("/api/predictions/admin-picks", headers=auth_headers).json()
+    assert body[0]["result"] == "unresolved"
+
+    response = client.patch(
+        f"/api/admin/admin-picks/{pick.id}/result", json={"result": "won"}, headers=_headers(admin)
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["result"] == "won"
+
+    log = db_session.query(AuditLog).filter(AuditLog.action == "admin_pick.result_set").one()
+    assert log.detail["result"] == "won"
+
+
+def test_a_settled_result_is_frozen_and_never_regraded(db_session, admin, two_matches, auth_headers):
+    created = _create(admin, _legs(two_matches))
+    for match in two_matches:
+        _finish(db_session, match, 2, 0)  # won
+
+    first = client.get("/api/predictions/admin-picks", headers=auth_headers).json()
+    assert first[0]["result"] == "won"
+
+    # A later (e.g. corrected) score change must never flip an already-
+    # frozen result -- settlement is one-way until an admin overrides it.
+    for match in two_matches:
+        _finish(db_session, match, 0, 1)
+
+    second = client.get("/api/predictions/admin-picks", headers=auth_headers).json()
+    assert second[0]["result"] == "won"
+    db_session.get(AdminPick, created["id"])  # still the same row, unchanged
+
+
+def test_resetting_to_pending_immediately_regrades_since_the_endpoint_resolves_before_responding(
+    db_session, admin, two_matches, auth_headers
+):
+    """Resetting to "pending" un-freezes a pick, but since both matches here
+    are already finished and fully auto-gradable, the same PATCH response
+    already shows it re-settled rather than sitting at "pending" -- this
+    override is for correcting a stuck "unresolved" or a genuine mistake,
+    not for parking a fully-gradable pick in limbo."""
+
+    created = _create(admin, _legs(two_matches))
+    for match in two_matches:
+        _finish(db_session, match, 2, 0)
+    client.get("/api/predictions/admin-picks", headers=auth_headers)  # settles it to "won"
+
+    response = client.patch(
+        f"/api/admin/admin-picks/{created['id']}/result", json={"result": "pending"}, headers=_headers(admin)
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["result"] == "won"
+
+
+def test_public_admin_pick_track_record_has_no_data_before_anything_settles(db_session):
+    response = client.get("/api/public/admin-picks-track-record")
+    assert response.status_code == 200
+    assert response.json() == {
+        "has_data": False, "settled_count": 0, "won": 0, "lost": 0, "unresolved": 0, "hit_rate": 0.0,
+    }
+
+
+def test_public_admin_pick_track_record_counts_wins_and_losses_without_leaking_selections(
+    db_session, admin, two_matches
+):
+    _create(admin, [_legs(two_matches)[0]])
+    _finish(db_session, two_matches[0], 2, 0)  # won
+
+    second_match = _match_with_odds(db_session, "Charlie", home=0.5)
+    _create(admin, [{"match_id": second_match.id, "market": "Match Result", "selection": "Home Win"}])
+    _finish(db_session, second_match, 0, 1)  # lost
+
+    response = client.get("/api/public/admin-picks-track-record")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["has_data"] is True
+    assert body["settled_count"] == 2
+    assert body["won"] == 1
+    assert body["lost"] == 1
+    assert body["hit_rate"] == 0.5
+    # Aggregate counts only -- no team names, markets or selections leaked.
+    assert "picks" not in body
+    assert "legs" not in body

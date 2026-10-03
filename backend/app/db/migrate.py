@@ -78,6 +78,16 @@ _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     # the unique index too; that comes after every row has a value).
     ("users", "referral_code", "VARCHAR(16)"),
     ("users", "referred_by_user_id", "INTEGER"),
+    # Result tracking -- see app.pick_settlement. DEFAULT 'pending' (unlike
+    # most columns above) so every pre-existing row reads the same as a
+    # freshly created one rather than NULL, which settlement doesn't treat
+    # as a valid state.
+    ("admin_picks", "result", "VARCHAR(16) DEFAULT 'pending'"),
+    ("admin_picks", "leg_results", "JSON"),
+    ("admin_picks", "settled_at", "DATETIME"),
+    ("booking_slips", "result", "VARCHAR(16) DEFAULT 'pending'"),
+    ("booking_slips", "leg_results", "JSON"),
+    ("booking_slips", "settled_at", "DATETIME"),
 ]
 
 
@@ -167,6 +177,36 @@ def _migrate_pending_users_to_active(engine: Engine) -> None:
         conn.execute(text("UPDATE users SET status = 'active' WHERE status = 'pending'"))
 
 
+def _rebuild_empty_booking_slips_table(engine: Engine) -> None:
+    """booking_slips predates any code that actually wrote to it -- nothing
+    ever called ``db.add(BookingSlip(...))`` until routes_betcodes.book_picks
+    started doing so for the results-tracking feature -- and was defined
+    with ``combined_odds`` NOT NULL, which doesn't fit that flow: a code
+    booked directly on a betting site has no price of our own to combine
+    (the site prices its own slip). Since the table is guaranteed empty in
+    every real deployment, dropping and recreating it from the current model
+    (``combined_odds`` now nullable, plus the ``result``/``leg_results``/
+    ``settled_at`` columns ensure_schema's plain ADD COLUMN can't fix a NOT
+    NULL constraint for) is simpler and safer than a dialect-specific ALTER
+    COLUMN -- SQLite can't do that at all without a full table rebuild.
+    Skips, leaving ensure_schema's ADD COLUMN pass to add what it can,
+    if the table unexpectedly already has rows.
+    """
+
+    inspector = inspect(engine)
+    if "booking_slips" not in inspector.get_table_names():
+        return
+    with engine.begin() as conn:
+        count = conn.execute(text("SELECT COUNT(*) FROM booking_slips")).scalar()
+    if count:
+        return
+
+    from app.db.models import BookingSlip
+
+    BookingSlip.__table__.drop(bind=engine)
+    BookingSlip.__table__.create(bind=engine)
+
+
 def _backfill_referral_codes(engine: Engine) -> None:
     """Gives every account that predates the referral program its own code,
     then locks in uniqueness with an index -- can't be done in the same
@@ -222,6 +262,7 @@ def init_db(engine: Engine) -> None:
     from app.db.models import Base
 
     Base.metadata.create_all(bind=engine)
+    _rebuild_empty_booking_slips_table(engine)
     ensure_schema(engine)
     _migrate_pending_users_to_active(engine)
     _backfill_referral_codes(engine)

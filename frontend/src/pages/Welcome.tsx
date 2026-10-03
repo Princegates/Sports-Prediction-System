@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchPublicAccuracy, fetchPublicFixtures, fetchPublicStats } from "../api";
+import { fetchAdminPickTrackRecord, fetchPublicAccuracy, fetchPublicFixtures, fetchPublicStats } from "../api";
 import { Mascot } from "../components/Mascot";
 import { PublicShell } from "../components/PublicShell";
 import { useTilt } from "../lib/useTilt";
-import type { PublicAccuracy, PublicFixture, PublicStats } from "../types";
+import type { AdminPickTrackRecord, PublicAccuracy, PublicFixture, PublicStats } from "../types";
 
 /**
  * Public landing page.
@@ -125,6 +125,7 @@ const FAQS = [
 export function Welcome() {
   const [stats, setStats] = useState<PublicStats | null>(null);
   const [accuracy, setAccuracy] = useState<PublicAccuracy | null>(null);
+  const [pickRecord, setPickRecord] = useState<AdminPickTrackRecord | null>(null);
   const [fixtures, setFixtures] = useState<PublicFixture[]>([]);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const heroTilt = useTilt<HTMLDivElement>();
@@ -134,6 +135,7 @@ export function Welcome() {
     // still renders as a static brochure rather than an error screen.
     fetchPublicStats().then(setStats).catch(() => setStats(null));
     fetchPublicAccuracy().then(setAccuracy).catch(() => setAccuracy(null));
+    fetchAdminPickTrackRecord().then(setPickRecord).catch(() => setPickRecord(null));
     fetchPublicFixtures(5, 6).then(setFixtures).catch(() => setFixtures([]));
   }, []);
 
@@ -327,6 +329,39 @@ export function Welcome() {
               <code>python scripts/backtest.py</code> produces accuracy, log loss, Brier score and a
               calibration table, and this panel then fills itself in.
             </p>
+          </div>
+        )}
+      </section>
+
+      {/* ---------------- Admin Picks track record ---------------- */}
+      <section className="landing-section accuracy-section">
+        <div className="section-head">
+          <h2>Our Admin Picks, graded on real results</h2>
+          <p>
+            Every curated Admin Pick that settles is counted here, win or lose -- no cherry-picking,
+            no deleting the losses. Which teams, markets and selections were picked stays behind the
+            login; this is just the verifiable record.
+          </p>
+        </div>
+
+        {pickRecord?.has_data ? (
+          <div className="accuracy-panel">
+            <div className="accuracy-headline">
+              <div>
+                <span className="accuracy-number">{(pickRecord.hit_rate * 100).toFixed(0)}%</span>
+                <span className="accuracy-caption">hit rate on {pickRecord.won + pickRecord.lost} decided picks</span>
+              </div>
+              <div className="accuracy-meta">
+                <span>{pickRecord.won} won</span>
+                <span>{pickRecord.lost} lost</span>
+                {pickRecord.unresolved > 0 && <span>{pickRecord.unresolved} awaiting confirmation</span>}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="state-card">
+            <h3>No Admin Picks have settled yet</h3>
+            <p>Once a curated pick's match finishes, its result lands here automatically.</p>
           </div>
         )}
       </section>

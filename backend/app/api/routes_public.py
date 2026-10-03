@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
 from app.api.schemas import (
+    AdminPickTrackRecordOut,
     BrandingOut,
     ConfidenceBandRecordOut,
     LeagueAccuracyOut,
@@ -32,7 +33,8 @@ from app.api.schemas import (
 )
 from app import app_settings
 from app.assistant import retrieval
-from app.db.models import Match, Prediction, User
+from app.db.models import AdminPick, Match, Prediction, User
+from app.pick_settlement import settle_admin_pick
 
 router = APIRouter(prefix="/api/public", tags=["public"])
 
@@ -134,6 +136,44 @@ def public_track_record(db: Session = Depends(get_db)) -> TrackRecordOut:
             for b in record.by_confidence
         ],
         since=record.earliest_graded_at,
+    )
+
+
+@router.get("/admin-picks-track-record", response_model=AdminPickTrackRecordOut)
+def admin_pick_track_record(db: Session = Depends(get_db)) -> AdminPickTrackRecordOut:
+    """How the Super Admin's own curated picks have actually done -- a
+    second, independent verifiable record alongside /track-record's model
+    calls, for the picks a human chose to put their name behind. Aggregate
+    counts only: which teams, markets and selections were picked stays
+    behind the login, same as everywhere else on this router."""
+
+    values = app_settings.all_values(db)
+    if not values.get("admin_picks_enabled", True):
+        return AdminPickTrackRecordOut(has_data=False)
+
+    picks = db.execute(select(AdminPick).where(AdminPick.result != "pending")).scalars().all()
+    pending = db.execute(select(AdminPick).where(AdminPick.result == "pending")).scalars().all()
+    for pick in pending:
+        if settle_admin_pick(db, pick):
+            picks.append(pick)
+    if picks:
+        db.commit()
+
+    if not picks:
+        return AdminPickTrackRecordOut(has_data=False)
+
+    won = sum(1 for p in picks if p.result == "won")
+    lost = sum(1 for p in picks if p.result == "lost")
+    unresolved = sum(1 for p in picks if p.result == "unresolved")
+    decided = won + lost
+
+    return AdminPickTrackRecordOut(
+        has_data=True,
+        settled_count=len(picks),
+        won=won,
+        lost=lost,
+        unresolved=unresolved,
+        hit_rate=(won / decided) if decided else 0.0,
     )
 
 

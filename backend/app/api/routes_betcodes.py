@@ -13,12 +13,16 @@ a stored bookmaker quote, a target price, or a booking-code aggregator.
 
 from __future__ import annotations
 
+import datetime as dt
+
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, require_active_access
 from app.api.schemas import (
     BettingSiteOut,
+    MyBookingSlipOut,
     PickedLegOut,
     PicksBookingIn,
     PicksBookingOut,
@@ -29,6 +33,8 @@ from app.api.schemas import (
 )
 from app.betcode import sites as betting_sites
 from app.betcode.selection import ConfidencePick, Leg, resolve_legs_unpriced, select_legs_by_confidence
+from app.db.models import BookingSlip, User
+from app.pick_settlement import frozen_booking_slip_legs, settle_booking_slip
 
 router = APIRouter(
     prefix="/api/betcodes", tags=["betcodes"], dependencies=[Depends(require_active_access)]
@@ -40,7 +46,7 @@ def _picked_legs_to_out(legs: list[Leg]) -> list[PickedLegOut]:
         PickedLegOut(
             match_id=leg.match_id, league=leg.league, home_team=leg.home_team, away_team=leg.away_team,
             kickoff=leg.kickoff, market=leg.market, selection=leg.selection,
-            model_probability=leg.model_probability,
+            model_probability=leg.model_probability, result=leg.leg_result,
         )
         for leg in legs
     ]
@@ -89,7 +95,11 @@ def resolve(payload: ResolvePicksIn, db: Session = Depends(get_db)) -> Suggested
 
 
 @router.post("/picks", response_model=PicksBookingOut)
-def book_picks(payload: PicksBookingIn, db: Session = Depends(get_db)) -> PicksBookingOut:
+def book_picks(
+    payload: PicksBookingIn,
+    user: User = Depends(require_active_access),
+    db: Session = Depends(get_db),
+) -> PicksBookingOut:
     """Books the games and outcomes a member selected -- from /suggest,
     /resolve, or picked by hand on the Markets page -- exactly as picked.
 
@@ -97,6 +107,10 @@ def book_picks(payload: PicksBookingIn, db: Session = Depends(get_db)) -> PicksB
     priced by the site when it's opened. Each pick is still checked against
     the match's current prediction (resolve_legs_unpriced), so nothing that
     isn't a real upcoming match and outcome is ever sent to a site.
+
+    Every booking is recorded against the member's account as a
+    BookingSlip, legs frozen exactly as resolved here -- see GET /mine for
+    their own results history once matches finish (app.pick_settlement).
     """
 
     if not payload.sites:
@@ -108,11 +122,81 @@ def book_picks(payload: PicksBookingIn, db: Session = Depends(get_db)) -> PicksB
             status_code=422, detail=" ".join(warnings) or "No picks to book -- select some outcomes first."
         )
 
+    site_codes = betting_sites.codes_for_sites(payload.sites, legs)
+    ready = next((c for c in site_codes if c.status == "code_ready"), None)
+    if ready is not None:
+        status = "code_ready"
+    elif all(c.status == "not_connected" for c in site_codes):
+        status = "provider_unavailable"
+    else:
+        status = "provider_error"
+    first_error = next((c for c in site_codes if c.message), None)
+
+    slip = BookingSlip(
+        user_id=user.id,
+        bookmaker=", ".join(c.name for c in site_codes) or ", ".join(payload.sites),
+        criteria={"picks": [{"match_id": p.match_id, "market": p.market, "selection": p.selection} for p in payload.picks], "sites": payload.sites},
+        legs=[leg.as_json() for leg in legs],
+        combined_odds=None,
+        combined_probability=_combined_probability(legs),
+        expires_at=max(leg.kickoff for leg in legs) + dt.timedelta(days=2),
+        provider="direct",
+        status=status,
+        booking_code=ready.code if ready else None,
+        deep_link=ready.link if ready else None,
+        provider_message=ready.message if ready else (first_error.message if first_error else None),
+        site_codes=[c.as_json() for c in site_codes],
+    )
+    db.add(slip)
+    db.commit()
+
     return PicksBookingOut(
         legs=_picked_legs_to_out(legs),
-        site_codes=[SiteCodeOut(**r.as_json()) for r in betting_sites.codes_for_sites(payload.sites, legs)],
+        site_codes=[SiteCodeOut(**c.as_json()) for c in site_codes],
         warnings=warnings,
     )
+
+
+@router.get("/mine", response_model=list[MyBookingSlipOut])
+def my_booking_slips(
+    user: User = Depends(require_active_access),
+    db: Session = Depends(get_db),
+    limit: int = 50,
+) -> list[MyBookingSlipOut]:
+    """A member's own generated-code history, most recent first -- every
+    code they've ever booked, settled against real results once its matches
+    finish (app.pick_settlement). Nothing here is cherry-picked: a loss
+    stays visible exactly like a win, which is the point of a personal
+    track record."""
+
+    slips = db.execute(
+        select(BookingSlip).where(BookingSlip.user_id == user.id).order_by(BookingSlip.created_at.desc()).limit(limit)
+    ).scalars().all()
+
+    changed = False
+    for slip in slips:
+        if settle_booking_slip(db, slip):
+            changed = True
+    if changed:
+        db.commit()
+
+    out: list[MyBookingSlipOut] = []
+    for slip in slips:
+        legs = frozen_booking_slip_legs(slip) if slip.result != "pending" else [
+            Leg(**{**leg, "kickoff": dt.datetime.fromisoformat(leg["kickoff"])}) for leg in slip.legs
+        ]
+        out.append(
+            MyBookingSlipOut(
+                id=slip.id,
+                legs=_picked_legs_to_out(legs),
+                combined_probability=slip.combined_probability,
+                site_codes=[SiteCodeOut(**c) for c in (slip.site_codes or [])],
+                result=slip.result,
+                created_at=slip.created_at,
+                settled_at=slip.settled_at,
+            )
+        )
+    return out
 
 
 @router.get("/sites", response_model=list[BettingSiteOut])

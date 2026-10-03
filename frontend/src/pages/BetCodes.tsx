@@ -6,12 +6,14 @@ import {
   fetchAdminPicksAdmin,
   bookPicks,
   resolvePicks,
+  setAdminPickResult,
   suggestPicks,
   updateAdminPick,
 } from "../api";
 import { CopyButton } from "../components/CopyButton";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
+import { MyCodesHistory } from "../components/MyCodesHistory";
 import { SiteCodes } from "../components/SiteCodes";
 import { StickySlipBar } from "../components/StickySlipBar";
 import { LEAGUES, useLeague } from "../components/AppShell";
@@ -386,6 +388,18 @@ export function BetCodes() {
       await deleteAdminPick(pickId);
       setAdminPicks((prev) => prev.filter((p) => p.id !== pickId));
       if (editingPickId === pickId) handleCancelEdit();
+    } catch (err) {
+      window.alert(String(err instanceof Error ? err.message : err));
+    } finally {
+      setPickBusy(null);
+    }
+  }
+
+  async function handleSetPickResult(pickId: number, result: "pending" | "won" | "lost" | "unresolved") {
+    setPickBusy(pickId);
+    try {
+      const updated = await setAdminPickResult(pickId, result);
+      setAdminPicks((prev) => prev.map((p) => (p.id === pickId ? updated : p)));
     } catch (err) {
       window.alert(String(err instanceof Error ? err.message : err));
     } finally {
@@ -804,6 +818,11 @@ export function BetCodes() {
                   {pick.priced && pick.combined_odds !== null ? `${pick.combined_odds.toFixed(2)} odds · ` : ""}
                   {(pick.combined_probability * 100).toFixed(0)}% probability
                 </span>
+                {pick.result !== "pending" && (
+                  <span className={`result-tag ${pick.result}`} style={{ marginLeft: 8 }}>
+                    {pick.result === "won" ? "Won" : pick.result === "lost" ? "Lost" : "Confirming result"}
+                  </span>
+                )}
                 {/* pick.risk_tier is combined-probability-based (see
                     betcode.selection.risk_tier) -- correct for a hand-built
                     slip, but not for a fixed 10-leg weekly accumulator built
@@ -818,6 +837,27 @@ export function BetCodes() {
                 )}
               </span>
               <div style={{ display: "flex", gap: 6 }}>
+                {pick.result === "unresolved" && (
+                  <>
+                    <button
+                      className="btn ghost"
+                      style={{ padding: "2px 8px", fontSize: 12 }}
+                      disabled={pickBusy === pick.id}
+                      onClick={() => handleSetPickResult(pick.id, "won")}
+                      title="This pick's market can't be auto-graded -- confirm the result by hand."
+                    >
+                      Mark won
+                    </button>
+                    <button
+                      className="btn ghost"
+                      style={{ padding: "2px 8px", fontSize: 12 }}
+                      disabled={pickBusy === pick.id}
+                      onClick={() => handleSetPickResult(pick.id, "lost")}
+                    >
+                      Mark lost
+                    </button>
+                  </>
+                )}
                 {!pick.priced && (
                   <button
                     className="btn ghost"
@@ -841,6 +881,8 @@ export function BetCodes() {
           ))}
         </div>
       )}
+
+      <MyCodesHistory />
     </div>
   );
 }

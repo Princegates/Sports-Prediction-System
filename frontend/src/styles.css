@@ -683,6 +683,54 @@ h1, h2, h3, h4 {
   background: var(--critical-soft);
 }
 
+/* A settled pick/code's outcome -- same shape as .risk-tag (status colors,
+   never reused for anything else, per the dataviz skill's rule that
+   identity and status colors never swap roles). "unresolved" (amber, same
+   family as "medium" risk) means a market app.outcomes.grading can't
+   auto-grade, awaiting a Super Admin's manual confirmation -- never shown
+   as a loss or hidden, since that would misrepresent an undecided result
+   either way. */
+.result-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid;
+  white-space: nowrap;
+}
+
+.result-tag.won {
+  color: var(--good);
+  border-color: rgba(12, 163, 12, 0.4);
+  background: var(--good-soft);
+}
+
+.result-tag.lost {
+  color: var(--critical);
+  border-color: rgba(230, 103, 103, 0.4);
+  background: var(--critical-soft);
+}
+
+.result-tag.unresolved {
+  color: var(--warning);
+  border-color: rgba(250, 178, 25, 0.4);
+  background: var(--warning-soft);
+}
+
+.leg-result-icon {
+  font-weight: 800;
+  margin-left: 6px;
+}
+
+.leg-result-icon.won { color: var(--good); }
+.leg-result-icon.lost { color: var(--critical); }
+.leg-result-icon.unresolved { color: var(--warning); }
+
 /* ==========================================================================
    DATE STRIP
    ========================================================================== */

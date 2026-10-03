@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app import app_settings
@@ -23,6 +23,7 @@ from app.api.serializers import admin_pick_to_schema, featured_pick_to_schema, p
 from app.betcode.selection import price_legs, resolve_legs_unpriced
 from app.db.models import AdminPick, FeaturedPick, Match, Prediction, User
 from app.outcomes.registry import NOT_A_FULL_PARTITION_GROUPS, find_outcome, outcomes_from_prediction
+from app.pick_settlement import frozen_admin_pick_legs, settle_admin_pick
 from app.prediction_models.ml_model import FeatureCachePool
 from app.prediction_service import build_prediction_for_match
 from app.quality import is_high_confidence
@@ -371,9 +372,15 @@ def admin_picks(user: User = Depends(get_current_user), db: Session = Depends(ge
     """Whole multi-leg slips a Super Admin has chosen to highlight, for the
     Dashboard's Admin Picks section -- same visibility rules as Guda Picks
     (admin_picks_enabled/admin_picks_free_tier_visible), but for a combo
-    rather than one outcome. Every leg's price and probability, and the
-    resulting risk tier, are recomputed live; a slip drops out entirely the
-    moment even one leg stops resolving.
+    rather than one outcome. A still-pending slip has every leg's price and
+    probability, and the resulting risk tier, recomputed live, and drops out
+    entirely the moment even one leg stops resolving. Once every leg's match
+    has finished, the slip is settled instead (app.pick_settlement) and kept
+    visible with its frozen result -- won, lost, or awaiting manual
+    confirmation -- for up to 14 days past kickoff, rather than vanishing the
+    moment its match ends: that result, not just the live pick, is the whole
+    point of a Dashboard trust signal. The full history lives at
+    GET /api/track-record/admin-picks, unbounded by this 14-day window.
     """
 
     values = app_settings.all_values(db)
@@ -391,12 +398,39 @@ def admin_picks(user: User = Depends(get_current_user), db: Session = Depends(ge
             return []
 
     now = dt.datetime.utcnow()
+    recent_cutoff = now - dt.timedelta(days=14)
+    # Candidates include every still-pending pick regardless of expiry, not
+    # just unexpired/recently-settled ones -- otherwise a pick whose matches
+    # only just finished, past its own expires_at, would be excluded from
+    # this query before settle_admin_pick ever got a chance to run on it,
+    # and would then never settle at all (nothing else ever reads it).
     picks = db.execute(
-        select(AdminPick).where(AdminPick.expires_at > now).order_by(AdminPick.created_at.desc())
+        select(AdminPick)
+        .where(or_(AdminPick.result == "pending", AdminPick.expires_at > now, AdminPick.settled_at > recent_cutoff))
+        .order_by(AdminPick.created_at.desc())
     ).scalars().all()
 
     out: list[AdminPickOut] = []
     for pick in picks:
+        if settle_admin_pick(db, pick):
+            db.commit()
+
+        if pick.result != "pending":
+            # Settled too long ago for this bounded Dashboard widget -- the
+            # unbounded public track record (admin_pick_track_record) is
+            # where older history lives.
+            if pick.expires_at <= now and (pick.settled_at is None or pick.settled_at <= recent_cutoff):
+                continue
+            out.append(admin_pick_to_schema(pick, frozen_admin_pick_legs(db, pick), viewer_has_premium=viewer_has_premium))
+            continue
+
+        if pick.expires_at <= now:
+            # Still pending past its own expiry -- e.g. a combo with legs on
+            # different kickoffs where only some have finished so far. Known
+            # limitation: it's hidden until every leg finishes and it can
+            # settle, rather than shown half-resolved.
+            continue
+
         refs = [(leg["match_id"], leg["market"], leg["selection"]) for leg in pick.legs]
         legs, _warnings = price_legs(db, refs) if pick.priced else resolve_legs_unpriced(db, refs)
         if len(legs) != len(refs):
