@@ -2346,10 +2346,12 @@ table.predictions-table.odds-grid .match-col .sub {
 }
 
 /* A slip being built while scrolling a long list of matches (Markets'
-   "My picks", AI Generation's leg preview) -- StickySlipBar.tsx. Docked
-   just above the bottom nav rather than replacing it, since both need to
-   stay reachable at once. Desktop never shows this -- the card it
-   summarizes is never far from the pointer there. */
+   "My picks", AI Generation's leg preview) -- StickySlipBar.tsx. On phone
+   it's docked just above the bottom nav, full width; on desktop it floats
+   as a small pill at bottom-left (bottom-right is the draggable "Ask Guda"
+   launcher's default spot -- see .chat-fab). Shown on both: a match list
+   long enough to need this bar in the first place is exactly a list where
+   the "My Picks" card is no longer near the pointer, on any width. */
 .sticky-slip-bar {
   display: none;
 }
@@ -2395,6 +2397,43 @@ table.predictions-table.odds-grid .match-col .sub {
      underneath both fixed bars. */
   .has-sticky-slip-space {
     padding-bottom: 64px;
+  }
+}
+
+@media (min-width: 641px) {
+  .sticky-slip-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    position: fixed;
+    left: var(--space-5);
+    bottom: var(--space-5);
+    z-index: 25;
+    max-width: 360px;
+    background: var(--bg-surface-2);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-lg);
+    padding: 12px 16px;
+    box-shadow: var(--shadow-pop);
+  }
+
+  .sticky-slip-summary {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .sticky-slip-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  /* Same reasoning as the phone rule above: the page's last content
+     shouldn't scroll in underneath this floating pill. Smaller than
+     phone's, since this one is a corner pill rather than a full-width bar. */
+  .has-sticky-slip-space {
+    padding-bottom: 32px;
   }
 }
 

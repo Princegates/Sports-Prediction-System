@@ -7,15 +7,16 @@ interface Props {
   onView: () => void;
 }
 
-/** A phone-only sticky footer for a slip being built while scrolling a long
- * list of matches (Markets' "My picks", AI Generation's leg preview) --
- * both already show their own full actions (remove a leg, get a booking
- * code, ...) in a card, but that card scrolls out of view the moment the
- * user goes back to pick another match. This stays reachable without
- * requiring a trip back up the page for the two things done most often:
- * a quick copy, or jumping back to that card for everything else. Hidden
- * above the phone breakpoint (styles.css) -- desktop has no such problem,
- * the card is never far from the pointer. */
+/** A sticky summary for a slip being built while scrolling a long list of
+ * matches (Markets' "My picks", AI Generation's leg preview) -- both
+ * already show their own full actions (remove a leg, get a booking code,
+ * ...) in a card, but that card scrolls out of view the moment the user
+ * goes back to pick another match. This stays reachable without requiring
+ * a trip back up (or down) the page for the two things done most often: a
+ * quick copy, or jumping straight to that card for everything else.
+ * styles.css renders it as a full-width footer on phone and a small
+ * corner pill on desktop -- a match list long enough to need this at all
+ * puts the card out of easy reach on any width, not just a phone's. */
 export function StickySlipBar({ summary, copyText, onView }: Props) {
   // The draggable "Ask Guda" launcher's default resting corner (ChatDock,
   // useDraggableFab) sits right on top of this bar's own buttons at phone
