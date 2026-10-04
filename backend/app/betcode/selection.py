@@ -664,6 +664,88 @@ def select_ranged_leg_slip(
     )
 
 
+def select_floor_leg_slip(
+    db: Session,
+    criteria: SlipCriteria,
+    min_legs: int,
+    max_legs: int,
+    target_min_odds: float,
+    *,
+    exclude_match_ids: frozenset[int] = frozenset(),
+) -> SelectionResult:
+    """Picks between ``min_legs`` and ``max_legs`` legs (one per match) whose
+    combined odds clear ``target_min_odds`` -- scripts/generate_high_risk_slips.py's
+    "mega accumulator" shape, distinct from ``select_ranged_leg_slip``'s fixed
+    leg count and closed ``[target_min, target_max]`` band.
+
+    Same safest-first philosophy as the rest of this module: candidates are
+    sorted by decimal_odds ascending and taken in that order, never swapped
+    around to land closer to the target. The twist here is the leg count
+    itself is a range, not a single number -- the first ``min_legs`` are
+    always taken (a slip this large needs the volume regardless of whether
+    the floor is already cleared), then more are added, still cheapest
+    first, only if the floor isn't cleared yet, stopping the moment it is or
+    at ``max_legs`` if it never is.
+
+    ``exclude_match_ids`` lets a caller building several of these in one run
+    (three weekly "jackpot" slips, say) keep them from being near-duplicates
+    of each other -- this is a deterministic sort over the same candidate
+    pool, so without excluding what an earlier slip already used, a second
+    call would mostly just reproduce the first.
+    """
+
+    warnings: list[str] = []
+    candidates = [leg for leg in build_candidate_legs(db, criteria) if leg.match_id not in exclude_match_ids]
+    candidates.sort(key=lambda leg: leg.decimal_odds)
+
+    if len(candidates) < min_legs:
+        return SelectionResult(
+            criteria=criteria, legs=[], combined_odds=1.0, combined_probability=1.0,
+            candidates_considered=len(candidates), met_target=False,
+            warnings=[
+                f"Only {len(candidates)} qualifying match(es) available -- need at least {min_legs} for a slip this size."
+            ],
+        )
+
+    chosen: list[Leg] = []
+    combined_odds = 1.0
+    for leg in candidates:
+        if len(chosen) >= max_legs:
+            break
+        if len(chosen) >= min_legs and combined_odds >= target_min_odds:
+            break
+        chosen.append(leg)
+        combined_odds *= leg.decimal_odds
+
+    combined_probability = 1.0
+    for leg in chosen:
+        combined_probability *= leg.model_probability
+
+    met_target = combined_odds >= target_min_odds and len(chosen) >= min_legs
+    if not met_target:
+        warnings.append(
+            f"Taking every available leg up to the {max_legs}-leg cap only reaches {combined_odds:.2f}, "
+            f"short of the {target_min_odds:.2f} target. Not published rather than shown under its "
+            "stated odds."
+        )
+    if chosen:
+        drop = 1.0 - combined_probability
+        warnings.append(
+            f"Combined probability is {combined_probability:.1%} across {len(chosen)} legs -- "
+            f"stacking this many multiplies the risk by about {drop:.0%}."
+        )
+
+    return SelectionResult(
+        criteria=criteria,
+        legs=chosen,
+        combined_odds=combined_odds,
+        combined_probability=combined_probability,
+        candidates_considered=len(candidates),
+        met_target=met_target,
+        warnings=warnings,
+    )
+
+
 @dataclass
 class ConfidencePick:
     """select_legs_by_confidence's result -- SelectionResult's shape without

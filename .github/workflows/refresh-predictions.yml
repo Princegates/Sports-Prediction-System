@@ -194,6 +194,7 @@ jobs:
             exit 0
           fi
           python scripts/generate_weekly_picks.py
+          python scripts/generate_high_risk_slips.py
           python scripts/generate_random_picks.py --which weekly
 
       # Every run, daily refresh or weekly retrain alike -- "Random Daily

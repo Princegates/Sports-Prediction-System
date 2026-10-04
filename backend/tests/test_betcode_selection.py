@@ -21,6 +21,7 @@ from app.betcode.selection import (
     build_confidence_candidates,
     price_legs,
     resolve_legs_unpriced,
+    select_floor_leg_slip,
     select_legs,
     select_legs_by_confidence,
     select_random_legs,
@@ -750,3 +751,81 @@ def test_select_ranged_leg_slip_combined_probability_matches_the_chosen_legs(db_
     for leg in result.legs:
         expected_probability *= leg.model_probability
     assert result.combined_probability == pytest.approx(expected_probability)
+
+
+# --- select_floor_leg_slip: leg-count range, open-ended target --------------
+#
+# The shape scripts/generate_high_risk_slips.py needs: a variable leg count
+# (10-20, not a fixed 10) and a floor rather than a closed band -- "at least
+# 50x", with no ceiling.
+
+
+def test_select_floor_leg_slip_always_takes_at_least_min_legs(db_session):
+    """Even when the floor is cleared well before min_legs worth of legs are
+    in, the slip still comes out at min_legs -- the leg count is a
+    requirement of the shape, not just whatever it takes to clear the odds."""
+
+    odds_list = [2.0] * 15  # six legs alone would clear 50x (2**6 = 64)
+    _ladder_matches(db_session, odds_list)
+
+    criteria = SlipCriteria(bookmaker="system", target_odds=999, min_probability=0.5)
+    result = select_floor_leg_slip(db_session, criteria, 10, 20, 50.0)
+
+    assert result.met_target
+    assert len(result.legs) == 10
+    assert result.combined_odds == pytest.approx(2.0 ** 10)
+
+
+def test_select_floor_leg_slip_adds_legs_past_min_until_the_floor_clears(db_session):
+    """min_legs worth of the safest legs isn't enough to clear the floor, so
+    it keeps adding (still cheapest-first) past min_legs, up to max_legs."""
+
+    odds_list = [round(1.05 + 0.03 * i, 2) for i in range(20)]
+    _ladder_matches(db_session, odds_list)
+
+    target = math.prod(odds_list[0:14])  # needs 14 legs, more than the 10-leg minimum
+    criteria = SlipCriteria(bookmaker="system", target_odds=999, min_probability=0.5)
+    result = select_floor_leg_slip(db_session, criteria, 10, 20, target)
+
+    assert result.met_target
+    assert len(result.legs) == 14
+    assert sorted(leg.decimal_odds for leg in result.legs) == sorted(odds_list[0:14])
+
+
+def test_select_floor_leg_slip_stops_at_max_legs_short_of_the_floor(db_session):
+    odds_list = [round(1.05 + 0.03 * i, 2) for i in range(20)]
+    _ladder_matches(db_session, odds_list)
+
+    criteria = SlipCriteria(bookmaker="system", target_odds=999, min_probability=0.5)
+    result = select_floor_leg_slip(db_session, criteria, 10, 20, 10_000.0)
+
+    assert not result.met_target
+    assert len(result.legs) == 20
+    assert any("short of the 10000.00 target" in w for w in result.warnings)
+
+
+def test_select_floor_leg_slip_fails_cleanly_with_too_few_candidates(db_session):
+    _ladder_matches(db_session, [1.20, 1.25, 1.30])
+
+    criteria = SlipCriteria(bookmaker="system", target_odds=999, min_probability=0.5)
+    result = select_floor_leg_slip(db_session, criteria, 10, 20, 50.0)
+
+    assert not result.met_target
+    assert result.legs == []
+    assert "need at least 10" in result.warnings[0]
+
+
+def test_select_floor_leg_slip_excludes_matches_already_used(db_session):
+    """The exclusion set a caller builds slip-over-slip from -- without it,
+    a second call over the same pool would just reproduce the first."""
+
+    odds_list = [round(1.05 + 0.03 * i, 2) for i in range(20)]
+    matches = _ladder_matches(db_session, odds_list)
+    first_ten = frozenset(m.id for m in matches[:10])
+
+    criteria = SlipCriteria(bookmaker="system", target_odds=999, min_probability=0.5)
+    result = select_floor_leg_slip(db_session, criteria, 10, 10, 1.0, exclude_match_ids=first_ten)
+
+    assert result.met_target
+    assert all(leg.match_id not in first_ten for leg in result.legs)
+    assert sorted(leg.decimal_odds for leg in result.legs) == sorted(odds_list[10:20])
