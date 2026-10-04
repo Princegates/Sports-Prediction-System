@@ -248,30 +248,10 @@ def test_the_real_registry_claims_no_connection_it_does_not_have(auth_headers):
 
     body = client.get("/api/betcodes/sites", headers=auth_headers).json()
 
-    assert {s["key"] for s in body} == {"sportybet_gh", "betway_gh", "1xbet"}
+    assert {s["key"] for s in body} == {"sportybet_gh"}
     from app.betcode import sites as betting_sites
 
     assert all(s["connected"] == betting_sites.SITES_BY_KEY[s["key"]].connected for s in body)
-
-
-def test_betway_explains_why_rather_than_saying_not_connected_yet(auth_headers, upcoming_match):
-    """Betway's own booking-code action places a real bet (confirmed against
-    the live site -- see app/betcode/sites.py's manual_note), so this is a
-    permanent, deliberate non-connection, not a "coming soon". The generic
-    not-connected wording would wrongly suggest the opposite."""
-
-    response = client.post(
-        "/api/betcodes/picks",
-        json={"picks": [{"match_id": upcoming_match.id, "market": "Match Result", "selection": "Home Win"}],
-              "sites": ["betway_gh"]},
-        headers=auth_headers,
-    )
-
-    assert response.status_code == 200, response.text
-    code = response.json()["site_codes"][0]
-    assert code["status"] == "not_connected"
-    assert "actually placing a bet" in code["message"]
-    assert "build this slip yourself" in code["message"]
 
 
 def test_booking_picks_requires_authentication():

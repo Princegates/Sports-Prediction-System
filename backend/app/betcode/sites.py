@@ -68,15 +68,11 @@ def _sportybet_gh() -> SiteConnector:
 
 SITES: list[Site] = [
     Site("sportybet_gh", "SportyBet Ghana", _sportybet_gh),
-    Site(
-        "betway_gh", "Betway Ghana",
-        manual_note=(
-            "Betway only issues a booking code as part of actually placing a bet -- "
-            "there's no free preview like the other sites. Use the picks above to build "
-            "this slip yourself on Betway, under your own account."
-        ),
-    ),
-    Site("1xbet", "1xBet"),
+    # Betway and 1xBet removed for now: Betway's own "create a code" action
+    # places a real bet (confirmed against the live site -- see this
+    # module's git history), and 1xBet's is unconfirmed pending a full
+    # market-ID mapping. Re-add once either is actually ready to connect --
+    # manual_note above exists for exactly the Betway case.
 ]
 
 SITES_BY_KEY = {site.key: site for site in SITES}
