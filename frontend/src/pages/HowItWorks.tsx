@@ -92,6 +92,19 @@ export function HowItWorks() {
             </p>
           </div>
         </div>
+
+        <div className="doc-callout">
+          <h4>A fourth, narrower signal: squad availability</h4>
+          <p>
+            Reported injuries and suspensions are pulled daily; confirmed starting lineups are polled in
+            roughly the 60-90 minute window before kickoff, since that's when providers actually publish
+            them. Neither feeds the gradient-boosting model directly -- a column that's zero for every
+            historical match, because no lineup data existed back then, would teach it nothing. Instead,
+            a missing regular starter shifts the match-result probability by a small, capped amount and
+            is named as a factor in the explanation -- never a silent swing. With no reported absence and
+            no lineup confirmed yet, it changes nothing.
+          </p>
+        </div>
       </section>
 
       {/* --- Blending --- */}
@@ -149,10 +162,12 @@ export function HowItWorks() {
           <h4>High probability is not high value</h4>
           <p>
             The most-likely outcome is frequently a low-information one -- a heavy favourite, or an
-            "over 0.5 goals" line that clears 95%. This system deliberately never looks at bookmaker
-            odds, which means it forms an independent opinion but also that it{" "}
-            <strong>cannot tell you whether a price is good</strong>. If you want value rather than
-            likelihood, that comparison is yours to make.
+            "over 0.5 goals" line that clears 95%. The prediction models themselves still never look at
+            bookmaker odds -- they form an independent opinion, not a re-derivation of the market's.
+            Real captured prices are used separately to price the multi-leg accumulators you see
+            elsewhere on the platform, but nothing compares those prices across bookmakers or{" "}
+            <strong>tells you whether a given price is good value</strong>. If you want that
+            comparison, it's still yours to make.
           </p>
         </div>
       </section>
@@ -213,23 +228,27 @@ export function HowItWorks() {
       {/* --- Data --- */}
       <section className="doc-section">
         <h2>5. Where the data comes from</h2>
-        <p>Free and open sources only -- no paid feeds and no keys tied to a credit card.</p>
+        <p>
+          Day to day, everything live comes from one provider. The codebase itself stays free and
+          open-source throughout.
+        </p>
         <ul className="doc-list">
           <li>
-            <strong>openfootball/football.json</strong> — season files on GitHub carrying both completed
-            results and genuine not-yet-played fixtures. No signup.
+            <strong>API-Football</strong> — fixtures, results, bookmaker prices, injuries/suspensions
+            and confirmed lineups, all from the same provider so they tie together on one fixture ID.
           </li>
           <li>
-            <strong>football-data.co.uk</strong> — historical results CSVs going back many seasons
-            across 20+ leagues. No signup.
+            <strong>openfootball/football.json &amp; football-data.co.uk</strong> — the free sources
+            that seeded this deployment's early historical seasons before the switch above. Not read
+            day to day any more.
           </li>
           <li>
-            <strong>SQLite</strong> on disk for storage, swappable for Postgres by changing one
-            environment variable.
+            <strong>Postgres</strong> in production for storage; the same models run against SQLite for
+            local development with no code change.
           </li>
           <li>
-            <strong>scikit-learn, numpy, pandas</strong> — all training runs locally on your own
-            hardware.
+            <strong>scikit-learn, numpy, pandas</strong> — all training runs on open-source libraries,
+            no proprietary model API.
           </li>
         </ul>
         {stats && (
@@ -250,9 +269,11 @@ export function HowItWorks() {
         </p>
         <ul className="doc-list limits">
           <li>
-            <strong>No confirmed lineups or injury data.</strong> There's no free source of adequate
-            quality. A key striker being out is invisible to the model until it shows up in results.
-            The recalculation logic is built and waiting for a provider to be plugged in.
+            <strong>Squad availability is a bounded nudge, not a trained feature.</strong> Reported
+            injuries/suspensions and lineups confirmed near kickoff shift a match's probability by a
+            small, capped amount and get named in the explanation -- they are not fed into the
+            gradient-boosting model's training data, and the size of that nudge has not itself been
+            backtested against real results. Treat it as a reasoned adjustment, not a measured one.
           </li>
           <li>
             <strong>No live shot-level statistics.</strong> In-play updates work by time-scaling the
@@ -268,8 +289,10 @@ export function HowItWorks() {
             result from three seasons ago carries little signal. H2H is shown as context only.
           </li>
           <li>
-            <strong>No odds comparison.</strong> By design, as above — independence at the cost of not
-            being able to identify value.
+            <strong>No odds comparison or value/edge assessment.</strong> Real bookmaker prices are
+            captured and used to price accumulators, but nothing compares prices across bookmakers or
+            tells you whether a given price is good value relative to the model's own probability --
+            that comparison, if you want it, is yours to make.
           </li>
           <li>
             <strong>Cold-start weakness.</strong> Newly promoted teams and early-season fixtures have

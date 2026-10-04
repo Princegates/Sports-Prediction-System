@@ -91,7 +91,12 @@ const FEATURES = [
   {
     icon: "⬢",
     title: "Market-independent by design",
-    body: "The models never look at bookmaker odds. The probabilities are formed from match data alone, so they're an independent opinion rather than a re-derivation of the market's.",
+    body: "The prediction models themselves never look at bookmaker odds -- probabilities are formed from match data alone, an independent opinion rather than a re-derivation of the market's. Real captured prices are used separately to price accumulators, never to shape a prediction.",
+  },
+  {
+    icon: "✚",
+    title: "Squad availability signal",
+    body: "Reported injuries, suspensions and lineups confirmed near kickoff shift a match's probability by a small, capped amount and get named in the explanation -- never a silent swing, and nothing changes until real absence data exists for that match.",
   },
 ];
 
@@ -110,7 +115,7 @@ const FAQS = [
   },
   {
     q: "Where does the data come from?",
-    a: "Free, open sources: openfootball's season files on GitHub and football-data.co.uk's historical CSVs. No paid feeds, no API keys tied to a credit card. That's a deliberate constraint, and it's why some features -- confirmed lineups, live shot-level stats -- are pluggable extension points rather than shipped capabilities.",
+    a: "Fixtures, results, injuries/suspensions, confirmed lineups and bookmaker prices all come from API-Football. The free openfootball and football-data.co.uk feeds seeded this deployment's early historical seasons before that switch and aren't read day to day any more. Live shot-level in-play statistics remain a pluggable extension point rather than a shipped capability.",
   },
   {
     q: "Is the AI chat a language model?",
@@ -118,7 +123,7 @@ const FAQS = [
   },
   {
     q: "What does it cost to run?",
-    a: "Nothing. Free data sources, SQLite on disk, open-source Python and Node, models trained locally on your own machine. Deployable to any free-tier host or a single small VPS.",
+    a: "The software itself is free and open-source -- Python, Node, scikit-learn, nothing proprietary. This specific deployment pairs that with a paid API-Football tier for live fixtures, odds and squad data, plus managed Postgres and hosting, so the software costs nothing but keeping it fed with live data does.",
   },
 ];
 
@@ -341,6 +346,12 @@ export function Welcome() {
             Every curated Admin Pick that settles is counted here, win or lose -- no cherry-picking,
             no deleting the losses. Which teams, markets and selections were picked stays behind the
             login; this is just the verifiable record.
+          </p>
+          <p>
+            Every week the system itself publishes six standing accumulators, pooled across every
+            league it covers: Low, Medium and High risk (10 legs each, rising combined-odds bands),
+            plus three High-Risk Jackpot slips (10-20 legs, 50x+ combined odds). Generated and settled
+            the same way as everything else here, and counted in the number below.
           </p>
         </div>
 
