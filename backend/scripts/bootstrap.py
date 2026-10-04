@@ -47,6 +47,13 @@ DEFAULT_LEAGUES = ["English Premier League"]
 # refresh of every league costs about ten requests of a 7,500 daily budget.
 API_FOOTBALL_MAX_REQUESTS = 200
 
+# One request per league per day in the odds window (see import_odds's own
+# docstring for why it's per-day rather than one request per league) --
+# capped well above what any realistic --days-ahead actually costs, so this
+# ceiling is never what stops a run; --max-requests on the odds subprocess
+# itself is what protects the real daily budget if it ever is.
+ODDS_MAX_REQUESTS = 300
+
 
 def season_start_year(season: str) -> int:
     """API-Football names a season by the year it starts: "2025-26" -> 2025."""
@@ -138,6 +145,27 @@ def main() -> None:
                     "--leagues", *api_leagues,
                     "--seasons", *[str(s) for s in seasons],
                     "--max-requests", str(API_FOOTBALL_MAX_REQUESTS),
+                ],
+                required=False,
+            )
+            # A separate call, not --odds on the one above: that call's
+            # --seasons can carry years of backfill on a seed run, and asking
+            # for odds on every day of every one of those historical seasons
+            # would multiply the request count by --days-ahead for data
+            # nobody will ever price. Odds are only ever about fixtures that
+            # haven't kicked off yet, so this always targets the current
+            # season regardless of what --seasons was given, with its own
+            # ceiling and its own failure (a quota hiccup here shouldn't be
+            # read as the fixture import above having failed).
+            run(
+                "Capturing market odds",
+                [
+                    "scripts/import_api_football.py",
+                    "--leagues", *api_leagues,
+                    "--seasons", str(current_season_start()),
+                    "--odds",
+                    "--days-ahead", str(args.days_ahead),
+                    "--max-requests", str(ODDS_MAX_REQUESTS),
                 ],
                 required=False,
             )
