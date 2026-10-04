@@ -436,11 +436,22 @@ class MLModel:
         self.over25_clf: GradientBoostingClassifier | None = None
         self.btts_clf: GradientBoostingClassifier | None = None
         self._result_classes: list[str] = []
+        # Which columns, in which order, this instance was fit on -- not
+        # necessarily today's FEATURE_COLUMNS. KNOWN_LEAGUES grows as leagues
+        # are added, which changes the one-hot tail's width, so an artifact
+        # saved before that change is fit on fewer columns than the module
+        # now lists. load_ml_model compares this against the current
+        # FEATURE_COLUMNS before handing a cached file back to a caller --
+        # see its own docstring for the production incident this was added
+        # for (a per-league file surviving a KNOWN_LEAGUES change untouched,
+        # since only the pooled model gets retrained in the normal path).
+        self.feature_columns: list[str] = []
 
     def fit(self, df: pd.DataFrame) -> None:
         if df.empty:
             raise ValueError("Cannot fit MLModel on an empty dataset")
 
+        self.feature_columns = list(FEATURE_COLUMNS)
         x = df[FEATURE_COLUMNS].to_numpy()
 
         self.result_clf = GradientBoostingClassifier(random_state=42, n_estimators=150, max_depth=3, learning_rate=0.08)
@@ -478,6 +489,7 @@ class MLModel:
                 "over25_clf": self.over25_clf,
                 "btts_clf": self.btts_clf,
                 "result_classes": self._result_classes,
+                "feature_columns": self.feature_columns,
             },
             path,
         )
@@ -490,4 +502,9 @@ class MLModel:
         model.over25_clf = payload["over25_clf"]
         model.btts_clf = payload["btts_clf"]
         model._result_classes = payload["result_classes"]
+        # Missing on a file saved before feature_columns existed -- an empty
+        # list, which can never equal today's (non-empty) FEATURE_COLUMNS,
+        # so an old-format file reads as incompatible rather than as a match
+        # by omission.
+        model.feature_columns = payload.get("feature_columns", [])
         return model

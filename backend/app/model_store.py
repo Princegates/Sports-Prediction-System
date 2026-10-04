@@ -8,6 +8,7 @@ and ``scripts/build_predictions.py`` read them back.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from pathlib import Path
 
@@ -16,7 +17,9 @@ from sqlalchemy.orm import Session
 from app import app_settings
 from app.prediction_models.calibration import MarketCalibrator
 from app.prediction_models.ensemble import EnsembleWeights
-from app.prediction_models.ml_model import MLModel
+from app.prediction_models.ml_model import FEATURE_COLUMNS, MLModel
+
+logger = logging.getLogger(__name__)
 
 MODEL_DIR = Path(__file__).resolve().parent.parent / "model_artifacts"
 MODEL_DIR.mkdir(exist_ok=True)
@@ -107,6 +110,34 @@ def load_ensemble_weights(league: str, db: Session | None = None) -> EnsembleWei
     return EnsembleWeights(elo=data["elo"], poisson=data["poisson"], ml=data["ml"])
 
 
+def _usable(model: MLModel, path: Path) -> bool:
+    """False for a cached artifact fit on a different feature schema than
+    the code running right now.
+
+    KNOWN_LEAGUES (app.prediction_models.ml_model) grows as leagues are
+    added, which widens FEATURE_COLUMNS' one-hot tail -- and the normal
+    multi-league training path only ever rewrites the pooled/global file
+    (see this function's own docstring on why per-league files exist at
+    all), so a per-league file from before that growth sits untouched and
+    silently wrong-shaped forever. Without this check it reaches
+    GradientBoostingClassifier.predict_proba, which raises a bare
+    ValueError on the shape mismatch deep enough that the caller three
+    layers up (scripts/generate_predictions.py) has no graceful way to
+    catch it per-match -- the whole league's run dies instead of just
+    losing its ML component for one league. This is what actually happened
+    to UEFA Champions League: its own file predated the league itself
+    being added to KNOWN_LEAGUES' one-hot list.
+    """
+
+    if model.feature_columns != FEATURE_COLUMNS:
+        logger.warning(
+            "%s was fit on %d feature(s), current code expects %d -- treating it as absent.",
+            path.name, len(model.feature_columns), len(FEATURE_COLUMNS),
+        )
+        return False
+    return True
+
+
 def load_ml_model(league: str) -> MLModel | None:
     """This league's own model, falling back to the pooled cross-league one
     when it has none.
@@ -125,11 +156,15 @@ def load_ml_model(league: str) -> MLModel | None:
 
     path = ml_model_path(league)
     if path.exists():
-        return MLModel.load(path)
+        model = MLModel.load(path)
+        if _usable(model, path):
+            return model
 
     global_path = ml_model_path(GLOBAL_MODEL_KEY)
     if global_path.exists():
-        return MLModel.load(global_path)
+        model = MLModel.load(global_path)
+        if _usable(model, global_path):
+            return model
 
     return None
 

@@ -159,6 +159,52 @@ def test_fit_ensemble_weights_accepts_a_real_generated_breakdown(db_session):
     assert abs(weights.elo + weights.poisson + weights.ml - 1.0) < 1e-6
 
 
+class _StaleMLModel:
+    """Stands in for a cached artifact fit on a narrower feature schema than
+    the code currently running -- the shape sklearn actually raises
+    (GradientBoostingClassifier.predict_proba's ValueError on an input with
+    the wrong number of columns), not something load_ml_model's own
+    staleness check is relied on to have already filtered out here."""
+
+    def predict(self, feature_row: dict[str, float]) -> MLPrediction:
+        raise ValueError("X has 29 features, but GradientBoostingClassifier is expecting 28 features as input.")
+
+
+def test_a_stale_ml_model_degrades_to_elo_poisson_instead_of_crashing(db_session):
+    """This is the UEFA Champions League incident: a per-league model file
+    surviving a KNOWN_LEAGUES change untouched, then crashing every
+    prediction for that league instead of just dropping its own component.
+    model_store.load_ml_model screens this out before a caller ever gets
+    such a model -- this test is the backstop for any other way a stale or
+    otherwise malformed model reaches generate_prediction."""
+
+    home = Team(name="Gamma FC", league=LEAGUE, aliases=[])
+    away = Team(name="Delta FC", league=LEAGUE, aliases=[])
+    db_session.add_all([home, away])
+    db_session.commit()
+    db_session.refresh(home)
+    db_session.refresh(away)
+
+    for day in range(20):
+        db_session.add(
+            Match(
+                league=LEAGUE, season="2024-25", date=BASE + dt.timedelta(days=day + 100),
+                home_team_id=home.id if day % 2 == 0 else away.id,
+                away_team_id=away.id if day % 2 == 0 else home.id,
+                home_score=2, away_score=1, status="FINISHED",
+            )
+        )
+    db_session.commit()
+    elo.rebuild_elo_history(db_session, LEAGUE)
+
+    as_of = BASE + dt.timedelta(days=130)
+    result = generate_prediction(db_session, home.id, away.id, LEAGUE, as_of, ml_model=_StaleMLModel())
+
+    assert result.model_breakdown["ml"] is None
+    assert result.model_breakdown["weights"]["ml"] == 0.0
+    assert result.home_win + result.draw + result.away_win == pytest.approx(1.0)
+
+
 def test_generate_prediction_persists_half_time_lambdas(db_session):
     """model_breakdown["poisson"] must carry lambda_home_ht/lambda_away_ht
     alongside the existing full-time ones -- app.outcomes.registry rebuilds

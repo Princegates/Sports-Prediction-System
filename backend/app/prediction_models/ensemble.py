@@ -6,6 +6,7 @@ much the underlying models agree (spec section 34).
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import statistics
 from dataclasses import dataclass, field
 
@@ -17,6 +18,8 @@ from app.prediction_models import elo, league_strength, poisson_model
 from app.prediction_models.calibration import MarketCalibrator
 from app.prediction_models.league_strength import LeagueStrength
 from app.prediction_models.ml_model import LeagueFeatureCache, MLModel, build_feature_row
+
+logger = logging.getLogger(__name__)
 
 MAX_STD_FOR_THREE_PROBS = 0.471  # std of [1, 0, 0] -- theoretical max disagreement
 
@@ -288,6 +291,17 @@ def generate_prediction(
             ml_over25 = ml_pred.over_2_5
             ml_btts = ml_pred.btts_yes
         except RuntimeError:
+            ml_probs = None
+        except ValueError:
+            # model_store.load_ml_model already screens out a cached
+            # artifact whose feature_columns don't match today's
+            # FEATURE_COLUMNS -- this is the backstop for whatever that
+            # check doesn't catch (sklearn raises a bare ValueError on a
+            # shape mismatch, not something more specific to filter on).
+            # One match's bad model is not worth failing the whole
+            # league's prediction run over -- see model_store._usable's
+            # docstring for the incident this silent-crash used to cause.
+            logger.warning("ML model raised ValueError for a %s match; dropping the ML component for it.", league)
             ml_probs = None
 
     blended_1x2 = blend_1x2(elo_probs, poisson_probs, ml_probs, weights)
