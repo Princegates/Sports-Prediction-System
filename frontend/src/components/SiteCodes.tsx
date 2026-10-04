@@ -38,9 +38,14 @@ export function SiteCodes({ legs, book }: Props) {
     fetchBettingSites()
       .then((all) => {
         if (cancelled) return;
-        const connected = all.filter((s) => s.connected);
-        setSites(connected);
-        setChosen(connected.map((s) => s.key));
+        // Every registered site is offered, not just connected ones -- a
+        // site this platform will never auto-book (Betway: its own "create
+        // a code" action places a real bet) still has real picks worth
+        // showing, with a clear "not connected" message in place of a code
+        // once asked for. Only connected sites are pre-ticked, so clicking
+        // "Get booking codes" by default does exactly what it always did.
+        setSites(all);
+        setChosen(all.filter((s) => s.connected).map((s) => s.key));
       })
       .catch(() => {});
     return () => {

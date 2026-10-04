@@ -561,7 +561,10 @@ export interface SuggestedPicks {
 export interface BettingSite {
   key: string;
   name: string;
-  /** False until that site's connection is built -- only connected sites are offered. */
+  /** False until that site's connection is built, or permanently for a site
+   * that will never be (e.g. Betway, whose own "create a code" action
+   * places a real bet). Unconnected sites are still offered -- selecting
+   * one just surfaces why no code was made, instead of hiding it. */
   connected: boolean;
 }
 

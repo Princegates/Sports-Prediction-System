@@ -46,6 +46,13 @@ class Site:
     name: str
     # None until this site's connection is built.
     connector: Callable[[], SiteConnector] | None = None
+    # Set only for a site that will never be connected, as opposed to one
+    # that simply isn't built yet -- explains why in a way a member can act
+    # on, rather than the generic "isn't connected yet" that implies
+    # "coming soon". See Betway's own entry below for the reason this one
+    # exists at all: its own "create a code" action places a real bet, so
+    # this platform never calls it on a member's behalf.
+    manual_note: str | None = None
 
     @property
     def connected(self) -> bool:
@@ -61,7 +68,14 @@ def _sportybet_gh() -> SiteConnector:
 
 SITES: list[Site] = [
     Site("sportybet_gh", "SportyBet Ghana", _sportybet_gh),
-    Site("betway_gh", "Betway Ghana"),
+    Site(
+        "betway_gh", "Betway Ghana",
+        manual_note=(
+            "Betway only issues a booking code as part of actually placing a bet -- "
+            "there's no free preview like the other sites. Use the picks above to build "
+            "this slip yourself on Betway, under your own account."
+        ),
+    ),
     Site("1xbet", "1xBet"),
 ]
 
@@ -95,7 +109,7 @@ def code_for_site(site_key: str, legs: list[Leg]) -> SiteCode:
     if site.connector is None:
         return SiteCode(
             site=site.key, name=site.name, status="not_connected",
-            message=f"{site.name} isn't connected yet, so no code can be made for it.",
+            message=site.manual_note or f"{site.name} isn't connected yet, so no code can be made for it.",
         )
 
     try:
