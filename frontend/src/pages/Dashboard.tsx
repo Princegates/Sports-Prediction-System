@@ -195,9 +195,16 @@ export function Dashboard() {
         )}
       </section>
 
+      {/* All four "picks" sections grouped together, curated-to-random:
+          Guda Picks and Admin Picks are human-curated; This Week's Picks and
+          Random Picks are cron-generated. Match discovery (the core browse-
+          everything interaction) follows the whole block below, rather than
+          splitting it in two the way it used to. */}
       <GudaPicksSection />
 
       <AdminPicksSection />
+
+      <WeeklyPicksSection />
 
       <RandomPicksSection />
 
@@ -345,8 +352,6 @@ export function Dashboard() {
           )}
         </>
       )}
-
-      <WeeklyPicksSection />
 
       <SearchCommand open={searchOpen} onClose={() => setSearchOpen(false)} leagues={LEAGUES} />
     </div>
