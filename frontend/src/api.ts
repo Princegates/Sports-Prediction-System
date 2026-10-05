@@ -72,18 +72,34 @@ export function clearStoredToken(): void {
  * redirect to /login, even for calls made outside of a component. */
 const AUTH_LOGOUT_EVENT = "auth:logout";
 
+/** Thrown only for a real 401 -- the token itself was rejected, and has
+ * already been cleared. Distinct from a plain Error (network failure, a 5xx,
+ * the backend still waking up) so a caller like AuthContext can tell "you
+ * are genuinely logged out" apart from "couldn't reach it just now" and
+ * stop treating the second as the first -- see the fix in AuthContext for
+ * why that distinction matters on a host that sleeps when idle. */
+export class AuthExpiredError extends Error {}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getStoredToken();
   const headers: Record<string, string> = { ...(options.headers as Record<string, string>) };
   if (token) headers.Authorization = `Bearer ${token}`;
   if (options.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
 
-  const response = await fetch(`${API_URL}${path}`, { ...options, headers });
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}${path}`, { ...options, headers });
+  } catch {
+    // A network-level failure (DNS, connection refused, CORS preflight
+    // dropped) -- common for a few seconds while a sleeping free-tier
+    // backend wakes up. Never the same thing as a rejected token.
+    throw new Error(`Couldn't reach the server -- ${path}`);
+  }
 
   if (response.status === 401) {
     clearStoredToken();
     window.dispatchEvent(new Event(AUTH_LOGOUT_EVENT));
-    throw new Error("Session expired -- please log in again.");
+    throw new AuthExpiredError("Session expired -- please log in again.");
   }
   if (!response.ok) {
     const detail = await response.json().catch(() => null);

@@ -69,6 +69,16 @@ export function Access() {
   const [busy, setBusy] = useState(false);
   const [justActivated, setJustActivated] = useState<{ activated_at: string; expires_at: string } | null>(null);
   const [whatsapp, setWhatsapp] = useState<string | null>(null);
+  const [slow, setSlow] = useState(false);
+
+  useEffect(() => {
+    if (!accessLoading) {
+      setSlow(false);
+      return;
+    }
+    const timer = setTimeout(() => setSlow(true), 4000);
+    return () => clearTimeout(timer);
+  }, [accessLoading]);
 
   useEffect(() => {
     refreshAccessStatus();
@@ -119,7 +129,17 @@ export function Access() {
         >
           <Mascot pose={hasAccess ? "celebrating" : errorKind ? "sad" : "thinking"} size={80} />
 
-          {accessLoading && <p className="status-result-message">Checking your access...</p>}
+          {accessLoading && (
+            <p className="status-result-message">
+              Checking your access...
+              {slow && (
+                <>
+                  <br />
+                  <span className="meta">Taking longer than usual -- the server may be waking up, hang tight.</span>
+                </>
+              )}
+            </p>
+          )}
 
           {!accessLoading && hasAccess && (
             <>

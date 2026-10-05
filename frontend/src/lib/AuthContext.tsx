@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
+  AuthExpiredError,
   clearStoredToken,
   fetchAccessStatus,
   fetchMe,
@@ -11,6 +12,14 @@ import {
   updateProfile as apiUpdateProfile,
 } from "../api";
 import type { AccessStatus, User } from "../types";
+
+// The backend's free-tier host sleeps after ~15 minutes idle and can take
+// 50+ seconds to wake (see render.yaml) -- sometimes refusing connections
+// outright for the first few seconds. Retried with backoff spanning that
+// window rather than treated as "logged out" on the first failure; total
+// worst case here is ~60s before giving up, which only happens right after
+// the backend has been idle.
+const SESSION_LOAD_RETRY_DELAYS_MS = [0, 2000, 4000, 8000, 16000, 30000];
 
 interface AuthContextValue {
   user: User | null;
@@ -60,7 +69,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setAccessStatus(await fetchAccessStatus());
     } catch {
-      setAccessStatus(null);
+      // Leave whatever access status we last knew in place. Overwriting it
+      // with null here used to mean a single flaky request (the backend
+      // waking up, a dropped connection) could flip someone who *does* have
+      // access into seeing "no active access yet" -- exactly the kind of
+      // thing that looks like the app randomly breaking.
     } finally {
       setAccessLoading(false);
     }
@@ -73,29 +86,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAccessLoading(false);
       return;
     }
-    fetchMe()
-      .then((u) => {
-        setUser(u);
-        // A superadmin never needs a grant, so there's nothing to fetch --
-        // this also keeps the admin panel from ever being gated on it.
-        if (u.role === "superadmin") {
-          setAccessStatus({ has_access: true, status: "active", activated_at: null, expires_at: null });
-          setAccessLoading(false);
-          return;
+
+    let cancelled = false;
+
+    async function loadSession() {
+      for (let attempt = 0; attempt < SESSION_LOAD_RETRY_DELAYS_MS.length; attempt++) {
+        if (attempt > 0) {
+          await new Promise((resolve) => setTimeout(resolve, SESSION_LOAD_RETRY_DELAYS_MS[attempt]));
+          if (cancelled) return;
         }
-        refreshAccessStatus();
-      })
-      .catch(() => {
-        // fetchMe failing (an expired/invalid token, a transient network
-        // error) left accessLoading stuck true forever here -- nothing else
-        // in this branch ever resolved it, so the page's own "checking
-        // access" state (and anything gated on it, like Access.tsx's
-        // loading card or the chat dock) never moved past loading without a
-        // full reload.
-        clearStoredToken();
-        setAccessLoading(false);
-      })
-      .finally(() => setLoading(false));
+        try {
+          const u = await fetchMe();
+          if (cancelled) return;
+          setUser(u);
+          // A superadmin never needs a grant, so there's nothing to fetch --
+          // this also keeps the admin panel from ever being gated on it.
+          if (u.role === "superadmin") {
+            setAccessStatus({ has_access: true, status: "active", activated_at: null, expires_at: null });
+            setAccessLoading(false);
+          } else {
+            await refreshAccessStatus();
+          }
+          setLoading(false);
+          return;
+        } catch (err) {
+          if (err instanceof AuthExpiredError) {
+            // The token itself was rejected (already cleared by the 401
+            // handler) -- this one really is "logged out," no retry helps.
+            setAccessLoading(false);
+            setLoading(false);
+            return;
+          }
+          // Anything else is a network/server-level failure -- try again;
+          // the token is presumably still good.
+        }
+      }
+      // Retries exhausted without ever reaching the server. The stored
+      // token is left alone (it may well still be valid) -- just stop
+      // waiting so the UI can show something instead of spinning forever.
+      setAccessLoading(false);
+      setLoading(false);
+    }
+
+    loadSession();
+    return () => {
+      cancelled = true;
+    };
   }, [refreshAccessStatus]);
 
   useEffect(() => onAuthLogout(() => setUser(null)), []);
