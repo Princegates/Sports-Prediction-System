@@ -31,6 +31,7 @@ BETTING_SITES: list[tuple[str, str]] = [
     ("1xBet Nigeria", "https://1xbet.ng/"),
     ("Betway Nigeria", "https://www.betway.com.ng/"),
     ("Betway Ghana", "https://www.betway.com.gh/"),
+    ("MSport Ghana", "https://www.msport.com/gh/web"),
 ]
 
 USER_AGENT = "SoccaIntel-ReachabilityCheck/1.0"
