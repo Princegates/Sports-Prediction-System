@@ -66,8 +66,15 @@ def _sportybet_gh() -> SiteConnector:
     return SportyBetConnector()
 
 
+def _msport_gh() -> SiteConnector:
+    from app.betcode.msport import MSportConnector
+
+    return MSportConnector()
+
+
 SITES: list[Site] = [
     Site("sportybet_gh", "SportyBet Ghana", _sportybet_gh),
+    Site("msport_gh", "MSport Ghana", _msport_gh),
     # Betway and 1xBet removed for now: Betway's own "create a code" action
     # places a real bet (confirmed against the live site -- see this
     # module's git history), and 1xBet's is unconfirmed pending a full
