@@ -37,8 +37,11 @@ const GROUPS: { cadence: Cadence; title: string; blurb: string }[] = [
  * Each card carries its own live booking panel (PickBookingCodes), unlike a
  * hand-curated Admin Pick's admin-typed code -- these were never built on a
  * real bookmaker by a human, so the only code available is one a betting
- * site issues on request. */
-export function RandomPicksSection() {
+ * site issues on request.
+ *
+ * ``onLoaded`` fires after every fetch (success or failure) -- see
+ * GudaPicksSection's own docstring for why. */
+export function RandomPicksSection({ onLoaded }: { onLoaded?: () => void } = {}) {
   const { user, accessStatus } = useAuth();
   const viewerHasPremium = user?.role === "superadmin" || !!accessStatus?.has_access;
   const [picks, setPicks] = useState<AdminPick[] | null>(null);
@@ -49,7 +52,8 @@ export function RandomPicksSection() {
     function load() {
       fetchAdminPicks()
         .then((p) => !cancelled && setPicks(p.filter((pick) => cadenceOf(pick) !== null)))
-        .catch(() => !cancelled && setPicks([]));
+        .catch(() => !cancelled && setPicks([]))
+        .finally(() => !cancelled && onLoaded?.());
     }
 
     load();

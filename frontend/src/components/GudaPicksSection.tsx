@@ -7,8 +7,12 @@ import type { FeaturedPick } from "../types";
 /** Renders nothing rather than an empty-state -- unlike the free/premium
  * sections above it, there being no picks right now (or the operator having
  * turned the whole thing off) is a normal, unremarkable state, not
- * something worth a "nothing here yet" card. */
-export function GudaPicksSection() {
+ * something worth a "nothing here yet" card.
+ *
+ * ``onLoaded`` fires after every fetch (success or failure, so a broken
+ * section never hangs the caller's own loading state) -- AIPicks uses it to
+ * know when all four picks sections have had their first real answer. */
+export function GudaPicksSection({ onLoaded }: { onLoaded?: () => void } = {}) {
   const { user } = useAuth();
   const [picks, setPicks] = useState<FeaturedPick[] | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
@@ -19,7 +23,8 @@ export function GudaPicksSection() {
     function load() {
       fetchGudaPicks()
         .then((p) => !cancelled && setPicks(p))
-        .catch(() => !cancelled && setPicks([]));
+        .catch(() => !cancelled && setPicks([]))
+        .finally(() => !cancelled && onLoaded?.());
     }
 
     load();

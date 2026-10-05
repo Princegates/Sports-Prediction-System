@@ -5,8 +5,11 @@ import type { AdminPick } from "../types";
 
 /** Renders nothing rather than an empty-state, same reasoning as
  * GudaPicksSection -- no featured slips right now (or the operator having
- * turned the whole thing off) is a normal, unremarkable state. */
-export function AdminPicksSection() {
+ * turned the whole thing off) is a normal, unremarkable state.
+ *
+ * ``onLoaded`` fires after every fetch (success or failure) -- see
+ * GudaPicksSection's own docstring for why. */
+export function AdminPicksSection({ onLoaded }: { onLoaded?: () => void } = {}) {
   const [picks, setPicks] = useState<AdminPick[] | null>(null);
   const [whatsapp, setWhatsapp] = useState<string | null>(null);
 
@@ -19,7 +22,8 @@ export function AdminPicksSection() {
         // see WeeklyPicksSection, which fetches it again for its own,
         // distinctly-labeled section, so they aren't duplicated here.
         .then((p) => !cancelled && setPicks(p.filter((pick) => !pick.source)))
-        .catch(() => !cancelled && setPicks([]));
+        .catch(() => !cancelled && setPicks([]))
+        .finally(() => !cancelled && onLoaded?.());
     }
 
     load();
