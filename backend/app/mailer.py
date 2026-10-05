@@ -201,6 +201,33 @@ def access_code_message(code: str, duration_days: int, site_url: str | None = No
     return "Your access code", body
 
 
+def weekly_picks_message(labels: list[str], site_url: str | None = None) -> tuple[str, str]:
+    """Subject and body for the weekly "this week's picks are up" nudge.
+
+    Takes each live AdminPick's own ``label`` verbatim (already a readable
+    one-liner -- "Low Risk -- Weekly 10-Leg Accumulator (5-10 odds)" and
+    similar) rather than recomputing anything from the legs. Names what's
+    live and its shape only -- never the legs themselves. Those are the
+    product, behind the login; an email is somewhere this project doesn't
+    control what happens to it once sent (forwarded, left in an inbox
+    someone else reads), so it stays a pointer back to the site rather than
+    a copy of what the site shows.
+    """
+
+    where = site_url or "the site"
+    lines = "\n".join(f"  - {label}" for label in labels) if labels else (
+        "  (nothing cleared this week's targets -- check back next week)"
+    )
+    body = (
+        "This week's system accumulators are up.\n\n"
+        f"{lines}\n\n"
+        f"See the full picks, legs and reasoning at {where} -- sign in and open the Dashboard.\n\n"
+        "Model probabilities, never guarantees. A pick losing is not a bug.\n\n"
+        "Don't want this email? Turn it off any time from Profile -> Email preferences.\n"
+    )
+    return "This week's picks are up", body
+
+
 def format_whatsapp(digits: str) -> str:
     """Digits-only contact number (e.g. ``233596909643``) as ``+233 59 690 9643``.
 

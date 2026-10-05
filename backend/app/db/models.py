@@ -72,6 +72,13 @@ class User(Base):
     # stays answerable regardless of what happens to either account later.
     referred_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
 
+    # Opt-out, not opt-in -- defaults True so an account that never visits
+    # this setting still hears about the week's picks, which is the whole
+    # point of the feature. scripts/send_weekly_picks_email.py reads this;
+    # turning it off here never touches the admin-level
+    # weekly_picks_email_enabled switch that gates the feature entirely.
+    notify_weekly_picks: Mapped[bool] = mapped_column(Boolean, default=True)
+
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
 
 

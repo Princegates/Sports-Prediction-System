@@ -40,6 +40,7 @@ def user_to_schema(user: User) -> UserOut:
         status=user.status,
         theme=user.theme,
         accent_profile=user.accent_profile,
+        notify_weekly_picks=user.notify_weekly_picks,
         created_at=user.created_at,
         referral_code=user.referral_code,
     )

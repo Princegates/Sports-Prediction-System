@@ -89,6 +89,12 @@ REGISTRY: tuple[SettingSpec, ...] = (
     SettingSpec("public_site_url", "str", "email", "Public site URL",
                 "Included in the email so the recipient knows where to redeem.",
                 env_attr="public_site_url"),
+    SettingSpec("weekly_picks_email_enabled", "bool", "email", "Email members about new weekly picks",
+                "Sent once a week, right after the weekly accumulators are generated, to every "
+                "active account that hasn't opted out (Profile -> Email preferences). Off by "
+                "default -- turn on only once SMTP/Resend above is actually configured and "
+                "tested, since this sends to real members, not just you.",
+                default=False),
 
     # --- Data sources ----------------------------------------------------
     SettingSpec("api_football_key", "str", "data", "API-Football key",

@@ -312,13 +312,15 @@ def me(user: User = Depends(get_current_user)) -> UserOut:
 def update_preferences(
     payload: PreferencesIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ) -> UserOut:
-    """Persists this user's theme/color-profile choice to their own account
-    so it follows them across devices, instead of living only in one
-    browser's local storage."""
+    """Persists this user's theme/color-profile choice and email
+    preferences to their own account so they follow across devices,
+    instead of living only in one browser's local storage."""
     if payload.theme is not None:
         user.theme = payload.theme
     if payload.accent_profile is not None:
         user.accent_profile = payload.accent_profile
+    if payload.notify_weekly_picks is not None:
+        user.notify_weekly_picks = payload.notify_weekly_picks
     db.commit()
     db.refresh(user)
     return user_to_schema(user)

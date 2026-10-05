@@ -93,6 +93,39 @@ function EditNameForm() {
   );
 }
 
+function EmailPreferences() {
+  const { user, updatePreferences } = useAuth();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!user) return null;
+
+  async function toggle() {
+    setError(null);
+    setBusy(true);
+    try {
+      await updatePreferences({ notify_weekly_picks: !user!.notify_weekly_picks });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: busy ? "default" : "pointer" }}>
+        <input type="checkbox" checked={user.notify_weekly_picks} disabled={busy} onChange={toggle} />
+        <span style={{ fontSize: 13.5 }}>Email me when this week's picks are up</span>
+      </label>
+      <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: "6px 0 0" }}>
+        One email a week at most, pointing back here -- never the picks themselves, never anything else.
+      </p>
+      {error && <p className="auth-error">{error}</p>}
+    </div>
+  );
+}
+
 function ChangePasswordForm() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -200,6 +233,10 @@ export function Profile() {
         <div className="card card-pad">
           <h3 style={{ marginTop: 0, fontSize: 14 }}>Change password</h3>
           <ChangePasswordForm />
+        </div>
+        <div className="card card-pad">
+          <h3 style={{ marginTop: 0, fontSize: 14 }}>Email preferences</h3>
+          <EmailPreferences />
         </div>
       </div>
 

@@ -328,6 +328,25 @@ def test_preferences_persist_to_the_users_own_account(db_session, auth_headers):
     assert me_resp.json()["accent_profile"] == "fuchsia"
 
 
+def test_notify_weekly_picks_defaults_on_and_can_be_turned_off(db_session, auth_headers):
+    """Opt-out, not opt-in -- a fresh account hears about weekly picks
+    unless it explicitly turns the preference off."""
+    from app.main import app
+
+    client = TestClient(app)
+    assert client.get("/api/auth/me", headers=auth_headers).json()["notify_weekly_picks"] is True
+
+    off = client.patch("/api/auth/preferences", json={"notify_weekly_picks": False}, headers=auth_headers)
+    assert off.status_code == 200
+    assert off.json()["notify_weekly_picks"] is False
+    assert client.get("/api/auth/me", headers=auth_headers).json()["notify_weekly_picks"] is False
+
+    # Omitting the field entirely leaves it alone rather than resetting it --
+    # same "only touch what was sent" rule theme/accent_profile already follow.
+    on_other_field = client.patch("/api/auth/preferences", json={"theme": "light"}, headers=auth_headers)
+    assert on_other_field.json()["notify_weekly_picks"] is False
+
+
 def test_update_profile_changes_name(db_session, auth_headers):
     from app.main import app
 

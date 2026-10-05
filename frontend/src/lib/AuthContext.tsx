@@ -7,6 +7,7 @@ import {
   login as apiLogin,
   onAuthLogout,
   storeToken,
+  updatePreferences as apiUpdatePreferences,
   updateProfile as apiUpdateProfile,
 } from "../api";
 import type { AccessStatus, User } from "../types";
@@ -23,6 +24,7 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   updateProfile: (name: string) => Promise<void>;
+  updatePreferences: (payload: { notify_weekly_picks?: boolean }) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue>({
@@ -34,6 +36,7 @@ const AuthContext = createContext<AuthContextValue>({
   login: async () => {},
   logout: () => {},
   updateProfile: async () => {},
+  updatePreferences: async () => {},
 });
 
 export function useAuth() {
@@ -117,6 +120,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(updated);
   }, []);
 
+  const updatePreferences = useCallback(async (payload: { notify_weekly_picks?: boolean }) => {
+    const updated = await apiUpdatePreferences(payload);
+    setUser(updated);
+  }, []);
+
   const value = useMemo(
     () => ({
       user,
@@ -127,8 +135,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login,
       logout,
       updateProfile,
+      updatePreferences,
     }),
-    [user, loading, accessStatus, accessLoading, refreshAccessStatus, login, logout, updateProfile],
+    [user, loading, accessStatus, accessLoading, refreshAccessStatus, login, logout, updateProfile, updatePreferences],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -94,6 +94,7 @@ class UserOut(BaseModel):
     status: str
     theme: str | None = None
     accent_profile: str | None = None
+    notify_weekly_picks: bool = True
     created_at: dt.datetime
     # This account's own code for referring others -- see
     # app.access.ensure_referral_code. Optional only in the schema sense
@@ -104,6 +105,7 @@ class UserOut(BaseModel):
 class PreferencesIn(BaseModel):
     theme: str | None = None
     accent_profile: str | None = None
+    notify_weekly_picks: bool | None = None
 
 
 class UpdateProfileIn(BaseModel):

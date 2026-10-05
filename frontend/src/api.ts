@@ -257,6 +257,10 @@ export function updateProfile(name: string): Promise<User> {
   return patch("/api/auth/profile", { name });
 }
 
+export function updatePreferences(payload: { notify_weekly_picks?: boolean }): Promise<User> {
+  return patch("/api/auth/preferences", payload);
+}
+
 export function changePassword(currentPassword: string, newPassword: string): Promise<void> {
   return patch("/api/auth/password", { current_password: currentPassword, new_password: newPassword });
 }

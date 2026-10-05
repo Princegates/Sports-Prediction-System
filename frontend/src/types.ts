@@ -84,6 +84,7 @@ export interface User {
   status: UserStatus;
   theme: string | null;
   accent_profile: string | null;
+  notify_weekly_picks: boolean;
   created_at: string;
   referral_code: string | null;
 }

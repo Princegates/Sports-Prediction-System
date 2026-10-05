@@ -95,6 +95,10 @@ _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     ("featured_picks", "probability_at_pick", "FLOAT"),
     ("featured_picks", "result", "VARCHAR(16) DEFAULT 'pending'"),
     ("featured_picks", "settled_at", "TIMESTAMP"),
+    # Opt-out for the weekly picks email -- DEFAULT TRUE so every
+    # pre-existing account keeps getting it rather than silently going
+    # quiet, same reasoning as admin_picks.priced above.
+    ("users", "notify_weekly_picks", "BOOLEAN DEFAULT TRUE"),
 ]
 
 
