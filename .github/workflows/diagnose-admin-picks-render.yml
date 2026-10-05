@@ -1,0 +1,39 @@
+# Read-only. Runs the exact live re-resolution /api/admin-picks runs on
+# every stored AdminPick row matching --source-prefix (resolve_legs_unpriced
+# or price_legs against *current* Prediction/Match state) and prints, per
+# leg, whether it still resolves and why not when it doesn't -- the route
+# drops an entire pick the moment even one leg fails to resolve. Changes
+# nothing.
+name: Diagnose admin-picks render
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_prefix:
+        description: "AdminPick.source prefix to check"
+        required: false
+        default: "system_random"
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Diagnose
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SOURCE_PREFIX: ${{ inputs.source_prefix }}
+        run: python scripts/diagnose_admin_picks_render.py --source-prefix "$SOURCE_PREFIX"
