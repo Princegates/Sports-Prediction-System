@@ -13,6 +13,7 @@ import datetime as dt
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.db.models import Match, ModelMetric, Prediction, Team, User
 from app.main import app
@@ -141,6 +142,54 @@ def test_public_fixtures_excludes_matches_already_played(db_session, seeded):
 def test_public_fixtures_clamps_absurd_parameters(db_session, seeded):
     assert client.get("/api/public/fixtures?days_ahead=9999&limit=9999").status_code == 200
     assert client.get("/api/public/fixtures?days_ahead=-5&limit=0").status_code == 200
+
+
+def test_public_fixtures_include_match_id_for_linking_to_the_detail_page(db_session, seeded):
+    body = client.get("/api/public/fixtures").json()
+    assert body[0]["match_id"] == seeded["upcoming"].id
+
+
+def test_public_fixture_detail_expose_no_selection_or_probability(db_session, seeded):
+    """Same rule as the list endpoint, on the single-fixture page this feeds."""
+
+    body = client.get(f"/api/public/fixtures/{seeded['upcoming'].id}").json()
+
+    assert body["match_id"] == seeded["upcoming"].id
+    assert body["home_team"] == "Arsenal"
+    assert body["away_team"] == "Chelsea"
+    assert body["has_prediction"] is True
+    assert body["confidence"] == "HIGH"
+
+    leaked = {"global_outcome_selection", "global_outcome_probability", "home_win", "explanation"}
+    assert leaked.isdisjoint(body.keys())
+    assert "Home Win" not in str(body)
+    assert "0.52" not in str(body)
+
+
+def test_public_fixture_detail_404s_for_an_unknown_match(db_session, seeded):
+    assert client.get("/api/public/fixtures/999999").status_code == 404
+
+
+def test_public_fixture_detail_404s_for_a_match_already_played(db_session, seeded):
+    played = db_session.execute(
+        select(Match).where(Match.status == "FINISHED")
+    ).scalars().first()
+    assert client.get(f"/api/public/fixtures/{played.id}").status_code == 404
+
+
+def test_public_fixture_detail_404s_for_a_match_too_far_in_the_future(db_session, seeded):
+    home = db_session.execute(select(Team).where(Team.name == "Arsenal")).scalars().first()
+    away = db_session.execute(select(Team).where(Team.name == "Chelsea")).scalars().first()
+    far_out = Match(
+        league=LEAGUE, season="2025-26",
+        date=dt.datetime.utcnow() + dt.timedelta(days=30),
+        home_team_id=home.id, away_team_id=away.id, status="SCHEDULED",
+    )
+    db_session.add(far_out)
+    db_session.commit()
+    db_session.refresh(far_out)
+
+    assert client.get(f"/api/public/fixtures/{far_out.id}").status_code == 404
 
 
 def test_predictions_still_require_authentication(db_session, seeded):

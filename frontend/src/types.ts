@@ -228,6 +228,7 @@ export interface PublicAccuracy {
 }
 
 export interface PublicFixture {
+  match_id: number;
   league: string;
   kickoff: string;
   home_team: string;

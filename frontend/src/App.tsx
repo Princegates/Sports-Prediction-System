@@ -6,6 +6,8 @@ import { AccountStatus } from "./pages/AccountStatus";
 import { AdminUsers } from "./pages/AdminUsers";
 import { BetCodes } from "./pages/BetCodes";
 import { Dashboard } from "./pages/Dashboard";
+import { FixturePreview } from "./pages/FixturePreview";
+import { Fixtures } from "./pages/Fixtures";
 import { HowItWorks } from "./pages/HowItWorks";
 import { Live } from "./pages/Live";
 import { Login } from "./pages/Login";
@@ -22,9 +24,12 @@ import { Welcome } from "./pages/Welcome";
 /**
  * Route layout is split in two:
  *
- * - `/`, `/how-it-works`, `/responsible` and the auth screens are public. An
- *   anonymous visitor gets a real website rather than being bounced to a
- *   login form with no explanation of what they'd be logging into.
+ * - `/`, `/how-it-works`, `/responsible`, `/fixtures`, `/predict/:slugId` and
+ *   the auth screens are public. An anonymous visitor gets a real website
+ *   rather than being bounced to a login form with no explanation of what
+ *   they'd be logging into -- `/fixtures` and the per-match `/predict/*`
+ *   pages exist specifically so a search engine has real, indexable content
+ *   to send someone to (see public/robots.txt and sitemap.xml).
  * - `/app/*` is the product, behind RequireAuth. Logging in only needs an
  *   account that isn't suspended -- reaching the prediction-serving pages
  *   (match detail, the full predictions table, markets, live, teams)
@@ -43,6 +48,8 @@ export default function App() {
       {/* ---- Public site ---- */}
       <Route path="/" element={<Welcome />} />
       <Route path="/how-it-works" element={<HowItWorks />} />
+      <Route path="/fixtures" element={<Fixtures />} />
+      <Route path="/predict/:slugId" element={<FixturePreview />} />
       <Route path="/responsible" element={<Responsible />} />
       <Route path="/account-status" element={<AccountStatus />} />
       <Route path="/login" element={<Login />} />

@@ -41,8 +41,103 @@ import { usePageMeta } from "../lib/pageMeta";
 const PUBLIC_NAV = [
   { to: "/", label: "Home" },
   { to: "/how-it-works", label: "How it works" },
+  { to: "/fixtures", label: "Fixtures" },
   { to: "/responsible", label: "Responsible use" },
 ];
+
+interface PublicShellHeaderProps {
+  // Supplied by HeaderContainer itself.
+  isSideNavExpanded: boolean;
+  onClickSideNavExpand: () => void;
+  // Forwarded through HeaderContainer's extra props -- see the module-level
+  // comment on why this can't be an inline function defined in PublicShell.
+  hasUser: boolean;
+  onNavigate: (path: string) => void;
+}
+
+/** The public header + side nav, hoisted to module scope for the same
+ * reason AppShell's header is: Carbon's HeaderContainer renders its
+ * `render` prop as `<Children {...props} />` -- a component type, not a
+ * callback -- so an inline arrow function defined inside PublicShell would
+ * get a fresh identity, and therefore look like a fresh component, on
+ * every PublicShell re-render. React would then tear down and rebuild this
+ * entire header (and everything below it that HeaderContainer wraps) each
+ * time, re-running effects that update state that re-renders PublicShell --
+ * a loop bounded only by network latency (see AppShell.tsx's identical fix
+ * for the mechanism, and its own request storm once this exact thing
+ * happened there).
+ */
+function PublicShellHeader({ isSideNavExpanded, onClickSideNavExpand, hasUser, onNavigate }: PublicShellHeaderProps) {
+  return (
+    <Header aria-label="Socca Intelligence">
+      <SkipToContent />
+      <HeaderMenuButton
+        aria-label={isSideNavExpanded ? "Close menu" : "Open menu"}
+        onClick={onClickSideNavExpand}
+        isActive={isSideNavExpanded}
+        isCollapsible
+      />
+      <HeaderName as={NavLink} to="/" prefix="">
+        Socca Intelligence
+      </HeaderName>
+
+      <HeaderNavigation aria-label="Socca Intelligence">
+        {PUBLIC_NAV.map((item) => (
+          <HeaderMenuItem key={item.to} as={NavLink} to={item.to} end={item.to === "/"}>
+            {item.label}
+          </HeaderMenuItem>
+        ))}
+      </HeaderNavigation>
+
+      <HeaderGlobalBar>
+        <ThemeToggle />
+        {hasUser ? (
+          <HeaderGlobalAction aria-label="Open dashboard" onClick={() => onNavigate("/app")}>
+            <LoginIcon size={20} />
+          </HeaderGlobalAction>
+        ) : (
+          <>
+            <HeaderGlobalAction aria-label="Sign in" onClick={() => onNavigate("/login")}>
+              <LoginIcon size={20} />
+            </HeaderGlobalAction>
+            <HeaderGlobalAction aria-label="Request access" onClick={() => onNavigate("/register")}>
+              <UserFollow size={20} />
+            </HeaderGlobalAction>
+          </>
+        )}
+      </HeaderGlobalBar>
+
+      <SideNav
+        aria-label="Side navigation"
+        expanded={isSideNavExpanded}
+        isPersistent={false}
+        onSideNavBlur={onClickSideNavExpand}
+      >
+        <SideNavItems>
+          {PUBLIC_NAV.map((item) => (
+            <SideNavLink key={item.to} as={NavLink} to={item.to} end={item.to === "/"}>
+              {item.label}
+            </SideNavLink>
+          ))}
+          {hasUser ? (
+            <SideNavLink as={NavLink} to="/app">
+              Open dashboard
+            </SideNavLink>
+          ) : (
+            <>
+              <SideNavLink as={NavLink} to="/login">
+                Sign in
+              </SideNavLink>
+              <SideNavLink as={NavLink} to="/register">
+                Request access
+              </SideNavLink>
+            </>
+          )}
+        </SideNavItems>
+      </SideNav>
+    </Header>
+  );
+}
 
 export function PublicShell({
   children, title, description,
@@ -57,77 +152,7 @@ export function PublicShell({
 
   return (
     <div className="public-shell">
-      <HeaderContainer
-        render={({ isSideNavExpanded, onClickSideNavExpand }: { isSideNavExpanded: boolean; onClickSideNavExpand: () => void }) => (
-          <Header aria-label="Socca Intelligence">
-            <SkipToContent />
-            <HeaderMenuButton
-              aria-label={isSideNavExpanded ? "Close menu" : "Open menu"}
-              onClick={onClickSideNavExpand}
-              isActive={isSideNavExpanded}
-              isCollapsible
-            />
-            <HeaderName as={NavLink} to="/" prefix="">
-              Socca Intelligence
-            </HeaderName>
-
-            <HeaderNavigation aria-label="Socca Intelligence">
-              {PUBLIC_NAV.map((item) => (
-                <HeaderMenuItem key={item.to} as={NavLink} to={item.to} end={item.to === "/"}>
-                  {item.label}
-                </HeaderMenuItem>
-              ))}
-            </HeaderNavigation>
-
-            <HeaderGlobalBar>
-              <ThemeToggle />
-              {user ? (
-                <HeaderGlobalAction aria-label="Open dashboard" onClick={() => navigate("/app")}>
-                  <LoginIcon size={20} />
-                </HeaderGlobalAction>
-              ) : (
-                <>
-                  <HeaderGlobalAction aria-label="Sign in" onClick={() => navigate("/login")}>
-                    <LoginIcon size={20} />
-                  </HeaderGlobalAction>
-                  <HeaderGlobalAction aria-label="Request access" onClick={() => navigate("/register")}>
-                    <UserFollow size={20} />
-                  </HeaderGlobalAction>
-                </>
-              )}
-            </HeaderGlobalBar>
-
-            <SideNav
-              aria-label="Side navigation"
-              expanded={isSideNavExpanded}
-              isPersistent={false}
-              onSideNavBlur={onClickSideNavExpand}
-            >
-              <SideNavItems>
-                {PUBLIC_NAV.map((item) => (
-                  <SideNavLink key={item.to} as={NavLink} to={item.to} end={item.to === "/"}>
-                    {item.label}
-                  </SideNavLink>
-                ))}
-                {user ? (
-                  <SideNavLink as={NavLink} to="/app">
-                    Open dashboard
-                  </SideNavLink>
-                ) : (
-                  <>
-                    <SideNavLink as={NavLink} to="/login">
-                      Sign in
-                    </SideNavLink>
-                    <SideNavLink as={NavLink} to="/register">
-                      Request access
-                    </SideNavLink>
-                  </>
-                )}
-              </SideNavItems>
-            </SideNav>
-          </Header>
-        )}
-      />
+      <HeaderContainer hasUser={!!user} onNavigate={navigate} render={PublicShellHeader} />
 
       <main className="public-main" id="main-content">
         {children}

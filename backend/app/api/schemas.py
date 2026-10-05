@@ -260,6 +260,10 @@ class PublicAccuracyOut(BaseModel):
 
 
 class PublicFixtureOut(BaseModel):
+    # Included so a listing can link to this fixture's own preview page
+    # (GET /api/public/fixtures/{match_id}) -- still never the selection or
+    # probability, just the id needed to build a URL.
+    match_id: int
     league: str
     kickoff: dt.datetime
     home_team: str

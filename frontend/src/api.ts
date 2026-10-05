@@ -162,6 +162,14 @@ export function fetchPublicFixtures(daysAhead = 5, limit = 6): Promise<PublicFix
   return get(`/api/public/fixtures?days_ahead=${daysAhead}&limit=${limit}`);
 }
 
+/** One fixture's public preview -- feeds its own page (lib/slug.ts builds
+ * the URL). Throws (via `get`'s normal error path) on a 404, same as any
+ * other missing resource -- the page calling this is responsible for
+ * showing a "not found" state rather than this function inventing one. */
+export function fetchPublicFixture(matchId: number): Promise<PublicFixture> {
+  return get(`/api/public/fixtures/${matchId}`);
+}
+
 // --- AI assistant chat --------------------------------------------------
 
 export function sendChatMessage(message: string, contextMatchId?: number | null): Promise<ChatAnswer> {

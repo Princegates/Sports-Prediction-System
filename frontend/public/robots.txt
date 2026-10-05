@@ -3,8 +3,9 @@
 # also require redeemed access, and the whole area shares one index.html
 # with the public pages (client-side routing), so a crawler indexing it
 # would only ever see a login wall or thin duplicate content. The public
-# marketing pages (/, /how-it-works, /responsible, /login, /register) are
-# what's actually worth indexing.
+# marketing pages (/, /how-it-works, /responsible, /login, /register) plus
+# /fixtures and the per-match /predict/* preview pages are what's actually
+# worth indexing.
 User-agent: *
 Disallow: /app/
 Allow: /

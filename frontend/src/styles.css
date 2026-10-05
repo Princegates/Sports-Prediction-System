@@ -4043,6 +4043,13 @@ table.admin-table {
   transform: translateY(-2px);
 }
 
+/* .fixture-teaser is also used on a <Link> (its own preview page) -- reset
+   the anchor defaults so it keeps reading as a card, not a link. */
+.fixture-teaser-link {
+  color: inherit;
+  text-decoration: none;
+}
+
 .fixture-teaser-main {
   display: flex;
   flex-direction: column;

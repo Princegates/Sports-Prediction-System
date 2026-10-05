@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -37,6 +37,31 @@ from app.db.models import AdminPick, FeaturedPick, Match, Prediction, User
 from app.pick_settlement import settle_admin_pick, settle_featured_pick
 
 router = APIRouter(prefix="/api/public", tags=["public"])
+
+# Shared by the list and detail fixture endpoints: how far ahead "upcoming"
+# reaches. The detail endpoint 404s outside this window on purpose -- a
+# match-preview page (built for SEO -- see /fixtures/{match_id}'s own
+# docstring) has no reason to exist for a fixture nobody can search for yet,
+# or one that's already kicked off.
+MAX_PUBLIC_FIXTURE_DAYS_AHEAD = 14
+
+
+def _public_fixture_out(db: Session, match: Match) -> PublicFixtureOut:
+    prediction = db.execute(
+        select(Prediction)
+        .where(Prediction.match_id == match.id)
+        .order_by(Prediction.created_at.desc())
+        .limit(1)
+    ).scalars().first()
+    return PublicFixtureOut(
+        match_id=match.id,
+        league=match.league,
+        kickoff=match.date,
+        home_team=match.home_team.name,
+        away_team=match.away_team.name,
+        has_prediction=prediction is not None,
+        confidence=prediction.confidence if prediction else None,
+    )
 
 
 @router.get("/stats", response_model=PublicStatsOut)
@@ -234,7 +259,7 @@ def public_fixtures(days_ahead: int = 3, limit: int = 6, db: Session = Depends(g
     it is -- but never the selection or the probability. Enough to show the
     system is live and covering real matches; not enough to be the product."""
 
-    days_ahead = max(0, min(days_ahead, 14))
+    days_ahead = max(0, min(days_ahead, MAX_PUBLIC_FIXTURE_DAYS_AHEAD))
     limit = max(1, min(limit, 20))
     now = dt.datetime.utcnow()
 
@@ -244,22 +269,25 @@ def public_fixtures(days_ahead: int = 3, limit: int = 6, db: Session = Depends(g
         .limit(limit)
     ).scalars().all()
 
-    out: list[PublicFixtureOut] = []
-    for match in rows:
-        prediction = db.execute(
-            select(Prediction)
-            .where(Prediction.match_id == match.id)
-            .order_by(Prediction.created_at.desc())
-            .limit(1)
-        ).scalars().first()
-        out.append(
-            PublicFixtureOut(
-                league=match.league,
-                kickoff=match.date,
-                home_team=match.home_team.name,
-                away_team=match.away_team.name,
-                has_prediction=prediction is not None,
-                confidence=prediction.confidence if prediction else None,
-            )
-        )
-    return out
+    return [_public_fixture_out(db, match) for match in rows]
+
+
+@router.get("/fixtures/{match_id}", response_model=PublicFixtureOut)
+def public_fixture_detail(match_id: int, db: Session = Depends(get_db)) -> PublicFixtureOut:
+    """One upcoming fixture's public-safe detail -- its own page (SEO: lets
+    someone searching "team A vs team B prediction" land on a real page
+    about that exact match instead of nowhere), same rule as the list
+    above: whether a prediction exists and how confident it is, never the
+    selection or probability.
+
+    404s for a match that doesn't exist, has already kicked off, or is
+    further out than the list endpoint ever shows (MAX_PUBLIC_FIXTURE_DAYS_AHEAD)
+    -- a dead preview page for a match nobody can usefully search for yet is
+    worse than no page.
+    """
+
+    match = db.get(Match, match_id)
+    now = dt.datetime.utcnow()
+    if match is None or not (now <= match.date < now + dt.timedelta(days=MAX_PUBLIC_FIXTURE_DAYS_AHEAD)):
+        raise HTTPException(status_code=404, detail="Fixture not found")
+    return _public_fixture_out(db, match)

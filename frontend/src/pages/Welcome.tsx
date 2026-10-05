@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { fetchAdminPickTrackRecord, fetchPublicAccuracy, fetchPublicFixtures, fetchPublicStats } from "../api";
 import { Mascot } from "../components/Mascot";
 import { PublicShell } from "../components/PublicShell";
+import { fixtureSlug } from "../lib/slug";
 import { useTilt } from "../lib/useTilt";
 import type { AdminPickTrackRecord, PublicAccuracy, PublicFixture, PublicStats } from "../types";
 
@@ -417,8 +418,8 @@ export function Welcome() {
             </p>
           </div>
           <div className="fixture-teaser-list">
-            {fixtures.map((f, i) => (
-              <div key={i} className="fixture-teaser">
+            {fixtures.map((f) => (
+              <Link key={f.match_id} to={`/predict/${fixtureSlug(f)}`} className="fixture-teaser fixture-teaser-link">
                 <div className="fixture-teaser-main">
                   <span className="fixture-teaser-teams">
                     {f.home_team} <span className="vs-divider">v</span> {f.away_team}
@@ -440,12 +441,12 @@ export function Welcome() {
                 ) : (
                   <span className="badge-neutral">Awaiting analysis</span>
                 )}
-              </div>
+              </Link>
             ))}
           </div>
           <p className="fixture-teaser-foot">
             Sign in to see the full probability table, the most-likely outcome and the reasoning for
-            each of these.
+            each of these -- or <Link to="/fixtures">see every upcoming fixture</Link>.
           </p>
         </section>
       )}

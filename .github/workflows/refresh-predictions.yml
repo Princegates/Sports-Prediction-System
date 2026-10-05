@@ -65,6 +65,11 @@ jobs:
     # refresh is minutes. This is the ceiling for the slow case; 120 was set
     # when the retrain covered five leagues.
     timeout-minutes: 240
+    # Needed by "Commit sitemap if it changed" below, which pushes straight
+    # to the default branch -- explicit rather than relying on whatever an
+    # org sets as its GITHUB_TOKEN default (read-only on plenty of orgs).
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -228,6 +233,41 @@ jobs:
             exit 0
           fi
           python scripts/generate_random_picks.py --which daily
+
+      # Every run, same reasoning as the random picks step above: upcoming
+      # fixtures change daily (new ones added, old ones kicked off), so the
+      # sitemap of per-fixture preview pages (frontend/src/pages/
+      # FixturePreview.tsx) needs to track that daily too, not just on a
+      # weekly retrain.
+      - name: Regenerate sitemap
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret is not set -- nothing to regenerate."
+            exit 0
+          fi
+          python scripts/generate_sitemap.py
+
+      # Commits straight to the branch this workflow is already running on
+      # (the default branch, for every schedule/dispatch trigger this
+      # workflow has) rather than opening a PR -- a generated sitemap file
+      # has no judgment call in it for a human to review, so a PR here would
+      # just be a rubber-stamp step between this running and the site
+      # actually getting the current fixture list. Cloudflare Pages
+      # redeploys on the push, same as any other commit to this repo.
+      - name: Commit sitemap if it changed
+        run: |
+          if git diff --quiet -- frontend/public/sitemap.xml; then
+            echo "Sitemap unchanged."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add frontend/public/sitemap.xml
+            git commit -m "Update sitemap with current upcoming fixtures"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
 
       # Saved even on failure: a run that trained some leagues and then died
       # shouldn't throw away the models it did produce.
