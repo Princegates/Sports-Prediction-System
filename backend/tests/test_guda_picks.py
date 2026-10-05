@@ -297,6 +297,83 @@ def test_guda_picks_still_shows_to_accounts_with_access_when_free_tier_is_restri
     assert len(body) == 1
 
 
+# --- One free pick, the rest premium-only -----------------------------------
+
+
+def _second_match(db, league="League Two") -> Match:
+    home = Team(name="Guda Home 2", league=league, aliases=[])
+    away = Team(name="Guda Away 2", league=league, aliases=[])
+    db.add_all([home, away])
+    db.commit()
+    for t in (home, away):
+        db.refresh(t)
+
+    match = Match(
+        league=league, season="2324", date=dt.datetime.utcnow() + dt.timedelta(hours=8),
+        home_team_id=home.id, away_team_id=away.id, status="SCHEDULED",
+    )
+    db.add(match)
+    db.commit()
+    db.refresh(match)
+
+    db.add(_prediction(match.id))
+    db.commit()
+    return match
+
+
+def test_a_free_tier_viewer_gets_one_unlocked_pick_and_the_rest_locked(db_session, admin, upcoming_match, headers_no_access):
+    second = _second_match(db_session)
+    _feature(admin, upcoming_match.id)
+    _feature(admin, second.id)
+
+    body = client.get("/api/predictions/guda-picks", headers=headers_no_access).json()
+    assert len(body) == 2
+    # Newest first (FeaturedPick.created_at.desc()) -- the second one featured.
+    assert body[0]["locked"] is False
+    assert body[0]["market"] == "Both Teams To Score" and body[0]["selection"] == "Yes"
+    assert body[1]["locked"] is True
+    assert body[1]["market"] == "" and body[1]["selection"] == "" and body[1]["probability"] == 0.0
+    # The match itself -- which pick is locked -- still shows through.
+    assert body[1]["match"]["id"] == upcoming_match.id
+
+
+def test_a_premium_viewer_gets_every_pick_unlocked(db_session, admin, upcoming_match, auth_headers):
+    second = _second_match(db_session)
+    _feature(admin, upcoming_match.id)
+    _feature(admin, second.id)
+
+    body = client.get("/api/predictions/guda-picks", headers=auth_headers).json()
+    assert len(body) == 2
+    assert all(pick["locked"] is False for pick in body)
+
+
+def test_a_superadmin_gets_every_pick_unlocked(db_session, admin, upcoming_match):
+    second = _second_match(db_session)
+    _feature(admin, upcoming_match.id)
+    _feature(admin, second.id)
+
+    body = client.get("/api/predictions/guda-picks", headers=_headers(admin)).json()
+    assert len(body) == 2
+    assert all(pick["locked"] is False for pick in body)
+
+
+def test_a_settled_pick_is_never_the_free_slot(db_session, admin, upcoming_match, headers_no_access):
+    """A result alone, with no upcoming match behind it, isn't the lead
+    magnet the one free slot exists for -- a settled pick stays locked for
+    a free-tier viewer even when a still-pending pick exists too."""
+
+    second = _second_match(db_session)
+    _feature(admin, upcoming_match.id)
+    _finish(db_session, upcoming_match, 2, 1)  # settles the first pick
+    _feature(admin, second.id)  # still pending
+
+    body = client.get("/api/predictions/guda-picks", headers=headers_no_access).json()
+    by_match = {pick["match"]["id"]: pick for pick in body}
+    assert by_match[second.id]["locked"] is False
+    assert by_match[upcoming_match.id]["result"] != "pending"
+    assert by_match[upcoming_match.id]["locked"] is True
+
+
 def test_an_expired_pick_is_not_returned(db_session, admin, upcoming_match, auth_headers):
     created = _feature(admin, upcoming_match.id)
     pick = db_session.get(FeaturedPick, created["id"])

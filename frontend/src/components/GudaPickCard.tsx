@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import type { FeaturedPick } from "../types";
 import { useTilt } from "../lib/useTilt";
 import { ProbabilityBar } from "./ProbabilityBar";
@@ -23,6 +24,33 @@ export function GudaPickCard({
   busy?: boolean;
 }) {
   const tilt = useTilt<HTMLDivElement>();
+
+  if (pick.locked) {
+    return (
+      <div className="card match-card match-card-static tilt-card" ref={tilt.ref} onMouseMove={tilt.onMouseMove} onMouseLeave={tilt.onMouseLeave}>
+        <div className="match-card-top">
+          <span className="match-competition">{pick.match.league}</span>
+        </div>
+        <div className="match-teams">
+          <span className="team-name">{pick.match.home_team.name}</span>
+          <span className="vs-divider">vs</span>
+          <span className="team-name away">{pick.match.away_team.name}</span>
+        </div>
+        <div className="match-meta-row">
+          {new Date(pick.match.date).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" })}
+        </div>
+        <div style={{ textAlign: "center", padding: "20px 0 4px" }}>
+          <div style={{ fontSize: 26 }} aria-hidden>🔒</div>
+          <p style={{ margin: "6px 0 10px", fontSize: 13, color: "var(--text-secondary)" }}>
+            The full pick for this match is premium members only.
+          </p>
+          <Link className="btn" style={{ padding: "4px 12px", fontSize: 12.5 }} to="/app/access">
+            Redeem a code to unlock
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

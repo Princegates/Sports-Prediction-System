@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { bookPicks, fetchAdminPicks } from "../api";
+import { fetchAdminPicks } from "../api";
 import { AdminPickCard } from "./AdminPickCard";
-import { SiteCodes } from "./SiteCodes";
+import { PickBookingCodes } from "./PickBookingCodes";
+import { useAuth } from "../lib/AuthContext";
 import type { AdminPick } from "../types";
 
 type Cadence = "daily" | "weekly";
@@ -33,11 +34,13 @@ const GROUPS: { cadence: Cadence; title: string; blurb: string }[] = [
  * AdminPicksSection/WeeklyPicksSection: a cadence that hasn't generated yet
  * just doesn't render.
  *
- * Each card carries its own live booking panel (SiteCodes), unlike a
+ * Each card carries its own live booking panel (PickBookingCodes), unlike a
  * hand-curated Admin Pick's admin-typed code -- these were never built on a
  * real bookmaker by a human, so the only code available is one a betting
  * site issues on request. */
 export function RandomPicksSection() {
+  const { user, accessStatus } = useAuth();
+  const viewerHasPremium = user?.role === "superadmin" || !!accessStatus?.has_access;
   const [picks, setPicks] = useState<AdminPick[] | null>(null);
 
   useEffect(() => {
@@ -75,15 +78,7 @@ export function RandomPicksSection() {
               {group.map((pick) => (
                 <div key={pick.id}>
                   <AdminPickCard pick={pick} hideRisk />
-                  <SiteCodes
-                    legs={pick.legs}
-                    book={(sites) =>
-                      bookPicks(
-                        pick.legs.map((l) => ({ match_id: l.match_id, market: l.market, selection: l.selection })),
-                        sites,
-                      )
-                    }
-                  />
+                  <PickBookingCodes pick={pick} viewerHasPremium={viewerHasPremium} />
                 </div>
               ))}
             </div>

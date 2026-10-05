@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import type { AdminPick } from "../types";
 import { useTilt } from "../lib/useTilt";
 import { CopyButton } from "./CopyButton";
@@ -71,6 +72,31 @@ export function AdminPickCard({
   const hiddenCount = pick.legs.length - COLLAPSED_LEG_COUNT;
   const visibleLegs = expanded || hiddenCount <= 0 ? pick.legs : pick.legs.slice(0, COLLAPSED_LEG_COUNT);
   const riskTier = riskOverride ?? pick.risk_tier;
+
+  if (pick.locked) {
+    return (
+      <div className="card match-card match-card-static tilt-card" ref={tilt.ref} onMouseMove={tilt.onMouseMove} onMouseLeave={tilt.onMouseLeave}>
+        <div className="match-card-top">
+          <span className="match-competition">{pick.label || `${pick.leg_count}-leg slip`}</span>
+          {!hideRisk && (
+            <span className={`risk-tag ${riskTier}`}>
+              <span aria-hidden>◆</span>
+              {RISK_LABELS[riskTier]}
+            </span>
+          )}
+        </div>
+        <div style={{ textAlign: "center", padding: "20px 0 4px" }}>
+          <div style={{ fontSize: 26 }} aria-hidden>🔒</div>
+          <p style={{ margin: "6px 0 10px", fontSize: 13, color: "var(--text-secondary)" }}>
+            This {pick.leg_count}-leg slip is premium members only.
+          </p>
+          <Link className="btn" style={{ padding: "4px 12px", fontSize: 12.5 }} to="/app/access">
+            Redeem a code to unlock
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

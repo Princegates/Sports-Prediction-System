@@ -321,6 +321,10 @@ export interface FeaturedPick {
   settled_at: string | null;
   created_at: string;
   expires_at: string;
+  // True for every pick but the one free slot a non-premium viewer gets --
+  // market/selection/probability/note are blanked ("" / 0 / null) when
+  // true. Always false for a premium viewer or superadmin.
+  locked: boolean;
 }
 
 export interface AdminPickLeg {
@@ -375,6 +379,13 @@ export interface AdminPick {
   settled_at: string | null;
   created_at: string;
   expires_at: string;
+  // True for every pick but the one free slot a non-premium viewer gets
+  // across Admin Picks/This Week's Picks/Random Picks combined -- legs is
+  // [] and combined_odds/combined_probability are blanked (null / 0) when
+  // true. leg_count carries the count legs would otherwise have shown.
+  // Always false for a premium viewer or superadmin.
+  locked: boolean;
+  leg_count: number;
 }
 
 /** Aggregate-only public trust record for curated Admin Picks -- no team

@@ -328,6 +328,13 @@ def free_picks(db: Session = Depends(get_db)) -> list[FreePickOut]:
     return picks[:8]
 
 
+def _viewer_has_premium(db: Session, user: User) -> bool:
+    if user.role == "superadmin":
+        return True
+    grant = current_grant(db, user)
+    return grant is not None and grant.expires_at > dt.datetime.utcnow()
+
+
 @router.get("/guda-picks", response_model=list[FeaturedPickOut])
 def guda_picks(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[FeaturedPickOut]:
     """Outcomes a Super Admin has chosen to highlight, for the Dashboard's
@@ -340,17 +347,21 @@ def guda_picks(user: User = Depends(get_current_user), db: Session = Depends(get
     lost result for up to 14 days -- that result, not just the live pick,
     is the whole point of a Dashboard trust signal. The full history lives
     at GET /api/public/admin-picks-track-record, unbounded by this window.
+
+    A non-premium viewer gets at most one unlocked pick across this whole
+    response -- the first still-pending one -- everything else (every other
+    pending pick, and every settled one) comes back with locked=True. See
+    admin_picks's own docstring for why Guda Picks gets first claim on that
+    one free slot rather than Admin/Weekly/Random Picks.
     """
 
     values = app_settings.all_values(db)
     if not values.get("guda_picks_enabled", True):
         return []
 
-    if user.role != "superadmin" and not values.get("guda_picks_free_tier_visible", True):
-        grant = current_grant(db, user)
-        has_access = grant is not None and grant.expires_at > dt.datetime.utcnow()
-        if not has_access:
-            return []
+    viewer_has_premium = _viewer_has_premium(db, user)
+    if not viewer_has_premium and not values.get("guda_picks_free_tier_visible", True):
+        return []
 
     now = dt.datetime.utcnow()
     recent_cutoff = now - dt.timedelta(days=14)
@@ -361,6 +372,7 @@ def guda_picks(user: User = Depends(get_current_user), db: Session = Depends(get
     ).scalars().all()
 
     out: list[FeaturedPickOut] = []
+    free_slot_used = False
     for pick in picks:
         match = db.get(Match, pick.match_id)
         if match is None:
@@ -372,7 +384,10 @@ def guda_picks(user: User = Depends(get_current_user), db: Session = Depends(get
         if pick.result != "pending":
             if pick.expires_at <= now and (pick.settled_at is None or pick.settled_at <= recent_cutoff):
                 continue
-            out.append(featured_pick_to_schema(pick, match, pick.probability_at_pick or 0.0))
+            # Settled picks are never the one free slot -- a result alone,
+            # with no upcoming match behind it, isn't the lead magnet the
+            # free slot exists for.
+            out.append(featured_pick_to_schema(pick, match, pick.probability_at_pick or 0.0, locked=not viewer_has_premium))
             continue
 
         if pick.expires_at <= now:
@@ -394,8 +409,42 @@ def guda_picks(user: User = Depends(get_current_user), db: Session = Depends(get
         outcome = find_outcome(prediction, pick.market, pick.selection)
         if outcome is None:
             continue
-        out.append(featured_pick_to_schema(pick, match, outcome.probability))
+        locked = not viewer_has_premium and free_slot_used
+        if not viewer_has_premium and not free_slot_used:
+            free_slot_used = True
+        out.append(featured_pick_to_schema(pick, match, outcome.probability, locked=locked))
     return out
+
+
+def _has_free_guda_pick(db: Session, values: dict) -> bool:
+    """Whether a non-premium viewer would get an unlocked Guda Pick from
+    guda_picks() right now -- checked so admin_picks() can tell whether its
+    own first pick needs to be the one free slot, or whether Guda already
+    filled it. Mirrors guda_picks()'s own enabled/free-tier-visible gates
+    and "first still-pending, resolvable pick" rule without building the
+    full response."""
+
+    if not values.get("guda_picks_enabled", True) or not values.get("guda_picks_free_tier_visible", True):
+        return False
+
+    now = dt.datetime.utcnow()
+    picks = db.execute(
+        select(FeaturedPick).where(FeaturedPick.result == "pending", FeaturedPick.expires_at > now)
+        .order_by(FeaturedPick.created_at.desc())
+    ).scalars().all()
+    for pick in picks:
+        match = db.get(Match, pick.match_id)
+        if match is None or match.status == "FINISHED":
+            continue
+        prediction = db.execute(
+            select(Prediction).where(Prediction.match_id == match.id).order_by(Prediction.created_at.desc())
+        ).scalars().first()
+        if prediction is None:
+            continue
+        if find_outcome(prediction, pick.market, pick.selection) is None:
+            continue
+        return True
+    return False
 
 
 @router.get("/admin-picks", response_model=list[AdminPickOut])
@@ -412,6 +461,14 @@ def admin_picks(user: User = Depends(get_current_user), db: Session = Depends(ge
     moment its match ends: that result, not just the live pick, is the whole
     point of a Dashboard trust signal. The full history lives at
     GET /api/track-record/admin-picks, unbounded by this 14-day window.
+
+    This endpoint backs Admin Picks, This Week's Picks and Random Picks all
+    at once (AdminPick.source splits them client-side) -- a non-premium
+    viewer gets at most one unlocked pick across the three combined, same
+    "one free slot" rule guda_picks applies to itself. Guda Picks claims
+    that slot first when it has one on offer (_has_free_guda_pick); only
+    when it doesn't does the first still-pending pick here get it instead.
+    One slot total across the whole AI Picks page, not one per section.
     """
 
     values = app_settings.all_values(db)
@@ -421,12 +478,13 @@ def admin_picks(user: User = Depends(get_current_user), db: Session = Depends(ge
     # Computed unconditionally, not just when the free-tier-visibility
     # setting requires it -- a booking code is premium-gated regardless of
     # whether the pick itself is visible to everyone.
-    grant = current_grant(db, user)
-    viewer_has_premium = user.role == "superadmin" or (grant is not None and grant.expires_at > dt.datetime.utcnow())
+    viewer_has_premium = _viewer_has_premium(db, user)
 
     if user.role != "superadmin" and not values.get("admin_picks_free_tier_visible", True):
         if not viewer_has_premium:
             return []
+
+    free_slot_used = not viewer_has_premium and _has_free_guda_pick(db, values)
 
     now = dt.datetime.utcnow()
     recent_cutoff = now - dt.timedelta(days=14)
@@ -452,7 +510,12 @@ def admin_picks(user: User = Depends(get_current_user), db: Session = Depends(ge
             # where older history lives.
             if pick.expires_at <= now and (pick.settled_at is None or pick.settled_at <= recent_cutoff):
                 continue
-            out.append(admin_pick_to_schema(pick, frozen_admin_pick_legs(db, pick), viewer_has_premium=viewer_has_premium))
+            # Settled picks are never the one free slot -- same reasoning as
+            # guda_picks: a result alone isn't the lead magnet it's for.
+            out.append(admin_pick_to_schema(
+                pick, frozen_admin_pick_legs(db, pick), viewer_has_premium=viewer_has_premium,
+                locked=not viewer_has_premium,
+            ))
             continue
 
         if pick.expires_at <= now:
@@ -466,5 +529,8 @@ def admin_picks(user: User = Depends(get_current_user), db: Session = Depends(ge
         legs, _warnings = price_legs(db, refs) if pick.priced else resolve_legs_unpriced(db, refs)
         if len(legs) != len(refs):
             continue
-        out.append(admin_pick_to_schema(pick, legs, viewer_has_premium=viewer_has_premium))
+        locked = not viewer_has_premium and free_slot_used
+        if not viewer_has_premium and not free_slot_used:
+            free_slot_used = True
+        out.append(admin_pick_to_schema(pick, legs, viewer_has_premium=viewer_has_premium, locked=locked))
     return out

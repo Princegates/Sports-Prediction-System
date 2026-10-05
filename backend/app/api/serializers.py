@@ -172,22 +172,30 @@ def live_prediction_to_schema(lp: LivePrediction) -> LivePredictionOut:
     )
 
 
-def featured_pick_to_schema(pick: FeaturedPick, match: Match, probability: float) -> FeaturedPickOut:
+def featured_pick_to_schema(pick: FeaturedPick, match: Match, probability: float, *, locked: bool = False) -> FeaturedPickOut:
+    """``locked`` blanks market/selection/probability/note -- the match
+    itself (league, teams, kickoff) stays visible either way, so a locked
+    card still shows *which* pick is behind the paywall, same "a signal, not
+    nothing" reasoning admin_pick_to_schema's has_booking_code already uses."""
+
     return FeaturedPickOut(
         id=pick.id,
         match=match_to_schema(match),
-        market=pick.market,
-        selection=pick.selection,
-        probability=probability,
-        note=pick.note,
+        market=pick.market if not locked else "",
+        selection=pick.selection if not locked else "",
+        probability=probability if not locked else 0.0,
+        note=pick.note if not locked else None,
         result=pick.result,
         settled_at=pick.settled_at,
         created_at=pick.created_at,
         expires_at=pick.expires_at,
+        locked=locked,
     )
 
 
-def admin_pick_to_schema(pick: AdminPick, legs: list[Leg], *, viewer_has_premium: bool = True) -> AdminPickOut:
+def admin_pick_to_schema(
+    pick: AdminPick, legs: list[Leg], *, viewer_has_premium: bool = True, locked: bool = False
+) -> AdminPickOut:
     """``legs`` must already be freshly resolved against every leg
     AdminPick.legs references -- by app.betcode.selection.price_legs when
     ``pick.priced``, or resolve_legs_unpriced otherwise -- this function only
@@ -200,7 +208,15 @@ def admin_pick_to_schema(pick: AdminPick, legs: list[Leg], *, viewer_has_premium
     superadmin managing it, always sees it). The one caller serving
     ordinary accounts -- routes_predictions.admin_picks -- passes the
     viewer's real premium status, which is what actually keeps a free-tier
-    account from seeing booking_code/booking_code_bookmaker."""
+    account from seeing booking_code/booking_code_bookmaker.
+
+    ``locked`` blanks legs/combined_odds/combined_probability entirely --
+    label/risk_tier/note/source stay visible (leg_count carries the one
+    number legs would have shown) so a locked card still reads as "a
+    10-leg Low Risk slip exists", just not which matches or markets it
+    picked. Never set alongside viewer_has_premium=True by any real caller:
+    admin_picks is the only one that locks anything, and it never has
+    both at once for the same pick."""
 
     combined_probability = 1.0
     for leg in legs:
@@ -230,19 +246,21 @@ def admin_pick_to_schema(pick: AdminPick, legs: list[Leg], *, viewer_has_premium
                 result=leg.leg_result,
             )
             for leg in legs
-        ],
+        ] if not locked else [],
         priced=pick.priced,
-        combined_odds=combined_odds,
-        combined_probability=combined_probability,
+        combined_odds=combined_odds if not locked else None,
+        combined_probability=combined_probability if not locked else 0.0,
         risk_tier=risk_tier(combined_probability),
         label=pick.label,
         note=pick.note,
         source=pick.source,
-        has_booking_code=bool(pick.booking_code and pick.booking_code_bookmaker),
-        booking_code=pick.booking_code if viewer_has_premium else None,
-        booking_code_bookmaker=pick.booking_code_bookmaker if viewer_has_premium else None,
+        has_booking_code=bool(pick.booking_code and pick.booking_code_bookmaker) and not locked,
+        booking_code=pick.booking_code if viewer_has_premium and not locked else None,
+        booking_code_bookmaker=pick.booking_code_bookmaker if viewer_has_premium and not locked else None,
         result=pick.result,
         settled_at=pick.settled_at,
         created_at=pick.created_at,
         expires_at=pick.expires_at,
+        locked=locked,
+        leg_count=len(legs),
     )

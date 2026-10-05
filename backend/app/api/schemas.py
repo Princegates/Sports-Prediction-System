@@ -620,6 +620,12 @@ class FeaturedPickOut(BaseModel):
     settled_at: dt.datetime | None
     created_at: dt.datetime
     expires_at: dt.datetime
+    # True for every Guda Pick but the one free slot a non-premium viewer
+    # gets (see routes_predictions.guda_picks) -- market/selection/probability/
+    # note are blanked ("" / 0.0 / None) when locked, since this is the one
+    # response field that decides whether the frontend may show them at all.
+    # Always False for a premium viewer or superadmin.
+    locked: bool = False
 
 
 class FeaturedPickResultIn(BaseModel):
@@ -707,6 +713,15 @@ class AdminPickOut(BaseModel):
     risk_tier: str  # "low" | "medium" | "high" -- see betcode.selection.risk_tier
     label: str | None
     note: str | None
+    # True for every pick but the one free slot a non-premium viewer gets
+    # across Admin Picks/This Week's Picks/Random Picks combined (see
+    # routes_predictions.admin_picks) -- legs is [] and combined_odds/
+    # combined_probability are blanked (None / 0.0) when locked, so leg_count
+    # is what lets the frontend still say "10-leg slip" without naming a
+    # single match, market or selection. Always False for a premium viewer
+    # or superadmin.
+    locked: bool = False
+    leg_count: int = 0
     # "system_weekly_<tier>" for a row scripts/generate_weekly_picks.py
     # produced, null for anything an admin built by hand -- lets the
     # frontend split the two into separate sections without a second

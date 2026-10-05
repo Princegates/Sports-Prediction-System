@@ -726,3 +726,81 @@ def test_public_admin_pick_track_record_counts_wins_and_losses_without_leaking_s
     # Aggregate counts only -- no team names, markets or selections leaked.
     assert "picks" not in body
     assert "legs" not in body
+
+
+# --- One free pick, the rest premium-only -----------------------------------
+
+
+def test_a_free_tier_viewer_gets_one_unlocked_pick_and_the_rest_locked(db_session, admin, two_matches, headers_no_access):
+    _create(admin, _legs(two_matches))
+    second_pair = [_match_with_odds(db_session, "Charlie"), _match_with_odds(db_session, "Delta")]
+    _create(admin, _legs(second_pair))
+
+    body = client.get("/api/predictions/admin-picks", headers=headers_no_access).json()
+    assert len(body) == 2
+    # Newest first (AdminPick.created_at.desc()) -- the second one created.
+    assert body[0]["locked"] is False
+    assert len(body[0]["legs"]) == 2
+    assert body[1]["locked"] is True
+    assert body[1]["legs"] == []
+    assert body[1]["leg_count"] == 2
+    assert body[1]["combined_odds"] is None
+    assert body[1]["combined_probability"] == 0.0
+
+
+def test_a_premium_viewer_gets_every_admin_pick_unlocked(db_session, admin, two_matches, auth_headers):
+    _create(admin, _legs(two_matches))
+    second_pair = [_match_with_odds(db_session, "Charlie"), _match_with_odds(db_session, "Delta")]
+    _create(admin, _legs(second_pair))
+
+    body = client.get("/api/predictions/admin-picks", headers=auth_headers).json()
+    assert len(body) == 2
+    assert all(pick["locked"] is False for pick in body)
+
+
+def test_a_superadmin_gets_every_admin_pick_unlocked(db_session, admin, two_matches):
+    _create(admin, _legs(two_matches))
+    second_pair = [_match_with_odds(db_session, "Charlie"), _match_with_odds(db_session, "Delta")]
+    _create(admin, _legs(second_pair))
+
+    body = client.get("/api/predictions/admin-picks", headers=_headers(admin)).json()
+    assert len(body) == 2
+    assert all(pick["locked"] is False for pick in body)
+
+
+def test_a_settled_admin_pick_is_never_the_free_slot(db_session, admin, two_matches, headers_no_access):
+    _create(admin, _legs(two_matches))
+    _finish(db_session, two_matches[0], 2, 0)
+    _finish(db_session, two_matches[1], 1, 0)  # settles the slip (won)
+
+    second_pair = [_match_with_odds(db_session, "Charlie"), _match_with_odds(db_session, "Delta")]
+    _create(admin, _legs(second_pair))  # still pending
+
+    body = client.get("/api/predictions/admin-picks", headers=headers_no_access).json()
+    pending = next(p for p in body if p["result"] == "pending")
+    settled = next(p for p in body if p["result"] != "pending")
+    assert pending["locked"] is False
+    assert settled["locked"] is True
+
+
+def test_guda_picks_take_priority_for_the_one_free_slot(db_session, admin, two_matches, headers_no_access):
+    """When Guda Picks already offers a free-tier viewer an unlocked pick,
+    Admin Picks/This Week's Picks/Random Picks must not also unlock one --
+    exactly one free pick across the whole AI Picks page, not one per
+    section."""
+
+    guda_match = _match_with_odds(db_session, "Echo")
+    response = client.post(
+        "/api/admin/featured-picks",
+        json={"match_id": guda_match.id, "market": "Match Result", "selection": "Home Win"},
+        headers=_headers(admin),
+    )
+    assert response.status_code == 200, response.text
+
+    _create(admin, _legs(two_matches))
+
+    guda_body = client.get("/api/predictions/guda-picks", headers=headers_no_access).json()
+    assert guda_body[0]["locked"] is False
+
+    admin_body = client.get("/api/predictions/admin-picks", headers=headers_no_access).json()
+    assert admin_body[0]["locked"] is True
