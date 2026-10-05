@@ -19,7 +19,7 @@ import type {
   AccountStatus,
   AdminOverview,
   AdminUser,
-  AuditLogEntry,
+  AuditLogPage,
   ChatAnswer,
   ChatMessage,
   FeaturedPick,
@@ -307,8 +307,24 @@ export function fetchAdminOverview(): Promise<AdminOverview> {
   return get("/api/admin/overview");
 }
 
-export function fetchAuditLog(limit = 50): Promise<AuditLogEntry[]> {
-  return get(`/api/admin/audit-log?limit=${limit}`);
+export interface AuditLogFilters {
+  limit?: number;
+  offset?: number;
+  userId?: number;
+  action?: string;
+  since?: string;
+  until?: string;
+}
+
+export function fetchAuditLog(filters: AuditLogFilters = {}): Promise<AuditLogPage> {
+  const params = new URLSearchParams();
+  if (filters.limit != null) params.set("limit", String(filters.limit));
+  if (filters.offset != null) params.set("offset", String(filters.offset));
+  if (filters.userId != null) params.set("user_id", String(filters.userId));
+  if (filters.action) params.set("action", filters.action);
+  if (filters.since) params.set("since", filters.since);
+  if (filters.until) params.set("until", filters.until);
+  return get(`/api/admin/audit-log?${params.toString()}`);
 }
 
 export function reinstateUser(userId: number): Promise<AdminUser> {

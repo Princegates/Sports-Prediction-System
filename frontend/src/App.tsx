@@ -3,6 +3,7 @@ import { AppShell } from "./components/AppShell";
 import { RequireAccess, RequireAuth, RequireSuperadmin } from "./components/RequireAuth";
 import { Access } from "./pages/Access";
 import { AccountStatus } from "./pages/AccountStatus";
+import { ActivityLog } from "./pages/ActivityLog";
 import { AdminUsers } from "./pages/AdminUsers";
 import { AIPicks } from "./pages/AIPicks";
 import { BetCodes } from "./pages/BetCodes";
@@ -76,6 +77,7 @@ export default function App() {
 
           <Route element={<RequireSuperadmin />}>
             <Route path="admin" element={<AdminUsers />} />
+            <Route path="admin/activity-log" element={<ActivityLog />} />
             <Route path="admin/settings" element={<Settings />} />
           </Route>
         </Route>

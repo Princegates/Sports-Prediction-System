@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   createAccessCode,
   demoteUser,
@@ -6,7 +7,6 @@ import {
   fetchAccessCodes,
   fetchAdminOverview,
   fetchAdminUsers,
-  fetchAuditLog,
   fetchSettings,
   promoteUser,
   reinstateUser,
@@ -17,7 +17,7 @@ import {
   suspendUser,
 } from "../api";
 import { useAuth } from "../lib/AuthContext";
-import type { AccessCode, AdminOverview, AdminUser, AuditLogEntry, UserStatus } from "../types";
+import type { AccessCode, AdminOverview, AdminUser, UserStatus } from "../types";
 import { ErrorState } from "../components/ErrorState";
 
 const FILTERS: { label: string; value: UserStatus | "all" }[] = [
@@ -25,34 +25,6 @@ const FILTERS: { label: string; value: UserStatus | "all" }[] = [
   { label: "Suspended", value: "suspended" },
   { label: "All", value: "all" },
 ];
-
-const ACTION_LABELS: Record<string, string> = {
-  "account.registered": "registered",
-  "account.login": "signed in",
-  "account.login_failed": "sign-in failed",
-  "account.login_blocked": "sign-in blocked (suspended)",
-  "account.password_changed": "password changed",
-  "account.profile_updated": "profile updated",
-  "user.suspended": "suspended",
-  "user.reinstated": "reinstated",
-  "user.promoted": "promoted to admin",
-  "user.demoted": "admin revoked",
-  "access_code.created": "access code generated",
-  "access_code.revoked": "access code revoked",
-  "access_code.redeemed": "access code redeemed",
-  "access_code.resent": "access code resent",
-  "access_code.revealed": "access code revealed",
-  "access_grant.extended": "access extended",
-  "access_grant.revoked": "access revoked",
-  "settings.updated": "settings changed",
-  "match.live_cleared": "live events cleared",
-  "featured_pick.created": "guda pick created",
-  "featured_pick.updated": "guda pick updated",
-  "featured_pick.removed": "guda pick removed",
-  "admin_pick.created": "admin pick created",
-  "admin_pick.updated": "admin pick updated",
-  "admin_pick.removed": "admin pick removed",
-};
 
 const ACCESS_TONE: Record<AdminUser["access_status"], string> = {
   active: "active",
@@ -82,8 +54,6 @@ export function AdminUsers() {
   const [filter, setFilter] = useState<UserStatus | "all">("active");
   const [users, setUsers] = useState<AdminUser[] | null>(null);
   const [overview, setOverview] = useState<AdminOverview | null>(null);
-  const [audit, setAudit] = useState<AuditLogEntry[]>([]);
-  const [showAudit, setShowAudit] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
 
@@ -161,14 +131,6 @@ export function AdminUsers() {
       })
       .catch(() => {});
   }, []);
-
-  useEffect(() => {
-    if (!showAudit) return;
-    // 100, not the old 40 -- sign-ins now write a row on every attempt, so a
-    // smaller window filled up with logins faster than it used to and
-    // pushed rarer admin actions off the bottom.
-    fetchAuditLog(100).then(setAudit).catch(() => setAudit([]));
-  }, [showAudit, users]);
 
   async function withBusy(id: number, action: () => Promise<AdminUser>) {
     setBusyId(id);
@@ -599,54 +561,13 @@ export function AdminUsers() {
       </div>
 
       <div className="admin-audit">
-        <button className="btn ghost" onClick={() => setShowAudit(!showAudit)} aria-expanded={showAudit}>
-          {showAudit ? "Hide" : "Show"} activity log
-        </button>
-        {showAudit && (
-          <>
-            <p className="admin-audit-note">
-              Append-only record of sign-ins, registrations, status and settings changes, and
-              every access-code and curated-pick action. A user or code row only ever shows its current
-              state -- this preserves the full sequence.
-            </p>
-            <div className="card admin-table-wrapper">
-              <table className="admin-table">
-                <thead>
-                  <tr>
-                    <th>When</th>
-                    <th>Actor</th>
-                    <th>Action</th>
-                    <th>Target user</th>
-                    <th>Detail</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {audit.length === 0 && (
-                    <tr>
-                      <td colSpan={5}>No entries recorded yet.</td>
-                    </tr>
-                  )}
-                  {audit.map((entry) => (
-                    <tr key={entry.id}>
-                      <td>{new Date(entry.created_at).toLocaleString()}</td>
-                      <td>{entry.actor_email ?? "--"}</td>
-                      <td>{ACTION_LABELS[entry.action] ?? entry.action}</td>
-                      <td>{entry.target_user_id ?? "--"}</td>
-                      <td className="admin-audit-detail">
-                        {entry.detail
-                          ? Object.entries(entry.detail)
-                              .filter(([, v]) => v !== null && v !== "")
-                              .map(([k, v]) => `${k}: ${v}`)
-                              .join(", ") || "--"
-                          : "--"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
+        <Link className="btn ghost" to="/app/admin/activity-log">
+          View full activity log
+        </Link>
+        <p className="admin-audit-note">
+          Every sign-in, registration, status and settings change, access-code and curated-pick
+          action, and generated booking code -- filterable by user, action and date, on its own page.
+        </p>
       </div>
     </div>
   );

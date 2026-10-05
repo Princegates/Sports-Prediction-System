@@ -113,6 +113,45 @@ def test_audit_log_endpoint_is_superadmin_only(db_session, admin):
     assert client.get("/api/admin/audit-log", headers=_headers(admin)).status_code == 200
 
 
+def test_audit_log_is_paginated_with_a_total_count(db_session, admin):
+    target = _make_user(db_session, "paged@example.com", status="suspended")
+    headers = _headers(admin)
+    for _ in range(3):
+        client.post(f"/api/admin/users/{target.id}/reinstate", headers=headers)
+        client.post(f"/api/admin/users/{target.id}/suspend", headers=headers)
+
+    first_page = client.get("/api/admin/audit-log?limit=2&offset=0", headers=headers).json()
+    second_page = client.get("/api/admin/audit-log?limit=2&offset=2", headers=headers).json()
+
+    assert len(first_page["items"]) == 2
+    assert first_page["total"] >= 6
+    assert first_page["total"] == second_page["total"]
+    assert {row["id"] for row in first_page["items"]}.isdisjoint({row["id"] for row in second_page["items"]})
+
+
+def test_audit_log_filters_by_target_user(db_session, admin):
+    alice = _make_user(db_session, "alice-activity@example.com", status="suspended")
+    bob = _make_user(db_session, "bob-activity@example.com", status="suspended")
+    headers = _headers(admin)
+    client.post(f"/api/admin/users/{alice.id}/reinstate", headers=headers)
+    client.post(f"/api/admin/users/{bob.id}/reinstate", headers=headers)
+
+    body = client.get(f"/api/admin/audit-log?user_id={alice.id}", headers=headers).json()
+    assert body["items"]
+    assert all(row["target_user_id"] == alice.id for row in body["items"])
+
+
+def test_audit_log_filters_by_action(db_session, admin):
+    target = _make_user(db_session, "action-filter@example.com", status="suspended")
+    headers = _headers(admin)
+    client.post(f"/api/admin/users/{target.id}/reinstate", headers=headers)
+    client.post(f"/api/admin/users/{target.id}/suspend", headers=headers)
+
+    body = client.get("/api/admin/audit-log?action=user.suspended", headers=headers).json()
+    assert body["items"]
+    assert all(row["action"] == "user.suspended" for row in body["items"])
+
+
 # --- Reinstatement --------------------------------------------------------
 
 

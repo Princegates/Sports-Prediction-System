@@ -33,7 +33,7 @@ from app.api.schemas import (
 )
 from app.betcode import sites as betting_sites
 from app.betcode.selection import ConfidencePick, Leg, resolve_legs_unpriced, select_legs_by_confidence
-from app.db.models import BookingSlip, User
+from app.db.models import AuditLog, BookingSlip, User
 from app.pick_settlement import frozen_booking_slip_legs, settle_booking_slip
 
 router = APIRouter(
@@ -148,6 +148,15 @@ def book_picks(
         site_codes=[c.as_json() for c in site_codes],
     )
     db.add(slip)
+    db.add(
+        AuditLog(
+            actor_user_id=user.id,
+            actor_email=user.email,
+            action="booking_code.generated",
+            target_user_id=user.id,
+            detail={"sites": payload.sites, "status": status, "legs": len(legs)},
+        )
+    )
     db.commit()
 
     return PicksBookingOut(

@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.access import (
@@ -25,6 +25,7 @@ from app.api.schemas import (
     AdminPickResultIn,
     AdminUserOut,
     AuditLogOut,
+    AuditLogPageOut,
     ExtendGrantIn,
     FeaturedPickOut,
     FeaturedPickResultIn,
@@ -118,21 +119,53 @@ def list_users(status: str | None = None, db: Session = Depends(get_db)) -> list
     return [admin_user_to_schema(u, db) for u in users]
 
 
-@router.get("/audit-log", response_model=list[AuditLogOut])
-def audit_log(limit: int = 100, db: Session = Depends(get_db)) -> list[AuditLogOut]:
-    limit = max(1, min(limit, 500))
-    rows = db.execute(select(AuditLog).order_by(AuditLog.created_at.desc()).limit(limit)).scalars()
-    return [
-        AuditLogOut(
-            id=row.id,
-            actor_email=row.actor_email,
-            action=row.action,
-            target_user_id=row.target_user_id,
-            detail=row.detail,
-            created_at=row.created_at,
-        )
-        for row in rows
-    ]
+@router.get("/audit-log", response_model=AuditLogPageOut)
+def audit_log(
+    limit: int = 50,
+    offset: int = 0,
+    user_id: int | None = None,
+    action: str | None = None,
+    since: dt.datetime | None = None,
+    until: dt.datetime | None = None,
+    db: Session = Depends(get_db),
+) -> AuditLogPageOut:
+    """Filtered, paginated read of the append-only audit log, for the
+    dedicated Activity Log page. ``user_id`` matches a row where that
+    account is either the actor or the target -- "what did they do" and
+    "what happened to them" are both "their activity" from an admin's
+    point of view, and most actions only ever populate one of the two
+    columns anyway."""
+
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+
+    stmt = select(AuditLog)
+    if user_id is not None:
+        stmt = stmt.where(or_(AuditLog.actor_user_id == user_id, AuditLog.target_user_id == user_id))
+    if action:
+        stmt = stmt.where(AuditLog.action == action)
+    if since is not None:
+        stmt = stmt.where(AuditLog.created_at >= since)
+    if until is not None:
+        stmt = stmt.where(AuditLog.created_at <= until)
+
+    total = db.execute(select(func.count()).select_from(stmt.subquery())).scalar() or 0
+    rows = db.execute(stmt.order_by(AuditLog.created_at.desc()).offset(offset).limit(limit)).scalars()
+    return AuditLogPageOut(
+        items=[
+            AuditLogOut(
+                id=row.id,
+                actor_user_id=row.actor_user_id,
+                actor_email=row.actor_email,
+                action=row.action,
+                target_user_id=row.target_user_id,
+                detail=row.detail,
+                created_at=row.created_at,
+            )
+            for row in rows
+        ],
+        total=total,
+    )
 
 
 def _get_target_user(user_id: int, db: Session) -> User:

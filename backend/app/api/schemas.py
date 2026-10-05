@@ -144,11 +144,20 @@ class RegisterOut(BaseModel):
 
 class AuditLogOut(BaseModel):
     id: int
+    actor_user_id: int | None = None
     actor_email: str | None = None
     action: str
     target_user_id: int | None = None
     detail: dict | None = None
     created_at: dt.datetime
+
+
+class AuditLogPageOut(BaseModel):
+    """``total`` is the filtered count, not the whole table -- it's what a
+    pager needs to know whether there's a next page."""
+
+    items: list[AuditLogOut]
+    total: int
 
 
 class AdminOverviewOut(BaseModel):

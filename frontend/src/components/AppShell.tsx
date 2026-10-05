@@ -311,6 +311,7 @@ export function AppShell() {
           ...NAV_ITEMS,
           { to: "/app/profile", label: "Profile" },
           { to: "/app/admin", label: "Admin" },
+          { to: "/app/admin/activity-log", label: "Activity Log" },
           { to: "/app/admin/settings", label: "Settings" },
         ]
       : [

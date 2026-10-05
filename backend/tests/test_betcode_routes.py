@@ -403,6 +403,21 @@ def test_booking_a_pick_records_it_against_the_members_account(db_session, auth_
     assert slips[0].legs[0]["market"] == "Match Result"
 
 
+def test_booking_a_pick_is_audit_logged(db_session, auth_headers, upcoming_match, sites):
+    from app.db.models import AuditLog, User
+
+    sites(sportybet_gh=_FakeConnector("AUDIT01"))
+    response = _book(auth_headers, upcoming_match)
+    assert response.status_code == 200, response.text
+
+    user = db_session.query(User).filter(User.email == "test-user@example.com").one()
+    entry = db_session.query(AuditLog).filter(AuditLog.action == "booking_code.generated").one()
+    assert entry.actor_user_id == user.id
+    assert entry.detail["sites"] == ["sportybet_gh"]
+    assert entry.detail["status"] == "code_ready"
+    assert entry.detail["legs"] == 1
+
+
 def test_my_codes_requires_authentication():
     assert client.get("/api/betcodes/mine").status_code == 401
 

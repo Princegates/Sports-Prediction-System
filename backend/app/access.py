@@ -261,6 +261,26 @@ def issue_signup_trial(db: Session, user: User, *, duration_days: int) -> Access
     return redeem_access_code(db, user, code.code)
 
 
+def _log_redeem_failure(db: Session, user: User, reason: str, code: AccessCode | None = None) -> None:
+    """A failed redemption attempt is still activity worth seeing -- a string
+    of "code doesn't exist"/"already redeemed" rows against one account is
+    exactly the pattern that'd never show up in the all-successful log
+    access_code.redeemed alone keeps. Committed on its own rather than left
+    pending, since the caller raises right after this and never reaches its
+    own commit."""
+
+    db.add(
+        AuditLog(
+            actor_user_id=user.id,
+            actor_email=user.email,
+            action="access_code.redeem_failed",
+            target_user_id=user.id,
+            detail={"reason": reason, **({"access_code_id": code.id} if code is not None else {})},
+        )
+    )
+    db.commit()
+
+
 def redeem_access_code(db: Session, user: User, raw_code: str) -> AccessGrant:
     """Validate and redeem a code for ``user``, returning the grant it opens.
 
@@ -278,15 +298,19 @@ def redeem_access_code(db: Session, user: User, raw_code: str) -> AccessGrant:
 
     code = db.execute(select(AccessCode).where(AccessCode.code == normalized)).scalar_one_or_none()
     if code is None:
+        _log_redeem_failure(db, user, "code doesn't exist")
         raise AccessCodeError("That code doesn't exist.")
 
     now = dt.datetime.utcnow()
 
     if code.status == "revoked":
+        _log_redeem_failure(db, user, "revoked", code)
         raise AccessCodeError("This code has been revoked.")
     if code.code_expires_at is not None and now > code.code_expires_at:
+        _log_redeem_failure(db, user, "expired", code)
         raise AccessCodeError("This code has expired.")
     if code.assigned_user_id is not None and code.assigned_user_id != user.id:
+        _log_redeem_failure(db, user, "assigned to a different account", code)
         raise AccessCodeError("This code is assigned to a different account.")
 
     duplicate = db.execute(
@@ -295,6 +319,7 @@ def redeem_access_code(db: Session, user: User, raw_code: str) -> AccessGrant:
         )
     ).scalar_one_or_none()
     if duplicate is not None:
+        _log_redeem_failure(db, user, "already redeemed by this account", code)
         raise AccessCodeError("You've already redeemed this code.")
 
     result = db.execute(
@@ -303,6 +328,7 @@ def redeem_access_code(db: Session, user: User, raw_code: str) -> AccessGrant:
         .values(redemption_count=AccessCode.redemption_count + 1)
     )
     if result.rowcount == 0:
+        _log_redeem_failure(db, user, "fully redeemed", code)
         raise AccessCodeError("This code has already been fully redeemed.")
 
     existing = current_grant(db, user)

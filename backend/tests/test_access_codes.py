@@ -185,6 +185,37 @@ def test_redeeming_an_unknown_code_is_rejected(db_session, headers_no_access):
     assert response.status_code == 400
 
 
+def test_a_failed_redemption_is_audit_logged(db_session, headers_no_access, user_no_access):
+    """A string of rejected attempts against one account is exactly the
+    pattern access_code.redeemed alone would never surface -- it only ever
+    gets written on success."""
+
+    client.post("/api/access/redeem", json={"code": "NOPE-NOPE-NOPE"}, headers=headers_no_access)
+
+    entry = db_session.query(AuditLog).filter(AuditLog.action == "access_code.redeem_failed").one()
+    assert entry.actor_user_id == user_no_access.id
+    assert entry.target_user_id == user_no_access.id
+    assert entry.detail["reason"] == "code doesn't exist"
+
+
+def test_redeeming_an_already_redeemed_code_is_audit_logged_with_its_reason(db_session, admin, headers_no_access, user_no_access):
+    code = _create_code(admin, assignee=user_no_access)
+    client.post("/api/access/redeem", json={"code": code["code"]}, headers=headers_no_access)
+
+    response = client.post("/api/access/redeem", json={"code": code["code"]}, headers=headers_no_access)
+    assert response.status_code == 400
+
+    entry = (
+        db_session.query(AuditLog)
+        .filter(AuditLog.action == "access_code.redeem_failed")
+        .order_by(AuditLog.id.desc())
+        .first()
+    )
+    assert entry is not None
+    assert entry.detail["reason"] == "already redeemed by this account"
+    assert entry.detail["access_code_id"] == code["id"]
+
+
 def test_redeeming_a_revoked_code_is_rejected(db_session, admin, user_no_access, headers_no_access):
     code = _create_code(admin, assignee=user_no_access)
     client.post(f"/api/admin/access-codes/{code['id']}/revoke", json={}, headers=_headers(admin))

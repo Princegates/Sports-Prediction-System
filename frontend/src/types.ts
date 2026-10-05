@@ -417,11 +417,17 @@ export interface AdminOverview {
 
 export interface AuditLogEntry {
   id: number;
+  actor_user_id: number | null;
   actor_email: string | null;
   action: string;
   target_user_id: number | null;
   detail: Record<string, unknown> | null;
   created_at: string;
+}
+
+export interface AuditLogPage {
+  items: AuditLogEntry[];
+  total: number;
 }
 
 // --- Super Admin settings --------------------------------------------------
