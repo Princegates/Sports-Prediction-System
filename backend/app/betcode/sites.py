@@ -72,9 +72,19 @@ def _msport_gh() -> SiteConnector:
     return MSportConnector()
 
 
+def _football_com_gh() -> SiteConnector:
+    from app.betcode.football_gh import FootballComGhConnector
+
+    return FootballComGhConnector()
+
+
 SITES: list[Site] = [
     Site("sportybet_gh", "SportyBet Ghana", _sportybet_gh),
     Site("msport_gh", "MSport Ghana", _msport_gh),
+    # Not a separate API: a SportyBet Ghana code, entered as-is, loads on
+    # football.com/gh too (confirmed against the live site), so this just
+    # relabels SportyBet's own connector's result -- see football_gh.py.
+    Site("football_gh", "Football.com Ghana", _football_com_gh),
     # Betway and 1xBet removed for now: Betway's own "create a code" action
     # places a real bet (confirmed against the live site -- see this
     # module's git history), and 1xBet's is unconfirmed pending a full

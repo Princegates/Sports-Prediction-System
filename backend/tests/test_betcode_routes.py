@@ -248,7 +248,7 @@ def test_the_real_registry_claims_no_connection_it_does_not_have(auth_headers):
 
     body = client.get("/api/betcodes/sites", headers=auth_headers).json()
 
-    assert {s["key"] for s in body} == {"sportybet_gh", "msport_gh"}
+    assert {s["key"] for s in body} == {"sportybet_gh", "msport_gh", "football_gh"}
     from app.betcode import sites as betting_sites
 
     assert all(s["connected"] == betting_sites.SITES_BY_KEY[s["key"]].connected for s in body)
