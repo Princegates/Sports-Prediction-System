@@ -4,6 +4,7 @@ import { RequireAccess, RequireAuth, RequireSuperadmin } from "./components/Requ
 import { Access } from "./pages/Access";
 import { AccountStatus } from "./pages/AccountStatus";
 import { AdminUsers } from "./pages/AdminUsers";
+import { AIPicks } from "./pages/AIPicks";
 import { BetCodes } from "./pages/BetCodes";
 import { Dashboard } from "./pages/Dashboard";
 import { FixturePreview } from "./pages/FixturePreview";
@@ -34,10 +35,11 @@ import { Welcome } from "./pages/Welcome";
  *   account that isn't suspended -- reaching the prediction-serving pages
  *   (match detail, the full predictions table, markets, live, teams)
  *   additionally needs a live access grant, checked separately by
- *   RequireAccess. The dashboard is the one exception: it's free for any
- *   logged-in account, since it's how a no-code account sees the free-tier
- *   headline picks and the redeem-a-code prompt, rather than being bounced
- *   straight to /app/access with nothing to look at first.
+ *   RequireAccess. The dashboard and AI Picks are the exceptions: both free
+ *   for any logged-in account, since together they're how a no-code account
+ *   sees the free-tier headline picks, every featured slip, and the
+ *   redeem-a-code prompt, rather than being bounced straight to /app/access
+ *   with nothing to look at first.
  *
  * The signed-in app lives under its own prefix rather than sharing `/` with
  * the marketing page so neither has to know about the other's state.
@@ -60,6 +62,7 @@ export default function App() {
         <Route path="/app" element={<AppShell />}>
           <Route path="profile" element={<Profile />} />
           <Route path="access" element={<Access />} />
+          <Route path="ai-picks" element={<AIPicks />} />
           <Route index element={<Dashboard />} />
 
           <Route element={<RequireAccess />}>

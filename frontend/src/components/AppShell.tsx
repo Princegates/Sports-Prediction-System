@@ -88,6 +88,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { to: "/app", label: "Dashboard" },
+  { to: "/app/ai-picks", label: "AI Picks" },
   { to: "/app/predictions", label: "Predictions" },
   { to: "/app/markets", label: "Markets" },
   { to: "/app/betcodes", label: "AI Generation" },

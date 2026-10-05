@@ -2,14 +2,10 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchFreePicks, fetchMatches, fetchMostLikely, fetchPrediction } from "../api";
 import { leagueLabel, useLeague } from "../components/AppShell";
-import { AdminPicksSection } from "../components/AdminPicksSection";
-import { RandomPicksSection } from "../components/RandomPicksSection";
-import { WeeklyPicksSection } from "../components/WeeklyPicksSection";
 import { CardGridSkeleton } from "../components/LoadingSkeleton";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { FreePickCard } from "../components/FreePickCard";
-import { GudaPicksSection } from "../components/GudaPicksSection";
 import { NoticeBanner } from "../components/NoticeBanner";
 import { PredictionCard } from "../components/PredictionCard";
 import { SearchCommand } from "../components/SearchCommand";
@@ -194,19 +190,6 @@ export function Dashboard() {
           </>
         )}
       </section>
-
-      {/* All four "picks" sections grouped together, curated-to-random:
-          Guda Picks and Admin Picks are human-curated; This Week's Picks and
-          Random Picks are cron-generated. Match discovery (the core browse-
-          everything interaction) follows the whole block below, rather than
-          splitting it in two the way it used to. */}
-      <GudaPicksSection />
-
-      <AdminPicksSection />
-
-      <WeeklyPicksSection />
-
-      <RandomPicksSection />
 
       {/* Neither branch below can render yet without knowing hasAccess --
           without this, every visit shows a blank gap under the hero for
