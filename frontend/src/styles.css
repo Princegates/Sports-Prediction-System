@@ -56,6 +56,22 @@ button, input, select {
   color: inherit;
 }
 
+/* iOS Safari (and most mobile Chromium builds) auto-zoom the page on focus
+   of any text input/select/textarea whose computed font-size is under
+   16px -- most of ours are 13-15px for layout reasons that have nothing to
+   do with mobile. Bumping only the focusable form control itself back to
+   16px on phone-width viewports satisfies that browser heuristic without
+   touching how anything looks at rest or on desktop. !important because it
+   has to win over Carbon's own component font-size (e.g. .cds--text-input),
+   not just the plain-element rule above. */
+@media (max-width: 640px) {
+  input, select, textarea,
+  .cds--text-input, .cds--text-area__field, .cds--select-input,
+  .cds--search-input, .cds--number-input input, .cds--date-picker__input {
+    font-size: 16px !important;
+  }
+}
+
 ::selection {
   background: var(--accent-soft);
 }
