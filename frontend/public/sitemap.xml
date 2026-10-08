@@ -1018,4 +1018,34 @@
     <changefreq>hourly</changefreq>
     <priority>0.7</priority>
   </url>
+  <url>
+    <loc>https://soccaintel.com/predict/22263-lille-osc-vs-galatasaray</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/10723-como-1907-vs-manchester-united-fc</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/25074-levante-ud-vs-athletic-club</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/10724-fc-bayern-munchen-vs-arsenal-fc</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/10725-real-madrid-cf-vs-rb-leipzig</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/22264-real-betis-balompie-vs-feyenoord</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
 </urlset>
