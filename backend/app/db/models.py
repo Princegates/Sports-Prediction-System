@@ -342,7 +342,23 @@ class Match(Base):
 
     @property
     def is_finished(self) -> bool:
-        return self.home_score is not None and self.away_score is not None
+        # Not "scores are present" alone: the live-sync job
+        # (api_football_ingest's still-in-play branch -> live_engine.
+        # record_live_event) writes the current running score on every poll
+        # of a match that is still on, specifically so the Live tab has
+        # something to show -- status stays "LIVE" throughout, so requiring
+        # status == "FINISHED" too is what stops an in-progress scoreline
+        # from being read as a final one (and a pick settled off it).
+        #
+        # Not status alone either: every path that writes a real final score
+        # sets status to "FINISHED" in the same transaction (see
+        # app/data/ingest.py, api_football_ingest.py's FT branch,
+        # source_cleanup.fold_fixture) -- but if status ever flips a beat
+        # before the scores land, both still being required means this stays
+        # False for that instant rather than grading against a null score.
+        # routes_predictions.guda_picks has its own belt-and-braces check for
+        # exactly that gap.
+        return self.status == "FINISHED" and self.home_score is not None and self.away_score is not None
 
 
 class Player(Base):

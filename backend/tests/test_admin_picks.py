@@ -612,6 +612,27 @@ def test_still_scheduled_matches_keep_the_pick_pending(db_session, admin, two_ma
     assert body[0]["result"] == "pending"
 
 
+def test_a_live_but_unfinished_match_keeps_the_pick_pending(db_session, admin, two_matches, auth_headers):
+    """The live-sync job records the current running score on every poll of
+    a match still in play (see test_live_sync.py's own assertions on this),
+    well before it actually finishes -- status stays "LIVE" throughout. A
+    leg must not be graded off that in-progress scoreline: grading an
+    "Over"/"Home Win"/etc. selection before full time can flip it from
+    correct to wrong (or the reverse) as soon as the next goal goes in."""
+
+    _create(admin, _legs(two_matches))
+    live_match = two_matches[0]
+    live_match.status = "LIVE"
+    live_match.home_score = 0  # currently a draw -- "Home Win" would grade as lost if read as final
+    live_match.away_score = 0
+    db_session.commit()
+    # two_matches[1] is still scheduled.
+
+    body = client.get("/api/predictions/admin-picks", headers=auth_headers).json()
+    assert body[0]["result"] == "pending"
+    assert all(leg["result"] is None for leg in body[0]["legs"])
+
+
 def test_a_combo_with_mixed_kickoffs_hides_until_every_leg_finishes(db_session, admin, two_matches, auth_headers):
     """Known limitation: once ANY leg's match finishes, that leg can no
     longer be live-resolved (price_legs/resolve_legs_unpriced reject a
