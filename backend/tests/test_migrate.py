@@ -22,12 +22,21 @@ def test_enable_row_level_security_is_a_noop_on_sqlite(db_session):
     migrate._enable_row_level_security(engine)  # must not raise
 
 
-def test_enable_row_level_security_locks_every_table_on_postgres(monkeypatch, db_session):
+def _fake_pg_connection(monkeypatch, *, already_enabled: set[str] = frozenset()):
+    """Fakes just enough of a Postgres connection for
+    _enable_row_level_security: the lookup query returns ``already_enabled``
+    as (tablename,) rows, and every other statement (the ALTER TABLEs) is
+    just captured. Returns the list ALTER TABLE statements land in."""
+
     captured: list[str] = []
 
     class FakeConn:
-        def execute(self, stmt) -> None:
-            captured.append(str(stmt))
+        def execute(self, stmt):
+            text = str(stmt)
+            if "FROM pg_tables" in text:
+                return [(name,) for name in already_enabled]
+            captured.append(text)
+            return None
 
     class FakeBeginCtx:
         def __enter__(self):
@@ -40,14 +49,47 @@ def test_enable_row_level_security_locks_every_table_on_postgres(monkeypatch, db
     # the db_session fixture's own teardown (drop_all) needs the engine's
     # real .begin() back, and fixture teardown order would otherwise run
     # that before monkeypatch's own revert.
+    monkeypatch.setattr(engine.dialect, "name", "postgresql", raising=False)
+    monkeypatch.setattr(engine, "begin", lambda: FakeBeginCtx())
+    return captured
+
+
+def test_enable_row_level_security_locks_every_table_on_postgres(monkeypatch, db_session):
     with monkeypatch.context() as m:
-        m.setattr(engine.dialect, "name", "postgresql", raising=False)
-        m.setattr(engine, "begin", lambda: FakeBeginCtx())
+        captured = _fake_pg_connection(m)
         migrate._enable_row_level_security(engine)
 
     locked_tables = {stmt.split('"')[1] for stmt in captured}
     assert locked_tables == set(Base.metadata.tables)
     assert all("ENABLE ROW LEVEL SECURITY" in stmt for stmt in captured)
+
+
+def test_enable_row_level_security_skips_tables_already_done(monkeypatch, db_session):
+    """Regression test: this used to re-run ALTER TABLE ... ENABLE ROW
+    LEVEL SECURITY for every table on every single process start (plus
+    every 30s self-heal retry in /api/health while the database stays
+    unreachable) regardless of whether it had already been set -- each
+    statement needs a brief ACCESS EXCLUSIVE lock to grant, and that
+    sequential sweep over the whole schema, every boot, is exactly what
+    pushed one real deploy's startup past Render's 5-minute port-scan
+    window against a slow database. A table pg_tables already reports as
+    rowsecurity=true must be left alone."""
+
+    already = set(Base.metadata.tables) - {"teams"}
+    with monkeypatch.context() as m:
+        captured = _fake_pg_connection(m, already_enabled=already)
+        migrate._enable_row_level_security(engine)
+
+    locked_tables = {stmt.split('"')[1] for stmt in captured}
+    assert locked_tables == {"teams"}
+
+
+def test_enable_row_level_security_does_nothing_when_every_table_is_already_done(monkeypatch, db_session):
+    with monkeypatch.context() as m:
+        captured = _fake_pg_connection(m, already_enabled=set(Base.metadata.tables))
+        migrate._enable_row_level_security(engine)
+
+    assert captured == []
 
 
 def test_init_db_runs_end_to_end_on_sqlite_without_error():

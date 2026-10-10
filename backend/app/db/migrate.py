@@ -174,8 +174,27 @@ def _enable_row_level_security(engine: Engine) -> None:
     inspector = inspect(engine)
     existing = set(inspector.get_table_names())
     with engine.begin() as conn:
+        # ENABLE ROW LEVEL SECURITY is logically idempotent (re-running it
+        # on a table that already has it set is a harmless no-op), but the
+        # statement itself still takes a brief ACCESS EXCLUSIVE lock to
+        # grant -- and this whole function runs at import time, before the
+        # app can serve a single request, on *every* process start (plus
+        # every 30s self-heal retry in /api/health for as long as the
+        # database stays unreachable -- see app.main._try_init_database).
+        # On a steady-state database where every table already has this
+        # set, that's a full sequential sweep of exclusive locks for
+        # nothing. pg_tables.rowsecurity (built into Postgres since RLS
+        # itself, 9.5+) is a cheap catalog read that skips a table already
+        # done -- this is what actually caused a deploy to blow through
+        # Render's 5-minute port-scan window against a slow/cold database.
+        already_enabled = {
+            row[0]
+            for row in conn.execute(
+                text("SELECT tablename FROM pg_tables WHERE schemaname = current_schema() AND rowsecurity")
+            )
+        }
         for table in Base.metadata.tables:
-            if table not in existing:
+            if table not in existing or table in already_enabled:
                 continue
             conn.execute(text(f'ALTER TABLE "{table}" ENABLE ROW LEVEL SECURITY'))
 
