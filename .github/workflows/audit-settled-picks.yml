@@ -1,0 +1,50 @@
+# Finds already-settled picks whose frozen result disagrees with a fresh
+# re-grade against each match's current row (see scripts/audit_settled_picks.py
+# for why this can happen -- the Match.is_finished live-match grading bug).
+# Report-only unless "apply" is explicitly set to "yes": then it resets every
+# flagged row to pending so the next ordinary read re-settles it for real.
+name: Audit settled picks
+
+on:
+  workflow_dispatch:
+    inputs:
+      team:
+        description: "Only picks with a leg involving a club whose name contains this (blank = every settled pick)"
+        required: false
+        default: ""
+      apply:
+        description: "Type yes to reset every flagged row to pending. Anything else is a dry run."
+        required: false
+        default: "no"
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Audit
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TEAM: ${{ inputs.team }}
+          APPLY: ${{ inputs.apply }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret is not set."
+            exit 1
+          fi
+          ARGS=()
+          [ -n "$TEAM" ] && ARGS+=(--team "$TEAM")
+          [ "$APPLY" = "yes" ] && ARGS+=(--apply)
+          python scripts/audit_settled_picks.py "${ARGS[@]}"
