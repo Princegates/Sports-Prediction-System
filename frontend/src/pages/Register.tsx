@@ -64,6 +64,44 @@ export function Register() {
     }
   }
 
+  // Fails open: `branding` starts null and stays null if the fetch itself
+  // fails, and both cases still show the form -- the real gate is server
+  // side regardless (register() checks this same setting and 403s with a
+  // clear message), so a flaky branding fetch must never be the thing that
+  // blocks a genuine signup. Only an explicit, loaded "closed" is shown as
+  // closed, which is the one case worth a dedicated page for: filling out
+  // the whole form only to be told no at the very end is a bad experience,
+  // and an "invite only for now" state should look intentional, not broken.
+  if (branding?.registration_open === false) {
+    return (
+      <PublicShell
+        title="Create an Account — Socca Intelligence"
+        description="Create a Socca Intelligence account for calibrated football predictions across every major competition, with a free trial to start."
+      >
+        <div className="auth-shell">
+          <div className="card card-pad auth-card">
+            <Brand center className="auth-brand" />
+            <h1 style={{ fontSize: 20, marginBottom: 6, textAlign: "center" }}>Registration is closed for now</h1>
+            <p style={{ fontSize: 13.5, color: "var(--text-secondary)", textAlign: "center" }}>
+              New accounts are being set up directly by the team while we get started.
+            </p>
+            {whatsapp && (
+              <p style={{ fontSize: 13.5, textAlign: "center" }}>
+                <a href={whatsappLink(whatsapp, "Hi, I'd like an account on Socca Intelligence.")} target="_blank" rel="noreferrer noopener">
+                  Message us on WhatsApp
+                </a>{" "}
+                to get set up.
+              </p>
+            )}
+            <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 20, textAlign: "center" }}>
+              Already have an account? <Link to="/login">Sign in</Link>
+            </p>
+          </div>
+        </div>
+      </PublicShell>
+    );
+  }
+
   if (done) {
     return (
       <PublicShell
