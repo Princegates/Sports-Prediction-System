@@ -95,6 +95,12 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 "default -- turn on only once SMTP/Resend above is actually configured and "
                 "tested, since this sends to real members, not just you.",
                 default=False),
+    SettingSpec("access_reminder_email_enabled", "bool", "email", "Email members with no access yet",
+                "Nudges every active account with no live access grant to get a code, run "
+                "on demand (scripts/send_access_reminder_email.py / its GitHub Action), not on "
+                "a schedule. Off by default -- turn on only once SMTP/Resend above is actually "
+                "configured and tested, since this sends to real members, not just you.",
+                default=False),
 
     # --- Data sources ----------------------------------------------------
     SettingSpec("api_football_key", "str", "data", "API-Football key",

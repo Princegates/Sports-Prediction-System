@@ -1,0 +1,44 @@
+# Emails every active account with no live access grant, nudging them to
+# get a code -- see scripts/send_access_reminder_email.py. Dry run by
+# default (reports who'd be emailed, sends nothing); set "send" to yes to
+# actually dispatch. Not scheduled -- this is run on demand, deliberately,
+# not on a cron, so a run always reflects someone choosing to send it today.
+name: Send access reminder email
+
+on:
+  workflow_dispatch:
+    inputs:
+      send:
+        description: "Type yes to actually send. Anything else is a dry run."
+        required: false
+        default: "no"
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Send
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SEND: ${{ inputs.send }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret is not set."
+            exit 1
+          fi
+          ARGS=()
+          [ "$SEND" != "yes" ] && ARGS+=(--dry-run)
+          python scripts/send_access_reminder_email.py "${ARGS[@]}"

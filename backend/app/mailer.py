@@ -228,6 +228,32 @@ def weekly_picks_message(labels: list[str], site_url: str | None = None) -> tupl
     return "This week's picks are up", body
 
 
+def access_reminder_message(site_url: str | None = None, whatsapp: str | None = None) -> tuple[str, str]:
+    """Subject and body for the "you're still on the free tier" nudge --
+    sent to an active account with no live AccessGrant, prompting them to
+    get a code. Same free-tier framing as welcome_message's own no-trial
+    branch (one headline pick per league) and the same WhatsApp CTA, since
+    this is the same offer repeated, not a different one.
+    """
+
+    where = site_url or "the site"
+    contact = (
+        f"To get one, message {format_whatsapp(whatsapp)} on WhatsApp -- WhatsApp only, no calls or texts.\n\n"
+        if whatsapp
+        else ""
+    )
+    body = (
+        "You're still on the free tier -- one headline pick per league, rather than\n"
+        "full AI Picks: every Guda Pick, Admin Pick, and the weekly and random\n"
+        "accumulators, across every match we cover.\n\n"
+        "An access code unlocks all of it the moment you redeem it.\n\n"
+        f"{contact}"
+        f"Already have a code? Sign in at {where} and enter it from Access in the menu.\n\n"
+        "If you've already reached out about one, there's nothing else to do -- ignore this.\n"
+    )
+    return "Unlock full AI Picks", body
+
+
 def format_whatsapp(digits: str) -> str:
     """Digits-only contact number (e.g. ``233596909643``) as ``+233 59 690 9643``.
 
