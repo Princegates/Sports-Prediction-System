@@ -1,0 +1,40 @@
+# Sets the WhatsApp contact number shown wherever an account needs a Super
+# Admin for a code -- see scripts/set_whatsapp_contact.py. A cheap,
+# easily-reversible text change (run it again to change it back), so no
+# dry-run.
+name: Set WhatsApp contact
+
+on:
+  workflow_dispatch:
+    inputs:
+      number:
+        description: "Local (0XXXXXXXXX) or international (233XXXXXXXXX) WhatsApp number"
+        required: true
+
+jobs:
+  set-whatsapp-contact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Set WhatsApp contact
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          NUMBER: ${{ inputs.number }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret is not set."
+            exit 1
+          fi
+          python scripts/set_whatsapp_contact.py "$NUMBER"
