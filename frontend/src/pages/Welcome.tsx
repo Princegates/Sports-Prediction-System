@@ -245,6 +245,82 @@ export function Welcome() {
         </div>
       </section>
 
+      {/* ---------------- Public teaser pick ----------------
+          First thing after the hero -- concrete proof of what a redeemed
+          account actually gets beats a stats panel for a cold visitor's
+          first few seconds on the page. Renders nothing when there's no
+          teaser set -- same "no empty state" rule the Dashboard's own
+          GudaPicksSection follows, since a quiet gap here is unremarkable,
+          not a broken page. Unlike every other public figure on this page,
+          this shows real selections -- see PublicTeaserPick's own
+          docstring for why. */}
+      {teaserPick?.has_data && (
+        <section className="landing-section">
+          <div className="section-head">
+            <h2>This week's long shot</h2>
+            <p>
+              One combo our system drew at random from this week's priced matches, {teaserPick.combined_odds.toFixed(2)}x
+              combined -- a taste of what a redeemed account gets every day, across every match we cover.
+            </p>
+          </div>
+
+          <div className="card card-pad" style={{ maxWidth: 560, margin: "0 auto" }}>
+            {teaserPick.legs.map((leg, i) => (
+              <div
+                key={`${leg.match_id}-${leg.market}-${leg.selection}`}
+                className="match-meta-row"
+                style={{
+                  justifyContent: "space-between",
+                  padding: "10px 0",
+                  borderTop: i === 0 ? undefined : "1px solid var(--border)",
+                }}
+              >
+                <span>
+                  <span className="sub">{leg.league}</span>
+                  <br />
+                  {leg.home_team} <span className="vs-divider">vs</span> {leg.away_team}
+                  <br />
+                  <span className="sub">
+                    {leg.market}: {leg.selection}
+                  </span>
+                </span>
+                <span className="badge-neutral">{leg.decimal_odds?.toFixed(2)}</span>
+              </div>
+            ))}
+            <div
+              className="match-meta-row"
+              style={{ justifyContent: "space-between", padding: "10px 0", borderTop: "1px solid var(--border)" }}
+            >
+              <strong>Combined odds</strong>
+              <strong>{teaserPick.combined_odds.toFixed(2)}x</strong>
+            </div>
+          </div>
+
+          <div style={{ textAlign: "center", marginTop: 16 }}>
+            {teaserGenerateClicked ? (
+              <div className="state-card" style={{ maxWidth: 420, margin: "0 auto" }}>
+                <p style={{ margin: "0 0 12px" }}>
+                  Generating a code needs an account with active access -- that's the whole product, not
+                  a locked button. Sign up free, then redeem a code to generate real ones like this.
+                </p>
+                <Link className="btn btn-lg" to="/register">
+                  Create an account
+                </Link>
+              </div>
+            ) : (
+              <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+                <button className="btn btn-lg" onClick={() => setTeaserGenerateClicked(true)}>
+                  Generate code
+                </button>
+                <Link className="btn ghost btn-lg" to="/register">
+                  Create an account
+                </Link>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* ---------------- Live corpus stats ---------------- */}
       <section className="landing-section">
         <div className="section-head">
@@ -404,79 +480,6 @@ export function Welcome() {
           </div>
         )}
       </section>
-
-      {/* ---------------- Public teaser pick ----------------
-          Renders nothing when there's no teaser set -- same "no empty
-          state" rule the Dashboard's own GudaPicksSection follows, since a
-          quiet gap here is unremarkable, not a broken page. Unlike every
-          other public figure on this page, this shows real selections --
-          see PublicTeaserPick's own docstring for why. */}
-      {teaserPick?.has_data && (
-        <section className="landing-section">
-          <div className="section-head">
-            <h2>This week's long shot</h2>
-            <p>
-              One combo our system drew at random from this week's priced matches, {teaserPick.combined_odds.toFixed(2)}x
-              combined -- a taste of what a redeemed account gets every day, across every match we cover.
-            </p>
-          </div>
-
-          <div className="card card-pad" style={{ maxWidth: 560, margin: "0 auto" }}>
-            {teaserPick.legs.map((leg, i) => (
-              <div
-                key={`${leg.match_id}-${leg.market}-${leg.selection}`}
-                className="match-meta-row"
-                style={{
-                  justifyContent: "space-between",
-                  padding: "10px 0",
-                  borderTop: i === 0 ? undefined : "1px solid var(--border)",
-                }}
-              >
-                <span>
-                  <span className="sub">{leg.league}</span>
-                  <br />
-                  {leg.home_team} <span className="vs-divider">vs</span> {leg.away_team}
-                  <br />
-                  <span className="sub">
-                    {leg.market}: {leg.selection}
-                  </span>
-                </span>
-                <span className="badge-neutral">{leg.decimal_odds?.toFixed(2)}</span>
-              </div>
-            ))}
-            <div
-              className="match-meta-row"
-              style={{ justifyContent: "space-between", padding: "10px 0", borderTop: "1px solid var(--border)" }}
-            >
-              <strong>Combined odds</strong>
-              <strong>{teaserPick.combined_odds.toFixed(2)}x</strong>
-            </div>
-          </div>
-
-          <div style={{ textAlign: "center", marginTop: 16 }}>
-            {teaserGenerateClicked ? (
-              <div className="state-card" style={{ maxWidth: 420, margin: "0 auto" }}>
-                <p style={{ margin: "0 0 12px" }}>
-                  Generating a code needs an account with active access -- that's the whole product, not
-                  a locked button. Sign up free, then redeem a code to generate real ones like this.
-                </p>
-                <Link className="btn btn-lg" to="/register">
-                  Create an account
-                </Link>
-              </div>
-            ) : (
-              <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
-                <button className="btn btn-lg" onClick={() => setTeaserGenerateClicked(true)}>
-                  Generate code
-                </button>
-                <Link className="btn ghost btn-lg" to="/register">
-                  Create an account
-                </Link>
-              </div>
-            )}
-          </div>
-        </section>
-      )}
 
       {/* ---------------- Model stack ---------------- */}
       <section className="landing-section">
