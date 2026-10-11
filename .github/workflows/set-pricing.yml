@@ -1,0 +1,50 @@
+# Sets the price shown to visitors and, optionally, turns on the
+# pricing-announcement email toggle -- see scripts/set_pricing.py. This
+# writes to the database directly; there's no dry-run, since the price
+# alone is a cheap, easily-reversible text change (run it again to change
+# it back), but the "enable announcement email" box is worth leaving
+# unchecked until you're ready for scripts/send-pricing-announcement-email.yml
+# to actually broadcast.
+name: Set pricing
+
+on:
+  workflow_dispatch:
+    inputs:
+      price:
+        description: 'Price label to show, e.g. "GHC 20 / week"'
+        required: true
+      enable_announcement_email:
+        description: "Type yes to also turn on the pricing-announcement email toggle."
+        required: false
+        default: "no"
+
+jobs:
+  set-pricing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Set pricing
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PRICE: ${{ inputs.price }}
+          ENABLE_EMAIL: ${{ inputs.enable_announcement_email }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret is not set."
+            exit 1
+          fi
+          ARGS=("$PRICE")
+          [ "$ENABLE_EMAIL" = "yes" ] && ARGS+=(--enable-announcement-email)
+          python scripts/set_pricing.py "${ARGS[@]}"
