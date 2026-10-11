@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchAdminPickTrackRecord, fetchPublicAccuracy, fetchPublicFixtures, fetchPublicStats } from "../api";
+import { fetchAdminPickTrackRecord, fetchBranding, fetchPublicAccuracy, fetchPublicFixtures, fetchPublicStats } from "../api";
 import { Mascot } from "../components/Mascot";
 import { PublicShell } from "../components/PublicShell";
 import { fixtureSlug } from "../lib/slug";
 import { useTilt } from "../lib/useTilt";
-import type { AdminPickTrackRecord, PublicAccuracy, PublicFixture, PublicStats } from "../types";
+import type { AdminPickTrackRecord, Branding, PublicAccuracy, PublicFixture, PublicStats } from "../types";
 
 /**
  * Public landing page.
@@ -133,6 +133,7 @@ export function Welcome() {
   const [accuracy, setAccuracy] = useState<PublicAccuracy | null>(null);
   const [pickRecord, setPickRecord] = useState<AdminPickTrackRecord | null>(null);
   const [fixtures, setFixtures] = useState<PublicFixture[]>([]);
+  const [branding, setBranding] = useState<Branding | null>(null);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const heroTilt = useTilt<HTMLDivElement>();
 
@@ -143,9 +144,21 @@ export function Welcome() {
     fetchPublicAccuracy().then(setAccuracy).catch(() => setAccuracy(null));
     fetchAdminPickTrackRecord().then(setPickRecord).catch(() => setPickRecord(null));
     fetchPublicFixtures(5, 6).then(setFixtures).catch(() => setFixtures([]));
+    fetchBranding().then(setBranding).catch(() => setBranding(null));
   }, []);
 
   const nf = new Intl.NumberFormat();
+  // "" (not set) falls back to the generic "arrange payment externally"
+  // wording every one of these already had before pricing_label existed.
+  const price = branding?.pricing_label || null;
+  const faqs = FAQS.map((f, i) =>
+    i === 0 && price
+      ? {
+          ...f,
+          a: `You can sign in immediately -- there's no approval queue. What's locked until you redeem an access code is the prediction surface itself: teams, matches, predictions and the AI assistant. Access is ${price} -- a Super Admin issues a code once you've arranged payment with them outside the platform; you enter it on the Access page and it unlocks for the code's duration.`,
+        }
+      : f
+  );
 
   return (
     <PublicShell
@@ -177,6 +190,7 @@ export function Welcome() {
           <p className="landing-cta-note">
             Sign in is instant. Predictions unlock once you redeem an access code, issued by a Super
             Admin after payment is confirmed outside the platform -- there's no card form here.
+            {price && <> Access is <strong>{price}</strong>.</>}
           </p>
         </div>
 
@@ -455,7 +469,10 @@ export function Welcome() {
       <section className="landing-section access-section">
         <div className="section-head">
           <h2>Getting access</h2>
-          <p>No payment form lives on this platform -- that happens between you and a Super Admin.</p>
+          <p>
+            No payment form lives on this platform -- that happens between you and a Super Admin.
+            {price && <> Access is <strong>{price}</strong>.</>}
+          </p>
         </div>
         <div className="access-steps">
           <div className="access-step">
@@ -464,6 +481,7 @@ export function Welcome() {
             <p>
               Pay through whatever business channel the administrator uses -- mobile money, bank
               transfer, cash. Nothing here processes a card or takes a payment.
+              {price && <> Current price: <strong>{price}</strong>.</>}
             </p>
           </div>
           <div className="access-step">
@@ -502,7 +520,7 @@ export function Welcome() {
           <h2>Straight answers</h2>
         </div>
         <div className="faq-list">
-          {FAQS.map((f, i) => (
+          {faqs.map((f, i) => (
             <div key={f.q} className={`faq-item${openFaq === i ? " open" : ""}`}>
               <button
                 className="faq-question"

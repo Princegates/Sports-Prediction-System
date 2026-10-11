@@ -43,6 +43,7 @@ export function Register() {
   }, []);
 
   const whatsapp = branding?.contact_whatsapp || null;
+  const price = branding?.pricing_label || null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -120,6 +121,7 @@ export function Register() {
                 <li>Sign in right away -- there's no approval queue to wait on.</li>
                 <li>
                   When your trial ends, arrange payment with a Super Admin outside the platform
+                  {price && <> -- access is <strong>{price}</strong></>}
                   {whatsapp ? (
                     <>
                       {" "}
@@ -159,6 +161,7 @@ export function Register() {
         <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 0, marginBottom: 20 }}>
           Sign in right after creating your account. Predictions unlock once you redeem an access code, which
           a Super Admin issues after confirming payment outside the platform.
+          {price && <> Access is <strong>{price}</strong>.</>}
         </p>
 
         <form onSubmit={handleSubmit} className="auth-form">

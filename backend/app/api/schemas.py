@@ -505,6 +505,9 @@ class BrandingOut(BaseModel):
     default_accent: str
     registration_open: bool
     contact_whatsapp: str
+    # "" means no price is set -- every consumer falls back to the generic
+    # "arrange payment externally" wording with no amount in that case.
+    pricing_label: str
     # Which Markets page coupon tab (match_result/double_chance/btts/
     # draw_no_bet/other) opens by default -- see app_settings.py.
     default_market_tab: str

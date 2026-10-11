@@ -494,6 +494,9 @@ export interface Branding {
   default_accent: string;
   registration_open: boolean;
   contact_whatsapp: string;
+  // "" means no price is set -- every consumer falls back to the generic
+  // "arrange payment externally" wording with no amount in that case.
+  pricing_label: string;
   default_market_tab: string;
   referral_enabled: boolean;
   referral_bonus_days: number;

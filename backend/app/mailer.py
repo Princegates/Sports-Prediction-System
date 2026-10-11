@@ -254,6 +254,31 @@ def access_reminder_message(site_url: str | None = None, whatsapp: str | None = 
     return "Unlock full AI Picks", body
 
 
+def pricing_announcement_message(price_label: str, site_url: str | None = None, whatsapp: str | None = None) -> tuple[str, str]:
+    """Subject and body announcing the current price -- sent to every active
+    account, not just ones without access, since someone already subscribed
+    still wants to know what their next code will cost. ``price_label`` is
+    shown verbatim (e.g. "GHC 20 / week"); there is still no in-app payment
+    gateway, so this names a price, not a place to pay one.
+    """
+
+    where = site_url or "the site"
+    contact = (
+        f"To get a code, message {format_whatsapp(whatsapp)} on WhatsApp -- WhatsApp only, no calls or texts.\n\n"
+        if whatsapp
+        else ""
+    )
+    body = (
+        f"Access is {price_label}.\n\n"
+        "That unlocks full AI Picks -- every Guda Pick, Admin Pick, and the weekly and "
+        "random accumulators, across every match we cover -- for the code's duration "
+        "once you redeem it.\n\n"
+        f"{contact}"
+        f"Already have a code? Sign in at {where} and enter it from Access in the menu.\n"
+    )
+    return f"Access is {price_label}", body
+
+
 def format_whatsapp(digits: str) -> str:
     """Digits-only contact number (e.g. ``233596909643``) as ``+233 59 690 9643``.
 

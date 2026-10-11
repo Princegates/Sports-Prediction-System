@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchAccountStatus } from "../api";
+import { fetchAccountStatus, fetchBranding } from "../api";
 import { Mascot } from "../components/Mascot";
 import { PublicShell } from "../components/PublicShell";
-import type { AccountStatus as Status } from "../types";
+import type { AccountStatus as Status, Branding } from "../types";
 
 /**
  * "Why can't I see predictions?" page.
@@ -27,6 +27,13 @@ export function AccountStatus() {
   const [status, setStatus] = useState<Status | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [branding, setBranding] = useState<Branding | null>(null);
+
+  useEffect(() => {
+    fetchBranding().then(setBranding).catch(() => setBranding(null));
+  }, []);
+
+  const price = branding?.pricing_label || null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -67,6 +74,7 @@ export function AccountStatus() {
                   You can already sign in -- there's no approval queue. Predictions, teams and matches stay
                   locked until you redeem an access code, which a Super Admin issues once payment is
                   confirmed outside the platform.
+                  {price && <> Access is <strong>{price}</strong>.</>}
                 </p>
               </div>
             )}

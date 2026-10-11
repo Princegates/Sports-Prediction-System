@@ -69,6 +69,7 @@ export function Access() {
   const [busy, setBusy] = useState(false);
   const [justActivated, setJustActivated] = useState<{ activated_at: string; expires_at: string } | null>(null);
   const [whatsapp, setWhatsapp] = useState<string | null>(null);
+  const [price, setPrice] = useState<string | null>(null);
   const [slow, setSlow] = useState(false);
 
   useEffect(() => {
@@ -83,7 +84,10 @@ export function Access() {
   useEffect(() => {
     refreshAccessStatus();
     fetchBranding()
-      .then((b) => setWhatsapp(b.contact_whatsapp || null))
+      .then((b) => {
+        setWhatsapp(b.contact_whatsapp || null);
+        setPrice(b.pricing_label || null);
+      })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -177,6 +181,7 @@ export function Access() {
               <p className="status-result-message">
                 Predictions, teams and matches stay locked until you redeem a code. A Super Admin issues one
                 after confirming your payment outside the platform.
+                {price && <> Access is <strong>{price}</strong>.</>}
               </p>
               {whatsapp && (
                 <div className="status-result-actions">

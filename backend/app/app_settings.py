@@ -101,6 +101,13 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 "a schedule. Off by default -- turn on only once SMTP/Resend above is actually "
                 "configured and tested, since this sends to real members, not just you.",
                 default=False),
+    SettingSpec("pricing_announcement_email_enabled", "bool", "email", "Email members about the price",
+                "Announces the current pricing_label (set above) to every active account, not just "
+                "ones without access -- for a new price or a change to it. Run on demand "
+                "(scripts/send_pricing_announcement_email.py / its GitHub Action), not on a "
+                "schedule -- this is a one-time broadcast, not a recurring nudge. Off by default, "
+                "same reasoning as every other member-facing email here.",
+                default=False),
 
     # --- Data sources ----------------------------------------------------
     SettingSpec("api_football_key", "str", "data", "API-Football key",
@@ -131,6 +138,12 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 default=8, minimum=1, maximum=15),
 
     # --- Access ----------------------------------------------------------
+    SettingSpec("pricing_label", "str", "access", "Price shown to visitors",
+                "e.g. \"GHC 20 / week\". Shown wherever payment is mentioned -- Welcome, Access, "
+                "Register, and the pricing-announcement email (Settings -> Email). Blank keeps the "
+                "generic \"arrange payment externally\" wording with no amount, same as before this "
+                "existed.",
+                default=""),
     SettingSpec("default_code_duration_days", "int", "access", "Default code duration (days)",
                 "Pre-filled when issuing a code. You can still change it per code.",
                 default=30, minimum=1, maximum=3650),
