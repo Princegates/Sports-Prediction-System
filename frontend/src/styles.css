@@ -618,6 +618,7 @@ h1, h2, h3, h4 {
 .risk-preset-card.low { border-left-color: var(--good); }
 .risk-preset-card.medium { border-left-color: var(--warning); }
 .risk-preset-card.high { border-left-color: var(--critical); }
+.risk-preset-card.random { border-left-color: var(--accent); }
 
 .risk-preset-card.active {
   background: var(--bg-surface-2);

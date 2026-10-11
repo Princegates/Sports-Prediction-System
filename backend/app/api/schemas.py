@@ -796,6 +796,23 @@ class SuggestCriteriaIn(BaseModel):
     days_ahead: int = 7
 
 
+class SuggestRandomCriteriaIn(BaseModel):
+    """What POST /api/betcodes/suggest-random searches with -- same no-price,
+    no-bookmaker reasoning as SuggestCriteriaIn, but legs are drawn in
+    random order (app.betcode.selection.select_random_legs) rather than
+    safest-first, landing on a slip somewhere between min_legs and max_legs
+    instead of one fixed count. The route clamps both to [10, 20]
+    regardless of what's sent here -- a wider range is
+    scripts/generate_random_picks.py's job, not a member-facing request."""
+
+    min_probability: float | None = None
+    min_legs: int = 10
+    max_legs: int = 20
+    markets: list[str] = []
+    leagues: list[str] = []
+    days_ahead: int = 7
+
+
 class ResolvePicksIn(BaseModel):
     picks: list[BetCodePickIn]
 

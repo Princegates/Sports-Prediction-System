@@ -581,6 +581,19 @@ export interface SuggestCriteria {
   days_ahead: number;
 }
 
+/** What POST /api/betcodes/suggest-random searches with -- min_legs/max_legs
+ * together set the leg-count range (the backend clamps both to [10, 20]
+ * regardless of what's sent), picked in random order rather than
+ * safest-first. */
+export interface SuggestRandomCriteria {
+  min_probability?: number | null;
+  min_legs?: number;
+  max_legs?: number;
+  markets?: string[];
+  leagues?: string[];
+  days_ahead?: number;
+}
+
 export interface SuggestedLeg {
   match_id: number;
   league: string;

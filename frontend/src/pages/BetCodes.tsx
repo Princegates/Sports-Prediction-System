@@ -12,6 +12,7 @@ import {
   setAdminPickFeaturedPublic,
   setAdminPickResult,
   suggestPicks,
+  suggestRandomPicks,
   updateAdminPick,
 } from "../api";
 import { CopyButton } from "../components/CopyButton";
@@ -312,6 +313,14 @@ export function BetCodes() {
     );
   }
 
+  // Not a risk preset -- a random 10-20 leg draw from the same candidate
+  // pool, in place of the form's confidence-ranked search entirely.
+  function runRandomSlip() {
+    setActiveRisk(null);
+    setFromExternalPicks(false);
+    return runPreview(() => suggestRandomPicks({ leagues: selectedLeagues, days_ahead: daysAhead }));
+  }
+
   function toggleMarket(value: string) {
     setActiveRisk(null);
     setMarkets((m) => (m.includes(value) ? m.filter((v) => v !== value) : [...m, value]));
@@ -501,9 +510,19 @@ export function BetCodes() {
               </button>
             );
           })}
+          <button
+            type="button"
+            className="risk-preset-card random"
+            onClick={runRandomSlip}
+            disabled={previewing}
+          >
+            <span className="risk-preset-label">Random slip</span>
+            <span className="risk-preset-description">10-20 legs, drawn at random -- not ranked by risk level</span>
+          </button>
         </div>
         <p className="setting-note" style={{ marginTop: 10, marginBottom: 0 }}>
-          Fills in (and runs) the fields below -- feel free to adjust anything afterward and generate again.
+          Fills in (and runs) the fields below -- feel free to adjust anything afterward and generate again. Random
+          slip generates straight away and ignores the fields below except league and date range.
         </p>
       </div>
 

@@ -6,6 +6,7 @@ import type {
   MyBookingSlip,
   PicksBooking,
   SuggestCriteria,
+  SuggestRandomCriteria,
   SuggestedPicks,
   OutcomesResponse,
   Branding,
@@ -695,6 +696,14 @@ export function fetchNotice(): Promise<SiteNotice> {
  * directly with a betting site via bookPicks. */
 export function suggestPicks(criteria: SuggestCriteria): Promise<SuggestedPicks> {
   return post("/api/betcodes/suggest", criteria);
+}
+
+/** A member's own random draw, 10-20 legs -- same real-match candidate
+ * pool as suggestPicks, picked in random order instead of safest-first.
+ * No price, no target: the result is meant to be booked directly with a
+ * betting site via bookPicks, same as suggestPicks's own result. */
+export function suggestRandomPicks(criteria: SuggestRandomCriteria = {}): Promise<SuggestedPicks> {
+  return post("/api/betcodes/suggest-random", criteria);
 }
 
 /** Checks an explicit list of picks -- no search, just "resolve exactly

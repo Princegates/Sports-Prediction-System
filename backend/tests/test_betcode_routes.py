@@ -141,6 +141,89 @@ def test_suggest_with_no_qualifying_match_explains_why(auth_headers, db_session)
     assert "clears" in body["warnings"][0].lower()
 
 
+# --- /suggest-random ------------------------------------------------------------
+
+
+@pytest.fixture()
+def many_matches(db_session):
+    """25 independent 85%-favored matches -- comfortably more than the
+    20-leg cap, so a random draw always has something to pick from
+    regardless of which ones the shuffle lands on."""
+
+    matches = []
+    for i in range(25):
+        home = Team(name=f"Home{i}", league="English Premier League", aliases=[])
+        away = Team(name=f"Away{i}", league="English Premier League", aliases=[])
+        db_session.add_all([home, away])
+        db_session.commit()
+        for t in (home, away):
+            db_session.refresh(t)
+        m = Match(
+            league="English Premier League", season="2025-26", date=BASE + dt.timedelta(days=1, hours=i),
+            home_team_id=home.id, away_team_id=away.id, status="SCHEDULED",
+        )
+        db_session.add(m)
+        db_session.commit()
+        db_session.refresh(m)
+        db_session.add(_prediction(m.id))
+        db_session.commit()
+        matches.append(m)
+    return matches
+
+
+def test_suggest_random_requires_authentication():
+    assert client.post("/api/betcodes/suggest-random", json={}).status_code == 401
+
+
+def test_suggest_random_requires_active_access(headers_no_access):
+    response = client.post("/api/betcodes/suggest-random", json={}, headers=headers_no_access)
+    assert response.status_code == 403
+
+
+def test_suggest_random_lands_between_ten_and_twenty_legs(auth_headers, many_matches):
+    response = client.post("/api/betcodes/suggest-random", json={}, headers=auth_headers)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert 10 <= len(body["legs"]) <= 20
+
+
+def test_suggest_random_returns_no_priced_fields(auth_headers, many_matches):
+    response = client.post("/api/betcodes/suggest-random", json={}, headers=auth_headers)
+    assert response.status_code == 200, response.text
+    leg = response.json()["legs"][0]
+    assert "decimal_odds" not in leg
+    assert "priced_by" not in leg
+    assert "combined_odds" not in response.json()
+
+
+def test_suggest_random_clamps_an_out_of_range_leg_count(auth_headers, many_matches):
+    response = client.post(
+        "/api/betcodes/suggest-random", json={"min_legs": 1, "max_legs": 1000}, headers=auth_headers
+    )
+    assert response.status_code == 200, response.text
+    assert 10 <= len(response.json()["legs"]) <= 20
+
+
+def test_suggest_random_with_no_qualifying_match_explains_why(auth_headers, db_session):
+    response = client.post("/api/betcodes/suggest-random", json={"min_probability": 0.99}, headers=auth_headers)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["legs"] == []
+    assert len(body["warnings"]) >= 1
+
+
+def test_suggest_random_result_can_be_booked(auth_headers, many_matches, sites):
+    suggested = client.post("/api/betcodes/suggest-random", json={}, headers=auth_headers)
+    assert suggested.status_code == 200, suggested.text
+    picks = [{"match_id": leg["match_id"], "market": leg["market"], "selection": leg["selection"]} for leg in suggested.json()["legs"]]
+
+    response = client.post(
+        "/api/betcodes/picks", json={"picks": picks, "sites": ["sportybet_gh"]}, headers=auth_headers
+    )
+    assert response.status_code == 200, response.text
+    assert len(response.json()["legs"]) == len(picks)
+
+
 # --- /resolve -------------------------------------------------------------------
 
 

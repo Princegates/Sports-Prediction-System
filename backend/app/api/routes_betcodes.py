@@ -30,15 +30,28 @@ from app.api.schemas import (
     SiteCodeOut,
     SuggestCriteriaIn,
     SuggestedPicksOut,
+    SuggestRandomCriteriaIn,
 )
 from app.betcode import sites as betting_sites
-from app.betcode.selection import ConfidencePick, Leg, resolve_legs_unpriced, select_legs_by_confidence
+from app.betcode.selection import (
+    ConfidencePick,
+    Leg,
+    resolve_legs_unpriced,
+    select_legs_by_confidence,
+    select_random_legs,
+)
 from app.db.models import AuditLog, BookingSlip, User
 from app.pick_settlement import frozen_booking_slip_legs, settle_booking_slip
 
 router = APIRouter(
     prefix="/api/betcodes", tags=["betcodes"], dependencies=[Depends(require_active_access)]
 )
+
+# A member's own random draw is bounded tighter than the admin-only
+# scripts/generate_random_picks.py range (10-15) -- 10-20 legs, matching
+# what the product asks for here specifically.
+MIN_RANDOM_LEGS = 10
+MAX_RANDOM_LEGS = 20
 
 
 def _picked_legs_to_out(legs: list[Leg]) -> list[PickedLegOut]:
@@ -65,6 +78,33 @@ def suggest(payload: SuggestCriteriaIn, db: Session = Depends(get_db)) -> Sugges
         db,
         min_probability=payload.min_probability if payload.min_probability is not None else 0.65,
         max_legs=payload.max_legs if payload.max_legs is not None else 8,
+        markets=tuple(payload.markets),
+        leagues=tuple(payload.leagues),
+        days_ahead=payload.days_ahead,
+    )
+    return SuggestedPicksOut(
+        legs=_picked_legs_to_out(pick.legs),
+        combined_probability=pick.combined_probability,
+        candidates_considered=pick.candidates_considered,
+        warnings=pick.warnings,
+    )
+
+
+@router.post("/suggest-random", response_model=SuggestedPicksOut)
+def suggest_random(payload: SuggestRandomCriteriaIn, db: Session = Depends(get_db)) -> SuggestedPicksOut:
+    """A member's own random draw -- the same real-match candidate pool
+    /suggest searches (the accuracy floor, one leg per match), picked in
+    random order instead of safest-first, landing on a slip somewhere
+    between min_legs and max_legs rather than one fixed count. Same preview
+    contract as /suggest: book the result with POST /picks."""
+
+    min_legs = max(MIN_RANDOM_LEGS, min(payload.min_legs, MAX_RANDOM_LEGS))
+    max_legs = max(min_legs, min(payload.max_legs, MAX_RANDOM_LEGS))
+    pick: ConfidencePick = select_random_legs(
+        db,
+        min_probability=payload.min_probability if payload.min_probability is not None else 0.60,
+        min_legs=min_legs,
+        max_legs=max_legs,
         markets=tuple(payload.markets),
         leagues=tuple(payload.leagues),
         days_ahead=payload.days_ahead,
