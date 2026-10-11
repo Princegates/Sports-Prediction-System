@@ -34,7 +34,7 @@ from sqlalchemy.orm import Session
 from app.betcode.selection import select_random_legs
 from app.db.models import AdminPick
 
-COUNT = 5
+COUNT = 1
 MIN_LEGS = 10
 MAX_LEGS = 15
 MIN_PROBABILITY = 0.60
@@ -100,7 +100,9 @@ def generate_cadence(db: Session, cadence: str, *, dry_run: bool = False) -> lis
 
         pick.legs = [{"match_id": leg.match_id, "market": leg.market, "selection": leg.selection} for leg in result.legs]
         pick.priced = False
-        pick.label = f"{label} #{n}"
+        # No "#n" suffix when there's only one -- "#1" of one reads like a
+        # typo, not a count.
+        pick.label = label if COUNT == 1 else f"{label} #{n}"
         pick.note = _note(cadence)
         # The legs just changed, so any code an admin pasted onto the
         # previous draw no longer matches this one.
@@ -108,5 +110,21 @@ def generate_cadence(db: Session, cadence: str, *, dry_run: bool = False) -> lis
         pick.booking_code_bookmaker = None
         pick.created_by_user_id = None
         pick.expires_at = max(leg.kickoff for leg in result.legs) + dt.timedelta(days=2)
+
+    if not dry_run:
+        # A lower COUNT than a previous deploy's (e.g. the 5->1 cut this
+        # comment was added for) leaves rows 2..old-COUNT behind forever
+        # otherwise -- stale draws nobody can reach by regenerating, but
+        # still rendered by RandomPicksSection since it reads every row
+        # matching the prefix, not just the first COUNT of them.
+        prefix = f"{SOURCE_PREFIX}{cadence}_"
+        existing = db.execute(select(AdminPick).where(AdminPick.source.startswith(prefix))).scalars().all()
+        for pick in existing:
+            try:
+                n = int(pick.source[len(prefix):])
+            except ValueError:
+                continue
+            if n > COUNT:
+                db.delete(pick)
 
     return lines

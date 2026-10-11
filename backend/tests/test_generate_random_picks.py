@@ -66,7 +66,7 @@ def _favorite_matches(db_session, count: int = 20) -> list[Match]:
     return matches
 
 
-def test_generates_five_slips_for_each_requested_cadence(db_session, script):
+def test_generates_one_slip_for_each_requested_cadence(db_session, script):
     _favorite_matches(db_session)
 
     sys.argv = ["generate_random_picks.py", "--which", "both"]
@@ -74,12 +74,16 @@ def test_generates_five_slips_for_each_requested_cadence(db_session, script):
 
     db_session.expire_all()
     picks = {p.source: p for p in db_session.query(AdminPick).all()}
-    expected_sources = {f"system_random_{cadence}_{n}" for cadence in ("daily", "weekly") for n in range(1, 6)}
+    expected_sources = {"system_random_daily_1", "system_random_weekly_1"}
     assert set(picks) == expected_sources
     for pick in picks.values():
         assert 10 <= len(pick.legs) <= 15
         assert pick.priced is False
         assert pick.booking_code is None
+    # No "#1" suffix when there's only one -- see random_picks.py's own
+    # COUNT == 1 special case.
+    assert picks["system_random_daily_1"].label == "Random Daily Pick"
+    assert picks["system_random_weekly_1"].label == "Random Weekly Pick"
 
 
 def test_which_daily_only_touches_daily_rows(db_session, script):
@@ -90,8 +94,7 @@ def test_which_daily_only_touches_daily_rows(db_session, script):
 
     db_session.expire_all()
     sources = {p.source for p in db_session.query(AdminPick).all()}
-    assert all(s.startswith("system_random_daily_") for s in sources)
-    assert len(sources) == 5
+    assert sources == {"system_random_daily_1"}
 
 
 def test_rerun_replaces_the_same_rows_rather_than_duplicating(db_session, script):
@@ -105,9 +108,30 @@ def test_rerun_replaces_the_same_rows_rather_than_duplicating(db_session, script
     script.main()
     db_session.expire_all()
     rows = db_session.query(AdminPick).all()
-    assert len(rows) == 5
+    assert len(rows) == 1
     for row in rows:
         assert row.id == first_ids[row.source]
+
+
+def test_regeneration_removes_stale_rows_left_by_a_previous_higher_count(db_session, script):
+    """COUNT used to be 5 -- a deployment that generated under that count
+    left system_random_daily_2..5 behind. A later run (COUNT == 1 now)
+    should clean those up rather than leaving them forever rendered."""
+
+    _favorite_matches(db_session)
+    for n in (2, 3, 4, 5):
+        db_session.add(AdminPick(
+            source=f"system_random_daily_{n}", legs=[], priced=False, label=f"Random Daily Pick #{n}",
+            expires_at=dt.datetime.utcnow() + dt.timedelta(days=2),
+        ))
+    db_session.commit()
+
+    sys.argv = ["generate_random_picks.py", "--which", "daily"]
+    script.main()
+
+    db_session.expire_all()
+    sources = {p.source for p in db_session.query(AdminPick).all()}
+    assert sources == {"system_random_daily_1"}
 
 
 def test_regeneration_clears_a_stale_booking_code(db_session, script):

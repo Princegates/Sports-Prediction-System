@@ -52,14 +52,14 @@ def _favorite_matches(db_session, count: int = 20) -> None:
     db_session.commit()
 
 
-def test_one_run_writes_and_commits_five_daily_slips(db_session):
+def test_one_run_writes_and_commits_one_daily_slip(db_session):
     _favorite_matches(db_session)
 
     _run_random_daily_picks_once()
 
     db_session.expire_all()
     sources = {p.source for p in db_session.query(AdminPick).all()}
-    assert sources == {f"system_random_daily_{n}" for n in range(1, 6)}
+    assert sources == {"system_random_daily_1"}
 
 
 def test_it_never_touches_the_weekly_cadence(db_session):
