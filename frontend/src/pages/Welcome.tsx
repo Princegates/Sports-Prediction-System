@@ -143,6 +143,10 @@ export function Welcome() {
   const [fixtures, setFixtures] = useState<PublicFixture[]>([]);
   const [branding, setBranding] = useState<Branding | null>(null);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
+  // "Generate code" on the public teaser pick is a deliberate dead end --
+  // there's no account to generate one for yet, so clicking it reveals the
+  // sign-up prompt in place rather than silently doing nothing.
+  const [teaserGenerateClicked, setTeaserGenerateClicked] = useState(false);
   const heroTilt = useTilt<HTMLDivElement>();
 
   useEffect(() => {
@@ -450,9 +454,26 @@ export function Welcome() {
           </div>
 
           <div style={{ textAlign: "center", marginTop: 16 }}>
-            <Link className="btn btn-lg" to="/register">
-              Create an account to get picks like this
-            </Link>
+            {teaserGenerateClicked ? (
+              <div className="state-card" style={{ maxWidth: 420, margin: "0 auto" }}>
+                <p style={{ margin: "0 0 12px" }}>
+                  Generating a code needs an account with active access -- that's the whole product, not
+                  a locked button. Sign up free, then redeem a code to generate real ones like this.
+                </p>
+                <Link className="btn btn-lg" to="/register">
+                  Create an account
+                </Link>
+              </div>
+            ) : (
+              <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+                <button className="btn btn-lg" onClick={() => setTeaserGenerateClicked(true)}>
+                  Generate code
+                </button>
+                <Link className="btn ghost btn-lg" to="/register">
+                  Create an account
+                </Link>
+              </div>
+            )}
           </div>
         </section>
       )}
