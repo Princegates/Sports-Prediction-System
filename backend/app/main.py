@@ -28,6 +28,7 @@ from app.db.migrate import init_db
 from app.db.models import Match
 from app.db.session import SessionLocal, engine
 from app.prediction_service import build_prediction_for_match
+from app.random_picks import generate_cadence
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +128,38 @@ async def _lineup_check_loop() -> None:
             logger.exception("Lineup check loop hit an unexpected error")
         await asyncio.sleep(LINEUP_CHECK_INTERVAL_SECONDS)
 
+
+# "Random Daily Picks" means reshuffled daily, but GitHub Actions' scheduled
+# refresh-predictions.yml (06:00 UTC) has been landing 6-8 hours late every
+# single day in production -- a platform-level scheduling limit, the same
+# one LIVE_SYNC_INTERVAL_SECONDS's own comment already describes for a
+# 5-minute cron, not a bug in the draw itself. Unlike the live-score/lineup
+# loops above, this draw makes no external HTTP call -- only predictions
+# already in the database -- which is what makes running it here, decoupled
+# from GitHub's scheduler entirely, cheap enough to do at all. The weekly
+# cadence stays tied to the weekly retrain (new models, once a week) rather
+# than joining this loop.
+RANDOM_PICKS_INTERVAL_SECONDS = 6 * 3600.0
+
+
+def _run_random_daily_picks_once() -> None:
+    db = SessionLocal()
+    try:
+        for line in generate_cadence(db, "daily"):
+            logger.info("Random daily picks: %s", line)
+        db.commit()
+    finally:
+        db.close()
+
+
+async def _random_picks_loop() -> None:
+    while True:
+        try:
+            await asyncio.to_thread(_run_random_daily_picks_once)
+        except Exception:  # noqa: BLE001 -- one bad draw must not kill the loop
+            logger.exception("Random daily picks loop hit an unexpected error")
+        await asyncio.sleep(RANDOM_PICKS_INTERVAL_SECONDS)
+
 # Schema state, reported by /api/health.
 _DB_LOCK = threading.Lock()
 _DB_STATE: dict = {"ready": False, "error": None, "last_attempt": 0.0}
@@ -192,7 +225,11 @@ if settings.secret_key_is_default:
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
-    tasks = [asyncio.create_task(_live_sync_loop()), asyncio.create_task(_lineup_check_loop())]
+    tasks = [
+        asyncio.create_task(_live_sync_loop()),
+        asyncio.create_task(_lineup_check_loop()),
+        asyncio.create_task(_random_picks_loop()),
+    ]
     try:
         yield
     finally:
