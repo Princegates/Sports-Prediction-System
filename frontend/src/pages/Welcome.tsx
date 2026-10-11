@@ -1,11 +1,18 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchAdminPickTrackRecord, fetchBranding, fetchPublicAccuracy, fetchPublicFixtures, fetchPublicStats } from "../api";
+import {
+  fetchAdminPickTrackRecord,
+  fetchBranding,
+  fetchPublicAccuracy,
+  fetchPublicFixtures,
+  fetchPublicStats,
+  fetchPublicTeaserPick,
+} from "../api";
 import { Mascot } from "../components/Mascot";
 import { PublicShell } from "../components/PublicShell";
 import { fixtureSlug } from "../lib/slug";
 import { useTilt } from "../lib/useTilt";
-import type { AdminPickTrackRecord, Branding, PublicAccuracy, PublicFixture, PublicStats } from "../types";
+import type { AdminPickTrackRecord, Branding, PublicAccuracy, PublicFixture, PublicStats, PublicTeaserPick } from "../types";
 
 /**
  * Public landing page.
@@ -132,6 +139,7 @@ export function Welcome() {
   const [stats, setStats] = useState<PublicStats | null>(null);
   const [accuracy, setAccuracy] = useState<PublicAccuracy | null>(null);
   const [pickRecord, setPickRecord] = useState<AdminPickTrackRecord | null>(null);
+  const [teaserPick, setTeaserPick] = useState<PublicTeaserPick | null>(null);
   const [fixtures, setFixtures] = useState<PublicFixture[]>([]);
   const [branding, setBranding] = useState<Branding | null>(null);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
@@ -143,6 +151,7 @@ export function Welcome() {
     fetchPublicStats().then(setStats).catch(() => setStats(null));
     fetchPublicAccuracy().then(setAccuracy).catch(() => setAccuracy(null));
     fetchAdminPickTrackRecord().then(setPickRecord).catch(() => setPickRecord(null));
+    fetchPublicTeaserPick().then(setTeaserPick).catch(() => setTeaserPick(null));
     fetchPublicFixtures(5, 6).then(setFixtures).catch(() => setFixtures([]));
     fetchBranding().then(setBranding).catch(() => setBranding(null));
   }, []);
@@ -391,6 +400,62 @@ export function Welcome() {
           </div>
         )}
       </section>
+
+      {/* ---------------- Public teaser pick ----------------
+          Renders nothing when there's no teaser set -- same "no empty
+          state" rule the Dashboard's own GudaPicksSection follows, since a
+          quiet gap here is unremarkable, not a broken page. Unlike every
+          other public figure on this page, this shows real selections --
+          see PublicTeaserPick's own docstring for why. */}
+      {teaserPick?.has_data && (
+        <section className="landing-section">
+          <div className="section-head">
+            <h2>This week's long shot</h2>
+            <p>
+              One combo our system drew at random from this week's priced matches, {teaserPick.combined_odds.toFixed(2)}x
+              combined -- a taste of what a redeemed account gets every day, across every match we cover.
+            </p>
+          </div>
+
+          <div className="card card-pad" style={{ maxWidth: 560, margin: "0 auto" }}>
+            {teaserPick.legs.map((leg, i) => (
+              <div
+                key={`${leg.match_id}-${leg.market}-${leg.selection}`}
+                className="match-meta-row"
+                style={{
+                  justifyContent: "space-between",
+                  padding: "10px 0",
+                  borderTop: i === 0 ? undefined : "1px solid var(--border)",
+                }}
+              >
+                <span>
+                  <span className="sub">{leg.league}</span>
+                  <br />
+                  {leg.home_team} <span className="vs-divider">vs</span> {leg.away_team}
+                  <br />
+                  <span className="sub">
+                    {leg.market}: {leg.selection}
+                  </span>
+                </span>
+                <span className="badge-neutral">{leg.decimal_odds?.toFixed(2)}</span>
+              </div>
+            ))}
+            <div
+              className="match-meta-row"
+              style={{ justifyContent: "space-between", padding: "10px 0", borderTop: "1px solid var(--border)" }}
+            >
+              <strong>Combined odds</strong>
+              <strong>{teaserPick.combined_odds.toFixed(2)}x</strong>
+            </div>
+          </div>
+
+          <div style={{ textAlign: "center", marginTop: 16 }}>
+            <Link className="btn btn-lg" to="/register">
+              Create an account to get picks like this
+            </Link>
+          </div>
+        </section>
+      )}
 
       {/* ---------------- Model stack ---------------- */}
       <section className="landing-section">

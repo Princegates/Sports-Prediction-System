@@ -17,6 +17,7 @@ from app.api.schemas import (
     MatchHistoryOut,
     MatchOut,
     PredictionOut,
+    PublicTeaserPickOut,
     TeamOut,
     UserOut,
 )
@@ -265,4 +266,46 @@ def admin_pick_to_schema(
         locked=locked,
         leg_count=len(legs),
         featured_public=pick.featured_public,
+    )
+
+
+def public_teaser_pick_to_schema(pick: AdminPick | None, legs: list[Leg]) -> PublicTeaserPickOut:
+    """``pick`` is None, or ``legs`` is shorter than ``pick.legs`` (one
+    stopped resolving), when the teaser has gone stale -- has_data=False
+    either way, same "drops out entirely" rule as admin_pick_to_schema's
+    own locked/live resolution, just with nothing to fall back to showing
+    since this is never settled."""
+
+    if pick is None or len(legs) != len(pick.legs):
+        return PublicTeaserPickOut(has_data=False)
+
+    combined_odds = 1.0
+    combined_probability = 1.0
+    for leg in legs:
+        assert leg.decimal_odds is not None  # always priced -- see randomize_public_teaser_pick
+        combined_odds *= leg.decimal_odds
+        combined_probability *= leg.model_probability
+
+    return PublicTeaserPickOut(
+        has_data=True,
+        legs=[
+            AdminPickLegOut(
+                match_id=leg.match_id,
+                league=leg.league,
+                home_team=leg.home_team,
+                away_team=leg.away_team,
+                kickoff=leg.kickoff,
+                market=leg.market,
+                selection=leg.selection,
+                probability=leg.model_probability,
+                decimal_odds=leg.decimal_odds,
+                priced_by=leg.priced_by,
+                result=None,
+            )
+            for leg in legs
+        ],
+        combined_odds=combined_odds,
+        combined_probability=combined_probability,
+        label=pick.label,
+        created_at=pick.created_at,
     )

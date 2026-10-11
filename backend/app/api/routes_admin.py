@@ -33,11 +33,14 @@ from app.api.schemas import (
     FeaturePickIn,
     FeaturePickUpdateIn,
     MatchOut,
+    PublicTeaserPickOut,
+    PublicTeaserRandomizeIn,
     RevokeCodeIn,
     RevokeGrantIn,
 )
+from app.api.routes_public import resolve_public_teaser_pick
 from app.api.serializers import access_code_to_schema, admin_pick_to_schema, admin_user_to_schema, featured_pick_to_schema, match_to_schema
-from app.betcode.selection import price_legs, resolve_legs_unpriced
+from app.betcode.selection import SlipCriteria, price_legs, resolve_legs_unpriced, select_random_priced_legs
 from app.config import get_settings
 from app import mailer
 from app.db.models import AccessCode, AccessGrant, AdminPick, AuditLog, ChatMessage, FeaturedPick, LivePrediction, Match, Prediction, User
@@ -834,9 +837,13 @@ def list_admin_picks(db: Session = Depends(get_db)) -> list[AdminPickOut]:
     """Every currently-featured slip, including ones near expiry and every
     settled one regardless of expiry -- for the admin management view.
     Skips a still-pending one that no longer fully resolves rather than
-    erroring the whole list."""
+    erroring the whole list. Excludes the public teaser pick (if one is
+    set) -- that's a different audience, managed from its own
+    public-teaser-pick endpoints instead."""
 
-    picks = db.execute(select(AdminPick).order_by(AdminPick.created_at.desc())).scalars().all()
+    picks = db.execute(
+        select(AdminPick).where(AdminPick.public_teaser.is_(False)).order_by(AdminPick.created_at.desc())
+    ).scalars().all()
     out: list[AdminPickOut] = []
     for pick in picks:
         resolved = _resolve_admin_pick(db, pick)
@@ -922,3 +929,81 @@ def delete_admin_pick(
     _record(db, admin, "admin_pick.removed", detail={"admin_pick_id": pick_id, "legs": len(pick.legs)})
     db.delete(pick)
     db.commit()
+
+
+# --- Public teaser pick ----------------------------------------------------
+#
+# The one combo shown with real selections on the public, unauthenticated
+# Welcome page -- see AdminPick.public_teaser / PublicTeaserPickOut for why
+# this is a deliberate exception to "selections stay behind the login".
+
+
+@router.get("/public-teaser-pick", response_model=PublicTeaserPickOut)
+def get_public_teaser_pick(db: Session = Depends(get_db)) -> PublicTeaserPickOut:
+    """Admin preview of exactly what the public Welcome page is currently
+    showing -- same live resolution as the public endpoint itself."""
+
+    return resolve_public_teaser_pick(db)
+
+
+@router.post("/public-teaser-pick/randomize", response_model=PublicTeaserPickOut)
+def randomize_public_teaser_pick(
+    payload: PublicTeaserRandomizeIn,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> PublicTeaserPickOut:
+    """Draws a fresh random combo from upcoming, real-priced matches
+    (select_random_priced_legs -- one leg per match, real prices only,
+    shuffled rather than safest-first) until ``payload.min_odds`` combined
+    odds is reached, replacing whatever teaser was showing before. Rejected
+    if there isn't enough priced, upcoming inventory to reach the target
+    right now -- never falls back to a weaker combo silently."""
+
+    if payload.min_odds <= 1.0:
+        raise HTTPException(status_code=400, detail="min_odds must be greater than 1.0.")
+
+    result = select_random_priced_legs(db, SlipCriteria(bookmaker="", target_odds=payload.min_odds))
+    if not result.met_target:
+        detail = result.warnings[0] if result.warnings else "Not enough upcoming priced matches right now."
+        raise HTTPException(status_code=400, detail=detail)
+
+    db.execute(delete(AdminPick).where(AdminPick.public_teaser.is_(True)))
+
+    pick = AdminPick(
+        legs=[
+            {
+                "match_id": leg.match_id,
+                "market": leg.market,
+                "selection": leg.selection,
+                "probability_at_pick": leg.model_probability,
+                "decimal_odds_at_pick": leg.decimal_odds,
+            }
+            for leg in result.legs
+        ],
+        priced=True,
+        label="Public teaser pick",
+        created_by_user_id=admin.id,
+        public_teaser=True,
+        # The first leg's kickoff, not +2 days like a regular AdminPick --
+        # this is never meant to show a settled result past that point, see
+        # AdminPick.public_teaser.
+        expires_at=result.expires_at,
+    )
+    db.add(pick)
+    _record(db, admin, "public_teaser_pick.randomized", detail={"legs": len(result.legs), "combined_odds": result.combined_odds})
+    db.commit()
+
+    return resolve_public_teaser_pick(db)
+
+
+@router.delete("/public-teaser-pick", status_code=204)
+def clear_public_teaser_pick(
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> None:
+    """Removes whatever teaser is currently showing, without replacing it."""
+
+    result = db.execute(delete(AdminPick).where(AdminPick.public_teaser.is_(True)))
+    if result.rowcount:
+        _record(db, admin, "public_teaser_pick.cleared", detail={"removed": result.rowcount})
+        db.commit()

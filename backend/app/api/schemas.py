@@ -891,3 +891,29 @@ class AdminPickTrackRecordOut(BaseModel):
     lost: int = 0
     unresolved: int = 0
     hit_rate: float = 0.0  # won / (won + lost); unresolved excluded
+
+
+class PublicTeaserPickOut(BaseModel):
+    """The one showcase combo shown on the public, unauthenticated Welcome
+    page -- unlike every other pick type in this file, its legs (team names,
+    market, selection) are shown to everyone, logged in or not: a deliberate
+    marketing exception to this platform's usual "selections stay behind the
+    login" rule (see AdminPickTrackRecordOut above, which is the rule).
+    has_data=False when no admin has set one, or the one that was set has
+    gone stale -- a leg's match has kicked off or stopped resolving, same
+    "drops out entirely" rule AdminPick's own docstring describes. Legs are
+    always re-priced live, never settled; see AdminPick.public_teaser."""
+
+    has_data: bool
+    legs: list[AdminPickLegOut] = []
+    combined_odds: float = 0.0
+    combined_probability: float = 0.0
+    label: str | None = None
+    created_at: dt.datetime | None = None
+
+
+class PublicTeaserRandomizeIn(BaseModel):
+    """Target combined odds for a freshly-drawn random public teaser pick --
+    see app.betcode.selection.select_random_priced_legs."""
+
+    min_odds: float = 5.0

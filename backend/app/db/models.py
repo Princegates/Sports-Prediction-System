@@ -631,6 +631,18 @@ class AdminPick(Base):
     expires_at: Mapped[dt.datetime] = mapped_column(DateTime, index=True)
     # Same curation flag as FeaturedPick.featured_public -- see there.
     featured_public: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    # True for the one showcase combo shown on the public, unauthenticated
+    # Welcome page (routes_public's public_teaser_pick) -- unlike every
+    # other pick here, its match/market/selection are shown to everyone,
+    # a deliberate marketing exception to this platform's usual "selections
+    # stay behind the login" rule. At most one row has this set at a time
+    # (routes_admin.randomize_public_teaser_pick deletes any existing one
+    # before creating the next); always built from upcoming, unsettled
+    # matches, so its legs are always re-priced live, never settled -- a
+    # teaser showing a result isn't the point. Excluded from both the
+    # Dashboard's Admin Picks listing and the admin's own "currently
+    # featured" management list, which are both for a different audience.
+    public_teaser: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
 
 
 class ModelMetric(Base):

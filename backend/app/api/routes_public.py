@@ -9,6 +9,11 @@ So these endpoints exist, and the rule for what may live here is strict: the
 corpus size, the model's own measured accuracy, and the *shape* of an upcoming
 fixture list. No probabilities, no selections, no reasoning -- those are the
 product, and they stay behind the login.
+
+One deliberate exception: public_teaser_pick. An admin can choose to show one
+real, priced combo's actual teams/market/selection here -- a marketing
+teaser, not an accident. See its own docstring for why it's carved out of
+the rule above rather than being the rule.
 """
 
 from __future__ import annotations
@@ -29,10 +34,13 @@ from app.api.schemas import (
     PublicAccuracyOut,
     PublicFixtureOut,
     PublicStatsOut,
+    PublicTeaserPickOut,
     TrackRecordOut,
 )
 from app import app_settings
+from app.api.serializers import public_teaser_pick_to_schema
 from app.assistant import retrieval
+from app.betcode.selection import price_legs
 from app.db.models import AdminPick, FeaturedPick, Match, Prediction, User
 from app.pick_settlement import settle_admin_pick, settle_featured_pick
 
@@ -226,6 +234,40 @@ def admin_pick_track_record(db: Session = Depends(get_db)) -> AdminPickTrackReco
         unresolved=unresolved,
         hit_rate=(won / decided) if decided else 0.0,
     )
+
+
+def resolve_public_teaser_pick(db: Session) -> PublicTeaserPickOut:
+    """Shared by this public endpoint and routes_admin's own preview --
+    always re-prices every leg live from current MatchOdds/Prediction, same
+    "never a stale snapshot" rule AdminPick itself follows while pending.
+    Drops to has_data=False the moment even one leg stops resolving (a
+    price pulled, the match no longer SCHEDULED) rather than showing a
+    partial combo -- there is no frozen/settled fallback here, unlike a
+    regular AdminPick, since this is never meant to show a result."""
+
+    pick = db.execute(select(AdminPick).where(AdminPick.public_teaser.is_(True))).scalars().first()
+    if pick is None:
+        return PublicTeaserPickOut(has_data=False)
+
+    # expires_at is the earliest leg's own kickoff (see
+    # randomize_public_teaser_pick) -- once that's passed, the combo is no
+    # longer "upcoming" even if its odds/prediction rows still happen to
+    # resolve for a little while after.
+    if pick.expires_at <= dt.datetime.utcnow():
+        return PublicTeaserPickOut(has_data=False)
+
+    refs = [(leg["match_id"], leg["market"], leg["selection"]) for leg in pick.legs]
+    legs, _warnings = price_legs(db, refs)
+    return public_teaser_pick_to_schema(pick, legs)
+
+
+@router.get("/teaser-pick", response_model=PublicTeaserPickOut)
+def public_teaser_pick(db: Session = Depends(get_db)) -> PublicTeaserPickOut:
+    """The one showcase combo an admin has chosen to show -- see
+    PublicTeaserPickOut's own docstring for why this, alone among public
+    endpoints, shows real selections."""
+
+    return resolve_public_teaser_pick(db)
 
 
 @router.get("/branding", response_model=BrandingOut)

@@ -469,6 +469,9 @@ def admin_picks(user: User = Depends(get_current_user), db: Session = Depends(ge
     that slot first when it has one on offer (_has_free_guda_pick); only
     when it doesn't does the first still-pending pick here get it instead.
     One slot total across the whole AI Picks page, not one per section.
+
+    Excludes the public teaser pick (AdminPick.public_teaser), if one is
+    set -- that's for the unauthenticated Welcome page, not this Dashboard.
     """
 
     values = app_settings.all_values(db)
@@ -495,7 +498,10 @@ def admin_picks(user: User = Depends(get_current_user), db: Session = Depends(ge
     # and would then never settle at all (nothing else ever reads it).
     picks = db.execute(
         select(AdminPick)
-        .where(or_(AdminPick.result == "pending", AdminPick.expires_at > now, AdminPick.settled_at > recent_cutoff))
+        .where(
+            AdminPick.public_teaser.is_(False),
+            or_(AdminPick.result == "pending", AdminPick.expires_at > now, AdminPick.settled_at > recent_cutoff),
+        )
         .order_by(AdminPick.created_at.desc())
     ).scalars().all()
 

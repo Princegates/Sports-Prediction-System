@@ -33,6 +33,7 @@ import type {
   PublicAccuracy,
   PublicFixture,
   PublicStats,
+  PublicTeaserPick,
   SiteNotice,
   Team,
   TeamForm,
@@ -478,6 +479,33 @@ export function setAdminPickFeaturedPublic(pickId: number, featuredPublic: boole
  * AdminPickTrackRecord's own docstring for why no selections are included. */
 export function fetchAdminPickTrackRecord(): Promise<AdminPickTrackRecord> {
   return get("/api/public/admin-picks-track-record");
+}
+
+/** The one showcase combo shown with real selections on the public Welcome
+ * page -- see PublicTeaserPick's own docstring for why this, alone, shows
+ * teams/market/selection with no login required. */
+export function fetchPublicTeaserPick(): Promise<PublicTeaserPick> {
+  return get("/api/public/teaser-pick");
+}
+
+/** Superadmin only -- admin's own preview of exactly what the public
+ * endpoint above is currently showing. */
+export function fetchPublicTeaserPickAdmin(): Promise<PublicTeaserPick> {
+  return get("/api/admin/public-teaser-pick");
+}
+
+/** Superadmin only -- draws a fresh random combo from upcoming, real-priced
+ * matches until combined odds reach `minOdds`, replacing whatever teaser
+ * was showing before. Rejected (400) if there isn't enough priced,
+ * upcoming inventory to reach the target right now. */
+export function randomizePublicTeaserPick(minOdds: number = 5.0): Promise<PublicTeaserPick> {
+  return post("/api/admin/public-teaser-pick/randomize", { min_odds: minOdds });
+}
+
+/** Superadmin only -- removes whatever teaser is currently showing, without
+ * replacing it. */
+export function clearPublicTeaserPick(): Promise<void> {
+  return del("/api/admin/public-teaser-pick");
 }
 
 /** A member's own generated-code history, most recent first -- every code

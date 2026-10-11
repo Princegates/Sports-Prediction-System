@@ -409,6 +409,20 @@ export interface AdminPickTrackRecord {
   hit_rate: number;
 }
 
+/** The one showcase combo shown with real selections on the public,
+ * unauthenticated Welcome page -- a deliberate exception to "selections
+ * stay behind the login" (see AdminPickTrackRecord above, which is the
+ * rule). has_data is false when no admin has set one, or the one that was
+ * set has gone stale. See GET /api/public/teaser-pick. */
+export interface PublicTeaserPick {
+  has_data: boolean;
+  legs: AdminPickLeg[];
+  combined_odds: number;
+  combined_probability: number;
+  label: string | null;
+  created_at: string | null;
+}
+
 // --- Admin ---------------------------------------------------------------
 
 export interface AdminOverview {

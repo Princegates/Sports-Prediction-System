@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import {
+  clearPublicTeaserPick,
   createAdminPick,
   deleteAdminPick,
   fetchAdminPicksAdmin,
+  fetchPublicTeaserPickAdmin,
   bookPicks,
+  randomizePublicTeaserPick,
   resolvePicks,
   setAdminPickFeaturedPublic,
   setAdminPickResult,
@@ -20,7 +23,7 @@ import { StickySlipBar } from "../components/StickySlipBar";
 import { LEAGUES, useLeague } from "../components/AppShell";
 import { useAuth } from "../lib/AuthContext";
 import { useIsMobile } from "../lib/useIsMobile";
-import type { AdminPick, BetCodePick, SuggestCriteria, SuggestedLeg, SuggestedPicks } from "../types";
+import type { AdminPick, BetCodePick, PublicTeaserPick, SuggestCriteria, SuggestedLeg, SuggestedPicks } from "../types";
 
 /** Plain-text description of one selected combo, meant to be pasted
  * wherever the user places bets themselves. No bookmaker code, no odds
@@ -196,6 +199,12 @@ export function BetCodes() {
   // Feature/Save button does and label/note prompts pre-fill with.
   const [editingPickId, setEditingPickId] = useState<number | null>(null);
 
+  // Superadmin-only: the one showcase combo shown with real selections on
+  // the public, unauthenticated Welcome page -- see PublicTeaserPick's own
+  // docstring for why this is a deliberate exception.
+  const [teaserPick, setTeaserPick] = useState<PublicTeaserPick | null>(null);
+  const [teaserBusy, setTeaserBusy] = useState(false);
+
   function legKey(leg: { match_id: number; market: string; selection: string }): string {
     return `${leg.match_id}|${leg.market}|${leg.selection}`;
   }
@@ -209,10 +218,37 @@ export function BetCodes() {
     fetchAdminPicksAdmin()
       .then((picks) => !cancelled && setAdminPicks(picks))
       .catch(() => {});
+    fetchPublicTeaserPickAdmin()
+      .then((pick) => !cancelled && setTeaserPick(pick))
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
   }, [user?.role]);
+
+  async function handleRandomizeTeaser() {
+    setTeaserBusy(true);
+    try {
+      const updated = await randomizePublicTeaserPick(5.0);
+      setTeaserPick(updated);
+    } catch (err) {
+      window.alert(String(err instanceof Error ? err.message : err));
+    } finally {
+      setTeaserBusy(false);
+    }
+  }
+
+  async function handleClearTeaser() {
+    setTeaserBusy(true);
+    try {
+      await clearPublicTeaserPick();
+      setTeaserPick({ has_data: false, legs: [], combined_odds: 0, combined_probability: 0, label: null, created_at: null });
+    } catch (err) {
+      window.alert(String(err instanceof Error ? err.message : err));
+    } finally {
+      setTeaserBusy(false);
+    }
+  }
 
   function criteria(overrides?: Partial<SuggestCriteria>): SuggestCriteria {
     return {
@@ -908,6 +944,50 @@ export function BetCodes() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {user?.role === "superadmin" && (
+        <div className="card card-pad" style={{ marginTop: 20 }}>
+          <div className="section-header" style={{ marginBottom: 10 }}>
+            <h3 style={{ margin: 0 }}>Public teaser pick</h3>
+            <span className="meta">Shows real selections on the Welcome page -- no login required</span>
+          </div>
+
+          {teaserPick?.has_data ? (
+            <>
+              {teaserPick.legs.map((leg, i) => (
+                <div
+                  key={`${leg.match_id}-${leg.market}-${leg.selection}`}
+                  className="match-meta-row"
+                  style={{
+                    justifyContent: "space-between",
+                    padding: "6px 0",
+                    borderTop: i === 0 ? undefined : "1px solid var(--border)",
+                  }}
+                >
+                  <span className="sub">
+                    {leg.home_team} vs {leg.away_team} -- {leg.market}: {leg.selection}
+                  </span>
+                  <span className="badge-neutral">{leg.decimal_odds?.toFixed(2)}</span>
+                </div>
+              ))}
+              <p className="meta" style={{ marginTop: 8 }}>Combined odds: {teaserPick.combined_odds.toFixed(2)}x</p>
+            </>
+          ) : (
+            <p className="meta">Nothing showing right now.</p>
+          )}
+
+          <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+            <button className="btn ghost" disabled={teaserBusy} onClick={handleRandomizeTeaser}>
+              {teaserPick?.has_data ? "Draw a new one (≥5x)" : "Generate random pick (≥5x odds)"}
+            </button>
+            {teaserPick?.has_data && (
+              <button className="btn ghost" disabled={teaserBusy} onClick={handleClearTeaser}>
+                Remove
+              </button>
+            )}
+          </div>
         </div>
       )}
 

@@ -106,6 +106,9 @@ _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     # See AdminPick.featured_public / FeaturedPick.featured_public.
     ("admin_picks", "featured_public", "BOOLEAN DEFAULT FALSE"),
     ("featured_picks", "featured_public", "BOOLEAN DEFAULT FALSE"),
+    # The one showcase combo shown on the public, unauthenticated Welcome
+    # page -- see AdminPick.public_teaser.
+    ("admin_picks", "public_teaser", "BOOLEAN DEFAULT FALSE"),
 ]
 
 
