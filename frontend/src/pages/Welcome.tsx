@@ -209,39 +209,74 @@ export function Welcome() {
 
         <div className="landing-hero-visual tilt-card" {...heroTilt}>
           <Mascot pose="thinking" size={92} />
-          <div className="hero-panel">
-            <div className="hero-panel-head">
-              <span className="tag">Global Most-Likely Outcome</span>
-              <span className="confidence-tag high">HIGH</span>
-            </div>
-            <div className="hero-panel-body">
-              <div className="hero-panel-metric">
-                <span className="hero-panel-number">18</span>
-                <span>markets scored per fixture</span>
+          {pickRecord?.has_data ? (
+            <div className="hero-panel">
+              <div className="hero-panel-head">
+                <span className="tag">Featured results</span>
+                <span className="confidence-tag high">LIVE</span>
               </div>
-              <div className="hero-panel-rows">
-                <div>
-                  <span>Match result</span>
-                  <span>Elo + Poisson + GBM</span>
+              <div className="hero-panel-body">
+                <div className="hero-panel-metric">
+                  <span className="hero-panel-number">{(pickRecord.hit_rate * 100).toFixed(0)}%</span>
+                  <span>hit rate on {pickRecord.won + pickRecord.lost} decided picks</span>
                 </div>
-                <div>
-                  <span>Goals &amp; BTTS</span>
-                  <span>Full score matrix</span>
-                </div>
-                <div>
-                  <span>Correct score</span>
-                  <span>Dixon-Coles corrected</span>
-                </div>
-                <div>
-                  <span>Calibration</span>
-                  <span>Held-out fit</span>
+                <div className="hero-panel-rows">
+                  <div>
+                    <span>Won</span>
+                    <span>{pickRecord.won}</span>
+                  </div>
+                  <div>
+                    <span>Lost</span>
+                    <span>{pickRecord.lost}</span>
+                  </div>
+                  {pickRecord.unresolved > 0 && (
+                    <div>
+                      <span>Awaiting confirmation</span>
+                      <span>{pickRecord.unresolved}</span>
+                    </div>
+                  )}
                 </div>
               </div>
+              <p className="hero-panel-foot">
+                Every settled pick our team has chosen to feature, win or lose -- the same record further
+                down this page.
+              </p>
             </div>
-            <p className="hero-panel-foot">
-              Every output carries data-quality and model-agreement scores alongside the probability.
-            </p>
-          </div>
+          ) : (
+            <div className="hero-panel">
+              <div className="hero-panel-head">
+                <span className="tag">Global Most-Likely Outcome</span>
+                <span className="confidence-tag high">HIGH</span>
+              </div>
+              <div className="hero-panel-body">
+                <div className="hero-panel-metric">
+                  <span className="hero-panel-number">18</span>
+                  <span>markets scored per fixture</span>
+                </div>
+                <div className="hero-panel-rows">
+                  <div>
+                    <span>Match result</span>
+                    <span>Elo + Poisson + GBM</span>
+                  </div>
+                  <div>
+                    <span>Goals &amp; BTTS</span>
+                    <span>Full score matrix</span>
+                  </div>
+                  <div>
+                    <span>Correct score</span>
+                    <span>Dixon-Coles corrected</span>
+                  </div>
+                  <div>
+                    <span>Calibration</span>
+                    <span>Held-out fit</span>
+                  </div>
+                </div>
+              </div>
+              <p className="hero-panel-foot">
+                Every output carries data-quality and model-agreement scores alongside the probability.
+              </p>
+            </div>
+          )}
         </div>
       </section>
 
