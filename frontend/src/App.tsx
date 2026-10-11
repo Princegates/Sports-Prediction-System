@@ -16,6 +16,7 @@ import { Login } from "./pages/Login";
 import { Markets } from "./pages/Markets";
 import { MatchDetail } from "./pages/MatchDetail";
 import { Predictions } from "./pages/Predictions";
+import { Pricing } from "./pages/Pricing";
 import { Profile } from "./pages/Profile";
 import { Register } from "./pages/Register";
 import { Responsible } from "./pages/Responsible";
@@ -26,7 +27,7 @@ import { Welcome } from "./pages/Welcome";
 /**
  * Route layout is split in two:
  *
- * - `/`, `/how-it-works`, `/responsible`, `/fixtures`, `/predict/:slugId` and
+ * - `/`, `/how-it-works`, `/pricing`, `/responsible`, `/fixtures`, `/predict/:slugId` and
  *   the auth screens are public. An anonymous visitor gets a real website
  *   rather than being bounced to a login form with no explanation of what
  *   they'd be logging into -- `/fixtures` and the per-match `/predict/*`
@@ -51,6 +52,7 @@ export default function App() {
       {/* ---- Public site ---- */}
       <Route path="/" element={<Welcome />} />
       <Route path="/how-it-works" element={<HowItWorks />} />
+      <Route path="/pricing" element={<Pricing />} />
       <Route path="/fixtures" element={<Fixtures />} />
       <Route path="/predict/:slugId" element={<FixturePreview />} />
       <Route path="/responsible" element={<Responsible />} />

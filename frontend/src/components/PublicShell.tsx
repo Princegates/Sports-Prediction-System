@@ -41,6 +41,7 @@ import { usePageMeta } from "../lib/pageMeta";
 const PUBLIC_NAV = [
   { to: "/", label: "Home" },
   { to: "/how-it-works", label: "How it works" },
+  { to: "/pricing", label: "Pricing" },
   { to: "/fixtures", label: "Fixtures" },
   { to: "/responsible", label: "Responsible use" },
 ];
@@ -174,6 +175,7 @@ export function PublicShell({
           <div className="public-footer-col">
             <h4>Platform</h4>
             <Link to="/how-it-works">How it works</Link>
+            <Link to="/pricing">Pricing</Link>
             <Link to="/register">Create an account</Link>
             <Link to="/login">Redeem access code</Link>
             <Link to="/account-status">Check your access status</Link>

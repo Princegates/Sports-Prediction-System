@@ -51,7 +51,7 @@ def test_fixture_slug_is_lowercase_hyphenated_and_strips_accents(script, db_sess
 
 def test_render_sitemap_includes_every_static_page(script):
     xml = script.render_sitemap([])
-    for path in ("/", "/how-it-works", "/fixtures", "/responsible", "/register", "/login"):
+    for path in ("/", "/how-it-works", "/pricing", "/fixtures", "/responsible", "/register", "/login"):
         assert f"<loc>https://soccaintel.com{path}</loc>" in xml
 
 
