@@ -534,11 +534,19 @@ export function Welcome() {
       <section className="landing-section access-section">
         <div className="section-head">
           <h2>Getting access</h2>
-          <p>
-            No payment form lives on this platform -- that happens between you and a Super Admin.
-            {price && <> Access is <strong>{price}</strong>.</>}
-          </p>
+          <p>No payment form lives on this platform -- that happens between you and a Super Admin.</p>
         </div>
+
+        {price && (
+          <div className="accuracy-panel" style={{ maxWidth: 420, margin: "0 auto 28px", textAlign: "center" }}>
+            <span className="accuracy-number">{price}</span>
+            <span className="accuracy-caption">
+              Full access -- every Guda Pick, Admin Pick, and the weekly and random accumulators, across
+              every match we cover, for the code's duration.
+            </span>
+          </div>
+        )}
+
         <div className="access-steps">
           <div className="access-step">
             <span className="access-step-num">1</span>
