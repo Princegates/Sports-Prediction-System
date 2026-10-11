@@ -475,8 +475,10 @@ def test_a_settled_result_is_frozen_and_never_regraded(db_session, admin, upcomi
 
 
 def test_public_admin_pick_track_record_includes_featured_picks(db_session, admin, upcoming_match):
-    _feature(admin, upcoming_match.id, market="Both Teams To Score", selection="Yes")
+    created = _feature(admin, upcoming_match.id, market="Both Teams To Score", selection="Yes")
     _finish(db_session, upcoming_match, 2, 1)  # won
+    client.get("/api/predictions/guda-picks", headers=_headers(admin))  # settle it
+    _feature_public(admin, created["id"])
 
     response = client.get("/api/public/admin-picks-track-record")
     assert response.status_code == 200
@@ -486,3 +488,49 @@ def test_public_admin_pick_track_record_includes_featured_picks(db_session, admi
     assert body["won"] == 1
     assert body["hit_rate"] == 1.0
     assert "picks" not in body
+
+
+def test_public_admin_pick_track_record_excludes_a_settled_guda_pick_no_admin_featured(
+    db_session, admin, upcoming_match
+):
+    _feature(admin, upcoming_match.id, market="Both Teams To Score", selection="Yes")
+    _finish(db_session, upcoming_match, 2, 1)  # won
+    client.get("/api/predictions/guda-picks", headers=_headers(admin))  # settle it, never featured
+
+    response = client.get("/api/public/admin-picks-track-record")
+    assert response.json() == {
+        "has_data": False, "settled_count": 0, "won": 0, "lost": 0, "unresolved": 0, "hit_rate": 0.0,
+    }
+
+
+def _feature_public(admin: User, pick_id: int, featured: bool = True):
+    response = client.patch(
+        f"/api/admin/featured-picks/{pick_id}/featured-public", json={"featured_public": featured}, headers=_headers(admin)
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_admin_can_feature_a_settled_guda_pick_in_the_public_track_record(db_session, admin, upcoming_match):
+    created = _feature(admin, upcoming_match.id, market="Both Teams To Score", selection="Yes")
+    _finish(db_session, upcoming_match, 2, 1)  # won
+    client.get("/api/predictions/guda-picks", headers=_headers(admin))  # settle it
+
+    resolved = _feature_public(admin, created["id"])
+    assert resolved["featured_public"] is True
+
+    pick = db_session.get(FeaturedPick, created["id"])
+    assert pick.featured_public is True
+
+    log = db_session.query(AuditLog).filter(AuditLog.action == "featured_pick.featured_public_set").one()
+    assert log.detail == {"featured_pick_id": created["id"], "featured_public": True}
+
+
+def test_a_pending_guda_pick_cannot_be_featured(db_session, admin, upcoming_match):
+    created = _feature(admin, upcoming_match.id, market="Both Teams To Score", selection="Yes")
+    response = client.patch(
+        f"/api/admin/featured-picks/{created['id']}/featured-public",
+        json={"featured_public": True},
+        headers=_headers(admin),
+    )
+    assert response.status_code == 400

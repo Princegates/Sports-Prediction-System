@@ -529,7 +529,8 @@ class FeaturedPick(Base):
     that point the pick is shown from this frozen state instead of being
     re-resolved live (which would otherwise make it vanish the moment the
     match finishes), so a visitor can see what was picked and what actually
-    happened. Counted in the same public track record as AdminPick; see
+    happened. Eligible for the same public track record as AdminPick once an
+    admin features it there (``featured_public``, below); see
     routes_public.admin_pick_track_record.
     """
 
@@ -549,6 +550,14 @@ class FeaturedPick(Base):
     # Self-cleaning rather than relying on an admin to remember to remove it
     # -- a couple of days past kickoff, whatever it was celebrating is over.
     expires_at: Mapped[dt.datetime] = mapped_column(DateTime, index=True)
+    # An admin's explicit choice to include this settled pick in the public
+    # track record (routes_public.admin_pick_track_record) -- False for
+    # every pick by default, including a freshly settled one; can only be
+    # set True once result has left "pending" (see routes_admin's
+    # set_featured_pick_featured_public). Curated, not automatic: the
+    # public record is now whatever an admin has chosen to show, not every
+    # settled pick unconditionally.
+    featured_public: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
 
 
 class AdminPick(Base):
@@ -575,8 +584,9 @@ class AdminPick(Base):
     pick is shown from this frozen state instead of being re-resolved live
     (which would otherwise make it vanish the moment its match finishes,
     long before ``expires_at``), so a visitor can see what was picked and
-    what actually happened. This is the platform's public track record for
-    its curated picks; see routes_public.admin_pick_track_record.
+    what actually happened. Eligible for the platform's public track record
+    once an admin features it there (``featured_public``, below); see
+    routes_public.admin_pick_track_record.
     """
 
     __tablename__ = "admin_picks"
@@ -619,6 +629,8 @@ class AdminPick(Base):
     # Self-cleaning, same as FeaturedPick -- 2 days past the LATEST leg's
     # kickoff, since a combo spans several matches rather than just one.
     expires_at: Mapped[dt.datetime] = mapped_column(DateTime, index=True)
+    # Same curation flag as FeaturedPick.featured_public -- see there.
+    featured_public: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
 
 
 class ModelMetric(Base):

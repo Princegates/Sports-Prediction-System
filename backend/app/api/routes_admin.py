@@ -29,6 +29,7 @@ from app.api.schemas import (
     ExtendGrantIn,
     FeaturedPickOut,
     FeaturedPickResultIn,
+    FeaturedPublicIn,
     FeaturePickIn,
     FeaturePickUpdateIn,
     MatchOut,
@@ -616,6 +617,37 @@ def set_featured_pick_result(
     return resolved
 
 
+@router.patch("/featured-picks/{pick_id}/featured-public", response_model=FeaturedPickOut)
+def set_featured_pick_featured_public(
+    pick_id: int,
+    payload: FeaturedPublicIn,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> FeaturedPickOut:
+    """An admin's choice of which settled picks appear in the public track
+    record (routes_public.admin_pick_track_record) -- unfeaturing is always
+    allowed, but a still-pending pick has no result yet to show off, so it
+    can't be featured until it settles."""
+
+    pick = db.get(FeaturedPick, pick_id)
+    if pick is None:
+        raise HTTPException(status_code=404, detail=f"Featured pick {pick_id} not found")
+    if payload.featured_public and pick.result == "pending":
+        raise HTTPException(status_code=400, detail="Only a settled pick can be featured in the public track record.")
+
+    pick.featured_public = payload.featured_public
+    _record(
+        db, admin, "featured_pick.featured_public_set",
+        detail={"featured_pick_id": pick_id, "featured_public": payload.featured_public},
+    )
+    db.commit()
+
+    resolved = _resolve_featured_pick(db, pick)
+    if resolved is None:
+        raise HTTPException(status_code=404, detail="This pick's match no longer exists.")
+    return resolved
+
+
 @router.delete("/featured-picks/{pick_id}", status_code=204)
 def delete_featured_pick(
     pick_id: int,
@@ -843,6 +875,37 @@ def set_admin_pick_result(
         # Only reachable if an admin force-reset a finished pick to
         # "pending" and its legs no longer live-resolve -- fall back to the
         # frozen (now-stale) legs rather than erroring the response.
+        return admin_pick_to_schema(pick, frozen_admin_pick_legs(db, pick))
+    return resolved
+
+
+@router.patch("/admin-picks/{pick_id}/featured-public", response_model=AdminPickOut)
+def set_admin_pick_featured_public(
+    pick_id: int,
+    payload: FeaturedPublicIn,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> AdminPickOut:
+    """An admin's choice of which settled picks appear in the public track
+    record (routes_public.admin_pick_track_record) -- unfeaturing is always
+    allowed, but a still-pending pick has no result yet to show off, so it
+    can't be featured until it settles."""
+
+    pick = db.get(AdminPick, pick_id)
+    if pick is None:
+        raise HTTPException(status_code=404, detail=f"Admin pick {pick_id} not found")
+    if payload.featured_public and pick.result == "pending":
+        raise HTTPException(status_code=400, detail="Only a settled pick can be featured in the public track record.")
+
+    pick.featured_public = payload.featured_public
+    _record(
+        db, admin, "admin_pick.featured_public_set",
+        detail={"admin_pick_id": pick_id, "featured_public": payload.featured_public},
+    )
+    db.commit()
+
+    resolved = _resolve_admin_pick(db, pick)
+    if resolved is None:
         return admin_pick_to_schema(pick, frozen_admin_pick_legs(db, pick))
     return resolved
 

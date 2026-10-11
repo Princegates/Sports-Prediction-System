@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fetchGudaPicks, setFeaturedPickResult } from "../api";
+import { fetchGudaPicks, setFeaturedPickFeaturedPublic, setFeaturedPickResult } from "../api";
 import { useAuth } from "../lib/AuthContext";
 import { GudaPickCard } from "./GudaPickCard";
 import type { FeaturedPick } from "../types";
@@ -50,6 +50,18 @@ export function GudaPicksSection({ onLoaded }: { onLoaded?: () => void } = {}) {
     }
   }
 
+  async function handleToggleFeatured(pickId: number, featuredPublic: boolean) {
+    setBusyId(pickId);
+    try {
+      const updated = await setFeaturedPickFeaturedPublic(pickId, featuredPublic);
+      setPicks((prev) => (prev ? prev.map((p) => (p.id === pickId ? updated : p)) : prev));
+    } catch (err) {
+      window.alert(String(err instanceof Error ? err.message : err));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   if (!picks || picks.length === 0) return null;
 
   return (
@@ -64,6 +76,7 @@ export function GudaPicksSection({ onLoaded }: { onLoaded?: () => void } = {}) {
             key={pick.id}
             pick={pick}
             onSetResult={user?.role === "superadmin" ? handleSetResult : undefined}
+            onToggleFeatured={user?.role === "superadmin" ? handleToggleFeatured : undefined}
             busy={busyId === pick.id}
           />
         ))}

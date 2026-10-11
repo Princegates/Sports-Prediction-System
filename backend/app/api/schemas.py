@@ -638,6 +638,9 @@ class FeaturedPickOut(BaseModel):
     # response field that decides whether the frontend may show them at all.
     # Always False for a premium viewer or superadmin.
     locked: bool = False
+    # An admin's choice to include this settled pick in the public track
+    # record -- see FeaturedPick.featured_public.
+    featured_public: bool = False
 
 
 class FeaturedPickResultIn(BaseModel):
@@ -645,6 +648,13 @@ class FeaturedPickResultIn(BaseModel):
     reasoning as AdminPickResultIn."""
 
     result: str  # pending | won | lost | unresolved
+
+
+class FeaturedPublicIn(BaseModel):
+    """Whether to include this settled pick in the public track record --
+    see AdminPick.featured_public / FeaturedPick.featured_public."""
+
+    featured_public: bool
 
 
 class AdminPickLegIn(BaseModel):
@@ -750,6 +760,9 @@ class AdminPickOut(BaseModel):
     booking_code_bookmaker: str | None
     created_at: dt.datetime
     expires_at: dt.datetime
+    # An admin's choice to include this settled pick in the public track
+    # record -- see AdminPick.featured_public.
+    featured_public: bool = False
 
 
 # --- Booking codes -----------------------------------------------------
@@ -865,12 +878,12 @@ class MyBookingSlipOut(BaseModel):
 
 
 class AdminPickTrackRecordOut(BaseModel):
-    """The platform's public, verifiable record for its curated Admin
-    Picks -- aggregate counts only, no team names, markets or selections:
-    same rule as the rest of this file (routes_public's module docstring),
-    those stay behind the login as the product. Every settled pick is
-    counted, win or lose, so there's no cherry-picking only the wins. See
-    routes_public.admin_pick_track_record."""
+    """The platform's public record for its curated Admin Picks --
+    aggregate counts only, no team names, markets or selections: same rule
+    as the rest of this file (routes_public's module docstring), those stay
+    behind the login as the product. Counts only picks an admin has chosen
+    to feature here (AdminPick.featured_public / FeaturedPick.featured_public),
+    not every settled pick. See routes_public.admin_pick_track_record."""
 
     has_data: bool
     settled_count: int = 0

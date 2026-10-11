@@ -99,6 +99,13 @@ _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     # pre-existing account keeps getting it rather than silently going
     # quiet, same reasoning as admin_picks.priced above.
     ("users", "notify_weekly_picks", "BOOLEAN DEFAULT TRUE"),
+    # An admin's explicit choice to include this settled pick in the public
+    # track record -- DEFAULT FALSE, unlike notify_weekly_picks above: every
+    # pre-existing settled pick starts unfeatured rather than instantly
+    # populating the public record with picks no admin ever chose to show.
+    # See AdminPick.featured_public / FeaturedPick.featured_public.
+    ("admin_picks", "featured_public", "BOOLEAN DEFAULT FALSE"),
+    ("featured_picks", "featured_public", "BOOLEAN DEFAULT FALSE"),
 ]
 
 

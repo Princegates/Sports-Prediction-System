@@ -394,6 +394,13 @@ export function setFeaturedPickResult(
   return patch(`/api/admin/featured-picks/${pickId}/result`, { result });
 }
 
+/** An admin's choice of which settled picks show in the public track
+ * record (fetchAdminPickTrackRecord) -- rejected while the pick is still
+ * "pending"; unfeaturing is always allowed. */
+export function setFeaturedPickFeaturedPublic(pickId: number, featuredPublic: boolean): Promise<FeaturedPick> {
+  return patch(`/api/admin/featured-picks/${pickId}/featured-public`, { featured_public: featuredPublic });
+}
+
 /** Whole multi-leg slips a Super Admin has chosen to highlight -- combined
  * odds, combined probability and risk tier are all recomputed live, same
  * "never a snapshot" reasoning as fetchGudaPicks. */
@@ -457,6 +464,13 @@ export function setAdminPickResult(
   result: "pending" | "won" | "lost" | "unresolved",
 ): Promise<AdminPick> {
   return patch(`/api/admin/admin-picks/${pickId}/result`, { result });
+}
+
+/** An admin's choice of which settled picks show in the public track
+ * record (fetchAdminPickTrackRecord) -- rejected while the pick is still
+ * "pending"; unfeaturing is always allowed. */
+export function setAdminPickFeaturedPublic(pickId: number, featuredPublic: boolean): Promise<AdminPick> {
+  return patch(`/api/admin/admin-picks/${pickId}/featured-public`, { featured_public: featuredPublic });
 }
 
 /** The platform's public, verifiable record for its curated Admin Picks --

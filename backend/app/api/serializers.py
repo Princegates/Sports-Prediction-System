@@ -190,6 +190,7 @@ def featured_pick_to_schema(pick: FeaturedPick, match: Match, probability: float
         created_at=pick.created_at,
         expires_at=pick.expires_at,
         locked=locked,
+        featured_public=pick.featured_public,
     )
 
 
@@ -263,4 +264,5 @@ def admin_pick_to_schema(
         expires_at=pick.expires_at,
         locked=locked,
         leg_count=len(legs),
+        featured_public=pick.featured_public,
     )

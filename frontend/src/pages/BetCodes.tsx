@@ -6,6 +6,7 @@ import {
   fetchAdminPicksAdmin,
   bookPicks,
   resolvePicks,
+  setAdminPickFeaturedPublic,
   setAdminPickResult,
   suggestPicks,
   updateAdminPick,
@@ -399,6 +400,18 @@ export function BetCodes() {
     setPickBusy(pickId);
     try {
       const updated = await setAdminPickResult(pickId, result);
+      setAdminPicks((prev) => prev.map((p) => (p.id === pickId ? updated : p)));
+    } catch (err) {
+      window.alert(String(err instanceof Error ? err.message : err));
+    } finally {
+      setPickBusy(null);
+    }
+  }
+
+  async function handleToggleFeaturedPublic(pickId: number, featuredPublic: boolean) {
+    setPickBusy(pickId);
+    try {
+      const updated = await setAdminPickFeaturedPublic(pickId, featuredPublic);
       setAdminPicks((prev) => prev.map((p) => (p.id === pickId ? updated : p)));
     } catch (err) {
       window.alert(String(err instanceof Error ? err.message : err));
@@ -823,6 +836,11 @@ export function BetCodes() {
                     {pick.result === "won" ? "Won" : pick.result === "lost" ? "Lost" : "Confirming result"}
                   </span>
                 )}
+                {pick.featured_public && (
+                  <span className="badge-neutral" style={{ marginLeft: 8 }}>
+                    In public track record
+                  </span>
+                )}
                 {/* pick.risk_tier is combined-probability-based (see
                     betcode.selection.risk_tier) -- correct for a hand-built
                     slip, but not for a fixed 10-leg weekly accumulator built
@@ -857,6 +875,17 @@ export function BetCodes() {
                       Mark lost
                     </button>
                   </>
+                )}
+                {pick.result !== "pending" && (
+                  <button
+                    className="btn ghost"
+                    style={{ padding: "2px 8px", fontSize: 12 }}
+                    disabled={pickBusy === pick.id}
+                    onClick={() => handleToggleFeaturedPublic(pick.id, !pick.featured_public)}
+                    title="Whether this settled pick shows in the public track record on the Welcome page."
+                  >
+                    {pick.featured_public ? "Unfeature from track record" : "Feature in track record"}
+                  </button>
                 )}
                 {!pick.priced && (
                   <button

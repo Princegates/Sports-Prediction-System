@@ -13,14 +13,18 @@ const RESULT_LABELS: Record<"won" | "lost" | "unresolved", string> = {
  * still be premium, and the card's own probability is what's being shown
  * off here, not a doorway into the full breakdown.
  *
- * ``onSetResult`` is only ever passed by GudaPicksSection for a superadmin
- * viewer, and only rendered as a control when the pick is "unresolved" --
- * the fallback for a market app.outcomes.grading can't auto-grade. */
+ * ``onSetResult`` and ``onToggleFeatured`` are only ever passed by
+ * GudaPicksSection for a superadmin viewer. onSetResult is only rendered
+ * when the pick is "unresolved" -- the fallback for a market
+ * app.outcomes.grading can't auto-grade. onToggleFeatured is only rendered
+ * once the pick has settled (won/lost/unresolved) -- the public track
+ * record only ever shows a decided pick. */
 export function GudaPickCard({
-  pick, onSetResult, busy,
+  pick, onSetResult, onToggleFeatured, busy,
 }: {
   pick: FeaturedPick;
   onSetResult?: (pickId: number, result: "won" | "lost") => void;
+  onToggleFeatured?: (pickId: number, featuredPublic: boolean) => void;
   busy?: boolean;
 }) {
   const tilt = useTilt<HTMLDivElement>();
@@ -107,6 +111,21 @@ export function GudaPickCard({
             onClick={() => onSetResult(pick.id, "lost")}
           >
             Mark lost
+          </button>
+        </div>
+      )}
+
+      {pick.result !== "pending" && onToggleFeatured && (
+        <div style={{ marginTop: 8 }}>
+          <button
+            type="button"
+            className="btn ghost"
+            style={{ padding: "2px 8px", fontSize: 12 }}
+            disabled={busy}
+            onClick={() => onToggleFeatured(pick.id, !pick.featured_public)}
+            title="Whether this settled pick shows in the public track record on the Welcome page."
+          >
+            {pick.featured_public ? "Featured in track record -- unfeature" : "Feature in track record"}
           </button>
         </div>
       )}

@@ -166,28 +166,43 @@ def public_track_record(db: Session = Depends(get_db)) -> TrackRecordOut:
 
 @router.get("/admin-picks-track-record", response_model=AdminPickTrackRecordOut)
 def admin_pick_track_record(db: Session = Depends(get_db)) -> AdminPickTrackRecordOut:
-    """How the Super Admin's own curated picks have actually done -- Admin
-    Picks (multi-leg combos) and Guda Picks (single outcomes) combined into
-    one record, since both are the same thing from a trust standpoint: a
-    human choosing to put their name behind a call. A second, independent
-    verifiable record alongside /track-record's model calls. Aggregate
+    """How the picks a Super Admin has chosen to showcase have actually
+    done -- Admin Picks (multi-leg combos) and Guda Picks (single outcomes)
+    combined into one record, since both are the same thing from a trust
+    standpoint: a human choosing to put their name behind a call. A second,
+    independent record alongside /track-record's model calls. Aggregate
     counts only: which teams, markets and selections were picked stays
     behind the login, same as everywhere else on this router. Each pick
-    type is counted only while its own enabled setting is on."""
+    type is counted only while its own enabled setting is on, and only for
+    picks an admin has featured here (AdminPick.featured_public /
+    FeaturedPick.featured_public) -- see routes_admin's
+    set_admin_pick_featured_public / set_featured_pick_featured_public."""
 
     values = app_settings.all_values(db)
     settled: list[AdminPick | FeaturedPick] = []
 
     if values.get("admin_picks_enabled", True):
-        settled.extend(db.execute(select(AdminPick).where(AdminPick.result != "pending")).scalars().all())
-        pending = db.execute(select(AdminPick).where(AdminPick.result == "pending")).scalars().all()
+        settled.extend(
+            db.execute(
+                select(AdminPick).where(AdminPick.result != "pending", AdminPick.featured_public.is_(True))
+            ).scalars().all()
+        )
+        pending = db.execute(
+            select(AdminPick).where(AdminPick.result == "pending", AdminPick.featured_public.is_(True))
+        ).scalars().all()
         for pick in pending:
             if settle_admin_pick(db, pick):
                 settled.append(pick)
 
     if values.get("guda_picks_enabled", True):
-        settled.extend(db.execute(select(FeaturedPick).where(FeaturedPick.result != "pending")).scalars().all())
-        pending_featured = db.execute(select(FeaturedPick).where(FeaturedPick.result == "pending")).scalars().all()
+        settled.extend(
+            db.execute(
+                select(FeaturedPick).where(FeaturedPick.result != "pending", FeaturedPick.featured_public.is_(True))
+            ).scalars().all()
+        )
+        pending_featured = db.execute(
+            select(FeaturedPick).where(FeaturedPick.result == "pending", FeaturedPick.featured_public.is_(True))
+        ).scalars().all()
         for pick in pending_featured:
             if settle_featured_pick(db, pick):
                 settled.append(pick)

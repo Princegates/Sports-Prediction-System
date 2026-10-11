@@ -358,15 +358,15 @@ export function Welcome() {
         <div className="section-head">
           <h2>Our Admin Picks, graded on real results</h2>
           <p>
-            Every curated Admin Pick that settles is counted here, win or lose -- no cherry-picking,
-            no deleting the losses. Which teams, markets and selections were picked stays behind the
-            login; this is just the verifiable record.
+            A hand-picked selection of our settled Admin Picks, chosen by our team to show how they
+            actually landed. Which teams, markets and selections were picked stays behind the login;
+            this is just the record for what's featured here.
           </p>
           <p>
             Every week the system itself publishes six standing accumulators, pooled across every
             league it covers: Low, Medium and High risk (10 legs each, rising combined-odds bands),
             plus three High-Risk Jackpot slips (10-20 legs, 50x+ combined odds). Generated and settled
-            the same way as everything else here, and counted in the number below.
+            the same way as everything else here, and eligible for the number below once featured.
           </p>
         </div>
 
@@ -386,8 +386,8 @@ export function Welcome() {
           </div>
         ) : (
           <div className="state-card">
-            <h3>No Admin Picks have settled yet</h3>
-            <p>Once a curated pick's match finishes, its result lands here automatically.</p>
+            <h3>No picks have been featured yet</h3>
+            <p>Once our team features a settled pick, its result lands here.</p>
           </div>
         )}
       </section>

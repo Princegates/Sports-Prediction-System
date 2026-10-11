@@ -325,6 +325,10 @@ export interface FeaturedPick {
   // market/selection/probability/note are blanked ("" / 0 / null) when
   // true. Always false for a premium viewer or superadmin.
   locked: boolean;
+  // An admin's choice to include this settled pick in the public track
+  // record (see AdminPickTrackRecord) -- can only be set once result
+  // leaves "pending".
+  featured_public: boolean;
 }
 
 export interface AdminPickLeg {
@@ -386,11 +390,16 @@ export interface AdminPick {
   // Always false for a premium viewer or superadmin.
   locked: boolean;
   leg_count: number;
+  // An admin's choice to include this settled pick in the public track
+  // record (see AdminPickTrackRecord) -- can only be set once result
+  // leaves "pending".
+  featured_public: boolean;
 }
 
 /** Aggregate-only public trust record for curated Admin Picks -- no team
  * names, markets or selections (those stay behind the login as the
- * product), just settled win/loss counts. See GET /api/public/admin-picks-track-record. */
+ * product), just win/loss counts for whatever an admin has chosen to
+ * feature here. See GET /api/public/admin-picks-track-record. */
 export interface AdminPickTrackRecord {
   has_data: boolean;
   settled_count: number;
