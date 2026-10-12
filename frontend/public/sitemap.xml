@@ -44,11 +44,6 @@
     <priority>0.3</priority>
   </url>
   <url>
-    <loc>https://soccaintel.com/predict/6519-atalanta-bc-vs-venezia-fc</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
     <loc>https://soccaintel.com/predict/16692-eyupspor-vs-goztepe</loc>
     <changefreq>hourly</changefreq>
     <priority>0.7</priority>
@@ -1080,6 +1075,16 @@
   </url>
   <url>
     <loc>https://soccaintel.com/predict/22157-sporting-cp-vs-academico-de-viseu-fc</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/16708-besiktas-vs-basaksehir</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/16709-rizespor-vs-trabzonspor</loc>
     <changefreq>hourly</changefreq>
     <priority>0.7</priority>
   </url>
