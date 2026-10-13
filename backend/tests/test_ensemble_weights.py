@@ -240,3 +240,64 @@ def test_generate_prediction_persists_half_time_lambdas(db_session):
     # the full 90-minute expectation, never zero.
     assert 0 < poisson["lambda_home_ht"] < poisson["lambda_home"]
     assert 0 < poisson["lambda_away_ht"] < poisson["lambda_away"]
+
+
+def test_generate_prediction_omits_corners_lambdas_without_corners_history(db_session):
+    """This league's matches have scores but no corners recorded -- the
+    common case before enrich_match_stats.py has been run for it. The
+    corners keys must simply be absent, not zero or invented, so
+    outcomes_from_prediction's own gate (lambda_home_corners is not None)
+    correctly skips the Most Corners / Total Corners markets."""
+
+    home = Team(name="Epsilon FC", league=LEAGUE, aliases=[])
+    away = Team(name="Zeta FC", league=LEAGUE, aliases=[])
+    db_session.add_all([home, away])
+    db_session.commit()
+    db_session.refresh(home)
+    db_session.refresh(away)
+
+    for day in range(10):
+        db_session.add(
+            Match(
+                league=LEAGUE, season="2024-25", date=BASE + dt.timedelta(days=day),
+                home_team_id=home.id if day % 2 == 0 else away.id,
+                away_team_id=away.id if day % 2 == 0 else home.id,
+                home_score=2, away_score=1, status="FINISHED",
+            )
+        )
+    db_session.commit()
+
+    as_of = BASE + dt.timedelta(days=30)
+    result = generate_prediction(db_session, home.id, away.id, LEAGUE, as_of)
+
+    poisson = result.model_breakdown["poisson"]
+    assert "lambda_home_corners" not in poisson
+    assert "lambda_away_corners" not in poisson
+
+
+def test_generate_prediction_persists_corners_lambdas_when_corners_history_exists(db_session):
+    home = Team(name="Eta FC", league=LEAGUE, aliases=[])
+    away = Team(name="Theta FC", league=LEAGUE, aliases=[])
+    db_session.add_all([home, away])
+    db_session.commit()
+    db_session.refresh(home)
+    db_session.refresh(away)
+
+    for day in range(10):
+        db_session.add(
+            Match(
+                league=LEAGUE, season="2024-25", date=BASE + dt.timedelta(days=day),
+                home_team_id=home.id if day % 2 == 0 else away.id,
+                away_team_id=away.id if day % 2 == 0 else home.id,
+                home_score=2, away_score=1, home_corners=6, away_corners=4,
+                status="FINISHED",
+            )
+        )
+    db_session.commit()
+
+    as_of = BASE + dt.timedelta(days=30)
+    result = generate_prediction(db_session, home.id, away.id, LEAGUE, as_of)
+
+    poisson = result.model_breakdown["poisson"]
+    assert poisson["lambda_home_corners"] > 0
+    assert poisson["lambda_away_corners"] > 0

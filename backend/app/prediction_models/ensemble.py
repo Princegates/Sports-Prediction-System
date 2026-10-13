@@ -14,7 +14,7 @@ import numpy as np
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.prediction_models import elo, league_strength, poisson_model
+from app.prediction_models import corners_model, elo, league_strength, poisson_model
 from app.prediction_models.calibration import MarketCalibrator
 from app.prediction_models.league_strength import LeagueStrength
 from app.prediction_models.ml_model import LeagueFeatureCache, MLModel, build_feature_row
@@ -278,6 +278,12 @@ def generate_prediction(
     lambda_home_ht = goal_markets.lambda_home * ht_fraction
     lambda_away_ht = goal_markets.lambda_away * ht_fraction
 
+    # Corners: a second, independent Poisson component, only estimable for
+    # the leagues enrich_match_stats.py has backfilled -- see
+    # corners_model's own docstring for why this returns None rather than a
+    # guess everywhere else.
+    corners_expected = corners_model.expected_corners(db, home_team_id, away_team_id, league, as_of)
+
     # --- Model 4: Gradient boosting (optional -- needs a trained model) --
     ml_probs: dict[str, float] | None = None
     ml_over25 = ml_btts = None
@@ -353,6 +359,8 @@ def generate_prediction(
                 "lambda_away": goal_markets.lambda_away,
                 "lambda_home_ht": lambda_home_ht,
                 "lambda_away_ht": lambda_away_ht,
+                **({"lambda_home_corners": corners_expected[0], "lambda_away_corners": corners_expected[1]}
+                   if corners_expected is not None else {}),
             },
             "ml": ml_probs,
             # What each component actually counted for in this prediction,

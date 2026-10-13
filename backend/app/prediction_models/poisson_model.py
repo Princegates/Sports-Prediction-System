@@ -99,7 +99,7 @@ def _bucket_weight(bucket: int) -> float:
 
 def decay_weight(age_days: float) -> float:
     """The weight a match ``age_days`` old gets -- the same piecewise-constant
-    schedule ``_decay_weight_expr`` evaluates in SQL, exposed so tests and
+    schedule ``decay_weight_expr`` evaluates in SQL, exposed so tests and
     tooling can reproduce the database's arithmetic exactly.
 
     Buckets are closed at the old end, as the SQL is: a match exactly 30 days
@@ -109,10 +109,14 @@ def decay_weight(age_days: float) -> float:
     return _bucket_weight(min(bucket, _DECAY_BUCKETS))
 
 
-def _decay_weight_expr(as_of):
+def decay_weight_expr(as_of):
     """Per-match weight as a SQL CASE over date buckets counted back from
     ``as_of``. Bucket boundaries are computed here and passed as parameters,
-    so the expression needs no date arithmetic from the database."""
+    so the expression needs no date arithmetic from the database.
+
+    Public (not underscore-prefixed) because ``corners_model`` reuses it
+    verbatim -- corners need the identical time-decay schedule goals use,
+    not a second copy of the bucket arithmetic."""
 
     whens = [
         (Match.date >= as_of - dt.timedelta(days=(i + 1) * DECAY_BUCKET_DAYS), _bucket_weight(i))
@@ -126,7 +130,7 @@ def league_goal_averages(db: Session, league: str, as_of) -> tuple[float, float]
     league so far -- weighted so a shift in scoring or home advantage (the
     post-2020 drop, say) shows up instead of being averaged away."""
 
-    weight = _decay_weight_expr(as_of)
+    weight = decay_weight_expr(as_of)
     home_goals, away_goals, total_weight = db.execute(
         select(
             func.sum(weight * Match.home_score),
@@ -150,7 +154,7 @@ def team_attack_defense(
 
     at_home = Match.home_team_id == team_id
     at_away = Match.away_team_id == team_id
-    weight = _decay_weight_expr(as_of)
+    weight = decay_weight_expr(as_of)
 
     # Every sum in one round trip. CASE rather than the tidier FILTER clause
     # because SQLite only supports FILTER from 3.30, and SQLite is what the

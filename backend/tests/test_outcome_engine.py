@@ -6,6 +6,7 @@ from app.outcomes.engine import secondary_outcomes, select_global_most_likely, t
 from app.outcomes.registry import (
     DOMINANT_UNION_GROUPS,
     build_outcome_registry,
+    corners_outcomes,
     ht_ft_joint_outcomes,
     ht_matrix_derived_outcomes,
     matrix_derived_outcomes,
@@ -388,3 +389,48 @@ def test_outcomes_from_prediction_skips_ht_ft_markets_without_ht_lambdas():
     prediction = _prediction_stub(model_breakdown={"poisson": {"lambda_home": 1.6, "lambda_away": 1.1}})
     outcomes = outcomes_from_prediction(prediction)
     assert not any(o.market == "HT/FT" for o in outcomes)
+
+
+# --- corners markets ---------------------------------------------------
+
+
+def test_every_corners_group_sums_to_one():
+    outcomes = corners_outcomes(lambda_home_corners=6.0, lambda_away_corners=4.5, matches_available=20)
+    assert outcomes, "expected a non-empty registry"
+
+    groups: dict[str, float] = {}
+    for o in outcomes:
+        groups[o.mutually_exclusive_group] = groups.get(o.mutually_exclusive_group, 0.0) + o.probability
+    for group, total in groups.items():
+        assert abs(total - 1.0) < 1e-9, f"group {group!r} summed to {total}, not 1.0"
+
+
+def test_corners_outcomes_respect_the_data_gate():
+    assert corners_outcomes(lambda_home_corners=6.0, lambda_away_corners=4.5, matches_available=3) == []
+
+
+def test_corners_outcomes_favor_the_side_expected_to_win_more_corners():
+    outcomes = corners_outcomes(lambda_home_corners=7.0, lambda_away_corners=3.0, matches_available=20)
+    by_key = {(o.market, o.selection): o.probability for o in outcomes}
+    assert by_key[("Most Corners", "Home")] > by_key[("Most Corners", "Away")]
+
+
+def test_outcomes_from_prediction_adds_corners_markets_when_corners_lambdas_are_present():
+    prediction = _prediction_stub(
+        model_breakdown={
+            "poisson": {"lambda_home": 1.6, "lambda_away": 1.1, "lambda_home_corners": 6.0, "lambda_away_corners": 4.5}
+        }
+    )
+    outcomes = outcomes_from_prediction(prediction)
+    assert any(o.market == "Most Corners" for o in outcomes)
+    assert any(o.market.startswith("Total Corners") for o in outcomes)
+
+
+def test_outcomes_from_prediction_skips_corners_markets_without_corners_lambdas():
+    """A league enrich_match_stats.py hasn't been run for -- the common case
+    today -- must not surface a Most Corners / Total Corners guess."""
+
+    prediction = _prediction_stub(model_breakdown={"poisson": {"lambda_home": 1.6, "lambda_away": 1.1}})
+    outcomes = outcomes_from_prediction(prediction)
+    assert not any(o.market == "Most Corners" for o in outcomes)
+    assert not any(o.market.startswith("Total Corners") for o in outcomes)

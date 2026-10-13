@@ -30,13 +30,14 @@ interface Props {
 
 const MAIN_MARKETS = ["Match Result", "Double Chance", "Both Teams To Score", "Draw No Bet"];
 
-const CATEGORY_ORDER = ["Main", "Total goals", "Team goals & clean sheets", "Scores & margins", "Combos", "Half-time"];
+const CATEGORY_ORDER = ["Main", "Total goals", "Team goals & clean sheets", "Corners", "Scores & margins", "Combos", "Half-time"];
 
 function categoryOf(market: string): string {
   if (/^HT\b/.test(market) || market === "Half With Most Goals") return "Half-time";
   if (market.includes(" & ")) return "Combos";
   if (MAIN_MARKETS.includes(market)) return "Main";
   if (market.startsWith("Total Goals")) return "Total goals";
+  if (market.startsWith("Total Corners") || market === "Most Corners") return "Corners";
   if (market.startsWith("Home ") || market.startsWith("Away ") || market.startsWith("Both Teams Clean")) {
     return "Team goals & clean sheets";
   }

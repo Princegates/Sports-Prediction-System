@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.prediction_models.corners_model import build_corners_matrix, markets_from_corners_matrix
 from app.prediction_models.poisson_model import HT_MAX_GOALS, build_score_matrix, markets_from_matrix
 
 
@@ -97,11 +98,12 @@ def matrix_derived_outcomes(lambda_home: float, lambda_away: float, matches_avai
     for Correct Score. Half-time markets are the same idea applied to a
     half-time-scaled matrix -- see ht_matrix_derived_outcomes below.
 
-    Deliberately does not attempt cards/corners/fouls (no predictive model
-    exists for them, though the raw historical counts are stored), player
-    markets (no player-level data source), or goal-timing / first-to-score
-    markets (no minute-level event model). Inventing numbers for those would
-    look like analysis and be a guess.
+    Deliberately does not attempt cards/fouls (no predictive model exists for
+    them, though the raw historical counts are stored), player markets (no
+    player-level data source), or goal-timing / first-to-score markets (no
+    minute-level event model). Inventing numbers for those would look like
+    analysis and be a guess. Corners get the identical treatment but from
+    their own matrix -- see ``corners_outcomes`` below.
     """
 
     matrix = build_score_matrix(lambda_home, lambda_away)
@@ -274,6 +276,38 @@ def matrix_derived_outcomes(lambda_home: float, lambda_away: float, matches_avai
                 + (" (or a 0-0 draw)" if result == "Draw" else "") + (" -- yes" if cs else " -- no") + ".")
         for (result, cs), p in result_cs.items()
     ]
+
+    return [o for o in outcomes if matches_available >= o.min_data_requirement]
+
+
+def corners_outcomes(lambda_home_corners: float, lambda_away_corners: float, matches_available: int) -> list[Outcome]:
+    """Total Corners O/U and Most Corners -- the corners analogues of Total
+    Goals and Match Result, built from ``corners_model``'s own independent-
+    Poisson matrix rather than the goals one. Only ever called with real
+    lambdas fit from a league's own backfilled corners history (see
+    ``corners_model.expected_corners``); a league without that history never
+    reaches here at all -- see ``outcomes_from_prediction``.
+    """
+
+    matrix = build_corners_matrix(lambda_home_corners, lambda_away_corners)
+    markets = markets_from_corners_matrix(matrix, lambda_home_corners, lambda_away_corners)
+
+    outcomes: list[Outcome] = [
+        Outcome("Most Corners", "Home", markets.home_most_corners, "most_corners", 5,
+                "The home team wins more corners than the away team."),
+        Outcome("Most Corners", "Away", markets.away_most_corners, "most_corners", 5,
+                "The away team wins more corners than the home team."),
+        Outcome("Most Corners", "Equal", markets.equal_corners, "most_corners", 5,
+                "Both teams win the same number of corners."),
+    ]
+
+    for line, over_p in markets.over_probabilities.items():
+        outcomes += [
+            Outcome(f"Total Corners {line}", f"Over {line}", over_p, f"corners_ou_{line}", 5,
+                    f"Total match corners are greater than {line}."),
+            Outcome(f"Total Corners {line}", f"Under {line}", 1 - over_p, f"corners_ou_{line}", 5,
+                    f"Total match corners are less than {line}."),
+        ]
 
     return [o for o in outcomes if matches_available >= o.min_data_requirement]
 
@@ -683,6 +717,10 @@ def outcomes_from_prediction(prediction) -> list[Outcome]:
 
     if lambda_home is not None and lambda_away is not None and lambda_home_ht is not None and lambda_away_ht is not None:
         outcomes += ht_ft_joint_outcomes(lambda_home, lambda_away, lambda_home_ht, lambda_away_ht, matches_available)
+
+    lambda_home_corners, lambda_away_corners = poisson.get("lambda_home_corners"), poisson.get("lambda_away_corners")
+    if lambda_home_corners is not None and lambda_away_corners is not None:
+        outcomes += corners_outcomes(lambda_home_corners, lambda_away_corners, matches_available)
 
     return outcomes
 
