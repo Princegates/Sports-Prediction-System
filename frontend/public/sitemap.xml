@@ -44,31 +44,6 @@
     <priority>0.3</priority>
   </url>
   <url>
-    <loc>https://soccaintel.com/predict/16692-eyupspor-vs-goztepe</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/6520-torino-fc-vs-udinese-calcio</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/1960-coventry-city-fc-vs-newcastle-united-fc</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/4257-levante-ud-vs-sevilla-fc</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/12809-fc-famalicao-vs-fc-alverca</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
     <loc>https://soccaintel.com/predict/22256-racing-club-de-lens-vs-sporting-cp</loc>
     <changefreq>hourly</changefreq>
     <priority>0.7</priority>
@@ -1085,6 +1060,21 @@
   </url>
   <url>
     <loc>https://soccaintel.com/predict/16709-rizespor-vs-trabzonspor</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/16710-galatasaray-vs-fenerbahce</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/22158-cd-santa-clara-vs-sl-benfica</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/4274-sevilla-fc-vs-ca-osasuna</loc>
     <changefreq>hourly</changefreq>
     <priority>0.7</priority>
   </url>
