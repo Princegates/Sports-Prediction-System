@@ -47,20 +47,16 @@ LEAGUE_IDS: dict[str, int] = {
     "Turkish Süper Lig": 203,
     "UEFA Champions League": 2,
     "UEFA Europa League": 3,
-    # Below: domestic leagues added purely so a Champions League club whose
-    # home league isn't one of the 9 above still has a real Team row to
-    # resolve to, instead of its fixture being skipped (see
-    # app/data/api_football_ingest.py's module docstring). Found by
-    # scripts/map_cl_unresolved_leagues.py against the current Champions
-    # League league-phase + qualifying rounds -- every club API-Football
-    # returned for it that this project didn't already hold.
-    #
-    # Deliberately NOT in app/prediction_models/ml_model.py's KNOWN_LEAGUES
-    # and not swept into scripts/backtest.py's training: these get fixture
-    # import + a plain Elo rebuild (scripts/rebuild_elo_only.py) so Elo and
-    # Poisson have real history to read for a Champions League tie, but no
-    # gradient-boosting model or backtest of their own -- see the module
-    # docstring on rebuild_elo_only.py for why that split exists.
+    # Below: domestic leagues added so every Champions League entrant's home
+    # league has a real Team row to resolve against, instead of its fixture
+    # being skipped (see app/data/api_football_ingest.py's module
+    # docstring). Found by scripts/map_cl_unresolved_leagues.py against the
+    # current Champions League league-phase + qualifying rounds -- every
+    # club API-Football returned for it that this project didn't already
+    # hold. Full parity with the 9 leagues above: fixture import, Elo
+    # rebuild, gradient-boosting training and backtest (scripts/
+    # backtest.py), and listed in app/prediction_models/ml_model.py's
+    # KNOWN_LEAGUES.
     "Albanian Superliga": 310,
     "Andorran Primera Divisió": 312,
     "Armenian Premier League": 342,
@@ -108,24 +104,6 @@ LEAGUE_IDS: dict[str, int] = {
     "Welsh Premier League": 110,
 }
 ID_TO_LEAGUE = {v: k for k, v in LEAGUE_IDS.items()}
-
-# The 45 CL-resolver leagues above, as their own list -- scripts/
-# rebuild_elo_only.py and the micro-leagues refresh workflow use this
-# instead of repeating the names, so adding or removing one here is the only
-# place that has to change.
-CL_RESOLVER_LEAGUES: tuple[str, ...] = (
-    "Albanian Superliga", "Andorran Primera Divisió", "Armenian Premier League", "Austrian Bundesliga",
-    "Azerbaijan Premyer Liqa", "Belarusian Premier League", "Belgian Pro League", "Bosnian Premijer Liga",
-    "Bulgarian First League", "Croatian HNL", "Cypriot First Division", "Czech First League", "Danish Superliga",
-    "Estonian Meistriliiga", "Faroese Meistaradeildin", "Finnish Veikkausliiga", "Georgian Erovnuli Liga",
-    "Gibraltar Premier Division", "Greek Super League", "Hungarian NB I", "Icelandic Úrvalsdeild",
-    "League of Ireland Premier Division", "Israeli Ligat Ha'al", "Kazakh Premier League", "Kosovan Superliga",
-    "Latvian Virslīga", "Lithuanian A Lyga", "Luxembourg National Division", "Macedonian First League",
-    "Maltese Premier League", "Moldovan Super Liga", "Montenegrin First League", "NIFL Premiership",
-    "Norwegian Eliteserien", "Polish Ekstraklasa", "Romanian Liga I", "San Marino Campionato",
-    "Scottish Premiership", "Serbian SuperLiga", "Slovak Super Liga", "Slovenian PrvaLiga", "Swedish Allsvenskan",
-    "Swiss Super League", "Ukrainian Premier League", "Welsh Premier League",
-)
 
 
 class ApiFootballError(RuntimeError):

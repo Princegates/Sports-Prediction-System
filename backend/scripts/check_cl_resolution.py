@@ -2,7 +2,7 @@
 """Read-only: how many Champions League matches have a Prediction row, and
 spot-checks a few previously-unresolvable clubs' Elo ratings.
 
-One-off verification for the CL_RESOLVER_LEAGUES backfill.
+One-off verification for the 45-league Champions League backfill.
 
     python scripts/check_cl_resolution.py
 """

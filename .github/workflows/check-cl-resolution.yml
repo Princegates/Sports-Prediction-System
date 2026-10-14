@@ -1,5 +1,5 @@
-# Read-only verification for the CL_RESOLVER_LEAGUES backfill -- see
-# backend/scripts/check_cl_resolution.py.
+# Read-only verification for the 45-league Champions League backfill --
+# see backend/scripts/check_cl_resolution.py.
 name: Check CL resolution
 
 on:

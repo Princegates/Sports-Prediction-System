@@ -46,7 +46,22 @@ on:
           "English Premier League" "English Championship" "Spanish La Liga"
           "German Bundesliga" "Italian Serie A" "French Ligue 1"
           "Dutch Eredivisie" "Portuguese Primeira Liga" "Turkish Süper Lig"
-          "UEFA Champions League" "UEFA Europa League"
+          "UEFA Champions League" "UEFA Europa League" "Albanian Superliga"
+          "Andorran Primera Divisió" "Armenian Premier League" "Austrian Bundesliga"
+          "Azerbaijan Premyer Liqa" "Belarusian Premier League" "Belgian Pro League"
+          "Bosnian Premijer Liga" "Bulgarian First League" "Croatian HNL"
+          "Cypriot First Division" "Czech First League" "Danish Superliga"
+          "Estonian Meistriliiga" "Faroese Meistaradeildin" "Finnish Veikkausliiga"
+          "Georgian Erovnuli Liga" "Gibraltar Premier Division" "Greek Super League"
+          "Hungarian NB I" "Icelandic Úrvalsdeild" "League of Ireland Premier Division"
+          "Israeli Ligat Ha'al" "Kazakh Premier League" "Kosovan Superliga"
+          "Latvian Virslīga" "Lithuanian A Lyga" "Luxembourg National Division"
+          "Macedonian First League" "Maltese Premier League" "Moldovan Super Liga"
+          "Montenegrin First League" "NIFL Premiership" "Norwegian Eliteserien"
+          "Polish Ekstraklasa" "Romanian Liga I" "San Marino Campionato"
+          "Scottish Premiership" "Serbian SuperLiga" "Slovak Super Liga"
+          "Slovenian PrvaLiga" "Swedish Allsvenskan" "Swiss Super League"
+          "Ukrainian Premier League" "Welsh Premier League"
       days_ahead:
         description: "How many days of upcoming fixtures to predict"
         required: false
@@ -61,10 +76,13 @@ on:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    # A retrain fits a model per league -- eleven of them now -- and a daily
-    # refresh is minutes. This is the ceiling for the slow case; 120 was set
-    # when the retrain covered five leagues.
-    timeout-minutes: 240
+    # A retrain fits a model per league -- 56 of them now -- and a daily
+    # refresh is minutes. 360 is GitHub-hosted runners' own hard ceiling for
+    # a single job (docs.github.com/actions/reference/limits); there is no
+    # higher number to set. 120 was set when the retrain covered five
+    # leagues, 240 when it covered eleven -- watch the first run at 56
+    # closely, since there is no more ceiling to raise if it runs long.
+    timeout-minutes: 360
     # Needed by "Commit sitemap if it changed" below, which pushes straight
     # to the default branch -- explicit rather than relying on whatever an
     # org sets as its GITHUB_TOKEN default (read-only on plenty of orgs).
@@ -117,7 +135,7 @@ jobs:
         working-directory: backend
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          LEAGUES: ${{ inputs.leagues || '"English Premier League" "English Championship" "Spanish La Liga" "German Bundesliga" "Italian Serie A" "French Ligue 1" "Dutch Eredivisie" "Portuguese Primeira Liga" "Turkish Süper Lig" "UEFA Champions League" "UEFA Europa League"' }}
+          LEAGUES: ${{ inputs.leagues || '"English Premier League" "English Championship" "Spanish La Liga" "German Bundesliga" "Italian Serie A" "French Ligue 1" "Dutch Eredivisie" "Portuguese Primeira Liga" "Turkish Süper Lig" "UEFA Champions League" "UEFA Europa League" "Albanian Superliga" "Andorran Primera Divisió" "Armenian Premier League" "Austrian Bundesliga" "Azerbaijan Premyer Liqa" "Belarusian Premier League" "Belgian Pro League" "Bosnian Premijer Liga" "Bulgarian First League" "Croatian HNL" "Cypriot First Division" "Czech First League" "Danish Superliga" "Estonian Meistriliiga" "Faroese Meistaradeildin" "Finnish Veikkausliiga" "Georgian Erovnuli Liga" "Gibraltar Premier Division" "Greek Super League" "Hungarian NB I" "Icelandic Úrvalsdeild" "League of Ireland Premier Division" "Israeli Ligat Ha''al" "Kazakh Premier League" "Kosovan Superliga" "Latvian Virslīga" "Lithuanian A Lyga" "Luxembourg National Division" "Macedonian First League" "Maltese Premier League" "Moldovan Super Liga" "Montenegrin First League" "NIFL Premiership" "Norwegian Eliteserien" "Polish Ekstraklasa" "Romanian Liga I" "San Marino Campionato" "Scottish Premiership" "Serbian SuperLiga" "Slovak Super Liga" "Slovenian PrvaLiga" "Swedish Allsvenskan" "Swiss Super League" "Ukrainian Premier League" "Welsh Premier League"' }}
         run: |
           if [ -z "$DATABASE_URL" ]; then
             echo "DATABASE_URL secret is not set -- nothing to import."
@@ -138,7 +156,7 @@ jobs:
           # Every league the site lists, so none of them goes stale: one
           # API-Football request each per day, and the weekly retrain reads
           # every league's history.
-          LEAGUES: ${{ inputs.leagues || '"English Premier League" "English Championship" "Spanish La Liga" "German Bundesliga" "Italian Serie A" "French Ligue 1" "Dutch Eredivisie" "Portuguese Primeira Liga" "Turkish Süper Lig" "UEFA Champions League" "UEFA Europa League"' }}
+          LEAGUES: ${{ inputs.leagues || '"English Premier League" "English Championship" "Spanish La Liga" "German Bundesliga" "Italian Serie A" "French Ligue 1" "Dutch Eredivisie" "Portuguese Primeira Liga" "Turkish Süper Lig" "UEFA Champions League" "UEFA Europa League" "Albanian Superliga" "Andorran Primera Divisió" "Armenian Premier League" "Austrian Bundesliga" "Azerbaijan Premyer Liqa" "Belarusian Premier League" "Belgian Pro League" "Bosnian Premijer Liga" "Bulgarian First League" "Croatian HNL" "Cypriot First Division" "Czech First League" "Danish Superliga" "Estonian Meistriliiga" "Faroese Meistaradeildin" "Finnish Veikkausliiga" "Georgian Erovnuli Liga" "Gibraltar Premier Division" "Greek Super League" "Hungarian NB I" "Icelandic Úrvalsdeild" "League of Ireland Premier Division" "Israeli Ligat Ha''al" "Kazakh Premier League" "Kosovan Superliga" "Latvian Virslīga" "Lithuanian A Lyga" "Luxembourg National Division" "Macedonian First League" "Maltese Premier League" "Moldovan Super Liga" "Montenegrin First League" "NIFL Premiership" "Norwegian Eliteserien" "Polish Ekstraklasa" "Romanian Liga I" "San Marino Campionato" "Scottish Premiership" "Serbian SuperLiga" "Slovak Super Liga" "Slovenian PrvaLiga" "Swedish Allsvenskan" "Swiss Super League" "Ukrainian Premier League" "Welsh Premier League"' }}
           DAYS_AHEAD: ${{ inputs.days_ahead || '10' }}
           # The weekly cron retrains; the daily one doesn't. A manual run says
           # so explicitly.
