@@ -18,9 +18,20 @@
 # codebase uses dangerouslySetInnerHTML or innerHTML (verified during the
 # audit that added this file), so there's no injection point for either to
 # land through in the first place.
+#
+# Strict-Transport-Security: Cloudflare Pages already 301s plain http:// to
+# https:// (verified directly against production), but that redirect is a
+# single request an on-path attacker, a captive portal, or a stale cached
+# response can intercept or strip before the browser ever sees it. HSTS
+# closes that window for every return visit by telling the browser to never
+# even attempt http:// for this host again, no redirect required.
+# preload is left off: submitting to the HSTS preload list is a one-way
+# door (removal takes months to propagate through browsers) and should be a
+# deliberate decision, not a side effect of this file.
 /*
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
   Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://*.onrender.com; connect-src 'self' https://*.onrender.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
