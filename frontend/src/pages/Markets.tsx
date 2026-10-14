@@ -35,7 +35,7 @@ import type { BettingOutcome, MarketSummary, MatchSummary, OutcomesResponse } fr
  * probability-floor and confidence filters, for the same ticked markets or
  * every market when none are.
  *
- * The 3/7/14-day chips are a rolling window from today -- fine for "what's
+ * The 3/7/14/21-day chips are a rolling window from today -- fine for "what's
  * coming up", useless for "what's on the 14th". FixtureCalendar answers
  * that: it's seeded from every SCHEDULED match this league has (no
  * days-ahead cap), so it can show fixture density a season out, and
@@ -43,7 +43,11 @@ import type { BettingOutcome, MarketSummary, MatchSummary, OutcomesResponse } fr
  * filters both views down to that one day.
  */
 
-const DAY_OPTIONS = [3, 7, 14];
+// 21 matches the backend's own ceiling (routes_predictions.py's days_ahead
+// Query(..., le=21)) -- European competition matchdays run 3-4 weeks apart,
+// so a 14-day cap could hide an already-scheduled, already-predicted fixture
+// for the entire gap between rounds.
+const DAY_OPTIONS = [3, 7, 14, 21];
 const FLOORS = [
   { value: 0, label: "Any" },
   { value: 0.5, label: "50%+" },
@@ -226,7 +230,7 @@ export function Markets() {
 
   // A picked calendar date overrides the day-range chips: just enough
   // days_ahead to include that date, then the coupon views below filter
-  // down to it exactly (a date past the chips' own 14-day ceiling still
+  // down to it exactly (a date past the chips' own 21-day ceiling still
   // needs to reach the fetch).
   const effectiveDays = useMemo(() => {
     if (!selectedDate) return days;
