@@ -222,7 +222,10 @@ export function PublicShell({
             Built on free and open data sources. Elo · Dixon-Coles Poisson · Gradient Boosting ·
             Held-out validation.
           </p>
-          <p className="public-footer-copy">&copy; 2026 Soccaintel.com. All rights reserved. Powered by Anknovate IT Services.</p>
+          <p className="public-footer-copy">
+            &copy; 2026 Soccaintel.com. All rights reserved. Powered by Anknovate IT Services. ·{" "}
+            <Link to="/cookie-policy">Cookie Policy</Link>
+          </p>
         </div>
       </footer>
     </div>

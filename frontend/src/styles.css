@@ -4415,6 +4415,42 @@ table.admin-table {
   justify-content: center;
 }
 
+.doc-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.doc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.doc-table th,
+.doc-table td {
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border);
+}
+
+.doc-table th {
+  background: var(--bg-surface);
+  font-weight: 620;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.doc-table td {
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.doc-table tr:last-child td {
+  border-bottom: none;
+}
+
 .doc-section code,
 .landing-section code,
 .unavailable-note code {
@@ -5352,4 +5388,44 @@ table.admin-table {
 .status-tile-detail {
   font-size: 11px;
   color: var(--text-secondary);
+}
+
+/* ==========================================================================
+   COOKIE NOTICE
+   ========================================================================== */
+
+.cookie-banner {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 16px 20px;
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+}
+
+.cookie-banner p {
+  flex: 1 1 320px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.cookie-banner a {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.cookie-banner .btn {
+  flex-shrink: 0;
 }

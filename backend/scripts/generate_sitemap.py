@@ -67,6 +67,7 @@ STATIC_URLS = [
     ("/pricing", "monthly", "0.8"),
     ("/fixtures", "daily", "0.9"),
     ("/responsible", "yearly", "0.5"),
+    ("/cookie-policy", "yearly", "0.3"),
     ("/register", "yearly", "0.4"),
     ("/login", "yearly", "0.3"),
 ]

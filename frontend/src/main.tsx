@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
+import { CookieBanner } from "./components/CookieBanner";
 import { AuthProvider } from "./lib/AuthContext";
 import { fetchBranding } from "./api";
 import { isPageTitleActive } from "./lib/pageMeta";
@@ -75,6 +76,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <BrowserRouter>
       <AuthProvider>
         <App />
+        <CookieBanner />
       </AuthProvider>
     </BrowserRouter>
   </React.StrictMode>,

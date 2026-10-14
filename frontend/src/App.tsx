@@ -7,6 +7,7 @@ import { ActivityLog } from "./pages/ActivityLog";
 import { AdminUsers } from "./pages/AdminUsers";
 import { AIPicks } from "./pages/AIPicks";
 import { BetCodes } from "./pages/BetCodes";
+import { CookiePolicy } from "./pages/CookiePolicy";
 import { Dashboard } from "./pages/Dashboard";
 import { FixturePreview } from "./pages/FixturePreview";
 import { Fixtures } from "./pages/Fixtures";
@@ -27,8 +28,8 @@ import { Welcome } from "./pages/Welcome";
 /**
  * Route layout is split in two:
  *
- * - `/`, `/how-it-works`, `/pricing`, `/responsible`, `/fixtures`, `/predict/:slugId` and
- *   the auth screens are public. An anonymous visitor gets a real website
+ * - `/`, `/how-it-works`, `/pricing`, `/responsible`, `/cookie-policy`, `/fixtures`,
+ *   `/predict/:slugId` and the auth screens are public. An anonymous visitor gets a real website
  *   rather than being bounced to a login form with no explanation of what
  *   they'd be logging into -- `/fixtures` and the per-match `/predict/*`
  *   pages exist specifically so a search engine has real, indexable content
@@ -56,6 +57,7 @@ export default function App() {
       <Route path="/fixtures" element={<Fixtures />} />
       <Route path="/predict/:slugId" element={<FixturePreview />} />
       <Route path="/responsible" element={<Responsible />} />
+      <Route path="/cookie-policy" element={<CookiePolicy />} />
       <Route path="/account-status" element={<AccountStatus />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
