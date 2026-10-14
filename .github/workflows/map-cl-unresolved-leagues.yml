@@ -1,0 +1,47 @@
+# Read-only reconnaissance -- see backend/scripts/map_cl_unresolved_leagues.py.
+# Spends a handful of API-Football requests (one per unresolved club) but
+# writes nothing to the database.
+name: Map CL unresolved leagues
+
+on:
+  workflow_dispatch:
+    inputs:
+      league_id:
+        description: "API-Football league id (2 = Champions League, 3 = Europa League)"
+        required: false
+        default: "2"
+      season:
+        description: "Season year, blank = current"
+        required: false
+        default: ""
+
+jobs:
+  map-cl-unresolved-leagues:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Map unresolved leagues
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          LEAGUE_ID: ${{ inputs.league_id }}
+          SEASON: ${{ inputs.season }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret is not set."
+            exit 1
+          fi
+          ARGS=(--league-id "$LEAGUE_ID")
+          [ -n "$SEASON" ] && ARGS+=(--season "$SEASON")
+          python scripts/map_cl_unresolved_leagues.py "${ARGS[@]}"
