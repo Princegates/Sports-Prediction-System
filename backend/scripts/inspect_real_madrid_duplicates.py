@@ -37,7 +37,7 @@ def main() -> None:
             db.execute(
                 select(Match).where(
                     Match.league == "UEFA Champions League",
-                    func.date(Match.date).in_([d.isoformat() for d in TARGET_DATES]),
+                    func.date(Match.date).in_(TARGET_DATES),
                     (Match.home_team_id == rm.id) | (Match.away_team_id == rm.id),
                 )
             ).scalars()
