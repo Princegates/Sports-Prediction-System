@@ -34,7 +34,6 @@ from app.prediction_models.elo import get_rating_before
 # here and the model is retrained.
 KNOWN_LEAGUES = [
     "English Premier League",
-    "English Championship",
     "Spanish La Liga",
     "German Bundesliga",
     "Italian Serie A",

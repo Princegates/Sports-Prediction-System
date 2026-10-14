@@ -37,7 +37,6 @@ DIRECT_HOST = "v3.football.api-sports.io"
 # API-Football's own league ids. Fixed by the provider, not by us.
 LEAGUE_IDS: dict[str, int] = {
     "English Premier League": 39,
-    "English Championship": 40,
     "Spanish La Liga": 140,
     "Italian Serie A": 135,
     "German Bundesliga": 78,

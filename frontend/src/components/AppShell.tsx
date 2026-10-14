@@ -23,7 +23,6 @@ import { useAuth } from "../lib/AuthContext";
 
 const LEAGUES = [
   "English Premier League",
-  "English Championship",
   "Spanish La Liga",
   "German Bundesliga",
   "Italian Serie A",
