@@ -7,6 +7,7 @@ import {
   fetchAdminPicksAdmin,
   fetchPublicTeaserPickAdmin,
   bookPicks,
+  promotePickToPublicTeaser,
   randomizePublicTeaserPick,
   resolvePicks,
   setAdminPickFeaturedPublic,
@@ -465,6 +466,18 @@ export function BetCodes() {
     }
   }
 
+  async function handlePromoteToTeaser(pickId: number) {
+    setPickBusy(pickId);
+    try {
+      const updated = await promotePickToPublicTeaser(pickId);
+      setTeaserPick(updated);
+    } catch (err) {
+      window.alert(String(err instanceof Error ? err.message : err));
+    } finally {
+      setPickBusy(null);
+    }
+  }
+
   return (
     <div className={editedLegs.length > 0 ? "has-sticky-slip-space" : undefined}>
       <div className="section-header">
@@ -910,6 +923,17 @@ export function BetCodes() {
                 )}
               </span>
               <div style={{ display: "flex", gap: 6 }}>
+                {pick.result === "pending" && (
+                  <button
+                    className="btn ghost"
+                    style={{ padding: "2px 8px", fontSize: 12 }}
+                    disabled={pickBusy === pick.id}
+                    onClick={() => handlePromoteToTeaser(pick.id)}
+                    title="Shows this slip's own legs as the public teaser on the Welcome page, replacing whatever's showing now."
+                  >
+                    Use as public teaser
+                  </button>
+                )}
                 {pick.result === "unresolved" && (
                   <>
                     <button

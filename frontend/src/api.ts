@@ -509,6 +509,15 @@ export function clearPublicTeaserPick(): Promise<void> {
   return del("/api/admin/public-teaser-pick");
 }
 
+/** Superadmin only -- uses an already-generated AdminPick's own legs as the
+ * new public teaser, replacing whatever was showing before. The source pick
+ * itself is untouched; this creates its own row, same as randomize. Rejected
+ * (400) if any leg no longer prices live right now (a finished match, a
+ * pulled price). */
+export function promotePickToPublicTeaser(pickId: number): Promise<PublicTeaserPick> {
+  return post(`/api/admin/admin-picks/${pickId}/promote-to-teaser`, {});
+}
+
 /** A member's own generated-code history, most recent first -- every code
  * they've ever booked through bookPicks, settled against real results once
  * its matches finish. Nothing is cherry-picked: a loss stays visible

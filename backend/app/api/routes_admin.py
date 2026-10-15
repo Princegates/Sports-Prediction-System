@@ -996,6 +996,65 @@ def randomize_public_teaser_pick(
     return resolve_public_teaser_pick(db)
 
 
+@router.post("/admin-picks/{pick_id}/promote-to-teaser", response_model=PublicTeaserPickOut)
+def promote_pick_to_public_teaser(
+    pick_id: int,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> PublicTeaserPickOut:
+    """Takes an already-generated AdminPick (an AI Generation slip or one
+    built by hand) and uses ITS legs as the new public teaser, instead of
+    randomize_public_teaser_pick's fresh random draw. The source pick itself
+    is left untouched -- this creates a new row (same as randomize), so later
+    editing, settling, or deleting the original never touches what's live on
+    the public Welcome page, and vice versa.
+
+    Every leg is re-priced live right now, same as resolve_public_teaser_pick
+    itself does on every read, and ALL of them must still resolve -- same
+    never-fall-back-silently rule randomize_public_teaser_pick follows -- so a
+    stale source pick (a finished match, a pulled price) is rejected with
+    exactly what's wrong rather than quietly going live with fewer legs than
+    the admin saw when they chose it."""
+
+    source = db.get(AdminPick, pick_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="Pick not found.")
+
+    refs = [(leg["match_id"], leg["market"], leg["selection"]) for leg in source.legs]
+    legs, warnings = price_legs(db, refs)
+    if len(legs) != len(refs):
+        detail = warnings[0] if warnings else "One or more legs in this pick no longer price live."
+        raise HTTPException(status_code=400, detail=detail)
+
+    db.execute(delete(AdminPick).where(AdminPick.public_teaser.is_(True)))
+
+    pick = AdminPick(
+        legs=[
+            {
+                "match_id": leg.match_id,
+                "market": leg.market,
+                "selection": leg.selection,
+                "probability_at_pick": leg.model_probability,
+                "decimal_odds_at_pick": leg.decimal_odds,
+            }
+            for leg in legs
+        ],
+        priced=True,
+        label="Public teaser pick",
+        created_by_user_id=admin.id,
+        public_teaser=True,
+        expires_at=min(leg.kickoff for leg in legs),
+    )
+    db.add(pick)
+    _record(
+        db, admin, "public_teaser_pick.promoted",
+        detail={"source_pick_id": pick_id, "legs": len(legs)},
+    )
+    db.commit()
+
+    return resolve_public_teaser_pick(db)
+
+
 @router.delete("/public-teaser-pick", status_code=204)
 def clear_public_teaser_pick(
     admin: User = Depends(require_superadmin),

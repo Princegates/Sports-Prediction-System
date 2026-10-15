@@ -223,3 +223,76 @@ def test_a_teaser_past_its_first_legs_kickoff_goes_stale(db_session, admin, pric
 
     response = client.get("/api/public/teaser-pick")
     assert response.json()["has_data"] is False
+
+
+def _create_source_pick(admin: User, matches: list[Match]) -> dict:
+    payload = {"legs": [{"match_id": m.id, "market": "Match Result", "selection": "Home Win"} for m in matches]}
+    response = client.post("/api/admin/admin-picks", json=payload, headers=_headers(admin))
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def _promote(admin: User, pick_id: int):
+    return client.post(f"/api/admin/admin-picks/{pick_id}/promote-to-teaser", headers=_headers(admin))
+
+
+def test_admin_can_promote_an_existing_pick_to_public_teaser(db_session, admin, priced_matches):
+    source = _create_source_pick(admin, priced_matches[:2])
+
+    response = _promote(admin, source["id"])
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["has_data"] is True
+    assert len(body["legs"]) == 2
+
+    # The source pick itself is untouched -- still there, still not the
+    # teaser, still showing in the normal admin-picks management list.
+    unchanged = db_session.get(AdminPick, source["id"])
+    assert unchanged is not None
+    assert unchanged.public_teaser is False
+    listing = client.get("/api/admin/admin-picks", headers=_headers(admin))
+    assert any(p["id"] == source["id"] for p in listing.json())
+
+    public = client.get("/api/public/teaser-pick")
+    assert public.json()["has_data"] is True
+    assert public.json()["combined_odds"] == pytest.approx(body["combined_odds"])
+
+    log = db_session.query(AuditLog).filter(AuditLog.action == "public_teaser_pick.promoted").one()
+    assert log.detail == {"source_pick_id": source["id"], "legs": 2}
+
+
+def test_promoting_replaces_whatever_teaser_was_showing_before(db_session, admin, priced_matches):
+    _randomize(admin, min_odds=5.0)
+    source = _create_source_pick(admin, priced_matches[:2])
+
+    response = _promote(admin, source["id"])
+    assert response.status_code == 200, response.text
+
+    rows = db_session.query(AdminPick).filter(AdminPick.public_teaser.is_(True)).all()
+    assert len(rows) == 1
+    assert len(rows[0].legs) == 2
+
+
+def test_promote_rejects_a_pick_whose_match_has_since_finished(db_session, admin, priced_matches):
+    source = _create_source_pick(admin, priced_matches[:2])
+
+    match = priced_matches[0]
+    match.status = "FINISHED"
+    match.home_score, match.away_score = 2, 1
+    db_session.commit()
+
+    response = _promote(admin, source["id"])
+    assert response.status_code == 400
+    assert db_session.query(AdminPick).filter(AdminPick.public_teaser.is_(True)).count() == 0
+
+
+def test_promote_rejects_an_unknown_pick_id(db_session, admin):
+    response = _promote(admin, 999999)
+    assert response.status_code == 404
+
+
+def test_promote_is_superadmin_only(db_session, admin, priced_matches):
+    source = _create_source_pick(admin, priced_matches[:2])
+    user = _make_user(db_session, "not-an-admin-3@example.com")
+    response = _promote(user, source["id"])
+    assert response.status_code == 403
