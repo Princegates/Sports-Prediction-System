@@ -23,11 +23,13 @@ function formatKickoff(iso: string): string {
   });
 }
 
-/** A member's own "my codes" results history -- every code they've ever
+/** A member's own "my codes" results history -- every settled code they've
  * generated through AI Generation / Markets' booking flow, with what
- * actually happened once it settles. Collapsed by default (a toggle, not a
- * separate page) since most visits to this page are about generating a new
- * code, not reviewing old ones. */
+ * actually happened. A still-pending code (its matches haven't finished)
+ * has nothing to show here yet, so it's filtered out rather than listed
+ * with no result. Collapsed by default (a toggle, not a separate page)
+ * since most visits to this page are about generating a new code, not
+ * reviewing old ones. */
 export function MyCodesHistory() {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
@@ -42,6 +44,10 @@ export function MyCodesHistory() {
       .then(setSlips)
       .catch((e) => setError(String(e instanceof Error ? e.message : e)));
   }, [open, slips]);
+
+  // Only settled codes -- a still-pending one (its matches haven't finished)
+  // has no result to show yet, so it's noise here rather than history.
+  const settledSlips = slips?.filter((slip) => slip.result !== "pending") ?? null;
 
   async function handlePublish(slipId: number) {
     setPublishingId(slipId);
@@ -74,15 +80,16 @@ export function MyCodesHistory() {
           {slips !== null && slips.length === 0 && (
             <p className="sub">No codes generated yet -- book one above and it'll show up here with its result once the match finishes.</p>
           )}
-          {slips !== null && slips.length > 0 && (
+          {slips !== null && slips.length > 0 && settledSlips !== null && settledSlips.length === 0 && (
+            <p className="sub">No settled codes yet -- results show up here once a code's matches finish.</p>
+          )}
+          {settledSlips !== null && settledSlips.length > 0 && (
             <div style={{ display: "grid", gap: 10 }}>
-              {slips.map((slip) => (
+              {settledSlips.map((slip) => (
                 <div key={slip.id} className="card card-pad">
                   <div className="section-header" style={{ marginBottom: 6 }}>
                     <span className="sub">{new Date(slip.created_at).toLocaleDateString()}</span>
-                    {slip.result !== "pending" && (
-                      <span className={`result-tag ${slip.result}`}>{RESULT_LABELS[slip.result]}</span>
-                    )}
+                    <span className={`result-tag ${slip.result}`}>{RESULT_LABELS[slip.result]}</span>
                   </div>
                   <ol style={{ display: "flex", flexDirection: "column", gap: 6, margin: 0, padding: 0, listStyle: "none" }}>
                     {slip.legs.map((leg, i) => (
