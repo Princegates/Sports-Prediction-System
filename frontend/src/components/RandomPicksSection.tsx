@@ -17,18 +17,18 @@ function cadenceOf(pick: AdminPick): Cadence | null {
 const GROUPS: { cadence: Cadence; title: string; blurb: string }[] = [
   {
     cadence: "daily",
-    title: "Random Daily Pick",
-    blurb: "One randomly drawn slip, reshuffled every day -- 60%+ picks only, not ranked by risk level.",
+    title: "Random Daily Picks",
+    blurb: "Two randomly drawn slips, reshuffled every day -- 60%+ picks only, not ranked by risk level.",
   },
   {
     cadence: "weekly",
-    title: "Random Weekly Pick",
-    blurb: "One randomly drawn slip, reshuffled every week -- 60%+ picks only, not ranked by risk level.",
+    title: "Random Weekly Picks",
+    blurb: "Two randomly drawn slips, reshuffled every week -- 60%+ picks only, not ranked by risk level.",
   },
 ];
 
-/** scripts/generate_random_picks.py's output -- COUNT (1) random-sized
- * (10-15 leg) slip per cadence, drawn from matches at 60%+ model
+/** scripts/generate_random_picks.py's output -- COUNT (2) random-sized
+ * (10-15 leg) slips per cadence, drawn from matches at 60%+ model
  * probability rather than ranked or filtered by risk tier (see
  * AdminPickCard's hideRisk). Same "no empty-state" reasoning as
  * AdminPicksSection/WeeklyPicksSection: a cadence that hasn't generated yet

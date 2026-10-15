@@ -34,7 +34,7 @@ from sqlalchemy.orm import Session
 from app.betcode.selection import select_random_legs
 from app.db.models import AdminPick
 
-COUNT = 1
+COUNT = 2
 MIN_LEGS = 10
 MAX_LEGS = 15
 MIN_PROBABILITY = 0.60
