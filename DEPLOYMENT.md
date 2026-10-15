@@ -31,9 +31,14 @@ stingy about).
 
 The only option here that is always-on, has a real disk, and never expires.
 
-**You get:** 4 ARM cores, 24 GB RAM, 200 GB storage, permanently free, no trial
-clock. That's enough to run the API, the database, model training, *and* a local
-LLM for the assistant's optional rewriter.
+**You get:** 2 OCPUs, 12 GB RAM, 200 GB storage, permanently free, no trial
+clock (Oracle cut the Always Free Ampere A1 allocation from 4 OCPU/24 GB on
+2026-08-18 — this still shows as 4/24 in some older write-ups online,
+including an earlier version of this file; check
+[Oracle's own Always Free page](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm)
+for the current number before relying on it). That's still enough to run the
+API, the database, and model training; a local LLM for the assistant's
+optional rewriter is a tighter fit on 12 GB than it used to be on 24.
 
 **Costs you:** a credit card for identity verification (not charged), and you
 administer the VM yourself. ARM capacity is sometimes unavailable in busy
