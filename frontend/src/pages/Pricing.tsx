@@ -30,8 +30,8 @@ export function Pricing() {
 
   return (
     <PublicShell
-      title="Pricing — Socca Intelligence"
-      description="What Socca Intelligence costs and how access works: no in-app payment gateway, a Super Admin issues a time-limited access code once payment is arranged outside the platform."
+      title="Pricing — Football & Soccer Predictions | Socca Intelligence"
+      description="What access to Socca Intelligence's football and soccer predictions costs: no in-app payment gateway, a Super Admin issues a time-limited access code once payment is arranged outside the platform."
     >
       <section className="doc-hero">
         <span className="eyebrow">Pricing</span>

@@ -27,8 +27,8 @@ export function HowItWorks() {
 
   return (
     <PublicShell
-      title="How It Works — Socca Intelligence"
-      description="How Socca Intelligence predicts football matches: Elo ratings, Dixon-Coles Poisson and gradient boosting, blended and calibrated against held-out history, with every figure checkable against a real backtest."
+      title="How Our Football & Soccer Prediction Model Works — Socca Intelligence"
+      description="How Socca Intelligence predicts football and soccer matches: Elo ratings, Dixon-Coles Poisson and gradient boosting, blended and calibrated against held-out history, checkable against a real backtest."
     >
       <section className="doc-hero">
         <span className="eyebrow">Methodology</span>

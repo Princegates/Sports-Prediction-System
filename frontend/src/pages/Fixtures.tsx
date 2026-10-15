@@ -25,12 +25,15 @@ export function Fixtures() {
 
   return (
     <PublicShell
-      title="Upcoming Football Fixtures & AI Predictions — Socca Intelligence"
-      description="Every upcoming fixture this system is tracking, across the Premier League, La Liga, Serie A, Bundesliga, Ligue 1 and more -- with each match's own prediction-confidence page."
+      title="Today's Football & Soccer Predictions — Upcoming Fixtures | Socca Intelligence"
+      description="Upcoming football and soccer fixtures with AI prediction-confidence previews -- Premier League, La Liga, Serie A, Bundesliga, Ligue 1 and 50+ more leagues, each with its own match page."
     >
       <section className="landing-section">
         <div className="section-head">
-          <h2>Upcoming fixtures</h2>
+          {/* The page's only H1 -- it was an H2 with no H1 above it, which
+              both skips a real on-page SEO signal and breaks the one-H1-
+              per-page structure every other public page here follows. */}
+          <h1>Upcoming Football &amp; Soccer Predictions</h1>
           <p>
             Real fixtures from the database, over the next two weeks. Open any match for its own page --
             the full breakdown (selection, probability, reasoning) stays behind the login, same as everywhere

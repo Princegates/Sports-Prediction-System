@@ -3765,6 +3765,9 @@ table.admin-table {
   max-width: 62ch;
 }
 
+/* h1 too: Fixtures.tsx's heading is this page's only H1 (SEO wants one
+   real H1 per page), styled identically to every other section's h2. */
+.section-head h1,
 .section-head h2 {
   font-size: clamp(22px, 2.6vw, 30px);
   letter-spacing: -0.02em;

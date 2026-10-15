@@ -175,12 +175,20 @@ export function Welcome() {
 
   return (
     <PublicShell
-      title="Socca Intelligence — Calibrated Football Predictions"
-      description="Ensemble football prediction across 18 markets per fixture: Elo, Dixon-Coles Poisson and gradient boosting, blended and calibrated on held-out history. Model probabilities, never guarantees."
+      title="AI Football & Soccer Predictions — Socca Intelligence"
+      description="AI-calibrated football and soccer predictions across 50+ leagues, scored on 18 markets per match -- Elo, Poisson and machine learning, backtested on real results. Never a guarantee."
     >
       {/* ---------------- Hero ---------------- */}
       <section className="landing-hero">
         <div className="landing-hero-copy">
+          {/* The exact phrase a "soccer prediction"/"football prediction"
+              search is looking for, as real visible body text rather than
+              only in <title>/<meta> -- search engines weigh on-page content
+              for topical relevance more than meta tags, which mostly just
+              shape the result snippet. A kicker label above the headline is
+              the natural, non-spammy home for it: it doesn't force the
+              phrase into the crafted H1/lede prose below. */}
+          <span className="eyebrow">Football &amp; Soccer Predictions</span>
           <h1>
             Calibrated football predictions,
             <span className="hero-gradient"> with the reasoning shown</span>
