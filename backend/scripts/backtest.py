@@ -26,11 +26,39 @@ Three modes:
         every league's data with a league identity feature. Measured worse
         than per-league models (ROADMAP.md 1d), so app.model_store only falls
         back to it for a league without a model of its own.
+
+Four more modes exist only for .github/workflows/refresh-predictions.yml's
+sharded retrain (one league list is too much for one GitHub Actions job's
+6-hour ceiling once there are 50+ leagues) -- running them by hand outside
+that workflow is unlikely to be useful:
+
+    --rebuild-elo LEAGUE ...
+        Elo only, for every league up front, single-process -- so no shard
+        can read another league's not-yet-rebuilt Elo for a team that's
+        moved between them (get_rating_before isn't scoped to one league).
+
+    --train-shard LEAGUE ... --validation-out FILE
+        Trains + validates only these leagues (Elo assumed already rebuilt)
+        and writes their validation passes to FILE, for --combine-weights
+        to pool across every shard afterward.
+
+    --combine-weights FILE ...
+        Pools every shard's --validation-out file and fits the one set of
+        blend weights every league is served with, same as --all-leagues
+        does in-process (model_store.load_ensemble_weights explains why
+        it's one shared set, not per-league).
+
+    --eval-shard LEAGUE ... --validation-file FILE
+        Fits these leagues' calibrators and scores their test slices with
+        the now-final shared weights, reusing --train-shard's own
+        validation pass (FILE) and trained model rather than redoing
+        either.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -383,13 +411,24 @@ def run_single_league(db, league_name: str, train_fraction: float, validation_fr
     evaluate_league(db, league_name, ml_model, matches, train_end_date, val_end_date, MODEL_VERSION, weights)
 
 
-def run_all_leagues(db, target_leagues: list[str], pool_ml: bool, train_fraction: float, validation_fraction: float) -> None:
+def _discover_leagues(
+    db, target_leagues: list[str], train_fraction: float, validation_fraction: float, rebuild_elo: bool = True,
+) -> tuple[dict[str, list[Match]], dict[str, tuple[dt.datetime, dt.datetime]]]:
+    """Which of ``target_leagues`` have enough data, their finished matches,
+    and their train/validation/test split -- the discovery step every mode
+    below needs before it can train or evaluate anything.
+
+    ``rebuild_elo=False`` is for a sharded retrain's --train-shard, where a
+    single-process step (--rebuild-elo) has already rebuilt every league's
+    Elo up front -- see that mode's own docstring for why redoing it here,
+    per shard, would risk a league whose Elo a *different*, concurrently
+    running shard hasn't rebuilt yet.
+    """
+
     # Cross-league cup competitions have no Elo replay of their own
     # (rebuild_elo_history refuses them) and no domestic split to score.
     target_leagues = [lg for lg in target_leagues if lg not in elo.EUROPEAN_COMPETITIONS]
 
-    # Every league's Elo before any league's predictions: a promoted side's
-    # rating lookup reads the rows its previous division wrote.
     league_matches: dict[str, list[Match]] = {}
     league_splits: dict[str, tuple[dt.datetime, dt.datetime]] = {}
     for league_name in target_leagues:
@@ -397,34 +436,31 @@ def run_all_leagues(db, target_leagues: list[str], pool_ml: bool, train_fraction
         if len(matches) < 100:
             print(f"  only {len(matches)} finished matches -- skipping {league_name}")
             continue
-        print(f"Rebuilding Elo history for {league_name} ...")
-        elo.rebuild_elo_history(db, league_name)
+        if rebuild_elo:
+            print(f"Rebuilding Elo history for {league_name} ...")
+            elo.rebuild_elo_history(db, league_name)
         league_matches[league_name] = matches
         league_splits[league_name] = compute_split(matches, train_fraction, validation_fraction)
 
-    if not league_matches:
-        print("No league had enough data. Import more seasons first.")
-        return
+    return league_matches, league_splits
+
+
+def _train_and_validate_leagues(
+    db, league_matches: dict[str, list[Match]], league_splits: dict[str, tuple[dt.datetime, dt.datetime]],
+) -> tuple[dict[str, MLModel], dict[str, LeagueFeatureCache], dict[str, ValidationPass]]:
+    """One Gradient Boosting model per league (not pooled -- see
+    run_all_leagues's docstring note on why), then each league's validation
+    pass. Shared by the in-process --all-leagues path and a sharded
+    retrain's --train-shard."""
 
     models: dict[str, MLModel] = {}
-    if pool_ml:
-        train_end_dates = {lg: split[0] for lg, split in league_splits.items()}
-        print(f"\nBuilding pooled training set across {len(league_matches)} leagues ...")
-        pooled_df = build_pooled_training_dataset(db, train_end_dates)
-        print(f"  pooled training set: {len(pooled_df)} matches (vs ~{len(pooled_df) // len(league_matches)} per league trained alone)")
-        pooled = MLModel()
-        pooled.fit(pooled_df)
-        pooled.save(ml_model_path(GLOBAL_MODEL_KEY))
-        print(f"  saved global model to {ml_model_path(GLOBAL_MODEL_KEY)}")
-        models = {lg: pooled for lg in league_matches}
-    else:
-        for league_name in league_matches:
-            print(f"Fitting Gradient Boosting model for {league_name} ...")
-            train_df = build_training_dataset(db, league_name, end_date=league_splits[league_name][0])
-            models[league_name] = MLModel()
-            models[league_name].fit(train_df)
-            models[league_name].save(ml_model_path(league_name))
-            print(f"  trained on {len(train_df)} matches")
+    for league_name in league_matches:
+        print(f"Fitting Gradient Boosting model for {league_name} ...")
+        train_df = build_training_dataset(db, league_name, end_date=league_splits[league_name][0])
+        models[league_name] = MLModel()
+        models[league_name].fit(train_df)
+        models[league_name].save(ml_model_path(league_name))
+        print(f"  trained on {len(train_df)} matches")
 
     caches: dict[str, LeagueFeatureCache] = {}
     validations: dict[str, ValidationPass] = {}
@@ -435,14 +471,81 @@ def run_all_leagues(db, target_leagues: list[str], pool_ml: bool, train_fraction
         caches[league_name] = LeagueFeatureCache(db, league_name)
         validations[league_name] = run_validation(db, league_name, models[league_name], validation_matches, caches[league_name])
 
+    return models, caches, validations
+
+
+def _combine_and_save_weights(validations: dict[str, ValidationPass]) -> EnsembleWeights:
+    """Pools every league's validation breakdowns into one fit -- the single
+    set of blend weights every league is served with (model_store.
+    load_ensemble_weights has the measurements behind why this is shared,
+    not per-league). Shared by the in-process --all-leagues path and a
+    sharded retrain's --combine-weights."""
+
     all_breakdowns = [b for v in validations.values() for b in v.breakdowns]
     all_labels = [y for v in validations.values() for y in v.labels]
     fitted = fit_ensemble_weights(all_breakdowns, all_labels)
     save_ensemble_weights(fitted)
     print(
-        f"\nShared blend weights from {len(all_labels)} pooled validation matches: "
+        f"\nShared blend weights from {len(all_labels)} pooled validation matches "
+        f"across {len(validations)} league(s): "
         f"elo={fitted.elo:.2f} poisson={fitted.poisson:.2f} ml={fitted.ml:.2f}"
     )
+    return fitted
+
+
+def _serialize_validation(v: ValidationPass) -> dict:
+    return {
+        "labels": v.labels,
+        "breakdowns": v.breakdowns,
+        "over25_probs": v.over25_probs,
+        "over25_actual": v.over25_actual,
+        "btts_probs": v.btts_probs,
+        "btts_actual": v.btts_actual,
+    }
+
+
+def _deserialize_validation(data: dict) -> ValidationPass:
+    v = ValidationPass()
+    v.labels = data["labels"]
+    v.breakdowns = data["breakdowns"]
+    v.over25_probs = data["over25_probs"]
+    v.over25_actual = data["over25_actual"]
+    v.btts_probs = data["btts_probs"]
+    v.btts_actual = data["btts_actual"]
+    return v
+
+
+def run_all_leagues(db, target_leagues: list[str], pool_ml: bool, train_fraction: float, validation_fraction: float) -> None:
+    # Every league's Elo before any league's predictions: a promoted side's
+    # rating lookup reads the rows its previous division wrote.
+    league_matches, league_splits = _discover_leagues(db, target_leagues, train_fraction, validation_fraction, rebuild_elo=True)
+
+    if not league_matches:
+        print("No league had enough data. Import more seasons first.")
+        return
+
+    if pool_ml:
+        train_end_dates = {lg: split[0] for lg, split in league_splits.items()}
+        print(f"\nBuilding pooled training set across {len(league_matches)} leagues ...")
+        pooled_df = build_pooled_training_dataset(db, train_end_dates)
+        print(f"  pooled training set: {len(pooled_df)} matches (vs ~{len(pooled_df) // len(league_matches)} per league trained alone)")
+        pooled = MLModel()
+        pooled.fit(pooled_df)
+        pooled.save(ml_model_path(GLOBAL_MODEL_KEY))
+        print(f"  saved global model to {ml_model_path(GLOBAL_MODEL_KEY)}")
+        models = {lg: pooled for lg in league_matches}
+        caches: dict[str, LeagueFeatureCache] = {}
+        validations: dict[str, ValidationPass] = {}
+        for league_name, matches in league_matches.items():
+            train_end_date, val_end_date = league_splits[league_name]
+            validation_matches = [m for m in matches if train_end_date <= m.date < val_end_date]
+            print(f"Running {len(validation_matches)} validation matches for {league_name} ...")
+            caches[league_name] = LeagueFeatureCache(db, league_name)
+            validations[league_name] = run_validation(db, league_name, models[league_name], validation_matches, caches[league_name])
+    else:
+        models, caches, validations = _train_and_validate_leagues(db, league_matches, league_splits)
+
+    fitted = _combine_and_save_weights(validations)
 
     # The test slice is scored with the weights that will actually serve, so
     # the stored metrics describe the live predictions. Those are the fitted
@@ -470,6 +573,75 @@ def run_all_leagues(db, target_leagues: list[str], pool_ml: bool, train_fraction
     print("\nMetrics stored in model_metrics table.")
 
 
+def rebuild_elo_for_leagues(db, leagues: list[str]) -> None:
+    """A sharded retrain's single-process step run before any shard starts
+    training -- see --train-shard's docstring note for why this can't be
+    split across shards along with everything else."""
+
+    for league in leagues:
+        if league in elo.EUROPEAN_COMPETITIONS:
+            continue
+        print(f"Rebuilding Elo history for {league} ...")
+        elo.rebuild_elo_history(db, league)
+
+
+def train_shard(
+    db, leagues: list[str], validation_out: str, train_fraction: float, validation_fraction: float,
+) -> None:
+    league_matches, league_splits = _discover_leagues(db, leagues, train_fraction, validation_fraction, rebuild_elo=False)
+    if not league_matches:
+        print("No league in this shard had enough data.")
+        Path(validation_out).write_text("{}")
+        return
+
+    _, _, validations = _train_and_validate_leagues(db, league_matches, league_splits)
+    Path(validation_out).write_text(json.dumps({lg: _serialize_validation(v) for lg, v in validations.items()}))
+    print(f"\nWrote validation data for {len(validations)} league(s) to {validation_out}")
+
+
+def combine_weights_cli(validation_files: list[str]) -> None:
+    validations: dict[str, ValidationPass] = {}
+    for path in validation_files:
+        data = json.loads(Path(path).read_text())
+        for league, serialized in data.items():
+            validations[league] = _deserialize_validation(serialized)
+
+    if not validations:
+        print("No validation data found in any shard -- nothing to fit.")
+        return
+
+    _combine_and_save_weights(validations)
+
+
+def eval_shard(
+    db, leagues: list[str], validation_file: str, train_fraction: float, validation_fraction: float,
+) -> None:
+    data = json.loads(Path(validation_file).read_text())
+    league_matches, league_splits = _discover_leagues(db, leagues, train_fraction, validation_fraction, rebuild_elo=False)
+
+    summaries = []
+    for league_name, matches in league_matches.items():
+        if league_name not in data:
+            print(f"  {league_name}: no validation data in {validation_file} -- skipping")
+            continue
+        path = ml_model_path(league_name)
+        if not path.exists():
+            print(f"  {league_name}: no trained model at {path} -- skipping")
+            continue
+        train_end_date, val_end_date = league_splits[league_name]
+        weights = load_ensemble_weights(league_name, db)
+        validation = _deserialize_validation(data[league_name])
+        summaries.append(
+            evaluate_league(
+                db, league_name, MLModel.load(path), matches, train_end_date, val_end_date, MODEL_VERSION, weights,
+                validation=validation,
+            )
+        )
+
+    print_summary_table(summaries)
+    print("\nMetrics stored in model_metrics table.")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--league", default="E0", choices=sorted(LEAGUE_CODES), help="football-data.co.uk code (ignored if --league-name is given)")
@@ -479,13 +651,39 @@ def main() -> None:
     parser.add_argument("--leagues", nargs="+", default=None, help="Leagues for --all-leagues / --pool-leagues; defaults to every league in KNOWN_LEAGUES that has data")
     parser.add_argument("--train-fraction", type=float, default=0.70)
     parser.add_argument("--validation-fraction", type=float, default=0.15)
+
+    # Sharded-retrain modes -- see the module docstring's own section on
+    # these for how they fit together. Mutually exclusive with each other
+    # and with the three modes above.
+    parser.add_argument("--rebuild-elo", nargs="+", default=None, metavar="LEAGUE")
+    parser.add_argument("--train-shard", nargs="+", default=None, metavar="LEAGUE")
+    parser.add_argument("--validation-out", default=None, help="Where --train-shard writes its validation data")
+    parser.add_argument("--combine-weights", nargs="+", default=None, metavar="FILE", help="--validation-out file(s) from every shard, to pool and fit the shared weights from")
+    parser.add_argument("--eval-shard", nargs="+", default=None, metavar="LEAGUE")
+    parser.add_argument("--validation-file", default=None, help="The --train-shard --validation-out file covering --eval-shard's leagues")
     args = parser.parse_args()
+
+    if args.combine_weights:
+        # No DB needed -- fit_ensemble_weights and save_ensemble_weights are
+        # both pure file/array work on what --train-shard already wrote.
+        combine_weights_cli(args.combine_weights)
+        return
 
     init_db(engine)
     db = SessionLocal()
 
     try:
-        if args.all_leagues or args.pool_leagues or args.leagues:
+        if args.rebuild_elo:
+            rebuild_elo_for_leagues(db, args.rebuild_elo)
+        elif args.train_shard:
+            if not args.validation_out:
+                raise SystemExit("--train-shard needs --validation-out")
+            train_shard(db, args.train_shard, args.validation_out, args.train_fraction, args.validation_fraction)
+        elif args.eval_shard:
+            if not args.validation_file:
+                raise SystemExit("--eval-shard needs --validation-file")
+            eval_shard(db, args.eval_shard, args.validation_file, args.train_fraction, args.validation_fraction)
+        elif args.all_leagues or args.pool_leagues or args.leagues:
             run_all_leagues(db, args.leagues or KNOWN_LEAGUES, args.pool_leagues, args.train_fraction, args.validation_fraction)
         else:
             run_single_league(db, args.league_name or LEAGUE_CODES[args.league], args.train_fraction, args.validation_fraction)

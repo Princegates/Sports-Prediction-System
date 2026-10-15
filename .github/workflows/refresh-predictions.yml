@@ -5,7 +5,7 @@
 #
 #   - DAILY refresh: pull this season's fixtures and results from
 #     API-Football (the only fixture source), regenerate predictions. Reads
-#     the matches that changed. Cheap.
+#     the matches that changed. Cheap. One job (the "refresh" job below).
 #   - WEEKLY retrain: rebuild Elo, refit the models and calibrators, backtest.
 #     Reads every match in every league.
 #
@@ -14,11 +14,25 @@
 # a week of new results does change it -- so the expensive half runs weekly and
 # the cheap half runs daily.
 #
+# The retrain is sharded across several jobs (the "retrain-*" jobs below),
+# because it stopped fitting in one. A single job training and scoring every
+# league sequentially hit GitHub-hosted runners' own 6-hour-per-job ceiling
+# (docs.github.com/actions/reference/limits -- there is no higher number to
+# set) once the league count passed 50; the first run past that point got
+# cancelled mid-way through, having reached barely half the leagues. Splitting
+# the per-league work -- which is the only part that doesn't fit -- across
+# several jobs that each get their own 6-hour budget is the fix; see
+# scripts/backtest.py's module docstring for the shapes of work (--rebuild-elo,
+# --train-shard, --combine-weights, --eval-shard) each new job runs, and
+# scripts/plan_shards.py for how leagues are divided among them.
+#
 # Trained models live on the runner's disk, which is destroyed with the runner,
-# so they are carried between runs in the Actions cache. Without that, the
-# daily job would find no model and quietly generate predictions with the
-# gradient-boosting component missing from the blend -- the same numbers, just
-# worse, with nothing in the log to say so.
+# so they are carried between runs in the Actions cache (the "Save trained
+# models" step), and between jobs within one retrain run as build artifacts
+# (the "actions/upload-artifact" / "actions/download-artifact" steps). Without
+# the cache, the daily job would find no model and quietly generate
+# predictions with the gradient-boosting component missing from the blend --
+# the same numbers, just worse, with nothing in the log to say so.
 #
 # Set DATABASE_URL under Settings -> Secrets and variables -> Actions.
 # For the first run, also set SUPERADMIN_EMAIL and SUPERADMIN_PASSWORD so the
@@ -74,15 +88,28 @@ on:
         options: ["yes", "skip"]
 
 jobs:
-  refresh:
+  # Resolved once so every job below gates on the same value, rather than
+  # each repeating "inputs.mode || (schedule == ... && 'retrain') || 'refresh'".
+  setup:
     runs-on: ubuntu-latest
-    # A retrain fits a model per league -- 55 of them now -- and a daily
-    # refresh is minutes. 360 is GitHub-hosted runners' own hard ceiling for
-    # a single job (docs.github.com/actions/reference/limits); there is no
-    # higher number to set. 120 was set when the retrain covered five
-    # leagues, 240 when it covered eleven -- watch the first run at 56
-    # closely, since there is no more ceiling to raise if it runs long.
-    timeout-minutes: 360
+    timeout-minutes: 5
+    outputs:
+      mode: ${{ steps.resolve.outputs.mode }}
+    steps:
+      - id: resolve
+        run: echo "mode=${{ inputs.mode || (github.event.schedule == '0 3 * * 1' && 'retrain') || 'refresh' }}" >> "$GITHUB_OUTPUT"
+
+  # The daily refresh and the one-off seed import -- unchanged from before
+  # the retrain was sharded, since neither trains at the scale that stopped
+  # fitting in one job. (A from-empty --mode=seed retrain, which backfills
+  # several extra seasons on top of training every league, could in
+  # principle hit the same ceiling -- rare enough, and a one-time setup step
+  # rather than the weekly production path, that it isn't sharded here too.)
+  refresh:
+    needs: setup
+    if: needs.setup.outputs.mode != 'retrain'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
     # Needed by "Commit sitemap if it changed" below, which pushes straight
     # to the default branch -- explicit rather than relying on whatever an
     # org sets as its GITHUB_TOKEN default (read-only on plenty of orgs).
@@ -154,13 +181,10 @@ jobs:
           SUPERADMIN_EMAIL: ${{ secrets.SUPERADMIN_EMAIL }}
           SUPERADMIN_PASSWORD: ${{ secrets.SUPERADMIN_PASSWORD }}
           # Every league the site lists, so none of them goes stale: one
-          # API-Football request each per day, and the weekly retrain reads
-          # every league's history.
+          # API-Football request each per day.
           LEAGUES: ${{ inputs.leagues || '"English Premier League" "Spanish La Liga" "German Bundesliga" "Italian Serie A" "French Ligue 1" "Dutch Eredivisie" "Portuguese Primeira Liga" "Turkish Süper Lig" "UEFA Champions League" "UEFA Europa League" "Albanian Superliga" "Andorran Primera Divisió" "Armenian Premier League" "Austrian Bundesliga" "Azerbaijan Premyer Liqa" "Belarusian Premier League" "Belgian Pro League" "Bosnian Premijer Liga" "Bulgarian First League" "Croatian HNL" "Cypriot First Division" "Czech First League" "Danish Superliga" "Estonian Meistriliiga" "Faroese Meistaradeildin" "Finnish Veikkausliiga" "Georgian Erovnuli Liga" "Gibraltar Premier Division" "Greek Super League" "Hungarian NB I" "Icelandic Úrvalsdeild" "League of Ireland Premier Division" "Israeli Ligat Ha''al" "Kazakh Premier League" "Kosovan Superliga" "Latvian Virslīga" "Lithuanian A Lyga" "Luxembourg National Division" "Macedonian First League" "Maltese Premier League" "Moldovan Super Liga" "Montenegrin First League" "NIFL Premiership" "Norwegian Eliteserien" "Polish Ekstraklasa" "Romanian Liga I" "San Marino Campionato" "Scottish Premiership" "Serbian SuperLiga" "Slovak Super Liga" "Slovenian PrvaLiga" "Swedish Allsvenskan" "Swiss Super League" "Ukrainian Premier League" "Welsh Premier League"' }}
           DAYS_AHEAD: ${{ inputs.days_ahead || '10' }}
-          # The weekly cron retrains; the daily one doesn't. A manual run says
-          # so explicitly.
-          MODE: ${{ inputs.mode || (github.event.schedule == '0 3 * * 1' && 'retrain') || 'refresh' }}
+          MODE: ${{ needs.setup.outputs.mode }}
         run: |
           if [ -z "$DATABASE_URL" ]; then
             echo "DATABASE_URL secret is not set -- nothing to refresh."
@@ -169,17 +193,16 @@ jobs:
           fi
 
           # Fixtures and results come from API-Football only (one request per
-          # league per season). refresh/retrain import the current season;
-          # seed also backfills the five before it, for a fresh database.
+          # league per season). refresh imports the current season; seed
+          # also backfills the five before it, for a fresh database.
           FLAGS=(--days-ahead "$DAYS_AHEAD")
           case "$MODE" in
-            retrain) ;;
             refresh) FLAGS+=(--skip-training) ;;
             seed)
               Y=$(date -u +%Y); [ "$(date -u +%-m)" -lt 7 ] && Y=$((Y - 1))
               mapfile -t SEED_SEASONS < <(seq $((Y - 5)) $Y)
               FLAGS+=(--seasons "${SEED_SEASONS[@]}") ;;
-            *)       echo "Unknown mode: $MODE" >&2; exit 1 ;;
+            *)       echo "Unknown mode for this job: $MODE" >&2; exit 1 ;;
           esac
 
           echo "Mode: $MODE"
@@ -199,48 +222,9 @@ jobs:
           mapfile -t LEAGUES_ARR < <(xargs -n1 <<<"$LEAGUES")
           python scripts/bootstrap.py "${FLAGS[@]}" --leagues "${LEAGUES_ARR[@]}"
 
-      # Only on the weekly retrain, not the daily refresh -- "every match
-      # week" means once a week, not reshuffled every morning. Runs after
-      # the step above so it always searches this run's freshest
-      # predictions and odds, pooled across every league (never just the
-      # ones named in $LEAGUES -- see generate_weekly_picks.py).
-      - name: Generate this week's system picks
-        # A midweek manual retrain can pass weekly_picks: skip, so the
-        # accumulators members may already have booked aren't swapped out.
-        if: ${{ (inputs.mode || (github.event.schedule == '0 3 * * 1' && 'retrain') || 'refresh') == 'retrain' && inputs.weekly_picks != 'skip' }}
-        working-directory: backend
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: |
-          if [ -z "$DATABASE_URL" ]; then
-            echo "DATABASE_URL secret is not set -- nothing to generate."
-            exit 0
-          fi
-          python scripts/generate_weekly_picks.py
-          python scripts/generate_high_risk_slips.py
-          python scripts/generate_random_picks.py --which weekly
-
-      # Same gate as the step above, on purpose: nothing new to announce
-      # when that step didn't run. Off by default even when it does --
-      # Settings -> Email -> "Email members about new weekly picks" has to
-      # be turned on, and SMTP/Resend has to be configured, or this is a
-      # no-op (see the script's own docstring).
-      - name: Email members about this week's picks
-        if: ${{ (inputs.mode || (github.event.schedule == '0 3 * * 1' && 'retrain') || 'refresh') == 'retrain' && inputs.weekly_picks != 'skip' }}
-        working-directory: backend
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: |
-          if [ -z "$DATABASE_URL" ]; then
-            echo "DATABASE_URL secret is not set -- nothing to send."
-            exit 0
-          fi
-          python scripts/send_weekly_picks_email.py
-
-      # Every run, daily refresh or weekly retrain alike -- "Random Daily
-      # Picks" means reshuffled every day, unlike the weekly draw above.
-      # Runs after the refresh step so it always searches this run's
-      # freshest predictions (see generate_random_picks.py).
+      # Every run, daily refresh or seed alike -- "Random Daily Picks" means
+      # reshuffled every day. Runs after the refresh step so it always
+      # searches this run's freshest predictions (see generate_random_picks.py).
       - name: Generate today's random picks
         working-directory: backend
         env:
@@ -255,8 +239,7 @@ jobs:
       # Every run, same reasoning as the random picks step above: upcoming
       # fixtures change daily (new ones added, old ones kicked off), so the
       # sitemap of per-fixture preview pages (frontend/src/pages/
-      # FixturePreview.tsx) needs to track that daily too, not just on a
-      # weekly retrain.
+      # FixturePreview.tsx) needs to track that daily too.
       - name: Regenerate sitemap
         working-directory: backend
         env:
@@ -287,8 +270,397 @@ jobs:
             git push origin HEAD:${{ github.ref_name }}
           fi
 
-      # Saved even on failure: a run that trained some leagues and then died
-      # shouldn't throw away the models it did produce.
+      # Saved even on failure: a run that refreshed some leagues and then
+      # died shouldn't throw away what it did produce.
+      - name: Save trained models
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: backend/model_artifacts
+          key: model-artifacts-${{ github.run_id }}
+
+  # --- Weekly retrain, sharded -----------------------------------------
+  #
+  # Single-process, before any shard starts: fixture/odds import, then every
+  # targeted league's Elo rebuilt up front. Elo can't be split per shard --
+  # get_rating_before reads a team's most recent snapshot across every
+  # league it's played in, not scoped to one, so a shard reading a team that
+  # moved between two leagues could see a stale rating if the OTHER shard
+  # hadn't rebuilt that league's Elo yet. One job rebuilding every league
+  # first removes that race entirely.
+  retrain-import:
+    needs: setup
+    if: needs.setup.outputs.mode == 'retrain'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      SUPERADMIN_EMAIL: ${{ secrets.SUPERADMIN_EMAIL }}
+      SUPERADMIN_PASSWORD: ${{ secrets.SUPERADMIN_PASSWORD }}
+      LEAGUES: ${{ inputs.leagues || '"English Premier League" "Spanish La Liga" "German Bundesliga" "Italian Serie A" "French Ligue 1" "Dutch Eredivisie" "Portuguese Primeira Liga" "Turkish Süper Lig" "UEFA Champions League" "UEFA Europa League" "Albanian Superliga" "Andorran Primera Divisió" "Armenian Premier League" "Austrian Bundesliga" "Azerbaijan Premyer Liqa" "Belarusian Premier League" "Belgian Pro League" "Bosnian Premijer Liga" "Bulgarian First League" "Croatian HNL" "Cypriot First Division" "Czech First League" "Danish Superliga" "Estonian Meistriliiga" "Faroese Meistaradeildin" "Finnish Veikkausliiga" "Georgian Erovnuli Liga" "Gibraltar Premier Division" "Greek Super League" "Hungarian NB I" "Icelandic Úrvalsdeild" "League of Ireland Premier Division" "Israeli Ligat Ha''al" "Kazakh Premier League" "Kosovan Superliga" "Latvian Virslīga" "Lithuanian A Lyga" "Luxembourg National Division" "Macedonian First League" "Maltese Premier League" "Moldovan Super Liga" "Montenegrin First League" "NIFL Premiership" "Norwegian Eliteserien" "Polish Ekstraklasa" "Romanian Liga I" "San Marino Campionato" "Scottish Premiership" "Serbian SuperLiga" "Slovak Super Liga" "Slovenian PrvaLiga" "Swedish Allsvenskan" "Swiss Super League" "Ukrainian Premier League" "Welsh Premier League"' }}
+      DAYS_AHEAD: ${{ inputs.days_ahead || '10' }}
+    outputs:
+      shards_json: ${{ steps.plan.outputs.shards_json }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Check DATABASE_URL
+        working-directory: backend
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret is not set -- nothing to refresh."
+            echo "Add it under Settings > Secrets and variables > Actions."
+            exit 0
+          fi
+          python scripts/check_database_url.py
+
+      - name: Import injuries/suspensions
+        working-directory: backend
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret is not set -- nothing to import."
+            exit 0
+          fi
+          mapfile -t LEAGUES_ARR < <(xargs -n1 <<<"$LEAGUES")
+          python scripts/import_injuries.py --leagues "${LEAGUES_ARR[@]}"
+
+      - name: Import fixtures, odds and retire free-feed duplicates
+        working-directory: backend
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret is not set -- nothing to import."
+            exit 0
+          fi
+          mapfile -t LEAGUES_ARR < <(xargs -n1 <<<"$LEAGUES")
+          python scripts/bootstrap.py --days-ahead "$DAYS_AHEAD" \
+            --skip-training --skip-predictions --leagues "${LEAGUES_ARR[@]}"
+
+      - name: Rebuild Elo for every league
+        working-directory: backend
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret is not set -- nothing to rebuild."
+            exit 0
+          fi
+          mapfile -t LEAGUES_ARR < <(xargs -n1 <<<"$LEAGUES")
+          python scripts/backtest.py --rebuild-elo "${LEAGUES_ARR[@]}"
+
+      - name: Plan training shards
+        id: plan
+        working-directory: backend
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "shards_json=[]" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          mapfile -t LEAGUES_ARR < <(xargs -n1 <<<"$LEAGUES")
+          SHARDS=$(python scripts/plan_shards.py --leagues "${LEAGUES_ARR[@]}" --shards 6)
+          echo "shards_json=$SHARDS" >> "$GITHUB_OUTPUT"
+
+  # Trains + validates each shard's leagues in parallel (scripts/backtest.py
+  # --train-shard), each shard getting its own 6-hour job budget instead of
+  # all 55+ leagues sharing one. Writes its own validation data for
+  # retrain-combine-weights to pool, and its own trained models for
+  # retrain-shard-b to score once the shared blend weights are known.
+  retrain-shard-a:
+    needs: [setup, retrain-import]
+    if: needs.setup.outputs.mode == 'retrain'
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      # Matches --shards 6 in retrain-import's "Plan training shards" step.
+      # Change both together.
+      matrix:
+        shard_index: [0, 1, 2, 3, 4, 5]
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      SHARDS_JSON: ${{ needs['retrain-import'].outputs.shards_json }}
+      SHARD_INDEX: ${{ matrix.shard_index }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Train this shard's leagues
+        working-directory: backend
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret is not set -- nothing to train."
+            echo "{}" > validation_shard.json
+            exit 0
+          fi
+          mapfile -t LEAGUES_ARR < <(python -c "import json, os; [print(l) for l in json.loads(os.environ['SHARDS_JSON'])[int(os.environ['SHARD_INDEX'])]]")
+          if [ "${#LEAGUES_ARR[@]}" -eq 0 ]; then
+            echo "Shard $SHARD_INDEX has no leagues -- nothing to train."
+            echo "{}" > validation_shard.json
+            exit 0
+          fi
+          python scripts/backtest.py --train-shard "${LEAGUES_ARR[@]}" --validation-out validation_shard.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: retrain-shard-${{ matrix.shard_index }}-trained
+          path: |
+            backend/model_artifacts
+            backend/validation_shard.json
+
+  # One set of blend weights, fitted on every shard's validation matches
+  # pooled -- not per shard, see scripts/backtest.py's module docstring and
+  # app/model_store.py's load_ensemble_weights for why a shared set beats a
+  # per-subset fit. No DATABASE_URL needed: fitting and saving the weights
+  # is pure file/array work on what retrain-shard-a already wrote.
+  retrain-combine-weights:
+    needs: [setup, retrain-shard-a]
+    if: needs.setup.outputs.mode == 'retrain'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: retrain-shard-*-trained
+          path: backend/shards
+
+      - name: Fit the shared blend weights from every shard pooled
+        working-directory: backend
+        run: |
+          shopt -s nullglob
+          FILES=(shards/retrain-shard-*-trained/validation_shard.json)
+          if [ "${#FILES[@]}" -eq 0 ]; then
+            echo "No shard validation files found -- nothing to combine."
+            mkdir -p model_artifacts
+            exit 0
+          fi
+          python scripts/backtest.py --combine-weights "${FILES[@]}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: retrain-weights
+          path: backend/model_artifacts/ensemble_weights_global.json
+          if-no-files-found: ignore
+
+  # Fits each shard's calibrators and scores its leagues' held-out test
+  # slices, now that the final shared weights exist -- reuses
+  # retrain-shard-a's own trained models and validation pass (scripts/
+  # backtest.py --eval-shard) rather than redoing either.
+  retrain-shard-b:
+    needs: [setup, retrain-import, retrain-shard-a, retrain-combine-weights]
+    if: needs.setup.outputs.mode == 'retrain'
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        shard_index: [0, 1, 2, 3, 4, 5]
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      SHARDS_JSON: ${{ needs['retrain-import'].outputs.shards_json }}
+      SHARD_INDEX: ${{ matrix.shard_index }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: retrain-shard-${{ matrix.shard_index }}-trained
+          path: backend
+
+      - uses: actions/download-artifact@v4
+        # continue-on-error, not a presence check: the artifact is absent
+        # only if retrain-combine-weights itself had nothing to combine (no
+        # DATABASE_URL at all), in which case this step would otherwise hard
+        # fail the job over a file that was never going to exist.
+        # evaluate_league falls back to the settings-panel default in that
+        # case, same as it always has for a league with no fitted weights yet.
+        continue-on-error: true
+        with:
+          name: retrain-weights
+          path: backend/model_artifacts
+
+      - name: Score this shard's leagues and fit their calibrators
+        working-directory: backend
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret is not set -- nothing to score."
+            exit 0
+          fi
+          mapfile -t LEAGUES_ARR < <(python -c "import json, os; [print(l) for l in json.loads(os.environ['SHARDS_JSON'])[int(os.environ['SHARD_INDEX'])]]")
+          if [ "${#LEAGUES_ARR[@]}" -eq 0 ]; then
+            echo "Shard $SHARD_INDEX has no leagues -- nothing to score."
+            exit 0
+          fi
+          python scripts/backtest.py --eval-shard "${LEAGUES_ARR[@]}" --validation-file validation_shard.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: retrain-shard-${{ matrix.shard_index }}-final
+          path: backend/model_artifacts
+
+  # Merges every shard's trained models + calibrators + the shared weights
+  # into one model_artifacts directory, caches it for the daily refresh to
+  # pick up, then runs the same tail the single retrain job used to: fresh
+  # predictions from the newly trained models, this week's system picks,
+  # random picks, and the sitemap.
+  retrain-finalize:
+    needs: [setup, retrain-import, retrain-shard-b]
+    if: needs.setup.outputs.mode == 'retrain'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      SUPERADMIN_EMAIL: ${{ secrets.SUPERADMIN_EMAIL }}
+      SUPERADMIN_PASSWORD: ${{ secrets.SUPERADMIN_PASSWORD }}
+      LEAGUES: ${{ inputs.leagues || '"English Premier League" "Spanish La Liga" "German Bundesliga" "Italian Serie A" "French Ligue 1" "Dutch Eredivisie" "Portuguese Primeira Liga" "Turkish Süper Lig" "UEFA Champions League" "UEFA Europa League" "Albanian Superliga" "Andorran Primera Divisió" "Armenian Premier League" "Austrian Bundesliga" "Azerbaijan Premyer Liqa" "Belarusian Premier League" "Belgian Pro League" "Bosnian Premijer Liga" "Bulgarian First League" "Croatian HNL" "Cypriot First Division" "Czech First League" "Danish Superliga" "Estonian Meistriliiga" "Faroese Meistaradeildin" "Finnish Veikkausliiga" "Georgian Erovnuli Liga" "Gibraltar Premier Division" "Greek Super League" "Hungarian NB I" "Icelandic Úrvalsdeild" "League of Ireland Premier Division" "Israeli Ligat Ha''al" "Kazakh Premier League" "Kosovan Superliga" "Latvian Virslīga" "Lithuanian A Lyga" "Luxembourg National Division" "Macedonian First League" "Maltese Premier League" "Moldovan Super Liga" "Montenegrin First League" "NIFL Premiership" "Norwegian Eliteserien" "Polish Ekstraklasa" "Romanian Liga I" "San Marino Campionato" "Scottish Premiership" "Serbian SuperLiga" "Slovak Super Liga" "Slovenian PrvaLiga" "Swedish Allsvenskan" "Swiss Super League" "Ukrainian Premier League" "Welsh Premier League"' }}
+      DAYS_AHEAD: ${{ inputs.days_ahead || '10' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: retrain-shard-*-final
+          path: backend/shards
+
+      - name: Merge every shard's trained models into one directory
+        run: |
+          mkdir -p backend/model_artifacts
+          for d in backend/shards/retrain-shard-*-final/model_artifacts; do
+            [ -d "$d" ] && cp -a "$d"/. backend/model_artifacts/
+          done
+          echo "Merged $(ls backend/model_artifacts | wc -l) model artifact file(s)."
+
+      - name: Check DATABASE_URL
+        working-directory: backend
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret is not set -- nothing to finalize."
+            exit 0
+          fi
+          python scripts/check_database_url.py
+
+      - name: Generate predictions for every league
+        working-directory: backend
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret is not set -- nothing to generate."
+            exit 0
+          fi
+          mapfile -t LEAGUES_ARR < <(xargs -n1 <<<"$LEAGUES")
+          # Data's already imported (retrain-import) and models are already
+          # trained (the shards) -- this step is predictions only.
+          python scripts/bootstrap.py --days-ahead "$DAYS_AHEAD" \
+            --skip-training --skip-data --leagues "${LEAGUES_ARR[@]}"
+
+      # "Every match week" means once a week, not reshuffled every morning --
+      # this job only runs on a retrain. Runs after the step above so it
+      # always searches this run's freshest predictions and odds, pooled
+      # across every league (see generate_weekly_picks.py).
+      - name: Generate this week's system picks
+        # A midweek manual retrain can pass weekly_picks: skip, so the
+        # accumulators members may already have booked aren't swapped out.
+        if: ${{ inputs.weekly_picks != 'skip' }}
+        working-directory: backend
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret is not set -- nothing to generate."
+            exit 0
+          fi
+          python scripts/generate_weekly_picks.py
+          python scripts/generate_high_risk_slips.py
+          python scripts/generate_random_picks.py --which weekly
+
+      # Same gate as the step above, on purpose: nothing new to announce
+      # when that step didn't run. Off by default even when it does --
+      # Settings -> Email -> "Email members about new weekly picks" has to
+      # be turned on, and SMTP/Resend has to be configured, or this is a
+      # no-op (see the script's own docstring).
+      - name: Email members about this week's picks
+        if: ${{ inputs.weekly_picks != 'skip' }}
+        working-directory: backend
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret is not set -- nothing to send."
+            exit 0
+          fi
+          python scripts/send_weekly_picks_email.py
+
+      - name: Generate today's random picks
+        working-directory: backend
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret is not set -- nothing to generate."
+            exit 0
+          fi
+          python scripts/generate_random_picks.py --which daily
+
+      - name: Regenerate sitemap
+        working-directory: backend
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret is not set -- nothing to regenerate."
+            exit 0
+          fi
+          python scripts/generate_sitemap.py
+
+      - name: Commit sitemap if it changed
+        run: |
+          if git diff --quiet -- frontend/public/sitemap.xml; then
+            echo "Sitemap unchanged."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add frontend/public/sitemap.xml
+            git commit -m "Update sitemap with current upcoming fixtures"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
+
+      # Saved even on failure: a retrain that finished some shards and then
+      # died here shouldn't throw away the models those shards did produce.
       - name: Save trained models
         if: always()
         uses: actions/cache/save@v4
