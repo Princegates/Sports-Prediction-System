@@ -1,5 +1,5 @@
 import { createContext, type Dispatch, type SetStateAction, useContext, useEffect, useState } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   Content,
   Header,
@@ -147,6 +147,14 @@ interface AppShellHeaderProps {
   // plain extra props (see the component below for why).
   league: string;
   setLeague: (l: string) => void;
+  // Markets and Predictions now have their own per-page league picker
+  // (multi-select, unlike this single-select), which made this topbar one
+  // redundant and confusing there -- a second, different-shaped "pick a
+  // league" control doing something else on the same screen. Dashboard is
+  // the one page left that both reads and writes this single shared value
+  // through the topbar; everywhere else, showing the control invites
+  // exactly that confusion for no page that still needs it to change it.
+  isDashboard: boolean;
   pinned: boolean;
   setPinned: Dispatch<SetStateAction<boolean>>;
   onSearchOpen: () => void;
@@ -179,6 +187,7 @@ function AppShellHeader({
   onClickSideNavExpand,
   league,
   setLeague,
+  isDashboard,
   pinned,
   setPinned,
   onSearchOpen,
@@ -219,20 +228,22 @@ function AppShellHeader({
         </HeaderName>
 
         <HeaderGlobalBar>
-          <Select
-            id="league-select"
-            labelText=""
-            hideLabel
-            size="sm"
-            value={league}
-            onChange={(e) => setLeague(e.target.value)}
-            className="app-league-select"
-          >
-            <SelectItem value="" text="All leagues" />
-            {LEAGUES.map((l) => (
-              <SelectItem key={l} value={l} text={l} />
-            ))}
-          </Select>
+          {isDashboard && (
+            <Select
+              id="league-select"
+              labelText=""
+              hideLabel
+              size="sm"
+              value={league}
+              onChange={(e) => setLeague(e.target.value)}
+              className="app-league-select"
+            >
+              <SelectItem value="" text="All leagues" />
+              {LEAGUES.map((l) => (
+                <SelectItem key={l} value={l} text={l} />
+              ))}
+            </Select>
+          )}
           <HeaderGlobalAction aria-label="Search teams" onClick={onSearchOpen}>
             <Search size={20} />
           </HeaderGlobalAction>
@@ -330,6 +341,11 @@ export function AppShell() {
   const [pinned, setPinned] = useState(readStoredPinned);
   const { user, accessStatus, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  // Trailing-slash-tolerant: react-router normally gives an exact "/app"
+  // for the Dashboard route, but this is cheap insurance against a stray
+  // "/app/" never showing the control anywhere.
+  const isDashboard = location.pathname === "/app" || location.pathname === "/app/";
   const needsAccess = user?.role !== "superadmin" && !accessStatus?.has_access;
 
   useEffect(() => {
@@ -385,6 +401,7 @@ export function AppShell() {
       <HeaderContainer
         league={league}
         setLeague={setLeague}
+        isDashboard={isDashboard}
         pinned={pinned}
         setPinned={setPinned}
         onSearchOpen={() => setSearchOpen(true)}
