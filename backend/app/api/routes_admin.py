@@ -42,9 +42,9 @@ from app.api.serializers import access_code_to_schema, admin_pick_to_schema, adm
 from app.betcode.selection import price_legs, resolve_legs_unpriced
 from app.config import get_settings
 from app import mailer
-from app.db.models import AccessCode, AccessGrant, AdminPick, AuditLog, ChatMessage, FeaturedPick, LivePrediction, Match, Prediction, User
+from app.db.models import AccessCode, AccessGrant, AdminPick, AuditLog, BookingSlip, ChatMessage, FeaturedPick, LivePrediction, Match, Prediction, User
 from app.outcomes.registry import find_outcome
-from app.pick_settlement import frozen_admin_pick_legs, settle_admin_pick, settle_featured_pick
+from app.pick_settlement import frozen_admin_pick_legs, settle_admin_pick, settle_booking_slip, settle_featured_pick
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_superadmin)])
 
@@ -1002,6 +1002,73 @@ def promote_pick_to_public_teaser(
     db.commit()
 
     return resolve_public_teaser_pick(db)
+
+
+@router.post("/my-booking-slips/{slip_id}/promote-to-track-record", response_model=AdminPickOut)
+def promote_booking_slip_to_track_record(
+    slip_id: int,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> AdminPickOut:
+    """Publishes one of the admin's own settled booking codes (the "My
+    codes -- results history" panel on BetCodes) to the public track record
+    -- the same page every other featured pick appears on
+    (AdminPick.featured_public / GET /api/public/admin-picks-track-record)
+    -- as a new, already-settled AdminPick. Only a won or lost slip can be
+    published: an honest track record needs the losses shown too, not just
+    the wins, same reasoning as this platform's "never a guarantee" stance
+    everywhere else, so a still-pending or unresolved slip (nothing settled
+    yet to show) is rejected. The original BookingSlip is left untouched.
+
+    Scoped to the calling admin's own slips -- "my codes" is personal, and
+    this never reaches into another member's booking history."""
+
+    slip = db.get(BookingSlip, slip_id)
+    if slip is None or slip.user_id != admin.id:
+        raise HTTPException(status_code=404, detail="Booking slip not found.")
+
+    if settle_booking_slip(db, slip):
+        db.commit()
+
+    if slip.result not in ("won", "lost"):
+        raise HTTPException(
+            status_code=400,
+            detail="Only a won or lost slip can be published -- this one is still pending or needs manual confirmation first.",
+        )
+
+    pick = AdminPick(
+        legs=[
+            {
+                "match_id": leg["match_id"],
+                "market": leg["market"],
+                "selection": leg["selection"],
+                "probability_at_pick": leg["model_probability"],
+                "decimal_odds_at_pick": leg.get("decimal_odds"),
+            }
+            for leg in slip.legs
+        ],
+        result=slip.result,
+        leg_results=slip.leg_results,
+        settled_at=slip.settled_at,
+        # Never a bookmaker quote on these legs (see book_picks -- each site
+        # prices its own slip when opened), same as any other unpriced pick.
+        priced=False,
+        label=f"Published from booking code #{slip.id}",
+        created_by_user_id=admin.id,
+        featured_public=True,
+        expires_at=max(dt.datetime.fromisoformat(leg["kickoff"]) for leg in slip.legs) + dt.timedelta(days=2),
+    )
+    db.add(pick)
+    _record(
+        db, admin, "booking_slip.promoted_to_track_record",
+        detail={"booking_slip_id": slip_id, "legs": len(pick.legs), "result": slip.result},
+    )
+    db.commit()
+    db.refresh(pick)
+
+    resolved = _resolve_admin_pick(db, pick)
+    assert resolved is not None  # a just-settled pick's frozen branch never returns None
+    return resolved
 
 
 @router.delete("/public-teaser-pick", status_code=204)

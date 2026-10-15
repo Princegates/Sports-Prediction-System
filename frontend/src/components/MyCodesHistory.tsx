@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { fetchMyBookingSlips } from "../api";
+import { fetchMyBookingSlips, promoteBookingSlipToTrackRecord } from "../api";
+import { useAuth } from "../lib/AuthContext";
 import type { MyBookingSlip } from "../types";
 import { ErrorState } from "./ErrorState";
 
@@ -28,9 +29,12 @@ function formatKickoff(iso: string): string {
  * separate page) since most visits to this page are about generating a new
  * code, not reviewing old ones. */
 export function MyCodesHistory() {
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [slips, setSlips] = useState<MyBookingSlip[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [publishingId, setPublishingId] = useState<number | null>(null);
+  const [publishedIds, setPublishedIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     if (!open || slips !== null) return;
@@ -38,6 +42,18 @@ export function MyCodesHistory() {
       .then(setSlips)
       .catch((e) => setError(String(e instanceof Error ? e.message : e)));
   }, [open, slips]);
+
+  async function handlePublish(slipId: number) {
+    setPublishingId(slipId);
+    try {
+      await promoteBookingSlipToTrackRecord(slipId);
+      setPublishedIds((prev) => new Set(prev).add(slipId));
+    } catch (err) {
+      window.alert(String(err instanceof Error ? err.message : err));
+    } finally {
+      setPublishingId(null);
+    }
+  }
 
   return (
     <div className="card card-pad" style={{ marginTop: 20 }}>
@@ -92,6 +108,24 @@ export function MyCodesHistory() {
                         .filter((c) => c.status === "code_ready")
                         .map((c) => `${c.name}: ${c.code}`)
                         .join(" · ")}
+                    </div>
+                  )}
+                  {user?.role === "superadmin" && (slip.result === "won" || slip.result === "lost") && (
+                    <div style={{ marginTop: 8 }}>
+                      {publishedIds.has(slip.id) ? (
+                        <span className="sub">Published to the public track record.</span>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn ghost"
+                          style={{ padding: "2px 8px", fontSize: 12 }}
+                          disabled={publishingId === slip.id}
+                          onClick={() => handlePublish(slip.id)}
+                          title="Shows this slip -- win or loss -- on the public track record page."
+                        >
+                          Publish to track record
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>

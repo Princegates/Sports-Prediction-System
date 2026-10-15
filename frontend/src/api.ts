@@ -510,6 +510,15 @@ export function promotePickToPublicTeaser(pickId: number): Promise<PublicTeaserP
   return post(`/api/admin/admin-picks/${pickId}/promote-to-teaser`, {});
 }
 
+/** Superadmin only -- publishes one of the admin's own settled booking codes
+ * (from "My codes -- results history") to the public track record, as a new
+ * featured_public AdminPick. Only a won or lost slip can be published (400
+ * otherwise) -- an honest track record needs the losses shown too. The
+ * source booking slip itself is left untouched. */
+export function promoteBookingSlipToTrackRecord(slipId: number): Promise<AdminPick> {
+  return post(`/api/admin/my-booking-slips/${slipId}/promote-to-track-record`, {});
+}
+
 /** A member's own generated-code history, most recent first -- every code
  * they've ever booked through bookPicks, settled against real results once
  * its matches finish. Nothing is cherry-picked: a loss stays visible
