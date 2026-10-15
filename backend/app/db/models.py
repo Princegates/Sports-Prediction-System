@@ -636,8 +636,9 @@ class AdminPick(Base):
     # other pick here, its match/market/selection are shown to everyone,
     # a deliberate marketing exception to this platform's usual "selections
     # stay behind the login" rule. At most one row has this set at a time
-    # (routes_admin.randomize_public_teaser_pick deletes any existing one
-    # before creating the next); always built from upcoming, unsettled
+    # (routes_admin.promote_pick_to_public_teaser deletes any existing one
+    # before creating the next -- the only way to set this; there is no
+    # random-draw path); always built from upcoming, unsettled
     # matches, so its legs are always re-priced live, never settled -- a
     # teaser showing a result isn't the point. Excluded from both the
     # Dashboard's Admin Picks listing and the admin's own "currently

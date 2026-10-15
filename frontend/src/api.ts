@@ -495,14 +495,6 @@ export function fetchPublicTeaserPickAdmin(): Promise<PublicTeaserPick> {
   return get("/api/admin/public-teaser-pick");
 }
 
-/** Superadmin only -- draws a fresh random combo from upcoming, real-priced
- * matches until combined odds reach `minOdds`, replacing whatever teaser
- * was showing before. Rejected (400) if there isn't enough priced,
- * upcoming inventory to reach the target right now. */
-export function randomizePublicTeaserPick(minOdds: number = 5.0): Promise<PublicTeaserPick> {
-  return post("/api/admin/public-teaser-pick/randomize", { min_odds: minOdds });
-}
-
 /** Superadmin only -- removes whatever teaser is currently showing, without
  * replacing it. */
 export function clearPublicTeaserPick(): Promise<void> {

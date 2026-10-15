@@ -250,7 +250,7 @@ def resolve_public_teaser_pick(db: Session) -> PublicTeaserPickOut:
         return PublicTeaserPickOut(has_data=False)
 
     # expires_at is the earliest leg's own kickoff (see
-    # randomize_public_teaser_pick) -- once that's passed, the combo is no
+    # promote_pick_to_public_teaser) -- once that's passed, the combo is no
     # longer "upcoming" even if its odds/prediction rows still happen to
     # resolve for a little while after.
     if pick.expires_at <= dt.datetime.utcnow():

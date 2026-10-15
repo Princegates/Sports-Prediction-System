@@ -34,13 +34,12 @@ from app.api.schemas import (
     FeaturePickUpdateIn,
     MatchOut,
     PublicTeaserPickOut,
-    PublicTeaserRandomizeIn,
     RevokeCodeIn,
     RevokeGrantIn,
 )
 from app.api.routes_public import resolve_public_teaser_pick
 from app.api.serializers import access_code_to_schema, admin_pick_to_schema, admin_user_to_schema, featured_pick_to_schema, match_to_schema
-from app.betcode.selection import SlipCriteria, price_legs, resolve_legs_unpriced, select_random_priced_legs
+from app.betcode.selection import price_legs, resolve_legs_unpriced
 from app.config import get_settings
 from app import mailer
 from app.db.models import AccessCode, AccessGrant, AdminPick, AuditLog, ChatMessage, FeaturedPick, LivePrediction, Match, Prediction, User
@@ -946,56 +945,6 @@ def get_public_teaser_pick(db: Session = Depends(get_db)) -> PublicTeaserPickOut
     return resolve_public_teaser_pick(db)
 
 
-@router.post("/public-teaser-pick/randomize", response_model=PublicTeaserPickOut)
-def randomize_public_teaser_pick(
-    payload: PublicTeaserRandomizeIn,
-    admin: User = Depends(require_superadmin),
-    db: Session = Depends(get_db),
-) -> PublicTeaserPickOut:
-    """Draws a fresh random combo from upcoming, real-priced matches
-    (select_random_priced_legs -- one leg per match, real prices only,
-    shuffled rather than safest-first) until ``payload.min_odds`` combined
-    odds is reached, replacing whatever teaser was showing before. Rejected
-    if there isn't enough priced, upcoming inventory to reach the target
-    right now -- never falls back to a weaker combo silently."""
-
-    if payload.min_odds <= 1.0:
-        raise HTTPException(status_code=400, detail="min_odds must be greater than 1.0.")
-
-    result = select_random_priced_legs(db, SlipCriteria(bookmaker="", target_odds=payload.min_odds))
-    if not result.met_target:
-        detail = result.warnings[0] if result.warnings else "Not enough upcoming priced matches right now."
-        raise HTTPException(status_code=400, detail=detail)
-
-    db.execute(delete(AdminPick).where(AdminPick.public_teaser.is_(True)))
-
-    pick = AdminPick(
-        legs=[
-            {
-                "match_id": leg.match_id,
-                "market": leg.market,
-                "selection": leg.selection,
-                "probability_at_pick": leg.model_probability,
-                "decimal_odds_at_pick": leg.decimal_odds,
-            }
-            for leg in result.legs
-        ],
-        priced=True,
-        label="Public teaser pick",
-        created_by_user_id=admin.id,
-        public_teaser=True,
-        # The first leg's kickoff, not +2 days like a regular AdminPick --
-        # this is never meant to show a settled result past that point, see
-        # AdminPick.public_teaser.
-        expires_at=result.expires_at,
-    )
-    db.add(pick)
-    _record(db, admin, "public_teaser_pick.randomized", detail={"legs": len(result.legs), "combined_odds": result.combined_odds})
-    db.commit()
-
-    return resolve_public_teaser_pick(db)
-
-
 @router.post("/admin-picks/{pick_id}/promote-to-teaser", response_model=PublicTeaserPickOut)
 def promote_pick_to_public_teaser(
     pick_id: int,
@@ -1003,18 +952,18 @@ def promote_pick_to_public_teaser(
     db: Session = Depends(get_db),
 ) -> PublicTeaserPickOut:
     """Takes an already-generated AdminPick (an AI Generation slip or one
-    built by hand) and uses ITS legs as the new public teaser, instead of
-    randomize_public_teaser_pick's fresh random draw. The source pick itself
-    is left untouched -- this creates a new row (same as randomize), so later
-    editing, settling, or deleting the original never touches what's live on
-    the public Welcome page, and vice versa.
+    built by hand) and uses ITS legs as the new public teaser -- the only way
+    to set one; there is no random-draw path. The source pick itself is left
+    untouched -- this creates a new row, so later editing, settling, or
+    deleting the original never touches what's live on the public Welcome
+    page, and vice versa.
 
     Every leg is re-priced live right now, same as resolve_public_teaser_pick
-    itself does on every read, and ALL of them must still resolve -- same
-    never-fall-back-silently rule randomize_public_teaser_pick follows -- so a
-    stale source pick (a finished match, a pulled price) is rejected with
-    exactly what's wrong rather than quietly going live with fewer legs than
-    the admin saw when they chose it."""
+    itself does on every read, and ALL of them must still resolve -- never
+    falls back to a weaker combo silently -- so a stale source pick (a
+    finished match, a pulled price) is rejected with exactly what's wrong
+    rather than quietly going live with fewer legs than the admin saw when
+    they chose it."""
 
     source = db.get(AdminPick, pick_id)
     if source is None:

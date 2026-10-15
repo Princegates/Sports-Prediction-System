@@ -8,7 +8,6 @@ import {
   fetchPublicTeaserPickAdmin,
   bookPicks,
   promotePickToPublicTeaser,
-  randomizePublicTeaserPick,
   resolvePicks,
   setAdminPickFeaturedPublic,
   setAdminPickResult,
@@ -227,18 +226,6 @@ export function BetCodes() {
       cancelled = true;
     };
   }, [user?.role]);
-
-  async function handleRandomizeTeaser() {
-    setTeaserBusy(true);
-    try {
-      const updated = await randomizePublicTeaserPick(5.0);
-      setTeaserPick(updated);
-    } catch (err) {
-      window.alert(String(err instanceof Error ? err.message : err));
-    } finally {
-      setTeaserBusy(false);
-    }
-  }
 
   async function handleClearTeaser() {
     setTeaserBusy(true);
@@ -1016,21 +1003,17 @@ export function BetCodes() {
                 </div>
               ))}
               <p className="meta" style={{ marginTop: 8 }}>Combined odds: {teaserPick.combined_odds.toFixed(2)}x</p>
+              <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+                <button className="btn ghost" disabled={teaserBusy} onClick={handleClearTeaser}>
+                  Remove
+                </button>
+              </div>
             </>
           ) : (
-            <p className="meta">Nothing showing right now.</p>
+            <p className="meta">
+              Nothing showing right now -- pick a pending slip above and use its "Use as public teaser" button.
+            </p>
           )}
-
-          <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-            <button className="btn ghost" disabled={teaserBusy} onClick={handleRandomizeTeaser}>
-              {teaserPick?.has_data ? "Draw a new one (≥5x)" : "Generate random pick (≥5x odds)"}
-            </button>
-            {teaserPick?.has_data && (
-              <button className="btn ghost" disabled={teaserBusy} onClick={handleClearTeaser}>
-                Remove
-              </button>
-            )}
-          </div>
         </div>
       )}
 

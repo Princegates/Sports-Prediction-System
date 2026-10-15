@@ -282,7 +282,7 @@ def public_teaser_pick_to_schema(pick: AdminPick | None, legs: list[Leg]) -> Pub
     combined_odds = 1.0
     combined_probability = 1.0
     for leg in legs:
-        assert leg.decimal_odds is not None  # always priced -- see randomize_public_teaser_pick
+        assert leg.decimal_odds is not None  # always priced -- see promote_pick_to_public_teaser
         combined_odds *= leg.decimal_odds
         combined_probability *= leg.model_probability
 

@@ -927,10 +927,3 @@ class PublicTeaserPickOut(BaseModel):
     combined_probability: float = 0.0
     label: str | None = None
     created_at: dt.datetime | None = None
-
-
-class PublicTeaserRandomizeIn(BaseModel):
-    """Target combined odds for a freshly-drawn random public teaser pick --
-    see app.betcode.selection.select_random_priced_legs."""
-
-    min_odds: float = 5.0
