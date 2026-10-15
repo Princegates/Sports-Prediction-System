@@ -51,3 +51,47 @@ export function usePageMeta(title: string, description: string): void {
     upsertCanonicalLink(window.location.pathname);
   }, [title, description]);
 }
+
+const STRUCTURED_DATA_ID = "page-structured-data";
+
+function upsertStructuredData(data: Record<string, unknown> | null): void {
+  const existing = document.getElementById(STRUCTURED_DATA_ID);
+  if (!data) {
+    existing?.remove();
+    return;
+  }
+  let tag = existing;
+  if (!tag) {
+    tag = document.createElement("script");
+    tag.id = STRUCTURED_DATA_ID;
+    tag.setAttribute("type", "application/ld+json");
+    document.head.appendChild(tag);
+  }
+  // .textContent, never innerHTML -- same reason the rest of this codebase
+  // has no dangerouslySetInnerHTML (see public/_headers' own audit note):
+  // this is plain text assignment, not markup parsing, so there's nothing
+  // for an attacker-controlled team/league name to break out of. Verified
+  // directly (not assumed) that this site's CSP -- script-src 'self', no
+  // 'unsafe-inline' -- does NOT block an inline application/ld+json
+  // script: Chrome only governs script-src for elements it treats as
+  // executable script, and a non-executable type attribute like this one
+  // isn't one. An inline <script> with no type (or type="text/javascript")
+  // on the same page IS blocked, confirmed against the same header.
+  tag.textContent = JSON.stringify(data);
+}
+
+/** schema.org structured data for this page -- Organization on the
+ * homepage, SportsEvent on each fixture preview (see Welcome.tsx and
+ * FixturePreview.tsx for what each actually sends). Only ever built from
+ * real values already shown elsewhere on the page; never a field this
+ * system doesn't actually have data for (no fabricated venue, no invented
+ * odds). Removed on unmount so navigating to a page that doesn't call this
+ * doesn't leave a stale, no-longer-true block behind. */
+export function usePageStructuredData(data: Record<string, unknown> | null): void {
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- data is an object
+  // literal rebuilt every render; comparing its JSON is the actual dependency.
+  useEffect(() => {
+    upsertStructuredData(data);
+    return () => upsertStructuredData(null);
+  }, [JSON.stringify(data)]);
+}

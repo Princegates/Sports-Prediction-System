@@ -3,7 +3,8 @@ import { Link, useParams } from "react-router-dom";
 import { fetchPublicFixture } from "../api";
 import { Mascot } from "../components/Mascot";
 import { PublicShell } from "../components/PublicShell";
-import { parseFixtureId } from "../lib/slug";
+import { usePageStructuredData } from "../lib/pageMeta";
+import { fixtureSlug, parseFixtureId } from "../lib/slug";
 import type { PublicFixture } from "../types";
 
 /**
@@ -27,6 +28,38 @@ function formatKickoff(iso: string): { date: string; time: string } {
   return {
     date: d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" }),
     time: d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }),
+  };
+}
+
+function fixtureDescription(fixture: PublicFixture): string {
+  const matchup = `${fixture.home_team} vs ${fixture.away_team}`;
+  const { date } = formatKickoff(fixture.kickoff);
+  return fixture.has_prediction
+    ? `${matchup} kicks off ${date} in the ${fixture.league}. Our model has analyzed this fixture with ${(fixture.confidence ?? "").toLowerCase()} confidence -- see the full prediction across 18 markets.`
+    : `${matchup} kicks off ${date} in the ${fixture.league}. Full AI-driven prediction coverage across 18 markets, powered by an Elo/Poisson/gradient-boosting ensemble.`;
+}
+
+// SportsEvent structured data, built only from fields this endpoint
+// actually returns -- no venue/location (not in PublicFixture, so not
+// guessed). Verified directly against this site's CSP (script-src 'self',
+// no 'unsafe-inline') that an inline application/ld+json script is NOT
+// blocked -- Chrome only governs script-src for elements it treats as
+// executable script, and this type attribute isn't one (see
+// usePageStructuredData's own comment). eventStatus is always "scheduled":
+// this endpoint only ever returns fixtures that haven't kicked off yet
+// (see NotFound's copy below).
+function fixtureStructuredData(fixture: PublicFixture): Record<string, unknown> {
+  return {
+    "@context": "https://schema.org",
+    "@type": "SportsEvent",
+    name: `${fixture.home_team} vs ${fixture.away_team}`,
+    startDate: fixture.kickoff,
+    sport: "Football",
+    eventStatus: "https://schema.org/EventScheduled",
+    homeTeam: { "@type": "SportsTeam", name: fixture.home_team },
+    awayTeam: { "@type": "SportsTeam", name: fixture.away_team },
+    description: fixtureDescription(fixture),
+    url: `https://soccaintel.com/predict/${fixtureSlug(fixture)}`,
   };
 }
 
@@ -70,6 +103,13 @@ export function FixturePreview() {
       .catch(() => setState({ kind: "not-found" }));
   }, [matchId]);
 
+  // Built unconditionally, before any early return below -- React calls
+  // hooks in the same order every render, so usePageStructuredData can't
+  // be called only on the "ready" branch once state later moves from
+  // "loading" to "ready" within the same mounted component.
+  const readyFixture = state.kind === "ready" ? state.fixture : null;
+  usePageStructuredData(readyFixture ? fixtureStructuredData(readyFixture) : null);
+
   if (state.kind === "not-found") return <NotFound />;
 
   if (state.kind === "loading") {
@@ -89,17 +129,7 @@ export function FixturePreview() {
   const { date, time } = formatKickoff(fixture.kickoff);
   const matchup = `${fixture.home_team} vs ${fixture.away_team}`;
   const pageTitle = `${matchup} Prediction — ${fixture.league} | Socca Intelligence`;
-  const pageDescription = fixture.has_prediction
-    ? `${matchup} kicks off ${date} in the ${fixture.league}. Our model has analyzed this fixture with ${(fixture.confidence ?? "").toLowerCase()} confidence -- see the full prediction across 18 markets.`
-    : `${matchup} kicks off ${date} in the ${fixture.league}. Full AI-driven prediction coverage across 18 markets, powered by an Elo/Poisson/gradient-boosting ensemble.`;
-
-  // No JSON-LD structured-data block here on purpose: it would need an
-  // inline <script> tag, and this site's CSP deliberately locks script-src
-  // to 'self' with no 'unsafe-inline' exception (see public/_headers) --
-  // added there as a considered security tradeoff, not an oversight, so
-  // this page doesn't carve a hole in it for a minor rich-result nicety.
-  // Title, description and real visible content below do the actual
-  // indexing/ranking work.
+  const pageDescription = fixtureDescription(fixture);
 
   return (
     <PublicShell title={pageTitle} description={pageDescription}>

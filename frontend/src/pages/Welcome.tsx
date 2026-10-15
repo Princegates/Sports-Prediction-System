@@ -11,8 +11,24 @@ import {
 import { Mascot } from "../components/Mascot";
 import { PublicShell } from "../components/PublicShell";
 import { fixtureSlug } from "../lib/slug";
+import { usePageStructuredData } from "../lib/pageMeta";
 import { useTilt } from "../lib/useTilt";
 import type { AdminPickTrackRecord, Branding, PublicAccuracy, PublicFixture, PublicStats, PublicTeaserPick } from "../types";
+
+// Module-level, not rebuilt per render -- every field here is a fact about
+// the organization itself, not read from live data, so there's nothing to
+// recompute. No "sameAs" social links: this project has no evidence of a
+// real account to point at, and a guessed one would be a false claim in a
+// structured-data block search engines treat as a statement of fact.
+const ORGANIZATION_SCHEMA = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: "Socca Intelligence",
+  url: "https://soccaintel.com/",
+  logo: "https://soccaintel.com/brand/icon-512.png",
+  description:
+    "AI-calibrated football and soccer predictions across 50+ leagues, scored on 18 markets per match.",
+};
 
 /**
  * Public landing page.
@@ -148,6 +164,7 @@ export function Welcome() {
   // sign-up prompt in place rather than silently doing nothing.
   const [teaserGenerateClicked, setTeaserGenerateClicked] = useState(false);
   const heroTilt = useTilt<HTMLDivElement>();
+  usePageStructuredData(ORGANIZATION_SCHEMA);
 
   useEffect(() => {
     // Each panel degrades independently: if the backend is down, the page
