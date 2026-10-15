@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { fetchMostLikely } from "../api";
-import { LEAGUES, leagueLabel, useLeague } from "../components/AppShell";
+import { LEAGUES } from "../components/AppShell";
 import { CopyButton } from "../components/CopyButton";
 import { DateStrip, localDayKey } from "../components/DateStrip";
+import { describeLeagues, LeaguePicker } from "../components/LeaguePicker";
 import { ConfidenceTag } from "../components/MostLikelyOutcome";
 import { ErrorState } from "../components/ErrorState";
 import { EmptyState } from "../components/EmptyState";
@@ -49,6 +50,29 @@ const PAGE_SIZE = 10;
 // one, and presenting that product as a single confidence number is the
 // exact thing the Markets page's "stacking multiplies risk" note warns
 // against. Every row here stands alone.
+const LEAGUES_STORAGE_KEY = "predictions_selected_leagues";
+
+/** This browser's last league pick -- a convenience only, so it's fine for
+ * it to come back empty ("all leagues") if it's missing, unreadable
+ * (private browsing), or names a league that's no longer in LEAGUES. */
+function readStoredLeagues(): string[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(LEAGUES_STORAGE_KEY) ?? "null");
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((l): l is string => typeof l === "string" && LEAGUES.includes(l));
+  } catch {
+    return [];
+  }
+}
+
+function storeLeagues(leagues: string[]): void {
+  try {
+    localStorage.setItem(LEAGUES_STORAGE_KEY, JSON.stringify(leagues));
+  } catch {
+    // storage disabled -- the choice just won't be remembered
+  }
+}
+
 const TIERS: { min: number; max: number; label: string; note?: string }[] = [
   { min: 0.95, max: 1.001, label: "95–100%", note: "Near certain" },
   { min: 0.9, max: 0.95, label: "90–95%" },
@@ -61,7 +85,11 @@ const TIERS: { min: number; max: number; label: string; note?: string }[] = [
 
 export function Predictions() {
   const { user } = useAuth();
-  const { league } = useLeague();
+  const [selectedLeagues, setSelectedLeaguesState] = useState<string[]>(readStoredLeagues);
+  function setSelectedLeagues(next: string[]) {
+    setSelectedLeaguesState(next);
+    storeLeagues(next);
+  }
   const [day, setDay] = useState<string | null>(null);
   const [confidence, setConfidence] = useState<ConfidenceFilter>("ALL");
   const [sortKey, setSortKey] = useState<SortKey>("kickoff");
@@ -112,7 +140,7 @@ export function Predictions() {
     setRows(null);
     setError(null);
 
-    const leaguesToFetch = league === "" ? LEAGUES : [league];
+    const leaguesToFetch = selectedLeagues.length === 0 ? LEAGUES : selectedLeagues;
     Promise.all(leaguesToFetch.map((l) => fetchMostLikely(l, HORIZON_DAYS, 80).catch(() => [])))
       .then((perLeague) => {
         if (cancelled) return;
@@ -124,7 +152,7 @@ export function Predictions() {
     return () => {
       cancelled = true;
     };
-  }, [league]);
+  }, [selectedLeagues]);
 
   // Counts on the strip reflect the league filter but not the day or
   // confidence filters -- a day showing "3" must still show 3 once you
@@ -317,6 +345,10 @@ export function Predictions() {
         outcome across every match and choose for yourself.
       </p>
 
+      <div className="filter-bar" style={{ marginBottom: 10 }}>
+        <LeaguePicker leagues={LEAGUES} selected={selectedLeagues} onChange={setSelectedLeagues} />
+      </div>
+
       <div className="filter-bar" style={{ marginBottom: 20 }}>
         {(["ALL", "HIGH", "MEDIUM", "LOW"] as ConfidenceFilter[]).map((c) => (
           <button key={c} className={`filter-chip${confidence === c ? " active" : ""}`} onClick={() => setConfidence(c)}>
@@ -337,7 +369,7 @@ export function Predictions() {
       {error && <ErrorState message={error} />}
       {!error && visible === null && <p className="badge-neutral">Loading predictions…</p>}
       {!error && visible !== null && visible.length === 0 && (
-        <EmptyState icon="◌" title={`No predictions match these filters for ${leagueLabel(league)}.`} />
+        <EmptyState icon="◌" title={`No predictions match these filters for ${describeLeagues(selectedLeagues)}.`} />
       )}
 
       {!error && paged !== null && visible !== null && visible.length > 0 && viewMode === "table" && (

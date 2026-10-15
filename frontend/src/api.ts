@@ -610,6 +610,21 @@ export function fetchMatches(params: { league?: string; status?: string; teamId?
   return get(`/api/matches${query ? `?${query}` : ""}`);
 }
 
+/** fetchMatches for any number of leagues -- the endpoint only ever takes
+ * one. Empty `leagues` means "every league", exactly like omitting the
+ * `league` param does, in a single unfiltered call rather than one call
+ * per league in the system. Two or more leagues run one narrow,
+ * already-scoped call per league (same query the single-league case always
+ * made) and merge the results, instead of asking the backend for every
+ * league and discarding most of it client-side. */
+export function fetchMatchesForLeagues(
+  leagues: string[],
+  params: Omit<Parameters<typeof fetchMatches>[0], "league"> = {},
+): Promise<MatchSummary[]> {
+  if (leagues.length === 0) return fetchMatches(params);
+  return Promise.all(leagues.map((league) => fetchMatches({ ...params, league }))).then((results) => results.flat());
+}
+
 export function fetchStatistics(matchId: number): Promise<MatchStatistics> {
   return get(`/api/matches/${matchId}/statistics`);
 }
@@ -738,4 +753,27 @@ export function fetchOutcomes(params: {
     else if (v !== undefined && v !== "" && v !== null) query.set(k, String(v));
   });
   return get(`/api/predictions/outcomes?${query.toString()}`);
+}
+
+/** fetchOutcomes for any number of leagues, same reasoning as
+ * fetchMatchesForLeagues above: empty is one unfiltered call (the backend
+ * already groups and caps per league for "every league"), two or more run
+ * one call per league and merge the already-league-grouped responses --
+ * each market's catalog entry kept once (identical across leagues), each
+ * league's own group kept as the backend returned it. */
+export function fetchOutcomesForLeagues(
+  leagues: string[],
+  params: Omit<Parameters<typeof fetchOutcomes>[0], "league">,
+): Promise<OutcomesResponse> {
+  if (leagues.length === 0) return fetchOutcomes(params);
+  return Promise.all(leagues.map((league) => fetchOutcomes({ ...params, league }))).then((responses) => {
+    const marketsByName = new Map(responses.flatMap((r) => r.markets).map((m) => [m.market, m]));
+    return {
+      markets: [...marketsByName.values()],
+      leagues: responses.flatMap((r) => r.leagues),
+      total_outcomes: responses.reduce((sum, r) => sum + r.total_outcomes, 0),
+      total_matches: responses.reduce((sum, r) => sum + r.total_matches, 0),
+      days_ahead: responses[0]?.days_ahead ?? 0,
+    };
+  });
 }

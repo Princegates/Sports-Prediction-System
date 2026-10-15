@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { bookPicks, createAdminPick, fetchBranding, fetchMatches, fetchOutcomes } from "../api";
+import { bookPicks, createAdminPick, fetchBranding, fetchMatchesForLeagues, fetchOutcomesForLeagues } from "../api";
 import { ConfidenceTag } from "../components/MostLikelyOutcome";
 import { CopyButton } from "../components/CopyButton";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { HotPickBadge } from "../components/HotPickBadge";
+import { LeaguePicker } from "../components/LeaguePicker";
 import { MarketPicker, type MarketPreset } from "../components/MarketPicker";
 import { SiteCodes } from "../components/SiteCodes";
 import { StickySlipBar } from "../components/StickySlipBar";
 import { dateKeyFromIso, FixtureCalendar } from "../components/FixtureCalendar";
-import { useLeague } from "../components/AppShell";
+import { LEAGUES } from "../components/AppShell";
 import { formatPicksForCopy, readStoredPicks, storePicks } from "../lib/myPicks";
 import { isHotPick } from "../lib/filters";
 import { useAuth } from "../lib/AuthContext";
@@ -80,6 +81,28 @@ const QUICK_PICKS: MarketPreset[] = [
 ];
 
 const SELECTION_STORAGE_KEY = "market_selection";
+const LEAGUES_STORAGE_KEY = "market_selected_leagues";
+
+/** This browser's last league pick -- a convenience only, so it's fine for
+ * it to come back empty ("all leagues") if it's missing, unreadable
+ * (private browsing), or names a league that's no longer in LEAGUES. */
+function readStoredLeagues(): string[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(LEAGUES_STORAGE_KEY) ?? "null");
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((l): l is string => typeof l === "string" && LEAGUES.includes(l));
+  } catch {
+    return [];
+  }
+}
+
+function storeLeagues(leagues: string[]): void {
+  try {
+    localStorage.setItem(LEAGUES_STORAGE_KEY, JSON.stringify(leagues));
+  } catch {
+    // storage disabled -- the choice just won't be remembered
+  }
+}
 
 /** This browser's last dropdown choice -- a convenience only, so it's
  * fine for it to come back empty (private browsing, cleared storage). */
@@ -196,9 +219,14 @@ function formatTime(iso: string): string {
 }
 
 export function Markets() {
-  const { league } = useLeague();
   const { user } = useAuth();
   const navigate = useNavigate();
+
+  const [selectedLeagues, setSelectedLeaguesState] = useState<string[]>(readStoredLeagues);
+  function setSelectedLeagues(next: string[]) {
+    setSelectedLeaguesState(next);
+    storeLeagues(next);
+  }
 
   const [stored] = useState(readStoredSelection);
   const [selectedMarkets, setSelectedMarkets] = useState<string[]>(stored?.markets ?? MARKET_PRESETS[0].markets);
@@ -220,13 +248,13 @@ export function Markets() {
   // just for the calendar's dots, never rendered as rows itself.
   useEffect(() => {
     let cancelled = false;
-    fetchMatches({ league: league || undefined, status: "SCHEDULED" })
+    fetchMatchesForLeagues(selectedLeagues, { status: "SCHEDULED" })
       .then((m) => !cancelled && setCalendarMatches(m))
       .catch(() => !cancelled && setCalendarMatches([]));
     return () => {
       cancelled = true;
     };
-  }, [league]);
+  }, [selectedLeagues]);
 
   // A picked calendar date overrides the day-range chips: just enough
   // days_ahead to include that date, then the coupon views below filter
@@ -276,13 +304,13 @@ export function Markets() {
   const [catalog, setCatalog] = useState<MarketSummary[]>([]);
   useEffect(() => {
     let cancelled = false;
-    fetchOutcomes({ league: league || undefined, days_ahead: 21, limit_per_league: 1 })
+    fetchOutcomesForLeagues(selectedLeagues, { days_ahead: 21, limit_per_league: 1 })
       .then((d) => !cancelled && setCatalog(d.markets))
       .catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [league]);
+  }, [selectedLeagues]);
 
   // A remembered or default market this league has no prices for right now
   // still gets a row in the dropdown, so it can be unticked.
@@ -362,8 +390,8 @@ export function Markets() {
     let cancelled = false;
     setGridData(null);
     setGridError(null);
-    fetchOutcomes({
-      market: selectedMarkets, league: league || undefined, days_ahead: effectiveDays,
+    fetchOutcomesForLeagues(selectedLeagues, {
+      market: selectedMarkets, days_ahead: effectiveDays,
       min_probability: 0, limit_per_league: 500,
     })
       .then((d) => !cancelled && setGridData(d))
@@ -371,7 +399,7 @@ export function Markets() {
     return () => {
       cancelled = true;
     };
-  }, [view, selectedMarkets, league, effectiveDays]);
+  }, [view, selectedMarkets, selectedLeagues, effectiveDays]);
 
   // One block of columns per ticked market, in the dropdown's order, each
   // with its selections in the order the model lists them.
@@ -418,8 +446,8 @@ export function Markets() {
     let cancelled = false;
     setOtherData(null);
     setOtherError(null);
-    fetchOutcomes({
-      league: league || undefined, market: selectedMarkets.length ? selectedMarkets : undefined,
+    fetchOutcomesForLeagues(selectedLeagues, {
+      market: selectedMarkets.length ? selectedMarkets : undefined,
       days_ahead: effectiveDays, min_probability: otherFloor, confidence: otherConfidence || undefined,
     })
       .then((d) => !cancelled && setOtherData(d))
@@ -427,7 +455,7 @@ export function Markets() {
     return () => {
       cancelled = true;
     };
-  }, [view, league, selectedMarkets, effectiveDays, otherFloor, otherConfidence]);
+  }, [view, selectedLeagues, selectedMarkets, effectiveDays, otherFloor, otherConfidence]);
 
   const singleMarket =
     selectedMarkets.length === 1 ? catalog.find((m) => m.market === selectedMarkets[0]) : undefined;
@@ -448,6 +476,7 @@ export function Markets() {
       </div>
 
       <div className="filter-bar" style={{ marginBottom: 10 }}>
+        <LeaguePicker leagues={LEAGUES} selected={selectedLeagues} onChange={setSelectedLeagues} />
         <MarketPicker
           markets={pickerMarkets}
           selected={selectedMarkets}
