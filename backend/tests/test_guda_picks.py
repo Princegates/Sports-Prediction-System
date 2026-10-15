@@ -487,7 +487,16 @@ def test_public_admin_pick_track_record_includes_featured_picks(db_session, admi
     assert body["settled_count"] == 1
     assert body["won"] == 1
     assert body["hit_rate"] == 1.0
-    assert "picks" not in body
+    # A deliberate exception to "stays behind the login" -- shows the real
+    # match/market/selection this Guda Pick actually called.
+    assert len(body["picks"]) == 1
+    entry = body["picks"][0]
+    assert entry["kind"] == "guda_pick"
+    assert entry["result"] == "won"
+    assert len(entry["legs"]) == 1
+    assert entry["legs"][0]["market"] == "Both Teams To Score"
+    assert entry["legs"][0]["selection"] == "Yes"
+    assert entry["legs"][0]["result"] == "won"
 
 
 def test_public_admin_pick_track_record_excludes_a_settled_guda_pick_no_admin_featured(
@@ -499,7 +508,7 @@ def test_public_admin_pick_track_record_excludes_a_settled_guda_pick_no_admin_fe
 
     response = client.get("/api/public/admin-picks-track-record")
     assert response.json() == {
-        "has_data": False, "settled_count": 0, "won": 0, "lost": 0, "unresolved": 0, "hit_rate": 0.0,
+        "has_data": False, "settled_count": 0, "won": 0, "lost": 0, "unresolved": 0, "hit_rate": 0.0, "picks": [],
     }
 
 

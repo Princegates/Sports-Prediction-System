@@ -508,8 +508,8 @@ export function Welcome() {
           <h2>Our Admin Picks, graded on real results</h2>
           <p>
             A hand-picked selection of our settled Admin Picks, chosen by our team to show how they
-            actually landed. Which teams, markets and selections were picked stays behind the login;
-            this is just the record for what's featured here.
+            actually landed -- shown below exactly as picked, teams and all, so you can see what was
+            called and what actually happened.
           </p>
           <p>
             Every week the system itself publishes six standing accumulators, pooled across every
@@ -520,19 +520,53 @@ export function Welcome() {
         </div>
 
         {pickRecord?.has_data ? (
-          <div className="accuracy-panel">
-            <div className="accuracy-headline">
-              <div>
-                <span className="accuracy-number">{(pickRecord.hit_rate * 100).toFixed(0)}%</span>
-                <span className="accuracy-caption">hit rate on {pickRecord.won + pickRecord.lost} decided picks</span>
-              </div>
-              <div className="accuracy-meta">
-                <span>{pickRecord.won} won</span>
-                <span>{pickRecord.lost} lost</span>
-                {pickRecord.unresolved > 0 && <span>{pickRecord.unresolved} awaiting confirmation</span>}
+          <>
+            <div className="accuracy-panel">
+              <div className="accuracy-headline">
+                <div>
+                  <span className="accuracy-number">{(pickRecord.hit_rate * 100).toFixed(0)}%</span>
+                  <span className="accuracy-caption">hit rate on {pickRecord.won + pickRecord.lost} decided picks</span>
+                </div>
+                <div className="accuracy-meta">
+                  <span>{pickRecord.won} won</span>
+                  <span>{pickRecord.lost} lost</span>
+                  {pickRecord.unresolved > 0 && <span>{pickRecord.unresolved} awaiting confirmation</span>}
+                </div>
               </div>
             </div>
-          </div>
+
+            <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
+              {pickRecord.picks.map((entry, i) => (
+                <div key={i} className="card card-pad">
+                  <div className="section-header" style={{ marginBottom: 6 }}>
+                    <span className="sub">
+                      {entry.kind === "admin_pick" ? "Admin Pick" : "Guda Pick"}
+                      {entry.label ? ` -- ${entry.label}` : ""}
+                      {entry.settled_at ? ` · ${new Date(entry.settled_at).toLocaleDateString()}` : ""}
+                    </span>
+                    <span className={`result-tag ${entry.result}`}>
+                      {entry.result === "won" ? "Won" : entry.result === "lost" ? "Lost" : "Confirming result"}
+                    </span>
+                  </div>
+                  <ol style={{ display: "flex", flexDirection: "column", gap: 6, margin: 0, padding: 0, listStyle: "none" }}>
+                    {entry.legs.map((leg) => (
+                      <li key={`${leg.match_id}-${leg.market}-${leg.selection}`} style={{ fontSize: 13 }}>
+                        {leg.home_team} vs {leg.away_team}
+                        {leg.result && (
+                          <span className={`leg-result-icon ${leg.result}`} title={leg.result}>
+                            {leg.result === "won" ? "✓" : leg.result === "lost" ? "✗" : "?"}
+                          </span>
+                        )}
+                        <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
+                          {leg.league} · {leg.market}: {leg.selection}
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              ))}
+            </div>
+          </>
         ) : (
           <div className="state-card">
             <h3>No picks have been featured yet</h3>

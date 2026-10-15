@@ -894,13 +894,32 @@ class MyBookingSlipOut(BaseModel):
     settled_at: dt.datetime | None
 
 
+class TrackRecordEntryOut(BaseModel):
+    """One settled, featured pick shown with its real teams/market/selection
+    on the public track record -- a deliberate, admin-curated exception to
+    this router's usual "stays behind the login" rule, same reasoning as
+    PublicTeaserPickOut: a visitor deciding whether to trust this platform
+    needs to see what was actually called and what actually happened, not
+    just an aggregate percentage. Still only ever a pick an admin chose to
+    feature, never every settled one."""
+
+    kind: str  # "admin_pick" | "guda_pick"
+    label: str | None = None
+    legs: list[AdminPickLegOut]
+    result: str  # won | lost | unresolved
+    settled_at: dt.datetime | None
+
+
 class AdminPickTrackRecordOut(BaseModel):
-    """The platform's public record for its curated Admin Picks --
-    aggregate counts only, no team names, markets or selections: same rule
-    as the rest of this file (routes_public's module docstring), those stay
-    behind the login as the product. Counts only picks an admin has chosen
-    to feature here (AdminPick.featured_public / FeaturedPick.featured_public),
-    not every settled pick. See routes_public.admin_pick_track_record."""
+    """The platform's public record for its curated Admin Picks + Guda
+    Picks. ``picks`` shows each featured, settled one's real legs --
+    see TrackRecordEntryOut for why this is a deliberate exception to the
+    rest of this file's "stays behind the login" rule -- capped to the most
+    recent MAX_TRACK_RECORD_ENTRIES; the aggregate counts below always cover
+    every featured settled pick regardless of that cap. Counts only picks an
+    admin has chosen to feature here (AdminPick.featured_public /
+    FeaturedPick.featured_public), not every settled pick. See
+    routes_public.admin_pick_track_record."""
 
     has_data: bool
     settled_count: int = 0
@@ -908,6 +927,7 @@ class AdminPickTrackRecordOut(BaseModel):
     lost: int = 0
     unresolved: int = 0
     hit_rate: float = 0.0  # won / (won + lost); unresolved excluded
+    picks: list[TrackRecordEntryOut] = []
 
 
 class PublicTeaserPickOut(BaseModel):

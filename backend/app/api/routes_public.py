@@ -22,10 +22,11 @@ import datetime as dt
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import get_db
 from app.api.schemas import (
+    AdminPickLegOut,
     AdminPickTrackRecordOut,
     BrandingOut,
     ConfidenceBandRecordOut,
@@ -35,14 +36,15 @@ from app.api.schemas import (
     PublicFixtureOut,
     PublicStatsOut,
     PublicTeaserPickOut,
+    TrackRecordEntryOut,
     TrackRecordOut,
 )
 from app import app_settings
 from app.api.serializers import public_teaser_pick_to_schema
 from app.assistant import retrieval
-from app.betcode.selection import price_legs
+from app.betcode.selection import Leg, price_legs
 from app.db.models import AdminPick, FeaturedPick, Match, Prediction, User
-from app.pick_settlement import settle_admin_pick, settle_featured_pick
+from app.pick_settlement import frozen_admin_pick_legs, settle_admin_pick, settle_featured_pick
 
 router = APIRouter(prefix="/api/public", tags=["public"])
 
@@ -52,6 +54,12 @@ router = APIRouter(prefix="/api/public", tags=["public"])
 # docstring) has no reason to exist for a fixture nobody can search for yet,
 # or one that's already kicked off.
 MAX_PUBLIC_FIXTURE_DAYS_AHEAD = 14
+
+# How many of the most recent settled, featured picks admin_pick_track_record
+# shows in full -- the aggregate counts it also returns always cover every
+# one regardless of this cap, so this only bounds the detail list's payload
+# size on a page that otherwise grows forever.
+MAX_TRACK_RECORD_ENTRIES = 25
 
 
 def _public_fixture_out(db: Session, match: Match) -> PublicFixtureOut:
@@ -172,19 +180,53 @@ def public_track_record(db: Session = Depends(get_db)) -> TrackRecordOut:
     )
 
 
+def _featured_pick_to_leg(db: Session, pick: FeaturedPick) -> Leg | None:
+    """Resolves a settled FeaturedPick (Guda Pick) into the same Leg shape
+    frozen_admin_pick_legs builds for AdminPick -- team names/league/kickoff
+    come live from Match (permanent once played; FeaturedPick itself stores
+    no snapshot of them), market/selection are the pick's own, probability
+    is the frozen probability_at_pick snapshot taken when it was promoted.
+    None if the match can no longer be found (never expected in practice)."""
+
+    match = db.execute(
+        select(Match).where(Match.id == pick.match_id).options(selectinload(Match.home_team), selectinload(Match.away_team))
+    ).scalars().first()
+    if match is None:
+        return None
+    return Leg(
+        match_id=match.id, league=match.league, home_team=match.home_team.name, away_team=match.away_team.name,
+        kickoff=match.date, market=pick.market, selection=pick.selection,
+        model_probability=pick.probability_at_pick or 0.0, decimal_odds=None, priced_by=None,
+        leg_result=pick.result if pick.result != "pending" else None,
+    )
+
+
+def _legs_to_schema(legs: list[Leg]) -> list[AdminPickLegOut]:
+    return [
+        AdminPickLegOut(
+            match_id=leg.match_id, league=leg.league, home_team=leg.home_team, away_team=leg.away_team,
+            kickoff=leg.kickoff, market=leg.market, selection=leg.selection, probability=leg.model_probability,
+            decimal_odds=leg.decimal_odds, priced_by=leg.priced_by, result=leg.leg_result,
+        )
+        for leg in legs
+    ]
+
+
 @router.get("/admin-picks-track-record", response_model=AdminPickTrackRecordOut)
 def admin_pick_track_record(db: Session = Depends(get_db)) -> AdminPickTrackRecordOut:
     """How the picks a Super Admin has chosen to showcase have actually
     done -- Admin Picks (multi-leg combos) and Guda Picks (single outcomes)
     combined into one record, since both are the same thing from a trust
     standpoint: a human choosing to put their name behind a call. A second,
-    independent record alongside /track-record's model calls. Aggregate
-    counts only: which teams, markets and selections were picked stays
-    behind the login, same as everywhere else on this router. Each pick
-    type is counted only while its own enabled setting is on, and only for
-    picks an admin has featured here (AdminPick.featured_public /
-    FeaturedPick.featured_public) -- see routes_admin's
-    set_admin_pick_featured_public / set_featured_pick_featured_public."""
+    independent record alongside /track-record's model calls. Shows each
+    featured, settled pick's real legs (see TrackRecordEntryOut for why --
+    a deliberate exception to "stays behind the login"), capped to the most
+    recent MAX_TRACK_RECORD_ENTRIES; the aggregate counts cover every
+    featured settled pick regardless of that cap. Each pick type is counted
+    only while its own enabled setting is on, and only for picks an admin
+    has featured here (AdminPick.featured_public / FeaturedPick.featured_public)
+    -- see routes_admin's set_admin_pick_featured_public /
+    set_featured_pick_featured_public."""
 
     values = app_settings.all_values(db)
     settled: list[AdminPick | FeaturedPick] = []
@@ -226,6 +268,30 @@ def admin_pick_track_record(db: Session = Depends(get_db)) -> AdminPickTrackReco
     unresolved = sum(1 for p in settled if p.result == "unresolved")
     decided = won + lost
 
+    settled.sort(key=lambda p: p.settled_at or dt.datetime.min, reverse=True)
+    entries: list[TrackRecordEntryOut] = []
+    for pick in settled[:MAX_TRACK_RECORD_ENTRIES]:
+        if isinstance(pick, AdminPick):
+            legs = frozen_admin_pick_legs(db, pick)
+            if not legs:
+                continue
+            entries.append(
+                TrackRecordEntryOut(
+                    kind="admin_pick", label=pick.label, legs=_legs_to_schema(legs),
+                    result=pick.result, settled_at=pick.settled_at,
+                )
+            )
+        else:
+            leg = _featured_pick_to_leg(db, pick)
+            if leg is None:
+                continue
+            entries.append(
+                TrackRecordEntryOut(
+                    kind="guda_pick", label=pick.note, legs=_legs_to_schema([leg]),
+                    result=pick.result, settled_at=pick.settled_at,
+                )
+            )
+
     return AdminPickTrackRecordOut(
         has_data=True,
         settled_count=len(settled),
@@ -233,6 +299,7 @@ def admin_pick_track_record(db: Session = Depends(get_db)) -> AdminPickTrackReco
         lost=lost,
         unresolved=unresolved,
         hit_rate=(won / decided) if decided else 0.0,
+        picks=entries,
     )
 
 

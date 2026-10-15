@@ -722,11 +722,11 @@ def test_public_admin_pick_track_record_has_no_data_before_anything_settles(db_s
     response = client.get("/api/public/admin-picks-track-record")
     assert response.status_code == 200
     assert response.json() == {
-        "has_data": False, "settled_count": 0, "won": 0, "lost": 0, "unresolved": 0, "hit_rate": 0.0,
+        "has_data": False, "settled_count": 0, "won": 0, "lost": 0, "unresolved": 0, "hit_rate": 0.0, "picks": [],
     }
 
 
-def test_public_admin_pick_track_record_counts_wins_and_losses_without_leaking_selections(
+def test_public_admin_pick_track_record_counts_wins_and_losses_and_shows_the_real_legs(
     db_session, admin, two_matches
 ):
     first = _create(admin, [_legs(two_matches)[0]])
@@ -748,9 +748,36 @@ def test_public_admin_pick_track_record_counts_wins_and_losses_without_leaking_s
     assert body["won"] == 1
     assert body["lost"] == 1
     assert body["hit_rate"] == 0.5
-    # Aggregate counts only -- no team names, markets or selections leaked.
-    assert "picks" not in body
-    assert "legs" not in body
+    # A deliberate exception to "stays behind the login" -- every featured,
+    # settled pick's real teams/market/selection is shown here.
+    assert len(body["picks"]) == 2
+    results = {entry["result"] for entry in body["picks"]}
+    assert results == {"won", "lost"}
+    for entry in body["picks"]:
+        assert entry["kind"] == "admin_pick"
+        assert len(entry["legs"]) == 1
+        assert entry["legs"][0]["market"] == "Match Result"
+        assert entry["legs"][0]["home_team"]
+
+
+def test_public_admin_pick_track_record_caps_the_picks_list_but_not_the_aggregate(db_session, admin):
+    from app.api.routes_public import MAX_TRACK_RECORD_ENTRIES
+
+    total = MAX_TRACK_RECORD_ENTRIES + 2
+    for i in range(total):
+        match = _match_with_odds(db_session, f"Cap{i}")
+        created = _create(admin, [{"match_id": match.id, "market": "Match Result", "selection": "Home Win"}])
+        _finish(db_session, match, 2, 0)  # won
+        client.get("/api/predictions/admin-picks", headers=_headers(admin))  # settle it
+        _feature_public(admin, created["id"])
+
+    response = client.get("/api/public/admin-picks-track-record")
+    body = response.json()
+    # The aggregate still covers every featured settled pick...
+    assert body["settled_count"] == total
+    assert body["won"] == total
+    # ...but the detail list is capped.
+    assert len(body["picks"]) == MAX_TRACK_RECORD_ENTRIES
 
 
 def test_public_admin_pick_track_record_excludes_a_settled_pick_no_admin_featured(
@@ -766,7 +793,7 @@ def test_public_admin_pick_track_record_excludes_a_settled_pick_no_admin_feature
     # now decides inclusion.
     response = client.get("/api/public/admin-picks-track-record")
     assert response.json() == {
-        "has_data": False, "settled_count": 0, "won": 0, "lost": 0, "unresolved": 0, "hit_rate": 0.0,
+        "has_data": False, "settled_count": 0, "won": 0, "lost": 0, "unresolved": 0, "hit_rate": 0.0, "picks": [],
     }
 
 

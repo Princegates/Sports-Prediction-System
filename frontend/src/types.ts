@@ -396,10 +396,21 @@ export interface AdminPick {
   featured_public: boolean;
 }
 
-/** Aggregate-only public trust record for curated Admin Picks -- no team
- * names, markets or selections (those stay behind the login as the
- * product), just win/loss counts for whatever an admin has chosen to
- * feature here. See GET /api/public/admin-picks-track-record. */
+/** One settled, featured pick shown with its real teams/market/selection on
+ * the public track record -- a deliberate, admin-curated exception to
+ * "selections stay behind the login", same reasoning as PublicTeaserPick. */
+export interface TrackRecordEntry {
+  kind: "admin_pick" | "guda_pick";
+  label: string | null;
+  legs: AdminPickLeg[];
+  result: "won" | "lost" | "unresolved";
+  settled_at: string | null;
+}
+
+/** Public trust record for curated Admin Picks + Guda Picks -- aggregate
+ * win/loss counts for every featured, settled pick, plus the real legs of
+ * the most recent ones (capped server-side). See
+ * GET /api/public/admin-picks-track-record. */
 export interface AdminPickTrackRecord {
   has_data: boolean;
   settled_count: number;
@@ -407,13 +418,15 @@ export interface AdminPickTrackRecord {
   lost: number;
   unresolved: number;
   hit_rate: number;
+  picks: TrackRecordEntry[];
 }
 
 /** The one showcase combo shown with real selections on the public,
- * unauthenticated Welcome page -- a deliberate exception to "selections
- * stay behind the login" (see AdminPickTrackRecord above, which is the
- * rule). has_data is false when no admin has set one, or the one that was
- * set has gone stale. See GET /api/public/teaser-pick. */
+ * unauthenticated Welcome page -- same deliberate exception to "selections
+ * stay behind the login" as AdminPickTrackRecord.picks above, just a single
+ * always-live combo rather than a settled history. has_data is false when
+ * no admin has set one, or the one that was set has gone stale. See
+ * GET /api/public/teaser-pick. */
 export interface PublicTeaserPick {
   has_data: boolean;
   legs: AdminPickLeg[];
