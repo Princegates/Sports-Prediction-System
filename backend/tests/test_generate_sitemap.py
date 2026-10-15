@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pytest
@@ -53,6 +54,18 @@ def test_render_sitemap_includes_every_static_page(script):
     xml = script.render_sitemap([])
     for path in ("/", "/how-it-works", "/pricing", "/fixtures", "/responsible", "/cookie-policy", "/register", "/login"):
         assert f"<loc>https://soccaintel.com{path}</loc>" in xml
+
+
+def test_render_sitemap_is_well_formed_xml(script):
+    # Google's own sitemap parser is a strict XML parser, not a lenient
+    # HTML-style one -- it rejected this exact file (a real production
+    # incident) because the header comment contained a literal "--",
+    # which the XML spec forbids anywhere inside a comment body (only the
+    # closing "-->" delimiter may contain it). ElementTree enforces the
+    # same rule, so it reproduces that failure here instead of silently
+    # accepting whatever render_sitemap happens to produce.
+    xml = script.render_sitemap(["123-arsenal-vs-chelsea"])
+    ET.fromstring(xml)
 
 
 def test_render_sitemap_includes_each_fixture_slug(script):
