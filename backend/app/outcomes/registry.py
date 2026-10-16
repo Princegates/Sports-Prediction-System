@@ -132,6 +132,42 @@ def matrix_derived_outcomes(lambda_home: float, lambda_away: float, matches_avai
                     "Away team wins, with the stake refunded if the match is drawn."),
         ]
 
+    # -- Handicap, 3-way goal-line (category 1b) -------------------------
+    # The bookmaker "Handicap" market, distinct from a 2-way Asian Handicap:
+    # a line applies directly to the home team's goal tally before comparing
+    # (Handicap -1 means the home side must win by 2+ to cover; Handicap +1
+    # means a 1-goal home loss still covers), and the three selections
+    # always partition 100% -- no push/void accounting, which an Asian
+    # Handicap's quarter lines would need and this registry has nowhere else
+    # to represent (see this module's docstring on mutually_exclusive_group).
+    # Only full-time is offered -- unlike Draw No Bet and Winning Margin
+    # above, bookmakers essentially never quote a half-time handicap, so
+    # there's no real-world line to mirror into ht_matrix_derived_outcomes.
+    for line in (-2, -1, 1, 2):
+        bucket = {"Home": 0.0, "Draw": 0.0, "Away": 0.0}
+        for h in range(max_goals + 1):
+            for a in range(max_goals + 1):
+                margin = (h + line) - a
+                key = "Home" if margin > 0 else ("Away" if margin < 0 else "Draw")
+                bucket[key] += matrix[h][a]
+
+        n = abs(line)
+        sign = f"{line:+d}"
+        if line < 0:
+            home_def = f"Home team wins by {n + 1} or more goals (covers a {sign} handicap)."
+            draw_def = f"Home team wins by exactly {n} goal(s) (the handicap line is exactly covered)."
+            away_def = f"Home team wins by fewer than {n} goal(s), draws, or loses outright (handicap not covered)."
+        else:
+            home_def = f"Home team wins, draws, or loses by fewer than {n} goal(s) (covers a {sign} handicap)."
+            draw_def = f"Home team loses by exactly {n} goal(s) (the handicap line is exactly covered)."
+            away_def = f"Home team loses by more than {n} goal(s) (handicap not covered)."
+
+        outcomes += [
+            Outcome(f"Handicap {sign}", "Home", bucket["Home"], f"handicap_{line}", 5, home_def),
+            Outcome(f"Handicap {sign}", "Draw", bucket["Draw"], f"handicap_{line}", 5, draw_def),
+            Outcome(f"Handicap {sign}", "Away", bucket["Away"], f"handicap_{line}", 5, away_def),
+        ]
+
     # -- Total Goals, lines beyond what's already persisted (category 4) -
     for line in _EXTRA_TOTAL_LINES:
         over_p = total_over(float(line))

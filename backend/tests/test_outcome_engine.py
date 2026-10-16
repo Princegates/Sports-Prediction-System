@@ -161,6 +161,77 @@ def test_both_clean_sheet_cannot_exceed_either_single_clean_sheet():
     assert both <= by_key[("Away Clean Sheet", "Yes")] + 1e-9
 
 
+def test_handicap_markets_exist_for_the_four_standard_lines():
+    outcomes = matrix_derived_outcomes(lambda_home=1.6, lambda_away=1.1, matches_available=20)
+    markets = {o.market for o in outcomes}
+    for line in ("-2", "-1", "+1", "+2"):
+        assert f"Handicap {line}" in markets
+        selections = {o.selection for o in outcomes if o.market == f"Handicap {line}"}
+        assert selections == {"Home", "Draw", "Away"}
+
+
+def test_handicap_minus_one_matches_a_direct_scoreline_comparison():
+    """Independent recomputation from the raw score matrix, so a sign or
+    off-by-one error in the registry's own bucketing can't mark itself
+    correct."""
+
+    from app.prediction_models.poisson_model import build_score_matrix
+
+    lambda_home, lambda_away = 1.6, 1.1
+    matrix = build_score_matrix(lambda_home, lambda_away)
+    max_goals = len(matrix) - 1
+
+    expected = {"Home": 0.0, "Draw": 0.0, "Away": 0.0}
+    for h in range(max_goals + 1):
+        for a in range(max_goals + 1):
+            adjusted_margin = (h - 1) - a
+            key = "Home" if adjusted_margin > 0 else ("Away" if adjusted_margin < 0 else "Draw")
+            expected[key] += matrix[h][a]
+
+    outcomes = matrix_derived_outcomes(lambda_home=lambda_home, lambda_away=lambda_away, matches_available=20)
+    by_selection = {o.selection: o.probability for o in outcomes if o.market == "Handicap -1"}
+    for selection, prob in expected.items():
+        assert by_selection[selection] == pytest.approx(prob)
+
+
+def test_handicap_home_covers_less_often_on_a_tougher_line():
+    """Covering Handicap -2 (win by 3+) can never be more likely than
+    covering the easier Handicap -1 (win by 2+) -- the favourite's goal
+    output doesn't change, only how much of it the line demands."""
+
+    outcomes = matrix_derived_outcomes(lambda_home=1.6, lambda_away=1.1, matches_available=20)
+    by_key = {(o.market, o.selection): o.probability for o in outcomes}
+    assert by_key[("Handicap -2", "Home")] <= by_key[("Handicap -1", "Home")] + 1e-9
+
+
+def test_handicap_minus_one_equals_the_matching_winning_margin_buckets():
+    """Handicap -1 ("home must win by 2+ to cover") and Winning Margin are
+    built from the same matrix by entirely separate code paths above; their
+    buckets have to agree. Home covering -1 means a margin of exactly 2, 3,
+    or 4+; the push (Draw) is a margin of exactly 1; Away covering it is
+    everything else -- a drawn or lost match plus a 1-goal home win."""
+
+    outcomes = matrix_derived_outcomes(lambda_home=1.6, lambda_away=1.1, matches_available=20)
+    by_key = {(o.market, o.selection): o.probability for o in outcomes}
+
+    home_by_2_or_more = (
+        by_key[("Winning Margin", "Home by exactly 2")]
+        + by_key[("Winning Margin", "Home by exactly 3")]
+        + by_key[("Winning Margin", "Home by 4+")]
+    )
+    away_or_draw_or_home_by_1 = (
+        by_key[("Winning Margin", "Draw")]
+        + by_key[("Winning Margin", "Away by exactly 1")]
+        + by_key[("Winning Margin", "Away by exactly 2")]
+        + by_key[("Winning Margin", "Away by exactly 3")]
+        + by_key[("Winning Margin", "Away by 4+")]
+    )
+
+    assert by_key[("Handicap -1", "Home")] == pytest.approx(home_by_2_or_more)
+    assert by_key[("Handicap -1", "Draw")] == pytest.approx(by_key[("Winning Margin", "Home by exactly 1")])
+    assert by_key[("Handicap -1", "Away")] == pytest.approx(away_or_draw_or_home_by_1)
+
+
 def _prediction_stub(**overrides) -> SimpleNamespace:
     base = dict(
         home_win=0.5,

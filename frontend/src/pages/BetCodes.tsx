@@ -55,6 +55,8 @@ const MARKET_OPTIONS = [
   { value: "Double Chance", label: "Double chance" },
   { value: "Both Teams To Score", label: "Both teams to score" },
   { value: "Draw No Bet", label: "Draw no bet" },
+  { value: "Handicap -1", label: "Handicap -1 (home)" },
+  { value: "Handicap +1", label: "Handicap +1 (home)" },
   { value: "Total Goals 1.5", label: "Over/Under 1.5 goals" },
   { value: "Total Goals 2.5", label: "Over/Under 2.5 goals" },
   { value: "Total Goals 3.5", label: "Over/Under 3.5 goals" },
