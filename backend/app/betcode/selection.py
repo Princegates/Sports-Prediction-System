@@ -66,26 +66,41 @@ DEFAULT_DAYS_AHEAD = 7
 
 # What "any market" actually searches when criteria.markets is left empty.
 #
-# It is deliberately not literally every priced market. A bookmaker
-# publishes a Total Goals line for nearly every half-integer and quarter
-# line from 0.5 to 8.5+, and api_football_ingest captures all of them --
-# which means an extreme line (Under 7.5, Under 8.5) clears 99% for almost
-# every match, every time, and would win _best_priced_outcome's "highest
-# probability" comparison against every other market on offer. That leg is
-# correctly priced and correctly the single safest thing in the pool -- and
-# worthless as a recommendation, since a bookmaker prices it barely above a
-# stake-only return (odds ~1.01). "Any market" means any of the markets
-# bettors actually compare, not literally any line this project happens to
-# have a price for. An unusual line is still reachable -- just by asking for
-# it explicitly via criteria.markets, the same as any other specific choice.
+# It is deliberately not literally every priced market -- a bookmaker prices
+# an extreme Total Goals line (Under 7.5, Under 8.5) barely above a
+# stake-only return, which would win _best_priced_outcome's "highest
+# probability" comparison against every other market every time and be
+# worthless as a recommendation. This specific set is a product choice
+# (fixed 2026-10, "AI Picks" should only ever lean on these): the handicap
+# lines are ±3 specifically, not the full ±1..±5 range the registry offers.
+# An unusual market is still reachable -- just by asking for it explicitly
+# via criteria.markets, the same as any other specific choice.
 DEFAULT_MARKETS = (
     "Match Result",
     "Double Chance",
-    "Both Teams To Score",
     "Draw No Bet",
     "Total Goals 1.5",
-    "Total Goals 2.5",
-    "Total Goals 3.5",
+    "Handicap -3",
+    "Handicap +3",
+)
+
+# The fixed league pool for "AI Picks" -- the member-facing AI Generation
+# page and the weekly system accumulators (scripts/generate_weekly_picks.py,
+# generate_high_risk_slips.py), never a change to SlipCriteria's own
+# "leagues=() means every league" convention, which other callers (the chat
+# assistant, an admin's hand-built pick, the diagnostic scripts) still rely
+# on unchanged. The 8 biggest, best-covered leagues this project tracks --
+# same order AppShell.tsx's own LEAGUES list already leads with, before it
+# drops into continental competitions and the smaller leagues beyond them.
+AI_PICKS_LEAGUES = (
+    "English Premier League",
+    "Spanish La Liga",
+    "German Bundesliga",
+    "Italian Serie A",
+    "French Ligue 1",
+    "Dutch Eredivisie",
+    "Portuguese Primeira Liga",
+    "Turkish Süper Lig",
 )
 
 

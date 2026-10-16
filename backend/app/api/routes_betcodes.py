@@ -34,6 +34,8 @@ from app.api.schemas import (
 )
 from app.betcode import sites as betting_sites
 from app.betcode.selection import (
+    AI_PICKS_LEAGUES,
+    DEFAULT_MARKETS,
     ConfidencePick,
     Leg,
     resolve_legs_unpriced,
@@ -72,14 +74,34 @@ def _combined_probability(legs: list[Leg]) -> float:
     return result
 
 
+def _ai_picks_leagues(requested: tuple[str, ...]) -> tuple[str, ...]:
+    """"AI Picks" only ever searches AI_PICKS_LEAGUES -- a product choice,
+    not a default a caller can widen. An unrecognised or empty request
+    falls back to the full pool rather than an accidental zero-match
+    search."""
+
+    narrowed = tuple(l for l in requested if l in AI_PICKS_LEAGUES)
+    return narrowed or AI_PICKS_LEAGUES
+
+
+def _ai_picks_markets(requested: tuple[str, ...]) -> tuple[str, ...]:
+    """Same restriction as _ai_picks_leagues, for markets: "AI Picks" only
+    ever searches DEFAULT_MARKETS, regardless of what a caller asks for --
+    including the "High risk" preset's old trick of explicitly listing every
+    market, which this narrows right back down."""
+
+    narrowed = tuple(m for m in requested if m in DEFAULT_MARKETS)
+    return narrowed or DEFAULT_MARKETS
+
+
 @router.post("/suggest", response_model=SuggestedPicksOut)
 def suggest(payload: SuggestCriteriaIn, db: Session = Depends(get_db)) -> SuggestedPicksOut:
     pick: ConfidencePick = select_legs_by_confidence(
         db,
         min_probability=payload.min_probability if payload.min_probability is not None else 0.65,
         max_legs=payload.max_legs if payload.max_legs is not None else 8,
-        markets=tuple(payload.markets),
-        leagues=tuple(payload.leagues),
+        markets=_ai_picks_markets(tuple(payload.markets)),
+        leagues=_ai_picks_leagues(tuple(payload.leagues)),
         days_ahead=payload.days_ahead,
     )
     return SuggestedPicksOut(
@@ -105,8 +127,8 @@ def suggest_random(payload: SuggestRandomCriteriaIn, db: Session = Depends(get_d
         min_probability=payload.min_probability if payload.min_probability is not None else 0.60,
         min_legs=min_legs,
         max_legs=max_legs,
-        markets=tuple(payload.markets),
-        leagues=tuple(payload.leagues),
+        markets=_ai_picks_markets(tuple(payload.markets)),
+        leagues=_ai_picks_leagues(tuple(payload.leagues)),
         days_ahead=payload.days_ahead,
     )
     return SuggestedPicksOut(

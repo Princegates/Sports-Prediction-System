@@ -464,18 +464,19 @@ def test_generate_selections_a_named_market_overrides_the_higher_probability_def
 ):
     """Regression test: a named market used to be parsed by the NLU and then
     silently dropped before it ever reached the engine, so it had zero
-    effect on what got picked. Unfiltered, Total Goals 1.5 (80%) beats both
-    Match Result (52%) and BTTS (61%) on model probability alone -- asking
-    for "match result" specifically must still return the Match Result leg,
-    proving the request actually reaches the engine."""
+    effect on what got picked. Unfiltered, this fixture's moderate 52%
+    favourite clears a +3 handicap far more often than it wins outright, so
+    Handicap +3 beats Match Result (52%) on model probability alone --
+    asking for "match result" specifically must still return the Match
+    Result leg, proving the request actually reaches the engine."""
 
     unfiltered = _ask("build me an accumulator with at least 50% chance", auth_headers)
-    assert "Total Goals 1.5" in unfiltered["text"]
+    assert "Handicap +3" in unfiltered["text"]
 
     filtered = _ask("build me a match result accumulator with at least 50% chance", auth_headers)
     assert filtered["intent"] == "generate_selections"
     assert "Home Win" in filtered["text"]
-    assert "Total Goals 1.5" not in filtered["text"]
+    assert "Handicap +3" not in filtered["text"]
 
 
 def test_generate_selections_a_named_league_filters_without_naming_a_team(db_session, auth_headers, fixture_data):

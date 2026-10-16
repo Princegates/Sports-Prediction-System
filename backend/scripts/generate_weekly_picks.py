@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Builds this match week's three system accumulators -- Low, Medium and
-High risk, each exactly 10 legs, pooled across every competition this
-deployment has data for -- and publishes them to the Dashboard's Admin
-Picks section alongside anything a human admin has promoted by hand.
+High risk, each exactly 10 legs, pooled across AI_PICKS_LEAGUES (the 8
+biggest, best-covered leagues this deployment tracks -- a product choice,
+not every competition it has data for) -- and publishes them to the
+Dashboard's Admin Picks section alongside anything a human admin has
+promoted by hand.
 
 Combined-odds bands (inclusive), fixed by product spec:
 
@@ -44,7 +46,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from sqlalchemy import select
 
-from app.betcode.selection import SlipCriteria, select_ranged_leg_slip
+from app.betcode.selection import AI_PICKS_LEAGUES, SlipCriteria, select_ranged_leg_slip
 from app.db.migrate import init_db
 from app.db.models import AdminPick
 from app.db.session import SessionLocal, engine
@@ -79,7 +81,9 @@ def main() -> None:
     init_db(engine)
     db = SessionLocal()
     try:
-        criteria = SlipCriteria(bookmaker="system", target_odds=max(t[2] for t in TIERS))
+        criteria = SlipCriteria(
+            bookmaker="system", target_odds=max(t[2] for t in TIERS), leagues=AI_PICKS_LEAGUES,
+        )
         week_of = dt.date.today()
 
         for tier, target_min, target_max in TIERS:

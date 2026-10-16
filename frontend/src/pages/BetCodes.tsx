@@ -21,7 +21,7 @@ import { ErrorState } from "../components/ErrorState";
 import { MyCodesHistory } from "../components/MyCodesHistory";
 import { SiteCodes } from "../components/SiteCodes";
 import { StickySlipBar } from "../components/StickySlipBar";
-import { LEAGUES, useLeague } from "../components/AppShell";
+import { useLeague } from "../components/AppShell";
 import { useAuth } from "../lib/AuthContext";
 import { useIsMobile } from "../lib/useIsMobile";
 import type { AdminPick, BetCodePick, PublicTeaserPick, SuggestCriteria, SuggestedLeg, SuggestedPicks } from "../types";
@@ -50,17 +50,33 @@ function formatLegsForCopy(legs: SuggestedLeg[], combinedProbability: number): s
  * own odds; nothing here ever estimates or invents a price of its own.
  */
 
+// Matches the backend's own AI_PICKS_LEAGUES (app.betcode.selection)
+// exactly -- a product choice (fixed 2026-10) that AI Picks only ever
+// searches these 8, regardless of what's checked here: the backend
+// narrows any other league right back out, so there's nothing to offer
+// beyond them. The app's full LEAGUES list (AppShell.tsx) is unaffected --
+// this restriction is specific to AI Generation.
+const AI_PICKS_LEAGUES = [
+  "English Premier League",
+  "Spanish La Liga",
+  "German Bundesliga",
+  "Italian Serie A",
+  "French Ligue 1",
+  "Dutch Eredivisie",
+  "Portuguese Primeira Liga",
+  "Turkish Süper Lig",
+];
+
+// Matches the backend's own DEFAULT_MARKETS (app.betcode.selection) exactly
+// -- a product choice (fixed 2026-10) that AI Picks only ever searches
+// these six, so there is nothing to offer here beyond them.
 const MARKET_OPTIONS = [
   { value: "Match Result", label: "Match result (1X2)" },
   { value: "Double Chance", label: "Double chance" },
-  { value: "Both Teams To Score", label: "Both teams to score" },
   { value: "Draw No Bet", label: "Draw no bet" },
-  { value: "Handicap -1", label: "Handicap -1 (home)" },
-  { value: "Handicap +1", label: "Handicap +1 (home)" },
   { value: "Total Goals 1.5", label: "Over/Under 1.5 goals" },
-  { value: "Total Goals 2.5", label: "Over/Under 2.5 goals" },
-  { value: "Total Goals 3.5", label: "Over/Under 3.5 goals" },
-  { value: "Correct Score", label: "Correct score" },
+  { value: "Handicap -3", label: "Handicap -3 (home)" },
+  { value: "Handicap +3", label: "Handicap +3 (home)" },
 ];
 
 // A separate list (and its own filter row below) rather than folded into
@@ -96,15 +112,14 @@ type RiskLevel = "low" | "medium" | "high";
  * same criteria fields the form below exposes -- these aren't a separate
  * mode, just a fast way to reach a sensible corner of the same search.
  *
- * The two levers that actually drive risk here: how safe the floor is, and
- * which markets are in play (more legs isn't a separate lever the way it
- * was when a leg count doubled as "keep searching until the price target
- * is hit" -- here it's just how many of the safest qualifying matches to
- * show). Low risk leaves markets at the engine's own default set
- * (DEFAULT_MARKETS on the backend -- meaningful markets, no trivial extreme
- * goal lines). High risk explicitly adds Correct Score on top of that
- * default set: it's this project's highest-variance market, deliberately
- * excluded from the default search.
+ * The lever that actually drives risk here: how safe the floor is (more
+ * legs isn't a separate lever the way it was when a leg count doubled as
+ * "keep searching until the price target is hit" -- here it's just how
+ * many of the safest qualifying matches to show). Markets aren't a risk
+ * lever any more: AI Picks only ever searches MARKET_OPTIONS' fixed six
+ * (DEFAULT_MARKETS on the backend, same list) regardless of preset, so
+ * every preset's own `markets` field below is the same "leave it at the
+ * engine's default" empty list.
  */
 const RISK_PRESETS: Record<
   RiskLevel,
@@ -126,10 +141,10 @@ const RISK_PRESETS: Record<
   },
   high: {
     label: "High risk",
-    description: "50%+ picks, up to 8 legs, correct score included",
+    description: "50%+ picks, up to 8 legs",
     minProbability: 0.5,
     maxLegs: 8,
-    markets: [...MARKET_OPTIONS.map((m) => m.value)],
+    markets: [],
   },
 };
 
@@ -160,10 +175,14 @@ export function BetCodes() {
   const [minProbability, setMinProbability] = useState(0.65);
   const [daysAhead, setDaysAhead] = useState(7);
   // Which leagues to search -- initialized from the top bar's single-league
-  // context (so this page starts scoped the same way it always has), but
-  // from here on this list, not the top bar, is what actually drives the
-  // search: empty means every league, and any number can be picked at once.
-  const [selectedLeagues, setSelectedLeagues] = useState<string[]>(league ? [league] : []);
+  // context (so this page starts scoped the same way it always has, when
+  // that league is actually one of the 8 AI Picks can search -- otherwise
+  // there'd be no matching chip to show as active), but from here on this
+  // list, not the top bar, is what actually drives the search: empty means
+  // all 8, and any number of them can be picked at once.
+  const [selectedLeagues, setSelectedLeagues] = useState<string[]>(
+    league && AI_PICKS_LEAGUES.includes(league) ? [league] : [],
+  );
   // Which risk preset (if any) exactly matches the form's current values --
   // cleared the moment any control is touched by hand, so the highlighted
   // chip never claims a match that no longer holds.
@@ -483,7 +502,7 @@ export function BetCodes() {
           Combine matches by model confidence -- scoped to{" "}
           <strong>
             {selectedLeagues.length === 0
-              ? "all leagues"
+              ? "all 8 top leagues"
               : selectedLeagues.length === 1
                 ? selectedLeagues[0]
                 : `${selectedLeagues.length} leagues`}
@@ -574,7 +593,9 @@ export function BetCodes() {
             <div style={{ marginTop: 14 }}>
               <div className="meta" style={{ marginBottom: 6 }}>
                 Leagues{" "}
-                <span style={{ fontWeight: 400 }}>(none selected = every league; pick as many as you like)</span>
+                <span style={{ fontWeight: 400 }}>
+                  (AI Picks only searches these 8 -- none selected = all 8; pick as many as you like)
+                </span>
               </div>
               <div className="filter-bar">
                 <button
@@ -584,9 +605,9 @@ export function BetCodes() {
                     setSelectedLeagues([]);
                   }}
                 >
-                  All leagues
+                  All 8
                 </button>
-                {LEAGUES.map((l) => (
+                {AI_PICKS_LEAGUES.map((l) => (
                   <button
                     key={l}
                     className={`filter-chip${selectedLeagues.includes(l) ? " active" : ""}`}
@@ -693,7 +714,7 @@ export function BetCodes() {
             </div>
             <ul className="wizard-review-list">
               <li>Next {daysAhead} days</li>
-              <li>{selectedLeagues.length === 0 ? "All leagues" : selectedLeagues.join(", ")}</li>
+              <li>{selectedLeagues.length === 0 ? "All 8 top leagues" : selectedLeagues.join(", ")}</li>
               <li>
                 Up to {maxLegs} legs, {(minProbability * 100).toFixed(0)}%+ accuracy each
               </li>

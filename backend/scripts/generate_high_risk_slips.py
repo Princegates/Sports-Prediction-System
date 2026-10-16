@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Builds this match week's three "jackpot" accumulators -- 10 to 20 legs
-each, pooled across every competition this deployment has data for, each
-required to clear 50x combined odds -- and publishes them to the
-Dashboard's Admin Picks section alongside the three regular weekly tiers
-(scripts/generate_weekly_picks.py) and anything a human admin has promoted
-by hand.
+each, pooled across AI_PICKS_LEAGUES (the same 8-league, product-chosen
+pool generate_weekly_picks.py uses, not every competition this deployment
+has data for), each required to clear 50x combined odds -- and publishes
+them to the Dashboard's Admin Picks section alongside the three regular
+weekly tiers (scripts/generate_weekly_picks.py) and anything a human admin
+has promoted by hand.
 
 This is deliberately a separate script and a separate AdminPick.source
 family ("system_weekly_jackpot_1/_2/_3"), not a fourth tier bolted onto
@@ -44,7 +45,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from sqlalchemy import select
 
-from app.betcode.selection import SlipCriteria, select_floor_leg_slip
+from app.betcode.selection import AI_PICKS_LEAGUES, SlipCriteria, select_floor_leg_slip
 from app.db.migrate import init_db
 from app.db.models import AdminPick
 from app.db.session import SessionLocal, engine
@@ -86,7 +87,9 @@ def main() -> None:
     init_db(engine)
     db = SessionLocal()
     try:
-        criteria = SlipCriteria(bookmaker="system", target_odds=args.target_odds, days_ahead=args.days_ahead)
+        criteria = SlipCriteria(
+            bookmaker="system", target_odds=args.target_odds, days_ahead=args.days_ahead, leagues=AI_PICKS_LEAGUES,
+        )
         week_of = dt.date.today()
         used_match_ids: set[int] = set()
 
