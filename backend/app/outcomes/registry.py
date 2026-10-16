@@ -143,7 +143,7 @@ def matrix_derived_outcomes(lambda_home: float, lambda_away: float, matches_avai
     # Only full-time is offered -- unlike Draw No Bet and Winning Margin
     # above, bookmakers essentially never quote a half-time handicap, so
     # there's no real-world line to mirror into ht_matrix_derived_outcomes.
-    for line in (-2, -1, 1, 2):
+    for line in (-5, -4, -3, -2, -1, 1, 2, 3, 4, 5):
         bucket = {"Home": 0.0, "Draw": 0.0, "Away": 0.0}
         for h in range(max_goals + 1):
             for a in range(max_goals + 1):
