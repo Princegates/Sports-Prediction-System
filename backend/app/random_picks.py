@@ -5,9 +5,10 @@ splits the two cadences client-side ("system_random_daily_<n>" /
 "system_random_weekly_<n>", n = 1..COUNT).
 
 Reuses app.betcode.selection.select_random_legs end to end: the same "real
-prediction, one leg per match, meaningful markets, at least MIN_PROBABILITY"
-pool select_legs_by_confidence already searches for AI Generation, just
-drawn at a random size (MIN_LEGS-MAX_LEGS) instead of ranked and capped.
+prediction, one leg per match, meaningful markets, AI_PICKS_LEAGUES only,
+at least MIN_PROBABILITY" pool select_legs_by_confidence already searches
+for AI Generation, just drawn at a random size (MIN_LEGS-MAX_LEGS) instead
+of ranked and capped.
 
 generate_cadence is the "given a DB session and a cadence, do one draw"
 shape both scripts/generate_random_picks.py (kept as a manual/dry-run CLI
@@ -31,7 +32,7 @@ import datetime as dt
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.betcode.selection import select_random_legs
+from app.betcode.selection import AI_PICKS_LEAGUES, select_random_legs
 from app.db.models import AdminPick
 
 COUNT = 2
@@ -76,6 +77,7 @@ def generate_cadence(db: Session, cadence: str, *, dry_run: bool = False) -> lis
     for n in range(1, COUNT + 1):
         result = select_random_legs(
             db, min_probability=MIN_PROBABILITY, min_legs=MIN_LEGS, max_legs=MAX_LEGS, days_ahead=days_ahead,
+            leagues=AI_PICKS_LEAGUES,
         )
         source = _source(cadence, n)
 
