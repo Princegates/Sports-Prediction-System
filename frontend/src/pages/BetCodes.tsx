@@ -207,6 +207,11 @@ export function BetCodes() {
   // docstring for why this is a deliberate exception.
   const [teaserPick, setTeaserPick] = useState<PublicTeaserPick | null>(null);
   const [teaserBusy, setTeaserBusy] = useState(false);
+  // Set right after a successful promote so the (easy-to-miss, below-the-
+  // fold) "Public teaser pick" card can call out that the click actually
+  // took effect -- a promote has no other feedback of its own otherwise.
+  const [teaserJustPromoted, setTeaserJustPromoted] = useState(false);
+  const teaserCardRef = useRef<HTMLDivElement | null>(null);
 
   function legKey(leg: { match_id: number; market: string; selection: string }): string {
     return `${leg.match_id}|${leg.market}|${leg.selection}`;
@@ -460,6 +465,9 @@ export function BetCodes() {
     try {
       const updated = await promotePickToPublicTeaser(pickId);
       setTeaserPick(updated);
+      setTeaserJustPromoted(true);
+      teaserCardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      setTimeout(() => setTeaserJustPromoted(false), 4000);
     } catch (err) {
       window.alert(String(err instanceof Error ? err.message : err));
     } finally {
@@ -920,7 +928,7 @@ export function BetCodes() {
                     onClick={() => handlePromoteToTeaser(pick.id)}
                     title="Shows this slip's own legs as the public teaser on the Welcome page, replacing whatever's showing now."
                   >
-                    Use as public teaser
+                    {pickBusy === pick.id ? "Promoting..." : "Use as public teaser"}
                   </button>
                 )}
                 {pick.result === "unresolved" && (
@@ -980,11 +988,17 @@ export function BetCodes() {
       )}
 
       {user?.role === "superadmin" && (
-        <div className="card card-pad" style={{ marginTop: 20 }}>
+        <div className="card card-pad" style={{ marginTop: 20 }} ref={teaserCardRef}>
           <div className="section-header" style={{ marginBottom: 10 }}>
             <h3 style={{ margin: 0 }}>Public teaser pick</h3>
             <span className="meta">Shows real selections on the Welcome page -- no login required</span>
           </div>
+
+          {teaserJustPromoted && (
+            <p className="meta" style={{ color: "var(--accent)", marginBottom: 10 }}>
+              Promoted -- this is now live on the Welcome page.
+            </p>
+          )}
 
           {teaserPick?.has_data ? (
             <>
