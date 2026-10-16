@@ -143,6 +143,21 @@ def _build_markets() -> dict[tuple[str, str], Selection]:
     add("Double Chance", "10", None, double_chance)
     add("Both Teams To Score", "29", None, yes_no)
     add("Draw No Bet", "11", None, {"Home": "4", "Away": "5"})
+    # SportyBet's own "Handicap" (market 14): a specifier of two non-negative
+    # bonus goals, "hcp=<home bonus>:<away bonus>", exactly one of them
+    # nonzero -- read off the site as both "hcp=0:1" (home favoured by the
+    # market, away given the bonus to make it a contest) and "hcp=1:0"
+    # (home given the bonus) on different matches, each match offering as
+    # many lines in whichever direction its own favourite runs. Our
+    # "Handicap -N" (home's own score reduced by N) and SportyBet's
+    # "hcp=0:N" (away's score boosted by N instead) move the same margin by
+    # the same amount, so they're the same bet; "Handicap +N" is "hcp=N:0"
+    # the same way. The three outcome ids are fixed across every line and
+    # every match, the same pattern Over/Under's "12"/"13" already use here.
+    handicap_outcomes = {"Home": "1711", "Draw": "1712", "Away": "1713"}
+    for n in range(1, 6):
+        add(f"Handicap -{n}", "14", f"hcp=0:{n}", handicap_outcomes)
+        add(f"Handicap +{n}", "14", f"hcp={n}:0", handicap_outcomes)
     add("Total Goals Odd/Even", "26", None, odd_even)
     add("Home Goals Odd/Even", "27", None, odd_even)
     add("Away Goals Odd/Even", "28", None, odd_even)

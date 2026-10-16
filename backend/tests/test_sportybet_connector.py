@@ -142,6 +142,14 @@ def test_known_picks_translate_to_sportybet_ids(market, selection, expected):
     ("Both Teams Clean Sheet", "Yes", ("18", "total=0.5", "13")),
     ("Total Goals Range", "5+ goals", ("18", "total=4.5", "12")),
     ("Result & Clean Sheet", "Home & Clean Sheet Yes", ("33", None, "74")),
+    # SportyBet's "Handicap" (market 14): our home-referenced signed line
+    # becomes its two-slot "hcp=<home>:<away> bonus" specifier -- "-N" is
+    # "0:N" (the away side boosted), "+N" is "N:0" (the home side boosted).
+    # Same three fixed outcome ids on every line, like Over/Under's 12/13.
+    ("Handicap -1", "Home", ("14", "hcp=0:1", "1711")),
+    ("Handicap -1", "Away", ("14", "hcp=0:1", "1713")),
+    ("Handicap +2", "Draw", ("14", "hcp=2:0", "1712")),
+    ("Handicap +5", "Home", ("14", "hcp=5:0", "1711")),
 ])
 def test_the_wider_markets_translate_too(market, selection, expected):
     assert sb.translate(market, selection) == expected
