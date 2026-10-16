@@ -99,6 +99,33 @@ def priced_matches(db_session):
     return [_scheduled_match_with_odds(db_session, name) for name in ("Alpha", "Bravo", "Charlie", "Delta")]
 
 
+def _kicked_off_match_with_odds(db, name_prefix: str, *, home=0.70, decimal_odds=1.90) -> Match:
+    """A match whose kickoff has already passed but whose result hasn't
+    landed yet (status LIVE, not FINISHED) -- price_legs happily reprices
+    this (it only rejects FINISHED), so it's the one shape that can slip
+    past price_legs and still break the teaser's expires_at."""
+
+    home_team = Team(name=f"{name_prefix} Home", league="League One", aliases=[])
+    away_team = Team(name=f"{name_prefix} Away", league="League One", aliases=[])
+    db.add_all([home_team, away_team])
+    db.commit()
+    for t in (home_team, away_team):
+        db.refresh(t)
+
+    match = Match(
+        league="League One", season="2324", date=dt.datetime.utcnow() - dt.timedelta(minutes=20),
+        home_team_id=home_team.id, away_team_id=away_team.id, status="LIVE",
+    )
+    db.add(match)
+    db.commit()
+    db.refresh(match)
+
+    db.add(_prediction(match.id, home=home))
+    db.add(MatchOdds(match_id=match.id, bookmaker="Bet365", market="Match Result", selection="Home Win", decimal_odds=decimal_odds))
+    db.commit()
+    return match
+
+
 def _create_source_pick(admin: User, matches: list[Match]) -> dict:
     payload = {"legs": [{"match_id": m.id, "market": "Match Result", "selection": "Home Win"} for m in matches]}
     response = client.post("/api/admin/admin-picks", json=payload, headers=_headers(admin))
@@ -183,6 +210,24 @@ def test_promote_rejects_a_pick_whose_match_has_since_finished(db_session, admin
 
     response = _promote(admin, source["id"])
     assert response.status_code == 400
+    assert db_session.query(AdminPick).filter(AdminPick.public_teaser.is_(True)).count() == 0
+
+
+def test_promote_rejects_a_pick_with_a_leg_that_has_already_kicked_off(db_session, admin, priced_matches):
+    """price_legs alone isn't enough here: it only rejects a FINISHED match,
+    so a leg that's merely kicked off (LIVE) still prices -- and since
+    expires_at is the earliest leg kickoff, that leg alone would make the
+    promoted row expired the instant it's created, with the public endpoint
+    silently reading has_data=False forever after and no error telling the
+    admin why. Promote must catch this itself, before it ever reaches that
+    point."""
+
+    live_match = _kicked_off_match_with_odds(db_session, "Echo")
+    source = _create_source_pick(admin, [live_match, priced_matches[0]])
+
+    response = _promote(admin, source["id"])
+    assert response.status_code == 400
+    assert "kicked off" in response.json()["detail"]
     assert db_session.query(AdminPick).filter(AdminPick.public_teaser.is_(True)).count() == 0
 
 

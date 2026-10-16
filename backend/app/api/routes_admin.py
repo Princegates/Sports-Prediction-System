@@ -975,6 +975,25 @@ def promote_pick_to_public_teaser(
         detail = warnings[0] if warnings else "One or more legs in this pick no longer price live."
         raise HTTPException(status_code=400, detail=detail)
 
+    # price_legs only rejects a match once its result has actually landed
+    # (status == FINISHED) -- it happily reprices one that has kicked off
+    # but is still awaiting a result. expires_at below is the EARLIEST leg
+    # kickoff, so a single already-started leg makes the row expired the
+    # instant it's created: resolve_public_teaser_pick reads it right back
+    # as has_data=False, with no error anywhere to explain why. Reject it
+    # here instead, so the admin sees exactly which leg is the problem.
+    now = dt.datetime.utcnow()
+    started = next((leg for leg in legs if leg.kickoff <= now), None)
+    if started is not None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"{started.home_team} vs {started.away_team} already kicked off "
+                f"({started.kickoff:%Y-%m-%d %H:%M} UTC) -- remove or replace that leg "
+                "before promoting this pick, or it'll show as empty on the Welcome page."
+            ),
+        )
+
     db.execute(delete(AdminPick).where(AdminPick.public_teaser.is_(True)))
 
     pick = AdminPick(
