@@ -37,7 +37,10 @@ class Outcome:
 # compete for the headline "most likely outcome" or a "what else does the
 # model like" slot would just restate a real pick more loosely, never add
 # one; see app.outcomes.engine.secondary_outcomes.
-DOMINANT_UNION_GROUPS = frozenset({"double_chance", "ht_double_chance", "ht_ft_double_chance", "ht_double_chance_btts"})
+DOMINANT_UNION_GROUPS = frozenset({
+    "double_chance", "ht_double_chance", "ht_ft_double_chance", "ht_double_chance_btts",
+    "dc_btts", "dc_total_goals_1.5", "dc_total_goals_2.5", "dc_total_goals_3.5", "dc_total_goals_4.5",
+})
 
 # Groups whose displayed selections do not actually partition 100% of
 # probability between them -- either because they're unions of each other
@@ -89,6 +92,40 @@ def build_outcome_registry(
 # already carries from the persisted ``over_probabilities`` column.
 _EXTRA_TOTAL_LINES = ("5.5", "6.5", "7.5")
 _TEAM_GOAL_LINES = ("0.5", "1.5", "2.5", "3.5", "4.5")
+# Half-goal lines only (see matrix_derived_outcomes' own Asian Handicap
+# section for why: a half-integer margin can never land exactly on 0, so
+# there's no push/void case a whole-integer line would need). Capped at
+# 3.5 -- the deepest real line genuinely observed on SportyBet's own
+# market 16 in either direction (Real Madrid vs Sevilla/Bayern Munich vs
+# RB Leipzig for -3.5; Betis vs Barcelona/Freiburg vs Bayern Munich for
+# +3.5); nothing seen quoting 4.5.
+_ASIAN_HANDICAP_LINES = (0.5, 1.5, 2.5, 3.5)
+
+_RESULT_SHORT = {"Home": "1", "Draw": "X", "Away": "2"}
+_RESULT_PHRASE = {
+    "Home": "the home team is ahead",
+    "Draw": "the scores are level",
+    "Away": "the away team is ahead",
+}
+_DOUBLE_CHANCE_MEMBERS = {
+    "Home": ("Home/Draw", "Home/Away"),
+    "Draw": ("Home/Draw", "Draw/Away"),
+    "Away": ("Home/Away", "Draw/Away"),
+}
+_DOUBLE_CHANCE_PHRASE = {
+    "Home/Draw": "the home team is not losing",
+    "Home/Away": "the match is not drawn",
+    "Draw/Away": "the away team is not losing",
+}
+# The inverse of _DOUBLE_CHANCE_MEMBERS -- which two results make up each
+# double chance selection -- for combos (Double Chance & BTTS/Total Goals)
+# that need to sum a double chance name's own members rather than look up
+# which double chance names a single result belongs to.
+_DOUBLE_CHANCE_RESULTS = {
+    "Home/Draw": ("Home", "Draw"),
+    "Home/Away": ("Home", "Away"),
+    "Draw/Away": ("Draw", "Away"),
+}
 
 
 def matrix_derived_outcomes(lambda_home: float, lambda_away: float, matches_available: int) -> list[Outcome]:
@@ -132,6 +169,30 @@ def matrix_derived_outcomes(lambda_home: float, lambda_away: float, matches_avai
                     "Away team wins, with the stake refunded if the match is drawn."),
         ]
 
+    # -- Home/Away No Bet (category 1a) ----------------------------------
+    # The same "void on an unwanted result" shape as Draw No Bet, just
+    # voiding a different one: Home No Bet (SportyBet market 12) refunds
+    # the stake if the home side wins; Away No Bet (market 13) refunds it
+    # if the away side wins. The voided result isn't one of the two
+    # selections here, same as a draw never being one of Draw No Bet's.
+    draw_prob = 1.0 - home_win - away_win
+    not_home = draw_prob + away_win
+    if not_home > 0:
+        outcomes += [
+            Outcome("Home No Bet", "Draw", draw_prob / not_home, "home_no_bet", 5,
+                    "Match is drawn, with the stake refunded if the home team wins."),
+            Outcome("Home No Bet", "Away", away_win / not_home, "home_no_bet", 5,
+                    "Away team wins, with the stake refunded if the home team wins."),
+        ]
+    not_away = home_win + draw_prob
+    if not_away > 0:
+        outcomes += [
+            Outcome("Away No Bet", "Home", home_win / not_away, "away_no_bet", 5,
+                    "Home team wins, with the stake refunded if the away team wins."),
+            Outcome("Away No Bet", "Draw", draw_prob / not_away, "away_no_bet", 5,
+                    "Match is drawn, with the stake refunded if the away team wins."),
+        ]
+
     # -- Handicap, 3-way goal-line (category 1b) -------------------------
     # The bookmaker "Handicap" market, distinct from a 2-way Asian Handicap:
     # a line applies directly to the home team's goal tally before comparing
@@ -167,6 +228,34 @@ def matrix_derived_outcomes(lambda_home: float, lambda_away: float, matches_avai
             Outcome(f"Handicap {sign}", "Draw", bucket["Draw"], f"handicap_{line}", 5, draw_def),
             Outcome(f"Handicap {sign}", "Away", bucket["Away"], f"handicap_{line}", 5, away_def),
         ]
+
+    # -- Asian Handicap, 2-way half-line (category 1c) -------------------
+    # SportyBet's own "Handicap" market id 16 is distinct from id 14's
+    # 3-way integer-line version above: id 16 also quotes whole-integer
+    # lines (hcp=0, hcp=1, ...), but those can push (an exact-margin draw
+    # voids the bet), the same accounting problem that kept Asian Handicap
+    # out of this registry entirely before -- see the 3-way block's own
+    # comment. A HALF-integer line never can: (h + line) - a is never
+    # exactly 0 when line ends in .5, so it's always a clean 2-way split
+    # with no push case to represent. Only those lines are built here.
+    for line in _ASIAN_HANDICAP_LINES:
+        for signed in (-line, line):
+            home_covers = sum(
+                matrix[h][a]
+                for h in range(max_goals + 1) for a in range(max_goals + 1)
+                if (h + signed) - a > 0
+            )
+            sign = f"{signed:+.1f}"
+            if signed < 0:
+                home_def = f"Home team wins by {abs(signed):.1f} or more goals (covers a {sign} handicap)."
+                away_def = f"Home team wins by less than {abs(signed):.1f} goals, draws, or loses outright (handicap not covered)."
+            else:
+                home_def = f"Home team wins, draws, or loses by less than {signed:.1f} goals (covers a {sign} handicap)."
+                away_def = f"Home team loses by {signed:.1f} or more goals (handicap not covered)."
+            outcomes += [
+                Outcome(f"Asian Handicap {sign}", "Home", home_covers, f"asian_handicap_{signed}", 5, home_def),
+                Outcome(f"Asian Handicap {sign}", "Away", 1 - home_covers, f"asian_handicap_{signed}", 5, away_def),
+            ]
 
     # -- Total Goals, lines beyond what's already persisted (category 4) -
     for line in _EXTRA_TOTAL_LINES:
@@ -226,6 +315,31 @@ def matrix_derived_outcomes(lambda_home: float, lambda_away: float, matches_avai
         Outcome("Both Teams Clean Sheet", "No", 1 - both_cs, "both_clean_sheet", 5, "At least one team scores."),
     ]
 
+    # -- Which Team To Score (category 13b) ------------------------------
+    # SportyBet's own 4-way split (market 30) of the same scoring event the
+    # clean-sheet markets above already describe piecemeal -- exactly one
+    # of "neither scores", "only the home side scores", "only the away
+    # side scores", or "both score" is true for any final score.
+    wts = {"None": 0.0, "Only Home": 0.0, "Only Away": 0.0, "Both": 0.0}
+    for h in range(max_goals + 1):
+        for a in range(max_goals + 1):
+            p = matrix[h][a]
+            if h == 0 and a == 0:
+                wts["None"] += p
+            elif a == 0:
+                wts["Only Home"] += p
+            elif h == 0:
+                wts["Only Away"] += p
+            else:
+                wts["Both"] += p
+    _wts_defs = {
+        "None": "Neither team scores.",
+        "Only Home": "The home team scores and the away team does not.",
+        "Only Away": "The away team scores and the home team does not.",
+        "Both": "Both teams score.",
+    }
+    outcomes += [Outcome("Which Team To Score", k, v, "which_team_to_score", 5, _wts_defs[k]) for k, v in wts.items()]
+
     # -- Odd / Even goals (category 18) ----------------------------------
     def parity(dist_pairs) -> tuple[float, float]:
         even = sum(p for n, p in dist_pairs if n % 2 == 0)
@@ -259,11 +373,29 @@ def matrix_derived_outcomes(lambda_home: float, lambda_away: float, matches_avai
         for k, v in range_probs.items()
     ]
 
+    # -- Goal Range, coarse bands (category 24b) -------------------------
+    # SportyBet's own "Goal Range" (market 25, sr:goal_range:7+) -- coarser,
+    # non-overlapping bands than Total Goals Range above, which already
+    # mirrors its own exact-goals market (id 21). A different real market,
+    # not a re-bucketing of the same one, so it gets its own name here too.
+    _coarse_bands = (("0-1", 0, 1), ("2-3", 2, 3), ("4-6", 4, 6))
+    coarse_probs: dict[str, float] = {}
+    for label, lo, hi in _coarse_bands:
+        coarse_probs[label] = sum(
+            matrix[h][a] for h in range(max_goals + 1) for a in range(max_goals + 1) if lo <= h + a <= hi
+        )
+    coarse_probs["7+"] = max(0.0, 1.0 - sum(coarse_probs.values()))
+    outcomes += [
+        Outcome("Goal Range", k, v, "goal_range_coarse", 5,
+                "Total match goals are 7 or more." if k == "7+" else f"Total match goals are {k.replace('-', ' to ')}.")
+        for k, v in coarse_probs.items()
+    ]
+
     # -- Result & Total Goals, Result & BTTS (categories 20, 21) ---------
     def result_of(h: int, a: int) -> str:
         return "Home" if h > a else ("Away" if h < a else "Draw")
 
-    for line in ("1.5", "2.5"):
+    for line in ("1.5", "2.5", "3.5", "4.5"):
         line_f = float(line)
         buckets = {("Home", True): 0.0, ("Home", False): 0.0, ("Draw", True): 0.0,
                    ("Draw", False): 0.0, ("Away", True): 0.0, ("Away", False): 0.0}
@@ -274,6 +406,17 @@ def matrix_derived_outcomes(lambda_home: float, lambda_away: float, matches_avai
             Outcome(f"Result & Total Goals {line}", f"{result} & {'Over' if over else 'Under'} {line}", p,
                     f"result_ou_{line}", 5, f"{result} win combined with total goals {'over' if over else 'under'} {line}.")
             for (result, over), p in buckets.items()
+        ]
+
+        # Double Chance & Total Goals (SportyBet market 547) -- a union of
+        # this same line's Result & Total Goals buckets, the same
+        # "dominant union" shape plain Double Chance already is above.
+        outcomes += [
+            Outcome(f"Double Chance & Total Goals {line}", f"{dc} & {'Over' if over else 'Under'} {line}",
+                    sum(buckets[(r, over)] for r in members), f"dc_total_goals_{line}", 5,
+                    f"{_DOUBLE_CHANCE_PHRASE[dc].capitalize()}, combined with total goals "
+                    f"{'over' if over else 'under'} {line}.")
+            for dc, members in _DOUBLE_CHANCE_RESULTS.items() for over in (True, False)
         ]
 
         btts_buckets = {(True, True): 0.0, (True, False): 0.0, (False, True): 0.0, (False, False): 0.0}
@@ -296,6 +439,15 @@ def matrix_derived_outcomes(lambda_home: float, lambda_away: float, matches_avai
         Outcome("Result & BTTS", f"{result} & BTTS {'Yes' if btts else 'No'}", p, "result_btts", 5,
                 f"{result} win combined with both teams to score {'yes' if btts else 'no'}.")
         for (result, btts), p in result_btts_buckets.items()
+    ]
+
+    # Double Chance & BTTS (SportyBet market 546) -- a union of Result &
+    # BTTS's own buckets, same dominant-union shape as above.
+    outcomes += [
+        Outcome("Double Chance & BTTS", f"{dc} & BTTS {'Yes' if btts else 'No'}",
+                sum(result_btts_buckets[(r, btts)] for r in members), "dc_btts", 5,
+                f"{_DOUBLE_CHANCE_PHRASE[dc].capitalize()}, combined with both teams to score {'yes' if btts else 'no'}.")
+        for dc, members in _DOUBLE_CHANCE_RESULTS.items() for btts in (True, False)
     ]
 
     # -- Result & Clean Sheet (category 23) -------------------------------
@@ -440,22 +592,6 @@ def ht_matrix_derived_outcomes(lambda_home_ht: float, lambda_away_ht: float, mat
     return [o for o in outcomes if matches_available >= o.min_data_requirement]
 
 
-_RESULT_SHORT = {"Home": "1", "Draw": "X", "Away": "2"}
-_RESULT_PHRASE = {
-    "Home": "the home team is ahead",
-    "Draw": "the scores are level",
-    "Away": "the away team is ahead",
-}
-_DOUBLE_CHANCE_MEMBERS = {
-    "Home": ("Home/Draw", "Home/Away"),
-    "Draw": ("Home/Draw", "Draw/Away"),
-    "Away": ("Home/Away", "Draw/Away"),
-}
-_DOUBLE_CHANCE_PHRASE = {
-    "Home/Draw": "the home team is not losing",
-    "Home/Away": "the match is not drawn",
-    "Draw/Away": "the away team is not losing",
-}
 _SECOND_HALF_PHRASE = {
     "Home": "the home team scores more goals than the away team",
     "Draw": "both teams score the same number of goals",
@@ -680,6 +816,34 @@ def ht_ft_joint_outcomes(
             f"At half-time {_RESULT_PHRASE[h]}; in the second half alone, {_SECOND_HALF_PHRASE[s]}.",
         )
         for (h, s), p in ht_2h_result_p.items()
+    ]
+
+    # Home/Away Team To Win Both Halves / Either Half (SportyBet markets
+    # 48-51) -- the same ht_2h_result_p joint above, just re-sliced to one
+    # team's own two outcomes instead of shown as the full 3x3 grid. "Both
+    # halves" is one specific (ht, h2) pair; "either half" is every pair
+    # where that team won at least one of the two.
+    home_both = ht_2h_result_p.get(("Home", "Home"), 0.0)
+    away_both = ht_2h_result_p.get(("Away", "Away"), 0.0)
+    home_either = sum(p for (h, s), p in ht_2h_result_p.items() if h == "Home" or s == "Home")
+    away_either = sum(p for (h, s), p in ht_2h_result_p.items() if h == "Away" or s == "Away")
+    outcomes += [
+        Outcome("Home Team To Win Both Halves", "Yes", home_both, "home_win_both_halves", 5,
+                "The home team is ahead at half-time and wins the second half outright."),
+        Outcome("Home Team To Win Both Halves", "No", 1 - home_both, "home_win_both_halves", 5,
+                "The home team fails to lead at half-time, or fails to win the second half outright, or both."),
+        Outcome("Away Team To Win Both Halves", "Yes", away_both, "away_win_both_halves", 5,
+                "The away team is ahead at half-time and wins the second half outright."),
+        Outcome("Away Team To Win Both Halves", "No", 1 - away_both, "away_win_both_halves", 5,
+                "The away team fails to lead at half-time, or fails to win the second half outright, or both."),
+        Outcome("Home Team To Win Either Half", "Yes", home_either, "home_win_either_half", 5,
+                "The home team is ahead at half-time, wins the second half outright, or both."),
+        Outcome("Home Team To Win Either Half", "No", 1 - home_either, "home_win_either_half", 5,
+                "The home team is neither ahead at half-time nor wins the second half outright."),
+        Outcome("Away Team To Win Either Half", "Yes", away_either, "away_win_either_half", 5,
+                "The away team is ahead at half-time, wins the second half outright, or both."),
+        Outcome("Away Team To Win Either Half", "No", 1 - away_either, "away_win_either_half", 5,
+                "The away team is neither ahead at half-time nor wins the second half outright."),
     ]
 
     outcomes += [

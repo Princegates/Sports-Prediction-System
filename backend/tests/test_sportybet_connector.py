@@ -150,6 +150,27 @@ def test_known_picks_translate_to_sportybet_ids(market, selection, expected):
     ("Handicap -1", "Away", ("14", "hcp=0:1", "1713")),
     ("Handicap +2", "Draw", ("14", "hcp=2:0", "1712")),
     ("Handicap +5", "Home", ("14", "hcp=5:0", "1711")),
+    # SportyBet's own "Home No Bet"/"Away No Bet" (markets 12/13) -- the
+    # voided result isn't a selection on either side.
+    ("Home No Bet", "Draw", ("12", None, "776")),
+    ("Home No Bet", "Away", ("12", None, "778")),
+    ("Away No Bet", "Home", ("13", None, "780")),
+    ("Away No Bet", "Draw", ("13", None, "782")),
+    # SportyBet's own "Handicap" market 16 -- a single signed specifier
+    # (no colon pair), only the half-integer lines translate (see
+    # registry.py's own comment on the whole-integer push problem).
+    ("Asian Handicap -0.5", "Home", ("16", "hcp=-0.5", "1714")),
+    ("Asian Handicap -0.5", "Away", ("16", "hcp=-0.5", "1715")),
+    ("Asian Handicap +2.5", "Home", ("16", "hcp=2.5", "1714")),
+    ("Asian Handicap +2.5", "Away", ("16", "hcp=2.5", "1715")),
+    ("Goal Range", "0-1", ("25", "variant=sr:goal_range:7+", "sr:goal_range:7+:1342")),
+    ("Goal Range", "7+", ("25", "variant=sr:goal_range:7+", "sr:goal_range:7+:1345")),
+    ("Which Team To Score", "Only Home", ("30", None, "788")),
+    ("Which Team To Score", "Both", ("30", None, "792")),
+    ("Home Team To Win Both Halves", "Yes", ("48", None, "74")),
+    ("Away Team To Win Either Half", "No", ("51", None, "76")),
+    ("Double Chance & BTTS", "Home/Away & BTTS Yes", ("546", None, "1720")),
+    ("Double Chance & Total Goals 2.5", "Draw/Away & Over 2.5", ("547", "total=2.5", "1729")),
 ])
 def test_the_wider_markets_translate_too(market, selection, expected):
     assert sb.translate(market, selection) == expected

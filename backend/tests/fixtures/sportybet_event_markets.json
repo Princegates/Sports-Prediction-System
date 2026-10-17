@@ -1,5 +1,5 @@
 {
-  "_source": "SportyBet Ghana factsCenter/event for sr:match:72221292 (Arsenal vs Leeds United), captured 2026-09-29. Market and outcome ids and names only. Trimmed to the markets the SportyBet connection books. Handicap (market 14) added 2026-10-16: hcp=0:1..0:5 from SportyBet Ghana factsCenter/pcUpcomingEvents (sr:match:72221320, Fulham vs Hull City) and hcp=1:0..5:0 from the same endpoint (sr:match:67015418, HamKam vs Bodoe/Glimt) -- one capture per direction since no single upcoming match happened to quote lines that deep in both directions at once.",
+  "_source": "SportyBet Ghana factsCenter/event for sr:match:72221292 (Arsenal vs Leeds United), captured 2026-09-29. Market and outcome ids and names only. Trimmed to the markets the SportyBet connection books. Handicap (market 14) added 2026-10-16: hcp=0:1..0:5 from SportyBet Ghana factsCenter/pcUpcomingEvents (sr:match:72221320, Fulham vs Hull City) and hcp=1:0..5:0 from the same endpoint (sr:match:67015418, HamKam vs Bodoe/Glimt) -- one capture per direction since no single upcoming match happened to quote lines that deep in both directions at once. Markets 12/13/25/30/48-51/546/547 and market 16 (quarter/half-line Asian Handicap) added 2026-10-17: 12/13/16(-3.5..-0.5)/25/30/546/547 from SportyBet Ghana factsCenter/event for sr:match:71945334 (Inter vs Fiorentina, Serie A) and sr:match:72221318 (Everton vs Chelsea, EPL); 16(+0.5..+3.5) from sr:match:72478626 (Betis vs Barcelona, La Liga); 48-51 from the Everton vs Chelsea capture.",
   "markets": [
     {
       "id": "1",
@@ -821,6 +821,219 @@
         "1711": "Home (5:0)",
         "1712": "Draw (5:0)",
         "1713": "Away (5:0)"
+      }
+    },
+    {
+      "id": "12",
+      "specifier": null,
+      "desc": "Home No Bet",
+      "outcomes": {
+        "776": "Draw",
+        "778": "Away"
+      }
+    },
+    {
+      "id": "13",
+      "specifier": null,
+      "desc": "Away No Bet",
+      "outcomes": {
+        "780": "Home",
+        "782": "Draw"
+      }
+    },
+    {
+      "id": "16",
+      "specifier": "hcp=-3.5",
+      "desc": "Handicap",
+      "outcomes": {
+        "1714": "Home (-3.5)",
+        "1715": "Away (+3.5)"
+      }
+    },
+    {
+      "id": "16",
+      "specifier": "hcp=-2.5",
+      "desc": "Handicap",
+      "outcomes": {
+        "1714": "Home (-2.5)",
+        "1715": "Away (+2.5)"
+      }
+    },
+    {
+      "id": "16",
+      "specifier": "hcp=-1.5",
+      "desc": "Handicap",
+      "outcomes": {
+        "1714": "Home (-1.5)",
+        "1715": "Away (+1.5)"
+      }
+    },
+    {
+      "id": "16",
+      "specifier": "hcp=-0.5",
+      "desc": "Handicap",
+      "outcomes": {
+        "1714": "Home (-0.5)",
+        "1715": "Away (+0.5)"
+      }
+    },
+    {
+      "id": "16",
+      "specifier": "hcp=0.5",
+      "desc": "Handicap",
+      "outcomes": {
+        "1714": "Home (+0.5)",
+        "1715": "Away (-0.5)"
+      }
+    },
+    {
+      "id": "16",
+      "specifier": "hcp=1.5",
+      "desc": "Handicap",
+      "outcomes": {
+        "1714": "Home (+1.5)",
+        "1715": "Away (-1.5)"
+      }
+    },
+    {
+      "id": "16",
+      "specifier": "hcp=2.5",
+      "desc": "Handicap",
+      "outcomes": {
+        "1714": "Home (+2.5)",
+        "1715": "Away (-2.5)"
+      }
+    },
+    {
+      "id": "16",
+      "specifier": "hcp=3.5",
+      "desc": "Handicap",
+      "outcomes": {
+        "1714": "Home (+3.5)",
+        "1715": "Away (-3.5)"
+      }
+    },
+    {
+      "id": "25",
+      "specifier": "variant=sr:goal_range:7+",
+      "desc": "Goal Range",
+      "outcomes": {
+        "sr:goal_range:7+:1342": "0-1",
+        "sr:goal_range:7+:1343": "2-3",
+        "sr:goal_range:7+:1344": "4-6",
+        "sr:goal_range:7+:1345": "7+"
+      }
+    },
+    {
+      "id": "30",
+      "specifier": null,
+      "desc": "Which Team To Score",
+      "outcomes": {
+        "784": "None",
+        "788": "Only Home",
+        "790": "Only Away",
+        "792": "Both teams"
+      }
+    },
+    {
+      "id": "48",
+      "specifier": null,
+      "desc": "Home Team To Win Both Halves",
+      "outcomes": {
+        "74": "Yes",
+        "76": "No"
+      }
+    },
+    {
+      "id": "49",
+      "specifier": null,
+      "desc": "Away Team To Win Both Halves",
+      "outcomes": {
+        "74": "Yes",
+        "76": "No"
+      }
+    },
+    {
+      "id": "50",
+      "specifier": null,
+      "desc": "Home Team To Win Either Half",
+      "outcomes": {
+        "74": "Yes",
+        "76": "No"
+      }
+    },
+    {
+      "id": "51",
+      "specifier": null,
+      "desc": "Away Team To Win Either Half",
+      "outcomes": {
+        "74": "Yes",
+        "76": "No"
+      }
+    },
+    {
+      "id": "546",
+      "specifier": null,
+      "desc": "Double Chance & GG/NG",
+      "outcomes": {
+        "1718": "Home/Draw & Yes",
+        "1719": "Home/Draw & No",
+        "1720": "Home/Away & Yes",
+        "1721": "Home/Away & No",
+        "1722": "Draw/Away & Yes",
+        "1723": "Draw/Away & No"
+      }
+    },
+    {
+      "id": "547",
+      "specifier": "total=1.5",
+      "desc": "Double Chance & Total",
+      "outcomes": {
+        "1724": "Home/Draw & Under 1.5",
+        "1725": "Home/Away & Under 1.5",
+        "1726": "Draw/Away & Under 1.5",
+        "1727": "Home/Draw & Over 1.5",
+        "1728": "Home/Away & Over 1.5",
+        "1729": "Draw/Away & Over 1.5"
+      }
+    },
+    {
+      "id": "547",
+      "specifier": "total=2.5",
+      "desc": "Double Chance & Total",
+      "outcomes": {
+        "1724": "Home/Draw & Under 2.5",
+        "1725": "Home/Away & Under 2.5",
+        "1726": "Draw/Away & Under 2.5",
+        "1727": "Home/Draw & Over 2.5",
+        "1728": "Home/Away & Over 2.5",
+        "1729": "Draw/Away & Over 2.5"
+      }
+    },
+    {
+      "id": "547",
+      "specifier": "total=3.5",
+      "desc": "Double Chance & Total",
+      "outcomes": {
+        "1724": "Home/Draw & Under 3.5",
+        "1725": "Home/Away & Under 3.5",
+        "1726": "Draw/Away & Under 3.5",
+        "1727": "Home/Draw & Over 3.5",
+        "1728": "Home/Away & Over 3.5",
+        "1729": "Draw/Away & Over 3.5"
+      }
+    },
+    {
+      "id": "547",
+      "specifier": "total=4.5",
+      "desc": "Double Chance & Total",
+      "outcomes": {
+        "1724": "Home/Draw & Under 4.5",
+        "1725": "Home/Away & Under 4.5",
+        "1726": "Draw/Away & Under 4.5",
+        "1727": "Home/Draw & Over 4.5",
+        "1728": "Home/Away & Over 4.5",
+        "1729": "Draw/Away & Over 4.5"
       }
     }
   ]

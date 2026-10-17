@@ -137,7 +137,10 @@ def test_secondary_outcomes_of_an_empty_registry_is_empty():
 def test_every_matrix_derived_group_sums_to_one():
     """The correctness property that matters most here: every new market is
     a genuine partition of the outcome space, not a cherry-picked subset that
-    would make the browse page's "these add up to 100%" label a lie."""
+    would make the browse page's "these add up to 100%" label a lie --
+    except the dominant-union combos (Double Chance & BTTS/Total Goals),
+    which are deliberately unions of each other the same way plain Double
+    Chance already is (DOMINANT_UNION_GROUPS), and never claim to sum to 1."""
 
     outcomes = matrix_derived_outcomes(lambda_home=1.6, lambda_away=1.1, matches_available=20)
     assert outcomes, "expected a non-empty registry"
@@ -146,6 +149,8 @@ def test_every_matrix_derived_group_sums_to_one():
     for o in outcomes:
         groups[o.mutually_exclusive_group] = groups.get(o.mutually_exclusive_group, 0.0) + o.probability
     for group, total in groups.items():
+        if group in DOMINANT_UNION_GROUPS:
+            continue
         assert abs(total - 1.0) < 1e-9, f"group {group!r} summed to {total}, not 1.0"
 
 
@@ -238,6 +243,133 @@ def test_handicap_minus_one_equals_the_matching_winning_margin_buckets():
     assert by_key[("Handicap -1", "Home")] == pytest.approx(home_by_2_or_more)
     assert by_key[("Handicap -1", "Draw")] == pytest.approx(by_key[("Winning Margin", "Home by exactly 1")])
     assert by_key[("Handicap -1", "Away")] == pytest.approx(away_or_draw_or_home_by_1)
+
+
+def test_asian_handicap_markets_exist_for_the_standard_half_lines():
+    outcomes = matrix_derived_outcomes(lambda_home=1.6, lambda_away=1.1, matches_available=20)
+    markets = {o.market for o in outcomes}
+    for line in ("-3.5", "-2.5", "-1.5", "-0.5", "+0.5", "+1.5", "+2.5", "+3.5"):
+        assert f"Asian Handicap {line}" in markets
+        selections = {o.selection for o in outcomes if o.market == f"Asian Handicap {line}"}
+        assert selections == {"Home", "Away"}
+
+
+def test_asian_handicap_minus_half_matches_a_direct_scoreline_comparison():
+    """A half-integer line never lands exactly on 0, so this is always a
+    clean 2-way split -- no push bucket exists or is needed, unlike the
+    3-way integer Handicap above."""
+
+    from app.prediction_models.poisson_model import build_score_matrix
+
+    lambda_home, lambda_away = 1.6, 1.1
+    matrix = build_score_matrix(lambda_home, lambda_away)
+    max_goals = len(matrix) - 1
+
+    expected_home = sum(
+        matrix[h][a] for h in range(max_goals + 1) for a in range(max_goals + 1) if (h - 0.5) - a > 0
+    )
+
+    outcomes = matrix_derived_outcomes(lambda_home=lambda_home, lambda_away=lambda_away, matches_available=20)
+    by_selection = {o.selection: o.probability for o in outcomes if o.market == "Asian Handicap -0.5"}
+    assert by_selection["Home"] == pytest.approx(expected_home)
+    assert by_selection["Away"] == pytest.approx(1 - expected_home)
+
+
+def test_asian_handicap_home_covers_less_often_on_a_tougher_line():
+    outcomes = matrix_derived_outcomes(lambda_home=1.6, lambda_away=1.1, matches_available=20)
+    by_key = {(o.market, o.selection): o.probability for o in outcomes}
+    negative_lines = ["-0.5", "-1.5", "-2.5", "-3.5"]
+    for easier, tougher in zip(negative_lines, negative_lines[1:]):
+        assert by_key[(f"Asian Handicap {tougher}", "Home")] <= by_key[(f"Asian Handicap {easier}", "Home")] + 1e-9
+
+
+def test_home_and_away_no_bet_exclude_the_voided_result():
+    """Home No Bet never offers "Home" as a selection (that's the result it
+    voids) and its two real selections' odds come from the same home/draw/
+    away split Draw No Bet already uses -- just normalized by excluding a
+    different one of the three."""
+
+    outcomes = matrix_derived_outcomes(lambda_home=1.6, lambda_away=1.1, matches_available=20)
+    by_key = {(o.market, o.selection): o.probability for o in outcomes}
+
+    assert {o.selection for o in outcomes if o.market == "Home No Bet"} == {"Draw", "Away"}
+    assert {o.selection for o in outcomes if o.market == "Away No Bet"} == {"Home", "Draw"}
+
+    # Home No Bet's two selections, and Away No Bet's two, each sum to 1.
+    assert by_key[("Home No Bet", "Draw")] + by_key[("Home No Bet", "Away")] == pytest.approx(1.0)
+    assert by_key[("Away No Bet", "Home")] + by_key[("Away No Bet", "Draw")] == pytest.approx(1.0)
+
+
+def test_which_team_to_score_matches_clean_sheet_buckets():
+    """Only Home = the home side scores, away doesn't -- the away side's
+    own clean sheet, minus the double-blank case. Both = neither team's
+    clean sheet holds."""
+
+    outcomes = matrix_derived_outcomes(lambda_home=1.6, lambda_away=1.1, matches_available=20)
+    by_key = {(o.market, o.selection): o.probability for o in outcomes}
+
+    wts = {o.selection: o.probability for o in outcomes if o.market == "Which Team To Score"}
+    assert sum(wts.values()) == pytest.approx(1.0)
+
+    none_p = by_key[("Both Teams Clean Sheet", "Yes")]  # 0-0
+    away_cs = by_key[("Away Clean Sheet", "Yes")]  # home fails to score, i.e. P(home=0)
+    home_cs = by_key[("Home Clean Sheet", "Yes")]  # away fails to score, i.e. P(away=0)
+    assert wts["None"] == pytest.approx(none_p)
+    # Only Home scores: home>0 and away=0 -> P(away=0) minus the double-blank case.
+    assert wts["Only Home"] == pytest.approx(home_cs - none_p)
+    # Only Away scores: away>0 and home=0 -> P(home=0) minus the double-blank case.
+    assert wts["Only Away"] == pytest.approx(away_cs - none_p)
+    assert wts["Both"] == pytest.approx(1 - home_cs - away_cs + none_p)
+
+
+def test_goal_range_coarse_bands_match_a_direct_scoreline_comparison():
+    from app.prediction_models.poisson_model import build_score_matrix
+
+    lambda_home, lambda_away = 1.6, 1.1
+    matrix = build_score_matrix(lambda_home, lambda_away)
+    max_goals = len(matrix) - 1
+
+    expected = {"0-1": 0.0, "2-3": 0.0, "4-6": 0.0, "7+": 0.0}
+    for h in range(max_goals + 1):
+        for a in range(max_goals + 1):
+            total = h + a
+            key = "0-1" if total <= 1 else ("2-3" if total <= 3 else ("4-6" if total <= 6 else "7+"))
+            expected[key] += matrix[h][a]
+
+    outcomes = matrix_derived_outcomes(lambda_home=lambda_home, lambda_away=lambda_away, matches_available=20)
+    by_selection = {o.selection: o.probability for o in outcomes if o.market == "Goal Range"}
+    for k, v in expected.items():
+        assert by_selection[k] == pytest.approx(v)
+
+
+def test_double_chance_and_total_goals_is_the_matching_result_union():
+    outcomes = matrix_derived_outcomes(lambda_home=1.6, lambda_away=1.1, matches_available=20)
+    by_key = {(o.market, o.selection): o.probability for o in outcomes}
+
+    home_over = by_key[("Result & Total Goals 2.5", "Home & Over 2.5")]
+    draw_over = by_key[("Result & Total Goals 2.5", "Draw & Over 2.5")]
+    assert by_key[("Double Chance & Total Goals 2.5", "Home/Draw & Over 2.5")] == pytest.approx(home_over + draw_over)
+
+
+def test_double_chance_and_btts_is_the_matching_result_union():
+    outcomes = matrix_derived_outcomes(lambda_home=1.6, lambda_away=1.1, matches_available=20)
+    by_key = {(o.market, o.selection): o.probability for o in outcomes}
+
+    home_yes = by_key[("Result & BTTS", "Home & BTTS Yes")]
+    away_yes = by_key[("Result & BTTS", "Away & BTTS Yes")]
+    assert by_key[("Double Chance & BTTS", "Home/Away & BTTS Yes")] == pytest.approx(home_yes + away_yes)
+
+
+def test_dc_combo_groups_are_excluded_from_the_full_partition_check():
+    """These are dominant unions of Result & BTTS / Result & Total Goals,
+    the same shape plain Double Chance already is -- DOMINANT_UNION_GROUPS
+    says so, and they're excluded from test_every_matrix_derived_group_sums_to_one above."""
+
+    outcomes = matrix_derived_outcomes(lambda_home=1.6, lambda_away=1.1, matches_available=20)
+    groups = {o.mutually_exclusive_group for o in outcomes if o.market == "Double Chance & BTTS"}
+    assert groups == {"dc_btts"}
+    assert "dc_btts" in DOMINANT_UNION_GROUPS
+    assert "dc_total_goals_2.5" in DOMINANT_UNION_GROUPS
 
 
 def _prediction_stub(**overrides) -> SimpleNamespace:
@@ -445,6 +577,31 @@ def test_ht_2h_result_marginals_match_ht_result_and_2h_result():
 
     for side in ("Home", "Draw", "Away"):
         assert marginal[side] == pytest.approx(ht_result[side], abs=1e-9)
+
+
+def test_win_both_halves_matches_the_matching_ht_plus_2h_result_cell():
+    """"Home Team To Win Both Halves" is just one specific cell of the same
+    HT + 2H Result joint grid, re-sliced to a Yes/No question -- not a new
+    computation, so it has to equal that cell exactly."""
+
+    outcomes = _ht_ft()
+    joint = {o.selection: o.probability for o in outcomes if o.market == "HT + 2H Result"}
+    both = {o.selection: o.probability for o in outcomes if o.market == "Home Team To Win Both Halves"}
+    assert both["Yes"] == pytest.approx(joint["Home & Home"])
+    assert both["Yes"] + both["No"] == pytest.approx(1.0)
+
+    away_both = {o.selection: o.probability for o in outcomes if o.market == "Away Team To Win Both Halves"}
+    assert away_both["Yes"] == pytest.approx(joint["Away & Away"])
+
+
+def test_win_either_half_is_at_least_win_both_halves():
+    """"Either half" is a superset of "both halves" -- winning both trivially
+    satisfies "at least one" -- so it can never be the smaller probability."""
+
+    outcomes = _ht_ft()
+    by_key = {(o.market, o.selection): o.probability for o in outcomes}
+    assert by_key[("Home Team To Win Either Half", "Yes")] >= by_key[("Home Team To Win Both Halves", "Yes")] - 1e-9
+    assert by_key[("Away Team To Win Either Half", "Yes")] >= by_key[("Away Team To Win Both Halves", "Yes")] - 1e-9
 
 
 def test_ht_ft_joint_outcomes_respects_the_data_gate():

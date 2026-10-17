@@ -143,6 +143,11 @@ def _build_markets() -> dict[tuple[str, str], Selection]:
     add("Double Chance", "10", None, double_chance)
     add("Both Teams To Score", "29", None, yes_no)
     add("Draw No Bet", "11", None, {"Home": "4", "Away": "5"})
+    # SportyBet's own "Home No Bet"/"Away No Bet" (markets 12/13) -- the
+    # same void-on-one-result shape Draw No Bet above already is, just
+    # voiding a different result. Fixed outcome ids, same pattern.
+    add("Home No Bet", "12", None, {"Draw": "776", "Away": "778"})
+    add("Away No Bet", "13", None, {"Home": "780", "Draw": "782"})
     # SportyBet's own "Handicap" (market 14): a specifier of two non-negative
     # bonus goals, "hcp=<home bonus>:<away bonus>", exactly one of them
     # nonzero -- read off the site as both "hcp=0:1" (home favoured by the
@@ -158,6 +163,20 @@ def _build_markets() -> dict[tuple[str, str], Selection]:
     for n in range(1, 6):
         add(f"Handicap -{n}", "14", f"hcp=0:{n}", handicap_outcomes)
         add(f"Handicap +{n}", "14", f"hcp={n}:0", handicap_outcomes)
+    # SportyBet's own "Handicap" market 16 -- distinct from market 14
+    # above: a single signed specifier (no colon pair), and it also quotes
+    # whole-integer lines ("hcp=0", "hcp=1", ...) that our registry has no
+    # entry for (an exact-margin draw pushes on those, which this
+    # connection has nowhere to represent -- see Asian Handicap's own
+    # comment in registry.py). Only the half-integer lines it shares with
+    # our "Asian Handicap -N.5"/"+N.5" translate; Python's own str() of a
+    # float already renders them the way the site's specifier does
+    # ("hcp=-0.5", "hcp=0.5", no "+" on the positive side).
+    asian_handicap_outcomes = {"Home": "1714", "Away": "1715"}
+    for eighths in range(1, 8, 2):  # 0.5, 1.5, 2.5, 3.5
+        line = eighths / 2.0
+        add(f"Asian Handicap -{line:.1f}", "16", f"hcp={-line}", asian_handicap_outcomes)
+        add(f"Asian Handicap +{line:.1f}", "16", f"hcp={line}", asian_handicap_outcomes)
     add("Total Goals Odd/Even", "26", None, odd_even)
     add("Home Goals Odd/Even", "27", None, odd_even)
     add("Away Goals Odd/Even", "28", None, odd_even)
@@ -178,9 +197,23 @@ def _build_markets() -> dict[tuple[str, str], Selection]:
             f"Draw & Under {line}": "798", f"Draw & Over {line}": "800",
             f"Away & Under {line}": "802", f"Away & Over {line}": "804",
         })
+        # SportyBet's own "Double Chance & Total" (market 547) -- fixed
+        # outcome ids across every line, the same pattern Over/Under's
+        # "12"/"13" and this market's own sibling above already use.
+        add(f"Double Chance & Total Goals {line}", "547", f"total={line}", {
+            f"Home/Draw & Under {line}": "1724", f"Home/Away & Under {line}": "1725",
+            f"Draw/Away & Under {line}": "1726", f"Home/Draw & Over {line}": "1727",
+            f"Home/Away & Over {line}": "1728", f"Draw/Away & Over {line}": "1729",
+        })
     add("Result & BTTS", "35", None, {
         "Home & BTTS Yes": "78", "Home & BTTS No": "80", "Draw & BTTS Yes": "82",
         "Draw & BTTS No": "84", "Away & BTTS Yes": "86", "Away & BTTS No": "88",
+    })
+    # SportyBet's own "Double Chance & GG/NG" (market 546).
+    add("Double Chance & BTTS", "546", None, {
+        "Home/Draw & BTTS Yes": "1718", "Home/Draw & BTTS No": "1719",
+        "Home/Away & BTTS Yes": "1720", "Home/Away & BTTS No": "1721",
+        "Draw/Away & BTTS Yes": "1722", "Draw/Away & BTTS No": "1723",
     })
     # Correct Score runs 0:0 to 4:4 (274, 276, ... 322: +2 per home goal,
     # +10 per away goal). Anything bigger is SportyBet's "Other", which isn't
@@ -197,6 +230,15 @@ def _build_markets() -> dict[tuple[str, str], Selection]:
     add("Total Goals Range", "21", "variant=sr:exact_goals:6+",
         {_goal_label(str(n)): f"sr:exact_goals:6+:{68 + n}" for n in range(5)})
     add("Total Goals Range", "18", "total=4.5", {"5+ goals": "12"})
+    # SportyBet's own "Goal Range" (market 25, sr:goal_range:7+) -- coarser
+    # bands than Total Goals Range above, a genuinely different market, not
+    # a re-bucketing of the same one.
+    add("Goal Range", "25", "variant=sr:goal_range:7+", {
+        "0-1": "sr:goal_range:7+:1342", "2-3": "sr:goal_range:7+:1343",
+        "4-6": "sr:goal_range:7+:1344", "7+": "sr:goal_range:7+:1345",
+    })
+    # SportyBet's own "Which Team To Score" (market 30).
+    add("Which Team To Score", "30", None, {"None": "784", "Only Home": "788", "Only Away": "790", "Both": "792"})
     # The winning side keeping a clean sheet is SportyBet's "win to nil"; a
     # clean-sheet draw is 0-0. The "No" halves have no single SportyBet bet.
     add("Result & Clean Sheet", "33", None, {"Home & Clean Sheet Yes": "74"})
@@ -244,6 +286,11 @@ def _build_markets() -> dict[tuple[str, str], Selection]:
     add("HT & 2H Total Goals 1.5", "58", "total=1.5", {"Over 1.5 HT & Over 1.5 2H": "74"})
     add("HT & 2H Total Goals 1.5", "59", "total=1.5", {"Under 1.5 HT & Under 1.5 2H": "74"})
     add("Half With Most Goals", "52", None, {"1st Half": "436", "2nd Half": "438", "Equal": "440"})
+    # SportyBet's own markets 48-51.
+    add("Home Team To Win Both Halves", "48", None, yes_no)
+    add("Away Team To Win Both Halves", "49", None, yes_no)
+    add("Home Team To Win Either Half", "50", None, yes_no)
+    add("Away Team To Win Either Half", "51", None, yes_no)
     return t
 
 
