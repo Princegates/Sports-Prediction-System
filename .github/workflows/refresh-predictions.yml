@@ -540,7 +540,12 @@ jobs:
     needs: [setup, retrain-import, retrain-shard-b]
     if: needs.setup.outputs.mode == 'retrain'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # Was 60 -- "Generate predictions for every league" alone took 45 min on
+    # 2026-10-15 and ran the full 60 without finishing on 2026-10-17 (more
+    # leagues, more outcomes computed per prediction since), cancelling the
+    # job before it ever reached the weekly-picks steps below it. Same growth
+    # pattern retrain-shard-a/b were already split out to handle.
+    timeout-minutes: 120
     permissions:
       contents: write
     env:
