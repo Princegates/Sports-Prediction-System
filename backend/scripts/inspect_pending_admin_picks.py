@@ -100,6 +100,15 @@ def main() -> None:
             header = f"\n[{pick.source or 'admin (hand-curated)'}] AdminPick #{pick.id} -- {pick.label}"
             if frozen:
                 header += f"  [FROZEN: {pick.result.upper()} @ {pick.settled_at}]"
+            # The two flags that decide whether GET /api/predictions/admin-picks
+            # (what the app's Admin Picks section actually calls) includes this
+            # row at all -- public_teaser=True excludes it outright (that's the
+            # unauthenticated Welcome page's own pick, a different slot), and
+            # featured_public only matters once settled (gates the public track
+            # record, not this listing). A pick can be perfectly valid and
+            # pending/won and still never show up here if public_teaser is set.
+            if pick.public_teaser:
+                header += "  [PUBLIC_TEASER -- excluded from the Admin Picks list, shown on the public Welcome page instead]"
             print(header)
 
             won = lost = pending = unresolved = 0
