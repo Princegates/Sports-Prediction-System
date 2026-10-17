@@ -53,10 +53,11 @@ def _run_live_sync_once() -> None:
     finally:
         db.close()
 
-    if report is not None and (report.updated or report.finished):
+    if report is not None and (report.updated or report.finished or report.stuck_checked):
         logger.info(
-            "Live sync: %d fixture(s) seen, %d updated, %d finished",
+            "Live sync: %d fixture(s) seen, %d updated, %d finished (%d stuck-LIVE checked, %d resolved)",
             report.considered, report.updated, report.finished,
+            report.stuck_checked, report.stuck_resolved,
         )
 
 

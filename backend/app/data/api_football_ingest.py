@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.data.providers.api_football import ApiFootballClient, ID_TO_LEAGUE
+from app.data.providers.api_football import ApiFootballClient, ApiFootballError, ID_TO_LEAGUE, QuotaExceeded
 from app.data.source_cleanup import fold_fixture
 from app.data.team_matching import canonical_alias, name_match_score
 from app.db.models import LivePrediction, Match, MatchOdds, Team
@@ -578,6 +578,8 @@ class LiveSyncReport:
     updated: int = 0
     unchanged: int = 0
     finished: int = 0
+    stuck_checked: int = 0
+    stuck_resolved: int = 0
     skipped_no_match: list[str] = field(default_factory=list)
     requests_used: int = 0
 
@@ -610,6 +612,7 @@ def sync_live_matches(db: Session, client: ApiFootballClient) -> LiveSyncReport:
     report.requests_used = client.quota.used_this_run
 
     index = TeamIndex(db)
+    touched_ids: set[int] = set()
 
     for row in rows:
         report.considered += 1
@@ -647,6 +650,7 @@ def sync_live_matches(db: Session, client: ApiFootballClient) -> LiveSyncReport:
 
         kickoff = _parse_kickoff(fixture.get("date") or "")
         match = min(candidates, key=lambda m: abs(m.date - kickoff))
+        touched_ids.add(match.id)
 
         status_short = (status.get("short") or "").upper()
 
@@ -694,6 +698,60 @@ def sync_live_matches(db: Session, client: ApiFootballClient) -> LiveSyncReport:
         db.commit()
         report.updated += 1
 
+    # A match our own DB still has status=="LIVE" that didn't appear
+    # anywhere in this poll's response at all is not a transient gap --
+    # live_fixtures() is the *entire* world's in-play board, so a match
+    # truly still on would be in it. It finished and dropped off that
+    # board before any poll caught it in an FT/AET/PEN state (the only
+    # other place status flips to FINISHED, above), and without this
+    # nothing else ever re-checks it: a match in that state stays marked
+    # LIVE forever, which also means it can never settle (Match.is_finished
+    # requires status=="FINISHED", not just a score) -- an Admin Pick leg on
+    # it stays "pending" even once the real match is long over.
+    #
+    # Bounded by kickoff age (a real match, extra time included, is over
+    # well inside 3 hours) so a currently-live match the feed happened to
+    # drop for just this one poll isn't misread as stuck, and by count per
+    # run so a large backlog can't spend the whole request budget reconciling
+    # history instead of tracking what's live right now.
+    STUCK_KICKOFF_AGE = dt.timedelta(hours=3)
+    STUCK_RECONCILE_LIMIT = 20
+    now = dt.datetime.utcnow()
+    stuck = db.execute(
+        select(Match)
+        .where(Match.status == "LIVE", Match.api_fixture_id.is_not(None), Match.date <= now - STUCK_KICKOFF_AGE)
+        .limit(STUCK_RECONCILE_LIMIT * 3)
+    ).scalars()
+    for match in stuck:
+        if match.id in touched_ids:
+            continue
+        if report.stuck_checked >= STUCK_RECONCILE_LIMIT:
+            break
+        report.stuck_checked += 1
+        try:
+            fixture_row = client.fixture_by_id(match.api_fixture_id)
+        except (ApiFootballError, QuotaExceeded):
+            # Budget's gone or the provider's unhappy -- stop spending more
+            # on this; the main poll's own work above is already committed.
+            break
+        if fixture_row is None:
+            continue
+
+        status = (fixture_row.get("fixture") or {}).get("status") or {}
+        status_short = (status.get("short") or "").upper()
+        if status_short not in {"FT", "AET", "PEN"}:
+            continue  # provider still has it as something else -- leave it
+
+        goals = fixture_row.get("goals") or {}
+        match.status = "FINISHED"
+        match.home_score = goals.get("home")
+        match.away_score = goals.get("away")
+        match.live_synced_at = None
+        report.finished += 1
+        report.stuck_resolved += 1
+        db.commit()
+
+    report.requests_used = client.quota.used_this_run
     db.commit()
     return report
 

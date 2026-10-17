@@ -271,6 +271,17 @@ class ApiFootballClient:
 
         return self.get("fixtures", {"live": "all"})
 
+    def fixture_by_id(self, fixture_id: int) -> dict | None:
+        """One fixture's current row, straight from the provider -- for a
+        match our own DB still has marked LIVE that this poll's
+        ``live_fixtures()`` didn't return at all (it finished and dropped off
+        the live board before any poll caught it mid-FT), not something the
+        day-to-day sync path needs otherwise. ``None`` if the provider has
+        nothing under this id (removed/postponed fixture)."""
+
+        rows = self.get("fixtures", {"id": fixture_id})
+        return rows[0] if rows else None
+
     def odds(self, *, fixture_id: int | None = None, league_id: int | None = None,
              season: int | None = None, date: dt.date | None = None, page: int = 1) -> list[dict]:
         return self.get(

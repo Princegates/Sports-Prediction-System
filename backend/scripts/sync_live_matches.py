@@ -61,6 +61,7 @@ def main() -> None:
         print(f"  updated    : {report.updated}")
         print(f"  unchanged  : {report.unchanged}")
         print(f"  finished   : {report.finished}")
+        print(f"  stuck-LIVE : {report.stuck_checked} checked, {report.stuck_resolved} resolved")
         if report.skipped_no_match:
             print(f"  no match   : {len(report.skipped_no_match)} (not yet imported, or not a tracked league)")
             for name in report.skipped_no_match[:10]:

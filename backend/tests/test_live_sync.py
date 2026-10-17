@@ -204,6 +204,118 @@ def test_extra_time_does_not_get_mistaken_for_full_time(db_session, scheduled_ma
     assert scheduled_match.status == "LIVE"
 
 
+# --- Stuck LIVE matches: a match that drops off the live board entirely --
+# before any poll catches it mid-FT, instead of transitioning through it ---
+
+
+class StuckAwareFakeClient(FakeClient):
+    """Like FakeClient, but answers a single-fixture lookup (``{"id": ...}``)
+    from its own ``by_id`` map instead of echoing ``self.rows`` -- needed to
+    simulate "the live board no longer has this fixture at all, but asking
+    for it directly returns its final score"."""
+
+    def __init__(self, rows: list[dict], by_id: dict[int, dict], **kwargs):
+        super().__init__(rows, **kwargs)
+        self.by_id = by_id
+
+    def get(self, path: str, params: dict | None = None) -> list[dict]:
+        self.calls.append((path, params or {}))
+        self.quota.used_this_run += 1
+        if params and "id" in params:
+            row = self.by_id.get(params["id"])
+            return [row] if row else []
+        return self.rows
+
+
+@pytest.fixture()
+def stuck_live_match(db_session, clubs):
+    """Marked LIVE here directly (not via a sync poll) with a kickoff well
+    past any real match's length, and live_synced_at already stale -- the
+    state a match reaches when it finished without ever being caught by a
+    poll in an FT/AET/PEN status (see sync_live_matches's own reconciliation
+    step)."""
+
+    home, away = clubs
+    kickoff = dt.datetime.utcnow() - dt.timedelta(hours=5)
+    match = Match(
+        league="English Premier League", season="2026", date=kickoff,
+        home_team_id=home.id, away_team_id=away.id, status="LIVE",
+        api_fixture_id=999, live_synced_at=kickoff + dt.timedelta(hours=2),
+    )
+    db_session.add(match)
+    db_session.commit()
+    db_session.refresh(match)
+    return match
+
+
+def test_a_match_missing_from_the_live_board_is_reconciled_via_direct_lookup(db_session, stuck_live_match):
+    client = StuckAwareFakeClient(
+        rows=[],  # live board has nothing for this project at all this poll
+        by_id={999: {"fixture": {"status": {"short": "FT"}}, "goals": {"home": 2, "away": 1}}},
+    )
+    report = sync_live_matches(db_session, client)
+
+    assert report.stuck_checked == 1
+    assert report.stuck_resolved == 1
+    assert report.finished == 1
+    db_session.refresh(stuck_live_match)
+    assert stuck_live_match.status == "FINISHED"
+    assert stuck_live_match.home_score == 2
+    assert stuck_live_match.away_score == 1
+    assert stuck_live_match.live_synced_at is None
+
+
+def test_a_match_the_live_board_still_has_is_not_reconciled_separately(db_session, stuck_live_match):
+    """If the live board DOES still carry the fixture, the main loop above
+    already handles it (whatever its status) -- the reconciliation step must
+    not also spend a second, redundant lookup on the same match."""
+
+    client = StuckAwareFakeClient(
+        rows=[_live_row(kickoff=stuck_live_match.date, short="2H", elapsed=70)],
+        by_id={999: {"fixture": {"status": {"short": "FT"}}, "goals": {"home": 9, "away": 9}}},
+    )
+    report = sync_live_matches(db_session, client)
+
+    assert report.stuck_checked == 0
+    assert ("fixtures", {"id": 999}) not in client.calls
+
+
+def test_a_recent_kickoff_is_not_treated_as_stuck(db_session, clubs):
+    """Still well within a plausible match length -- the live board simply
+    not including it this one poll is not evidence it finished."""
+
+    home, away = clubs
+    kickoff = dt.datetime.utcnow() - dt.timedelta(minutes=45)
+    match = Match(
+        league="English Premier League", season="2026", date=kickoff,
+        home_team_id=home.id, away_team_id=away.id, status="LIVE",
+        api_fixture_id=999, live_synced_at=kickoff,
+    )
+    db_session.add(match)
+    db_session.commit()
+
+    client = StuckAwareFakeClient(rows=[], by_id={})
+    report = sync_live_matches(db_session, client)
+
+    assert report.stuck_checked == 0
+    db_session.refresh(match)
+    assert match.status == "LIVE"
+
+
+def test_a_fixture_the_provider_no_longer_has_is_left_alone(db_session, stuck_live_match):
+    """The single-fixture lookup coming back empty (removed/postponed
+    fixture) must not be mistaken for anything gradeable -- leave the match
+    exactly as it was rather than guess."""
+
+    client = StuckAwareFakeClient(rows=[], by_id={})
+    report = sync_live_matches(db_session, client)
+
+    assert report.stuck_checked == 1
+    assert report.stuck_resolved == 0
+    db_session.refresh(stuck_live_match)
+    assert stuck_live_match.status == "LIVE"
+
+
 # --- run_live_sync_from_settings: the settings-to-client wiring shared by --
 # scripts/sync_live_matches.py and app.main's own in-process scheduler -----
 
