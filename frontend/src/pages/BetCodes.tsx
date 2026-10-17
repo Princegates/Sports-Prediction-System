@@ -94,6 +94,8 @@ const HT_MARKET_OPTIONS = [
 ];
 
 const ACCURACY_OPTIONS = [
+  { value: 0.3, label: "30%+" },
+  { value: 0.4, label: "40%+" },
   { value: 0.5, label: "50%+" },
   { value: 0.65, label: "65%+" },
   { value: 0.75, label: "75%+" },
@@ -103,7 +105,7 @@ const ACCURACY_OPTIONS = [
 // Matches the backend's own default (select_legs_by_confidence's own
 // max_legs default) so leaving this untouched keeps prior behavior.
 const DEFAULT_MAX_LEGS = 8;
-const LEG_COUNT_OPTIONS = [2, 3, 4, 5, 6, 8, 10];
+const LEG_COUNT_OPTIONS = [2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30];
 
 type RiskLevel = "low" | "medium" | "high";
 
