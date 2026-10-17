@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fetchAdminPicks, fetchBranding } from "../api";
+import { fetchBranding } from "../api";
 import { AdminPickCard } from "./AdminPickCard";
 import { PickBookingCodes } from "./PickBookingCodes";
 import { useAuth } from "../lib/AuthContext";
@@ -28,39 +28,20 @@ function tierOf(pick: AdminPick): (typeof TIER_ORDER)[number] | null {
  * booking_code + WhatsApp fallback AdminPicksSection relies on for a
  * human-curated pick isn't a given here either.
  *
- * ``onLoaded`` fires after every fetch (success or failure) -- see
- * GudaPicksSection's own docstring for why. */
-export function WeeklyPicksSection({ onLoaded }: { onLoaded?: () => void } = {}) {
+ * ``allPicks`` is the full GET /api/predictions/admin-picks response,
+ * fetched once by the caller (AIPicks) and shared across this section,
+ * AdminPicksSection and RandomPicksSection -- see AIPicks's own docstring
+ * for why this section no longer fetches it itself. */
+export function WeeklyPicksSection({ picks: allPicks }: { picks: AdminPick[] | null }) {
   const { user, accessStatus } = useAuth();
   const viewerHasPremium = user?.role === "superadmin" || !!accessStatus?.has_access;
-  const [picks, setPicks] = useState<AdminPick[] | null>(null);
   const [whatsapp, setWhatsapp] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    function load() {
-      fetchAdminPicks()
-        .then((p) => {
-          if (cancelled) return;
-          const weekly = p.filter((pick) => tierOf(pick) !== null);
-          weekly.sort((a, b) => TIER_ORDER.indexOf(tierOf(a)!) - TIER_ORDER.indexOf(tierOf(b)!));
-          setPicks(weekly);
-        })
-        .catch(() => !cancelled && setPicks([]))
-        .finally(() => !cancelled && onLoaded?.());
-    }
-
-    load();
-    // Re-fetch periodically so a tier drops off (or loses a leg) the moment
-    // one of its matches finishes, not only on the next page load.
-    const interval = setInterval(load, 60_000);
-
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, []);
+  const picks = allPicks
+    ? allPicks
+        .filter((pick) => tierOf(pick) !== null)
+        .sort((a, b) => TIER_ORDER.indexOf(tierOf(a)!) - TIER_ORDER.indexOf(tierOf(b)!))
+    : null;
 
   const needsWhatsapp = picks?.some((p) => p.has_booking_code && !p.booking_code) ?? false;
   useEffect(() => {

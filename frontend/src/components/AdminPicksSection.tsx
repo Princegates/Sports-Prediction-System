@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fetchAdminPicks, fetchBranding } from "../api";
+import { fetchBranding } from "../api";
 import { AdminPickCard } from "./AdminPickCard";
 import type { AdminPick } from "../types";
 
@@ -7,35 +7,18 @@ import type { AdminPick } from "../types";
  * GudaPicksSection -- no featured slips right now (or the operator having
  * turned the whole thing off) is a normal, unremarkable state.
  *
- * ``onLoaded`` fires after every fetch (success or failure) -- see
- * GudaPicksSection's own docstring for why. */
-export function AdminPicksSection({ onLoaded }: { onLoaded?: () => void } = {}) {
-  const [picks, setPicks] = useState<AdminPick[] | null>(null);
+ * ``allPicks`` is the full GET /api/predictions/admin-picks response,
+ * fetched once by the caller (AIPicks) and shared across this section,
+ * WeeklyPicksSection and RandomPicksSection -- see AIPicks's own docstring
+ * for why this section no longer fetches it itself. ``null`` means "hasn't
+ * loaded yet", not "empty". */
+export function AdminPicksSection({ picks: allPicks }: { picks: AdminPick[] | null }) {
   const [whatsapp, setWhatsapp] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    function load() {
-      fetchAdminPicks()
-        // The three weekly system accumulators live in this same list --
-        // see WeeklyPicksSection, which fetches it again for its own,
-        // distinctly-labeled section, so they aren't duplicated here.
-        .then((p) => !cancelled && setPicks(p.filter((pick) => !pick.source)))
-        .catch(() => !cancelled && setPicks([]))
-        .finally(() => !cancelled && onLoaded?.());
-    }
-
-    load();
-    // Re-fetch periodically so a slip drops off (or loses a leg) the moment
-    // one of its matches finishes, not only on the next page load.
-    const interval = setInterval(load, 60_000);
-
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, []);
+  // The three weekly system accumulators live in this same list -- see
+  // WeeklyPicksSection, which filters the same shared data for its own,
+  // distinctly-labeled section, so they aren't duplicated here.
+  const picks = allPicks?.filter((pick) => !pick.source) ?? null;
 
   // Only fetched once some pick actually needs the "subscribe to see this
   // code" CTA (has_booking_code true, booking_code still null -- a

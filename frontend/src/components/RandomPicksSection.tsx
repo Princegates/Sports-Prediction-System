@@ -1,5 +1,3 @@
-import { useEffect, useState } from "react";
-import { fetchAdminPicks } from "../api";
 import { AdminPickCard } from "./AdminPickCard";
 import { PickBookingCodes } from "./PickBookingCodes";
 import { useAuth } from "../lib/AuthContext";
@@ -39,33 +37,16 @@ const GROUPS: { cadence: Cadence; title: string; blurb: string }[] = [
  * real bookmaker by a human, so the only code available is one a betting
  * site issues on request.
  *
- * ``onLoaded`` fires after every fetch (success or failure) -- see
- * GudaPicksSection's own docstring for why. */
-export function RandomPicksSection({ onLoaded }: { onLoaded?: () => void } = {}) {
+ * ``allPicks`` is the full GET /api/predictions/admin-picks response,
+ * fetched once by the caller (AIPicks) and shared across this section,
+ * AdminPicksSection and WeeklyPicksSection -- see AIPicks's own docstring
+ * for why this section no longer fetches it itself. */
+export function RandomPicksSection({ picks: allPicks }: { picks: AdminPick[] | null }) {
   const { user, accessStatus } = useAuth();
   const viewerHasPremium = user?.role === "superadmin" || !!accessStatus?.has_access;
-  const [picks, setPicks] = useState<AdminPick[] | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    function load() {
-      fetchAdminPicks()
-        .then((p) => !cancelled && setPicks(p.filter((pick) => cadenceOf(pick) !== null)))
-        .catch(() => !cancelled && setPicks([]))
-        .finally(() => !cancelled && onLoaded?.());
-    }
-
-    load();
-    const interval = setInterval(load, 60_000);
-
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, []);
-
-  if (!picks) return null;
+  if (!allPicks) return null;
+  const picks = allPicks.filter((pick) => cadenceOf(pick) !== null);
 
   return (
     <>
