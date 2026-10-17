@@ -4,7 +4,7 @@ import datetime as dt
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import get_db, get_match_or_404
 from app.api.schemas import (
@@ -35,7 +35,14 @@ def list_matches(
     team_id: int | None = None,
     db: Session = Depends(get_db),
 ) -> list[MatchOut]:
-    stmt = select(Match)
+    # match_to_schema reads match.home_team/.away_team for every row -- without
+    # eager-loading those here, each one is a separate lazy-load query fired
+    # one at a time while iterating `matches` below (N+1), same issue already
+    # fixed in routes_predictions.py and routes_public.py. On a day with
+    # fixtures across most of AI_PICKS_LEAGUES that's 100+ serial round trips
+    # to a remote DB -- comfortably enough to blow past a client-side request
+    # timeout on its own.
+    stmt = select(Match).options(selectinload(Match.home_team), selectinload(Match.away_team))
     if league:
         stmt = stmt.where(Match.league == league)
     if status:
