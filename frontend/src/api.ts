@@ -82,20 +82,38 @@ const AUTH_LOGOUT_EVENT = "auth:logout";
  * why that distinction matters on a host that sleeps when idle. */
 export class AuthExpiredError extends Error {}
 
+// Plain `fetch` has no default timeout -- on a flaky mobile connection a
+// stalled TCP read can leave a request's promise never settling at all, not
+// just slow. A caller like AIPicks (four sections, each waiting on its own
+// fetch before the page stops showing its "Loading..." state) then hangs
+// forever instead of eventually erroring, since .then/.catch/.finally never
+// fire. 20s comfortably covers a sleeping free-tier backend's wake-up (a
+// few seconds, per the catch block below) while still giving up well short
+// of "feels broken."
+const REQUEST_TIMEOUT_MS = 20_000;
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getStoredToken();
   const headers: Record<string, string> = { ...(options.headers as Record<string, string>) };
   if (token) headers.Authorization = `Bearer ${token}`;
   if (options.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
 
+  const timeoutController = new AbortController();
+  const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
+
   let response: Response;
   try {
-    response = await fetch(`${API_URL}${path}`, { ...options, headers });
-  } catch {
+    response = await fetch(`${API_URL}${path}`, { ...options, headers, signal: timeoutController.signal });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error(`Request timed out -- ${path}`);
+    }
     // A network-level failure (DNS, connection refused, CORS preflight
     // dropped) -- common for a few seconds while a sleeping free-tier
     // backend wakes up. Never the same thing as a rejected token.
     throw new Error(`Couldn't reach the server -- ${path}`);
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   if (response.status === 401) {
