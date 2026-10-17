@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchPublicAccuracy, fetchPublicStats } from "../api";
+import { fetchPublicAccuracy } from "../api";
 import { PublicShell } from "../components/PublicShell";
-import type { PublicAccuracy, PublicStats } from "../types";
+import type { PublicAccuracy } from "../types";
 
 /**
  * Public methodology page.
@@ -15,11 +15,9 @@ import type { PublicAccuracy, PublicStats } from "../types";
  */
 
 export function HowItWorks() {
-  const [stats, setStats] = useState<PublicStats | null>(null);
   const [accuracy, setAccuracy] = useState<PublicAccuracy | null>(null);
 
   useEffect(() => {
-    fetchPublicStats().then(setStats).catch(() => setStats(null));
     fetchPublicAccuracy().then(setAccuracy).catch(() => setAccuracy(null));
   }, []);
 
@@ -225,44 +223,9 @@ export function HowItWorks() {
         </p>
       </section>
 
-      {/* --- Data --- */}
-      <section className="doc-section">
-        <h2>5. Where the data comes from</h2>
-        <p>
-          Day to day, everything live comes from one provider. The codebase itself stays free and
-          open-source throughout.
-        </p>
-        <ul className="doc-list">
-          <li>
-            <strong>API-Football</strong> — fixtures, results, bookmaker prices, injuries/suspensions
-            and confirmed lineups, all from the same provider so they tie together on one fixture ID.
-          </li>
-          <li>
-            <strong>openfootball/football.json &amp; football-data.co.uk</strong> — the free sources
-            that seeded this deployment's early historical seasons before the switch above. Not read
-            day to day any more.
-          </li>
-          <li>
-            <strong>Postgres</strong> in production for storage; the same models run against SQLite for
-            local development with no code change.
-          </li>
-          <li>
-            <strong>scikit-learn, numpy, pandas</strong> — all training runs on open-source libraries,
-            no proprietary model API.
-          </li>
-        </ul>
-        {stats && (
-          <p>
-            Right now this deployment holds {nf.format(stats.matches_analyzed)} completed matches across{" "}
-            {stats.leagues_covered} league{stats.leagues_covered === 1 ? "" : "s"}, covering{" "}
-            {nf.format(stats.teams_tracked)} teams.
-          </p>
-        )}
-      </section>
-
       {/* --- Limitations --- */}
       <section className="doc-section">
-        <h2>6. What it can't do</h2>
+        <h2>5. What it can't do</h2>
         <p>
           Listing these is not modesty; it's the difference between a tool you can calibrate your trust
           against and one you can't.
