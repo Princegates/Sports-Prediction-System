@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { fetchLive, fetchMatches, fetchPrediction } from "../api";
+import { fetchLive, fetchLivePredictions, fetchMatches } from "../api";
 import { leagueLabel, useLeague } from "../components/AppShell";
 import { CardGridSkeleton } from "../components/LoadingSkeleton";
 import { EmptyState } from "../components/EmptyState";
@@ -27,20 +27,24 @@ export function Live() {
     setUpcoming(null);
     setError(null);
 
-    Promise.all([fetchMatches({ status: "LIVE" }), fetchMatches({ league, status: "SCHEDULED" })])
-      .then(async ([live, scheduled]) => {
+    // fetchLivePredictions is one batched request for every live match's
+    // prediction, not fetchMatches followed by one fetchPrediction per
+    // match fired in parallel -- that fan-out (same pattern Dashboard had)
+    // exhausted the backend's database connection pool under real traffic.
+    // fetchLive (per-match live event history, for the clock) stays
+    // per-match -- there's no batched equivalent, and live match counts are
+    // small enough that this fan-out alone was never the problem.
+    Promise.all([fetchLivePredictions(), fetchMatches({ league, status: "SCHEDULED" })])
+      .then(async ([livePredictions, scheduled]) => {
         if (cancelled) return;
-        const [predictions, liveHistories] = await Promise.all([
-          Promise.all(live.map((m) => fetchPrediction(m.id))),
-          Promise.all(live.map((m) => fetchLive(m.id))),
-        ]);
+        const liveHistories = await Promise.all(livePredictions.map((p) => fetchLive(p.match.id)));
         if (cancelled) return;
         setLiveRows(
-          live.map((match, i) => {
+          livePredictions.map((prediction, i) => {
             const history = liveHistories[i];
             return {
-              match,
-              prediction: predictions[i],
+              match: prediction.match,
+              prediction,
               minute: history[history.length - 1]?.minute ?? 0,
             };
           }),

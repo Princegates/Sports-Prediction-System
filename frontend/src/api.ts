@@ -590,9 +590,24 @@ export function revokeUserAccess(userId: number, reason?: string): Promise<Admin
 
 // --- Predictions / matches / teams --------------------------------------
 
-export function fetchTodaysPredictions(league?: string): Promise<Prediction[]> {
-  const query = league ? `?league=${encodeURIComponent(league)}` : "";
-  return get(`/api/predictions/today${query}`);
+/** A single day's fixtures with predictions already attached, built in one
+ * batched backend request -- ``date`` (YYYY-MM-DD) picks which day, defaults
+ * to today. Use this instead of fetchMatches + one fetchPrediction per
+ * match: that fan-out fires one request per match in parallel, which has
+ * exhausted the backend's database connection pool under real traffic. */
+export function fetchTodaysPredictions(league?: string, date?: string): Promise<Prediction[]> {
+  const params = new URLSearchParams();
+  if (league) params.set("league", league);
+  if (date) params.set("date", date);
+  const query = params.toString();
+  return get(`/api/predictions/today${query ? `?${query}` : ""}`);
+}
+
+/** Every genuinely-live fixture with its prediction already attached, built
+ * in one batched backend request -- same reasoning as fetchTodaysPredictions,
+ * for the Live page's own fetchPrediction-per-match fan-out. */
+export function fetchLivePredictions(): Promise<Prediction[]> {
+  return get("/api/predictions/live");
 }
 
 export function fetchMostLikely(league?: string, daysAhead = 3, limit = 10): Promise<Prediction[]> {

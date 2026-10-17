@@ -22,6 +22,7 @@ from app.api.schemas import (
 from app.api.serializers import admin_pick_to_schema, featured_pick_to_schema, prediction_to_schema
 from app.betcode.selection import price_legs, resolve_legs_unpriced
 from app.db.models import AdminPick, FeaturedPick, Match, Prediction, User
+from app.live_engine import LIVE_STALE_AFTER
 from app.outcomes.registry import NOT_A_FULL_PARTITION_GROUPS, find_outcome, outcomes_from_prediction
 from app.pick_settlement import frozen_admin_pick_legs, settle_admin_pick, settle_featured_pick
 from app.prediction_models.ml_model import FeatureCachePool
@@ -58,15 +59,49 @@ def _build_all(db: Session, matches: list[Match]) -> list[Prediction]:
 
 
 @router.get("/today", response_model=list[PredictionOut], dependencies=[Depends(require_active_access)])
-def predictions_today(league: str | None = None, db: Session = Depends(get_db)) -> list[PredictionOut]:
-    today = dt.datetime.utcnow().date()
-    start = dt.datetime.combine(today, dt.time.min)
+def predictions_today(league: str | None = None, date: dt.date | None = None, db: Session = Depends(get_db)) -> list[PredictionOut]:
+    """A single day's fixtures with predictions already attached -- today's,
+    or ``date``'s if given (e.g. the Dashboard's "tomorrow" filter).
+
+    Built via ``_build_all``'s shared FeatureCachePool so a whole day's worth
+    of fixtures costs one request, not one per match -- a frontend that
+    instead calls GET /api/matches then fires one GET .../prediction per
+    match in parallel (every match's own request independently opening a
+    database connection) can exhaust the connection pool outright under
+    real traffic rather than just running slow. Route path kept as "today"
+    (not renamed to something date-generic) to avoid route churn for a
+    one-parameter addition; the default with no ``date`` is unchanged.
+    """
+
+    day = date or dt.datetime.utcnow().date()
+    start = dt.datetime.combine(day, dt.time.min)
     end = start + dt.timedelta(days=1)
 
     stmt = select(Match).where(Match.date >= start, Match.date < end)
     if league:
         stmt = stmt.where(Match.league == league)
 
+    matches = db.execute(stmt).scalars().all()
+    predictions = _build_all(db, matches)
+    match_by_id = {m.id: m for m in matches}
+    return [prediction_to_schema(p, match_by_id[p.match_id]) for p in predictions]
+
+
+@router.get("/live", response_model=list[PredictionOut], dependencies=[Depends(require_active_access)])
+def predictions_live(db: Session = Depends(get_db)) -> list[PredictionOut]:
+    """Every genuinely-live fixture with its prediction already attached, in
+    one batched request -- same reasoning as predictions_today, for the Live
+    page's own version of the same fan-out (one GET .../prediction per live
+    match, fired in parallel). "Genuinely live" mirrors routes_matches's own
+    status=LIVE filter: a recent live_synced_at, not just a status stuck on
+    LIVE from a missed sync poll.
+    """
+
+    stmt = select(Match).where(
+        Match.status == "LIVE",
+        Match.live_synced_at.is_not(None),
+        Match.live_synced_at >= dt.datetime.utcnow() - LIVE_STALE_AFTER,
+    )
     matches = db.execute(stmt).scalars().all()
     predictions = _build_all(db, matches)
     match_by_id = {m.id: m for m in matches}

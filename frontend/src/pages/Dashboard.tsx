@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchFreePicks, fetchMatches, fetchMostLikely, fetchPrediction } from "../api";
+import { fetchFreePicks, fetchMostLikely, fetchTodaysPredictions } from "../api";
 import { leagueLabel, useLeague } from "../components/AppShell";
 import { CardGridSkeleton } from "../components/LoadingSkeleton";
 import { EmptyState } from "../components/EmptyState";
@@ -29,12 +29,17 @@ const EXAMPLE_PROMPTS = [
 ];
 
 async function loadForDate(league: string, date: string): Promise<Row[]> {
-  // /api/matches filters by calendar date, not by kickoff time, so "today"
-  // still includes an early match that's already finished -- the Dashboard
-  // is for what's coming up, not a results page, so drop those here.
-  const matches = (await fetchMatches({ league, date })).filter((m) => m.status !== "FINISHED");
-  const predictions = await Promise.all(matches.map((m) => fetchPrediction(m.id)));
-  return matches.map((match, i) => ({ match, prediction: predictions[i] }));
+  // One batched request for the whole day's fixtures+predictions, not a
+  // match list followed by one prediction fetch per match in parallel --
+  // that fan-out (one request per fixture, all firing at once) exhausted
+  // the backend's database connection pool under real traffic. Matches
+  // filter by calendar date, not kickoff time, so "today" still includes
+  // an early match that's already finished -- the Dashboard is for what's
+  // coming up, not a results page, so drop those here.
+  const predictions = await fetchTodaysPredictions(league, date);
+  return predictions
+    .filter((p) => p.match.status !== "FINISHED")
+    .map((prediction) => ({ match: prediction.match, prediction }));
 }
 
 const RANGE_STORAGE_KEY = "dashboard_range";
