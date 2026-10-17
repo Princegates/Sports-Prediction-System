@@ -135,22 +135,54 @@ def predictions_high_confidence(
 @router.get("/most-likely", response_model=list[PredictionOut], dependencies=[Depends(require_active_access)])
 def predictions_most_likely(
     league: str | None = None,
+    leagues: list[str] | None = Query(default=None),
     days_ahead: int = Query(default=1, ge=0, le=14),
     limit: int = Query(default=10, ge=1, le=100),
     db: Session = Depends(get_db),
 ) -> list[PredictionOut]:
+    """``league`` (singular) behaves as before: one league, or every league
+    if omitted, globally ranked and capped at ``limit`` overall.
+
+    ``leagues`` (repeated, e.g. ``?leagues=A&leagues=B``) is a different
+    shape for the same endpoint: ``limit`` *per league* instead of overall,
+    all of them returned together -- what the Predictions page actually
+    wants (every tracked league represented, not just whichever leagues
+    happen to have the globally highest-probability matches) without it
+    having to call this endpoint once per league itself. That fan-out --
+    one request per league, all fired in parallel -- is what exhausted the
+    database connection pool via Dashboard's identical per-match version
+    (see predictions_today's own docstring); this closes the same hole here
+    before league count (54 at the time of writing, up from 9) does it
+    again. Ignored when ``league`` is also given.
+    """
+
     start = dt.datetime.utcnow()
     end = start + dt.timedelta(days=days_ahead)
 
     stmt = select(Match).where(Match.date >= start, Match.date < end)
     if league:
         stmt = stmt.where(Match.league == league)
+    elif leagues:
+        stmt = stmt.where(Match.league.in_(leagues))
 
     matches = db.execute(stmt).scalars().all()
     predictions = _build_all(db, matches)
-    predictions.sort(key=lambda p: p.global_outcome_probability, reverse=True)
     match_by_id = {m.id: m for m in matches}
-    return [prediction_to_schema(p, match_by_id[p.match_id]) for p in predictions[:limit]]
+
+    if leagues and not league:
+        by_league: dict[str, list[Prediction]] = {}
+        for p in predictions:
+            by_league.setdefault(match_by_id[p.match_id].league, []).append(p)
+        capped: list[Prediction] = []
+        for league_predictions in by_league.values():
+            league_predictions.sort(key=lambda p: p.global_outcome_probability, reverse=True)
+            capped.extend(league_predictions[:limit])
+        predictions = capped
+    else:
+        predictions.sort(key=lambda p: p.global_outcome_probability, reverse=True)
+        predictions = predictions[:limit]
+
+    return [prediction_to_schema(p, match_by_id[p.match_id]) for p in predictions]
 
 
 @router.get("/outcomes", response_model=OutcomesOut, dependencies=[Depends(require_active_access)])

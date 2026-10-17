@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { fetchMostLikely } from "../api";
+import { fetchMostLikelyAcrossLeagues } from "../api";
 import { LEAGUES } from "../components/AppShell";
 import { CopyButton } from "../components/CopyButton";
 import { DateStrip, localDayKey } from "../components/DateStrip";
@@ -140,11 +140,16 @@ export function Predictions() {
     setRows(null);
     setError(null);
 
+    // One batched request for every league's predictions (capped at 80 per
+    // league server-side), not one fetchMostLikely call per league fired in
+    // parallel -- that fan-out grows with the tracked-league count (54 at
+    // the time of writing, up from 9) and is the same connection-pool-
+    // pressure pattern that previously took the backend down via
+    // Dashboard's per-match version of the same bug.
     const leaguesToFetch = selectedLeagues.length === 0 ? LEAGUES : selectedLeagues;
-    Promise.all(leaguesToFetch.map((l) => fetchMostLikely(l, HORIZON_DAYS, 80).catch(() => [])))
-      .then((perLeague) => {
+    fetchMostLikelyAcrossLeagues(leaguesToFetch, HORIZON_DAYS, 80)
+      .then((predictions) => {
         if (cancelled) return;
-        const predictions = perLeague.flat();
         setRows(predictions.map((prediction) => ({ prediction, match: prediction.match })));
       })
       .catch((err) => !cancelled && setError(String(err)));

@@ -6,10 +6,9 @@ import type { Team } from "../types";
 interface Props {
   open: boolean;
   onClose: () => void;
-  leagues: string[];
 }
 
-export function SearchCommand({ open, onClose, leagues }: Props) {
+export function SearchCommand({ open, onClose }: Props) {
   const [query, setQuery] = useState("");
   const [teams, setTeams] = useState<Team[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -22,9 +21,15 @@ export function SearchCommand({ open, onClose, leagues }: Props) {
     setActiveIndex(0);
     setTimeout(() => inputRef.current?.focus(), 10);
 
+    // fetchTeams() with no league fetches every team in one request --
+    // this used to fire one request per tracked league instead (via the
+    // now-removed `leagues` prop), which fanned out to 50+ simultaneous
+    // requests once the league list grew, the same connection-pool-pressure
+    // pattern that took the backend down elsewhere (see Dashboard/Live's
+    // own fix for the full story).
     if (teams.length === 0) {
-      Promise.all(leagues.map((l) => fetchTeams(l).catch(() => [])))
-        .then((results) => setTeams(results.flat()))
+      fetchTeams()
+        .then(setTeams)
         .catch(() => setTeams([]));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

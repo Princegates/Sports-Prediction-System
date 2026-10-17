@@ -413,7 +413,7 @@ export function AppShell() {
         render={AppShellHeader}
       />
 
-      <SearchCommand open={searchOpen} onClose={() => setSearchOpen(false)} leagues={LEAGUES} />
+      <SearchCommand open={searchOpen} onClose={() => setSearchOpen(false)} />
 
       {/* Mounted at shell level rather than per page, so the conversation
           survives navigation between matches -- which is the whole point of

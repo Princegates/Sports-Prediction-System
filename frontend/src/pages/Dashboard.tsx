@@ -341,7 +341,7 @@ export function Dashboard() {
         </>
       )}
 
-      <SearchCommand open={searchOpen} onClose={() => setSearchOpen(false)} leagues={LEAGUES} />
+      <SearchCommand open={searchOpen} onClose={() => setSearchOpen(false)} />
     </div>
   );
 }

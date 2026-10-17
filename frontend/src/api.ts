@@ -616,6 +616,17 @@ export function fetchMostLikely(league?: string, daysAhead = 3, limit = 10): Pro
   return get(`/api/predictions/most-likely?${params.toString()}`);
 }
 
+/** Same endpoint as fetchMostLikely, but ``limit`` per league across every
+ * league in ``leagues`` in one batched request, instead of one
+ * fetchMostLikely call per league fired in parallel -- that fan-out grows
+ * with the tracked-league count (54 at the time of writing) and is the same
+ * connection-pool-pressure pattern Dashboard/Live had per-match. */
+export function fetchMostLikelyAcrossLeagues(leagues: string[], daysAhead = 3, limit = 10): Promise<Prediction[]> {
+  const params = new URLSearchParams({ days_ahead: String(daysAhead), limit: String(limit) });
+  for (const l of leagues) params.append("leagues", l);
+  return get(`/api/predictions/most-likely?${params.toString()}`);
+}
+
 export function fetchHighConfidence(league?: string, daysAhead = 3): Promise<Prediction[]> {
   const params = new URLSearchParams({ days_ahead: String(daysAhead) });
   if (league) params.set("league", league);
