@@ -19,6 +19,7 @@ against a frozen result (there is nothing frozen yet for a pending row).
     python scripts/inspect_pending_admin_picks.py
     python scripts/inspect_pending_admin_picks.py --source system_weekly_low
     python scripts/inspect_pending_admin_picks.py --team Arsenal
+    python scripts/inspect_pending_admin_picks.py --team Arsenal --include-settled
 """
 
 from __future__ import annotations
@@ -68,11 +69,17 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--source", default=None, help="Only AdminPick.source exactly matching this (blank = every pending row)")
     parser.add_argument("--team", default=None, help="Only slips with a leg involving a club whose name contains this")
+    parser.add_argument(
+        "--include-settled", action="store_true",
+        help="Also show already-settled rows (their frozen result/leg_results, not a fresh regrade) -- for checking what a pick actually settled to after it leaves pending.",
+    )
     args = parser.parse_args()
 
     db = SessionLocal()
     try:
-        stmt = select(AdminPick).where(AdminPick.result == RESULT_PENDING).order_by(AdminPick.created_at.desc())
+        stmt = select(AdminPick).order_by(AdminPick.created_at.desc())
+        if not args.include_settled:
+            stmt = stmt.where(AdminPick.result == RESULT_PENDING)
         if args.source:
             stmt = stmt.where(AdminPick.source == args.source)
         picks = db.execute(stmt).scalars().all()
@@ -89,9 +96,14 @@ def main() -> None:
                 continue
             shown += 1
 
-            print(f"\n[{pick.source or 'admin (hand-curated)'}] AdminPick #{pick.id} -- {pick.label}")
+            frozen = pick.result != RESULT_PENDING
+            header = f"\n[{pick.source or 'admin (hand-curated)'}] AdminPick #{pick.id} -- {pick.label}"
+            if frozen:
+                header += f"  [FROZEN: {pick.result.upper()} @ {pick.settled_at}]"
+            print(header)
+
             won = lost = pending = unresolved = 0
-            for leg, nm in zip(pick.legs, leg_names):
+            for i, (leg, nm) in enumerate(zip(pick.legs, leg_names)):
                 match = matches.get(leg["match_id"])
                 status, why = _leg_status(match, leg["market"], leg["selection"])
                 if status == RESULT_WON:
@@ -103,7 +115,15 @@ def main() -> None:
                 else:
                     pending += 1
                 fixture = f"{nm[0]} vs {nm[1]}" if nm else f"match {leg['match_id']}"
-                print(f"    {status.upper():<10} {fixture}: {leg['market']} -- {leg['selection']} ({why})")
+                line = f"    {status.upper():<10} {fixture}: {leg['market']} -- {leg['selection']} ({why})"
+                if frozen and pick.leg_results and i < len(pick.leg_results):
+                    frozen_leg = pick.leg_results[i]
+                    if frozen_leg != status:
+                        line += f"  [FROZEN LEG SAYS: {frozen_leg.upper()} -- MISMATCH]"
+                print(line)
+
+            if frozen:
+                continue  # the row's own [FROZEN: ...] header above is the real answer
 
             if lost:
                 verdict = "would settle LOST (at least one leg lost)"
