@@ -267,7 +267,22 @@ jobs:
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add frontend/public/sitemap.xml
             git commit -m "Update sitemap with current upcoming fixtures"
-            git push origin HEAD:${{ github.ref_name }}
+            # This job can run for hours (the retrain path especially), so
+            # the branch it checked out at start may have moved by the time
+            # it pushes -- rebase onto whatever landed in the meantime
+            # rather than failing outright. The sitemap is the only file
+            # this step touches, so a conflict here would mean two runs
+            # raced on it, not a real content clash; retried a few times
+            # before giving up.
+            for attempt in 1 2 3; do
+              git fetch origin "${{ github.ref_name }}"
+              if git rebase "origin/${{ github.ref_name }}" && git push origin HEAD:${{ github.ref_name }}; then
+                break
+              fi
+              git rebase --abort 2>/dev/null || true
+              [ "$attempt" = 3 ] && exit 1
+              sleep 5
+            done
           fi
 
       # Saved even on failure: a run that refreshed some leagues and then
@@ -661,7 +676,22 @@ jobs:
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add frontend/public/sitemap.xml
             git commit -m "Update sitemap with current upcoming fixtures"
-            git push origin HEAD:${{ github.ref_name }}
+            # This job can run for hours (the retrain path especially), so
+            # the branch it checked out at start may have moved by the time
+            # it pushes -- rebase onto whatever landed in the meantime
+            # rather than failing outright. The sitemap is the only file
+            # this step touches, so a conflict here would mean two runs
+            # raced on it, not a real content clash; retried a few times
+            # before giving up.
+            for attempt in 1 2 3; do
+              git fetch origin "${{ github.ref_name }}"
+              if git rebase "origin/${{ github.ref_name }}" && git push origin HEAD:${{ github.ref_name }}; then
+                break
+              fi
+              git rebase --abort 2>/dev/null || true
+              [ "$attempt" = 3 ] && exit 1
+              sleep 5
+            done
           fi
 
       # Saved even on failure: a retrain that finished some shards and then
