@@ -15,6 +15,11 @@ on:
         description: "Only slips with a leg involving a club whose name contains this"
         required: false
         default: ""
+      include_settled:
+        description: "Also show already-settled rows (their frozen result, not a fresh regrade)"
+        type: boolean
+        required: false
+        default: false
 
 jobs:
   inspect:
@@ -39,8 +44,10 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           SOURCE: ${{ inputs.source }}
           TEAM: ${{ inputs.team }}
+          INCLUDE_SETTLED: ${{ inputs.include_settled }}
         run: |
           ARGS=()
           [ -n "$SOURCE" ] && ARGS+=(--source "$SOURCE")
           [ -n "$TEAM" ] && ARGS+=(--team "$TEAM")
+          [ "$INCLUDE_SETTLED" = "true" ] && ARGS+=(--include-settled)
           python scripts/inspect_pending_admin_picks.py "${ARGS[@]}"
