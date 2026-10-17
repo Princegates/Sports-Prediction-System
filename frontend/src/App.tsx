@@ -1,29 +1,46 @@
+import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
+import { Loading } from "@carbon/react";
 import { AppShell } from "./components/AppShell";
 import { RequireAccess, RequireAuth, RequireSuperadmin } from "./components/RequireAuth";
-import { Access } from "./pages/Access";
-import { AccountStatus } from "./pages/AccountStatus";
-import { ActivityLog } from "./pages/ActivityLog";
-import { AdminUsers } from "./pages/AdminUsers";
-import { AIPicks } from "./pages/AIPicks";
-import { BetCodes } from "./pages/BetCodes";
-import { CookiePolicy } from "./pages/CookiePolicy";
-import { Dashboard } from "./pages/Dashboard";
-import { FixturePreview } from "./pages/FixturePreview";
-import { Fixtures } from "./pages/Fixtures";
-import { HowItWorks } from "./pages/HowItWorks";
-import { Live } from "./pages/Live";
-import { Login } from "./pages/Login";
-import { Markets } from "./pages/Markets";
-import { MatchDetail } from "./pages/MatchDetail";
-import { Predictions } from "./pages/Predictions";
-import { Pricing } from "./pages/Pricing";
-import { Profile } from "./pages/Profile";
-import { Register } from "./pages/Register";
-import { Responsible } from "./pages/Responsible";
-import { Settings } from "./pages/Settings";
-import { TeamPage } from "./pages/TeamPage";
-import { Welcome } from "./pages/Welcome";
+
+// Lazy per route rather than eagerly imported: these 22 page files are what
+// made the production bundle 500+ KB of JS -- without this, a first-time
+// mobile visitor to the public landing page downloads the admin panel,
+// the AI-generation wizard and every other page before anything renders.
+// Route-level splitting means a visitor only ever fetches the page(s) they
+// actually navigate to.
+const Access = lazy(() => import("./pages/Access").then((m) => ({ default: m.Access })));
+const AccountStatus = lazy(() => import("./pages/AccountStatus").then((m) => ({ default: m.AccountStatus })));
+const ActivityLog = lazy(() => import("./pages/ActivityLog").then((m) => ({ default: m.ActivityLog })));
+const AdminUsers = lazy(() => import("./pages/AdminUsers").then((m) => ({ default: m.AdminUsers })));
+const AIPicks = lazy(() => import("./pages/AIPicks").then((m) => ({ default: m.AIPicks })));
+const BetCodes = lazy(() => import("./pages/BetCodes").then((m) => ({ default: m.BetCodes })));
+const CookiePolicy = lazy(() => import("./pages/CookiePolicy").then((m) => ({ default: m.CookiePolicy })));
+const Dashboard = lazy(() => import("./pages/Dashboard").then((m) => ({ default: m.Dashboard })));
+const FixturePreview = lazy(() => import("./pages/FixturePreview").then((m) => ({ default: m.FixturePreview })));
+const Fixtures = lazy(() => import("./pages/Fixtures").then((m) => ({ default: m.Fixtures })));
+const HowItWorks = lazy(() => import("./pages/HowItWorks").then((m) => ({ default: m.HowItWorks })));
+const Live = lazy(() => import("./pages/Live").then((m) => ({ default: m.Live })));
+const Login = lazy(() => import("./pages/Login").then((m) => ({ default: m.Login })));
+const Markets = lazy(() => import("./pages/Markets").then((m) => ({ default: m.Markets })));
+const MatchDetail = lazy(() => import("./pages/MatchDetail").then((m) => ({ default: m.MatchDetail })));
+const Predictions = lazy(() => import("./pages/Predictions").then((m) => ({ default: m.Predictions })));
+const Pricing = lazy(() => import("./pages/Pricing").then((m) => ({ default: m.Pricing })));
+const Profile = lazy(() => import("./pages/Profile").then((m) => ({ default: m.Profile })));
+const Register = lazy(() => import("./pages/Register").then((m) => ({ default: m.Register })));
+const Responsible = lazy(() => import("./pages/Responsible").then((m) => ({ default: m.Responsible })));
+const Settings = lazy(() => import("./pages/Settings").then((m) => ({ default: m.Settings })));
+const TeamPage = lazy(() => import("./pages/TeamPage").then((m) => ({ default: m.TeamPage })));
+const Welcome = lazy(() => import("./pages/Welcome").then((m) => ({ default: m.Welcome })));
+
+function RouteFallback() {
+  return (
+    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "40vh" }}>
+      <Loading withOverlay={false} description="Loading" />
+    </div>
+  );
+}
 
 /**
  * Route layout is split in two:
@@ -49,47 +66,49 @@ import { Welcome } from "./pages/Welcome";
  */
 export default function App() {
   return (
-    <Routes>
-      {/* ---- Public site ---- */}
-      <Route path="/" element={<Welcome />} />
-      <Route path="/how-it-works" element={<HowItWorks />} />
-      <Route path="/pricing" element={<Pricing />} />
-      <Route path="/fixtures" element={<Fixtures />} />
-      <Route path="/predict/:slugId" element={<FixturePreview />} />
-      <Route path="/responsible" element={<Responsible />} />
-      <Route path="/cookie-policy" element={<CookiePolicy />} />
-      <Route path="/account-status" element={<AccountStatus />} />
-      <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Register />} />
+    <Suspense fallback={<RouteFallback />}>
+      <Routes>
+        {/* ---- Public site ---- */}
+        <Route path="/" element={<Welcome />} />
+        <Route path="/how-it-works" element={<HowItWorks />} />
+        <Route path="/pricing" element={<Pricing />} />
+        <Route path="/fixtures" element={<Fixtures />} />
+        <Route path="/predict/:slugId" element={<FixturePreview />} />
+        <Route path="/responsible" element={<Responsible />} />
+        <Route path="/cookie-policy" element={<CookiePolicy />} />
+        <Route path="/account-status" element={<AccountStatus />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
 
-      {/* ---- The product ---- */}
-      <Route element={<RequireAuth />}>
-        <Route path="/app" element={<AppShell />}>
-          <Route path="profile" element={<Profile />} />
-          <Route path="access" element={<Access />} />
-          <Route path="ai-picks" element={<AIPicks />} />
-          <Route index element={<Dashboard />} />
+        {/* ---- The product ---- */}
+        <Route element={<RequireAuth />}>
+          <Route path="/app" element={<AppShell />}>
+            <Route path="profile" element={<Profile />} />
+            <Route path="access" element={<Access />} />
+            <Route path="ai-picks" element={<AIPicks />} />
+            <Route index element={<Dashboard />} />
 
-          <Route element={<RequireAccess />}>
-            <Route path="match/:id" element={<MatchDetail />} />
-            <Route path="predictions" element={<Predictions />} />
-            <Route path="markets" element={<Markets />} />
-            <Route path="betcodes" element={<BetCodes />} />
-            <Route path="live" element={<Live />} />
-            <Route path="teams/:id" element={<TeamPage />} />
-          </Route>
+            <Route element={<RequireAccess />}>
+              <Route path="match/:id" element={<MatchDetail />} />
+              <Route path="predictions" element={<Predictions />} />
+              <Route path="markets" element={<Markets />} />
+              <Route path="betcodes" element={<BetCodes />} />
+              <Route path="live" element={<Live />} />
+              <Route path="teams/:id" element={<TeamPage />} />
+            </Route>
 
-          <Route element={<RequireSuperadmin />}>
-            <Route path="admin" element={<AdminUsers />} />
-            <Route path="admin/activity-log" element={<ActivityLog />} />
-            <Route path="admin/settings" element={<Settings />} />
+            <Route element={<RequireSuperadmin />}>
+              <Route path="admin" element={<AdminUsers />} />
+              <Route path="admin/activity-log" element={<ActivityLog />} />
+              <Route path="admin/settings" element={<Settings />} />
+            </Route>
           </Route>
         </Route>
-      </Route>
 
-      {/* Old bookmarks from before the /app prefix existed, plus anything
-          unrecognized, land on the welcome page rather than a blank screen. */}
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        {/* Old bookmarks from before the /app prefix existed, plus anything
+            unrecognized, land on the welcome page rather than a blank screen. */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
   );
 }

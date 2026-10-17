@@ -56,14 +56,38 @@
 
       Loaded from Google Fonts under the family names custom.scss's
       --font-sans/--font-display/--font-data tokens reference. Preconnect
-      first since the stylesheet itself blocks first paint until it resolves.
+      first for the actual font-file fetch.
+
+      The stylesheet link itself is loaded via the standard
+      preload-as-style-then-swap trick (media="print" so the browser
+      fetches it without treating it as render-blocking, then onload flips
+      it to "all") rather than a plain <link rel="stylesheet">: a stylesheet
+      link blocks first paint until it downloads regardless of the
+      display=swap param inside it -- that param only controls how glyphs
+      swap in *after* the CSS has already loaded. On a slow mobile
+      connection this is the difference between first paint waiting on a
+      font-CSS round trip or not. <noscript> keeps the plain blocking
+      version for the no-JS case, where there's no onload to flip it.
     -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
+      rel="preload"
+      as="style"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,500;0,600;0,700;1,500&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+    />
+    <link
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,500;0,600;0,700;1,500&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
       rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
     />
+    <noscript>
+      <link
+        href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,500;0,600;0,700;1,500&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+        rel="stylesheet"
+      />
+    </noscript>
 
     <!--
       Inline SVG favicon. Declared rather than left to the browser's implicit
