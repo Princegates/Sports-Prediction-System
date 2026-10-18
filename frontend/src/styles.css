@@ -737,6 +737,15 @@ h1, h2, h3, h4 {
   background: var(--warning-soft);
 }
 
+/* Explicitly shown, never omitted -- a blank leg is what read as "won" by
+   mistake in the slip-settlement confusion this fixes. Neutral (muted ink,
+   not a status color), since "still playing" isn't good or bad news yet. */
+.result-tag.pending {
+  color: var(--text-muted);
+  border-color: var(--border-strong);
+  background: var(--bg-surface-2);
+}
+
 .leg-result-icon {
   font-weight: 800;
   margin-left: 6px;
@@ -745,6 +754,49 @@ h1, h2, h3, h4 {
 .leg-result-icon.won { color: var(--good); }
 .leg-result-icon.lost { color: var(--critical); }
 .leg-result-icon.unresolved { color: var(--warning); }
+
+/* components/LedgerRow.tsx -- one leg of a settled/settling slip. */
+.ledger-row {
+  display: flex;
+  gap: 8px;
+  padding: 10px 0;
+  border-top: 1px solid var(--gridline);
+}
+
+.ledger-row:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.ledger-row-index {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  padding-top: 1px;
+}
+
+.ledger-row-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.ledger-row-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ledger-row-teams {
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+.ledger-row-meta {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-top: 2px;
+}
 
 /* ==========================================================================
    DATE STRIP

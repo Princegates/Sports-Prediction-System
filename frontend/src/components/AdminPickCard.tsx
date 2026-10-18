@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import type { AdminPick } from "../types";
 import { useTilt } from "../lib/useTilt";
 import { CopyButton } from "./CopyButton";
+import { LedgerRow } from "./LedgerRow";
 import { whatsappLink } from "../lib/whatsapp";
 
 const RISK_LABELS: Record<AdminPick["risk_tier"], string> = {
@@ -17,22 +18,10 @@ const RESULT_LABELS: Record<"won" | "lost" | "unresolved", string> = {
   unresolved: "Confirming result",
 };
 
-const LEG_RESULT_ICONS: Record<"won" | "lost" | "unresolved", string> = {
-  won: "✓",
-  lost: "✗",
-  unresolved: "?",
-};
-
 // Legs shown before the list is collapsed behind a "Show all" toggle -- a
 // slip can carry up to 30 (MAX_ADMIN_PICK_LEGS on the backend), which is
 // unreadable as one uninterrupted block.
 const COLLAPSED_LEG_COUNT = 4;
-
-function formatKickoff(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
-    weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
-  });
-}
 
 /** A whole multi-leg slip, not a single outcome -- see GudaPickCard for the
  * single-pick equivalent. Not clickable, same reasoning as GudaPickCard: a
@@ -122,24 +111,9 @@ export function AdminPickCard({
         </span>
       </div>
 
-      <ol style={{ display: "flex", flexDirection: "column", gap: 8, margin: "8px 0", padding: 0, listStyle: "none" }}>
+      <ol style={{ margin: "8px 0", padding: 0 }}>
         {visibleLegs.map((leg, i) => (
-          <li key={`${leg.match_id}-${leg.market}-${leg.selection}`} style={{ display: "flex", gap: 8 }}>
-            <span className="tabular-nums" style={{ color: "var(--text-muted)", fontSize: 13 }}>
-              {i + 1}.
-            </span>
-            <span>
-              {leg.home_team} vs {leg.away_team}
-              {leg.result && (
-                <span className={`leg-result-icon ${leg.result}`} title={RESULT_LABELS[leg.result]}>
-                  {LEG_RESULT_ICONS[leg.result]}
-                </span>
-              )}
-              <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
-                {leg.market}: {leg.selection} · {formatKickoff(leg.kickoff)}
-              </div>
-            </span>
-          </li>
+          <LedgerRow key={`${leg.match_id}-${leg.market}-${leg.selection}`} leg={leg} index={i + 1} />
         ))}
       </ol>
 

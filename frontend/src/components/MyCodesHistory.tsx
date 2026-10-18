@@ -3,6 +3,7 @@ import { fetchMyBookingSlips, promoteBookingSlipToTrackRecord } from "../api";
 import { useAuth } from "../lib/AuthContext";
 import type { MyBookingSlip } from "../types";
 import { ErrorState } from "./ErrorState";
+import { LedgerRow } from "./LedgerRow";
 
 const RESULT_LABELS: Record<MyBookingSlip["result"], string> = {
   pending: "Pending",
@@ -10,18 +11,6 @@ const RESULT_LABELS: Record<MyBookingSlip["result"], string> = {
   lost: "Lost",
   unresolved: "Confirming result",
 };
-
-const LEG_RESULT_ICONS: Record<"won" | "lost" | "unresolved", string> = {
-  won: "✓",
-  lost: "✗",
-  unresolved: "?",
-};
-
-function formatKickoff(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
-    weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
-  });
-}
 
 /** A member's own "my codes" results history -- every settled code they've
  * generated through AI Generation / Markets' booking flow, with what
@@ -91,22 +80,9 @@ export function MyCodesHistory() {
                     <span className="sub">{new Date(slip.created_at).toLocaleDateString()}</span>
                     <span className={`result-tag ${slip.result}`}>{RESULT_LABELS[slip.result]}</span>
                   </div>
-                  <ol style={{ display: "flex", flexDirection: "column", gap: 6, margin: 0, padding: 0, listStyle: "none" }}>
+                  <ol style={{ margin: 0, padding: 0 }}>
                     {slip.legs.map((leg, i) => (
-                      <li key={`${leg.match_id}-${leg.market}-${leg.selection}`} style={{ fontSize: 13 }}>
-                        <span className="tabular-nums" style={{ color: "var(--text-muted)" }}>
-                          {i + 1}.
-                        </span>{" "}
-                        {leg.home_team} vs {leg.away_team}
-                        {leg.result && (
-                          <span className={`leg-result-icon ${leg.result}`} title={RESULT_LABELS[leg.result]}>
-                            {LEG_RESULT_ICONS[leg.result]}
-                          </span>
-                        )}
-                        <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
-                          {leg.market}: {leg.selection} · {formatKickoff(leg.kickoff)}
-                        </div>
-                      </li>
+                      <LedgerRow key={`${leg.match_id}-${leg.market}-${leg.selection}`} leg={leg} index={i + 1} />
                     ))}
                   </ol>
                   {slip.site_codes.some((c) => c.status === "code_ready") && (

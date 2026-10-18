@@ -8,6 +8,7 @@ import {
   fetchPublicStats,
   fetchPublicTeaserPick,
 } from "../api";
+import { LedgerRow } from "../components/LedgerRow";
 import { Mascot } from "../components/Mascot";
 import { PublicShell } from "../components/PublicShell";
 import { fixtureSlug } from "../lib/slug";
@@ -548,19 +549,9 @@ export function Welcome() {
                       {entry.result === "won" ? "Won" : entry.result === "lost" ? "Lost" : "Confirming result"}
                     </span>
                   </div>
-                  <ol style={{ display: "flex", flexDirection: "column", gap: 6, margin: 0, padding: 0, listStyle: "none" }}>
+                  <ol style={{ margin: 0, padding: 0 }}>
                     {entry.legs.map((leg) => (
-                      <li key={`${leg.match_id}-${leg.market}-${leg.selection}`} style={{ fontSize: 13 }}>
-                        {leg.home_team} vs {leg.away_team}
-                        {leg.result && (
-                          <span className={`leg-result-icon ${leg.result}`} title={leg.result}>
-                            {leg.result === "won" ? "✓" : leg.result === "lost" ? "✗" : "?"}
-                          </span>
-                        )}
-                        <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
-                          {leg.league} · {leg.market}: {leg.selection}
-                        </div>
-                      </li>
+                      <LedgerRow key={`${leg.match_id}-${leg.market}-${leg.selection}`} leg={leg} />
                     ))}
                   </ol>
                 </div>
