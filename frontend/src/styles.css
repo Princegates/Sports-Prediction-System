@@ -1,9 +1,9 @@
 /* ==========================================================================
    DESIGN TOKENS
    All --bg, --text, --accent, --space, --radius, --font (etc.) custom
-   properties this file uses are defined in custom.scss, aliased onto real
-   Carbon (--cds) tokens -- that is the single source of truth for palette,
-   spacing, and type now. Nothing below this comment needs its own :root.
+   properties this file uses are defined in custom.scss -- that is the
+   single source of truth for palette, spacing, and type. Nothing below
+   this comment needs its own :root.
    ========================================================================== */
 
 @media (prefers-reduced-motion: reduce) {
@@ -62,12 +62,10 @@ button, input, select {
    do with mobile. Bumping only the focusable form control itself back to
    16px on phone-width viewports satisfies that browser heuristic without
    touching how anything looks at rest or on desktop. !important because it
-   has to win over Carbon's own component font-size (e.g. .cds--text-input),
-   not just the plain-element rule above. */
+   has to win over any other font-size rule on the same element, not just
+   the plain-element rule above. */
 @media (max-width: 640px) {
-  input, select, textarea,
-  .cds--text-input, .cds--text-area__field, .cds--select-input,
-  .cds--search-input, .cds--number-input input, .cds--date-picker__input {
+  input, select, textarea {
     font-size: 16px !important;
   }
 }

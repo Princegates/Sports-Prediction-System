@@ -1,0 +1,22 @@
+// Minimal base reset. Replaces @use "@carbon/react" (the old carbon.scss)
+// now that nothing in the app imports actual Carbon components --
+// custom.scss (loaded after this) supplies every design token, and
+// styles.css (loaded last) already resets body/button/input/select itself.
+// This file only fills the small gap Carbon's own bundled reset used to
+// cover that styles.css doesn't: list defaults and a visible focus ring
+// (Carbon's own components carried their own focus style; nothing in the
+// app did that globally).
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+ul, ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

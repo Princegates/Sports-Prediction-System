@@ -1,20 +1,6 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
-import {
-  Header,
-  HeaderContainer,
-  HeaderGlobalAction,
-  HeaderGlobalBar,
-  HeaderMenuButton,
-  HeaderMenuItem,
-  HeaderName,
-  HeaderNavigation,
-  SideNav,
-  SideNavItems,
-  SideNavLink,
-  SkipToContent,
-} from "@carbon/react";
-import { Login as LoginIcon, UserFollow } from "@carbon/icons-react";
+import { Login as LoginIcon, UserFollow, Menu, Close } from "./icons";
 import { useAuth } from "../lib/AuthContext";
 import { ThemeToggle } from "./ThemeToggle";
 import { usePageMeta } from "../lib/pageMeta";
@@ -23,7 +9,7 @@ import { usePageMeta } from "../lib/pageMeta";
  * Chrome for the public marketing pages.
  *
  * Separate from AppShell rather than a variant of it: AppShell assumes a
- * logged-in user (league selector, sidebar nav), and threading "but not
+ * logged-in user (league selector, account menu), and threading "but not
  * when anonymous" through all of that would make both harder to read than
  * two components are.
  *
@@ -46,100 +32,6 @@ const PUBLIC_NAV = [
   { to: "/responsible", label: "Responsible use" },
 ];
 
-interface PublicShellHeaderProps {
-  // Supplied by HeaderContainer itself.
-  isSideNavExpanded: boolean;
-  onClickSideNavExpand: () => void;
-  // Forwarded through HeaderContainer's extra props -- see the module-level
-  // comment on why this can't be an inline function defined in PublicShell.
-  hasUser: boolean;
-  onNavigate: (path: string) => void;
-}
-
-/** The public header + side nav, hoisted to module scope for the same
- * reason AppShell's header is: Carbon's HeaderContainer renders its
- * `render` prop as `<Children {...props} />` -- a component type, not a
- * callback -- so an inline arrow function defined inside PublicShell would
- * get a fresh identity, and therefore look like a fresh component, on
- * every PublicShell re-render. React would then tear down and rebuild this
- * entire header (and everything below it that HeaderContainer wraps) each
- * time, re-running effects that update state that re-renders PublicShell --
- * a loop bounded only by network latency (see AppShell.tsx's identical fix
- * for the mechanism, and its own request storm once this exact thing
- * happened there).
- */
-function PublicShellHeader({ isSideNavExpanded, onClickSideNavExpand, hasUser, onNavigate }: PublicShellHeaderProps) {
-  return (
-    <Header aria-label="Socca Intelligence">
-      <SkipToContent />
-      <HeaderMenuButton
-        aria-label={isSideNavExpanded ? "Close menu" : "Open menu"}
-        onClick={onClickSideNavExpand}
-        isActive={isSideNavExpanded}
-        isCollapsible
-      />
-      <HeaderName as={NavLink} to="/" prefix="">
-        Socca Intelligence
-      </HeaderName>
-
-      <HeaderNavigation aria-label="Socca Intelligence">
-        {PUBLIC_NAV.map((item) => (
-          <HeaderMenuItem key={item.to} as={NavLink} to={item.to} end={item.to === "/"}>
-            {item.label}
-          </HeaderMenuItem>
-        ))}
-      </HeaderNavigation>
-
-      <HeaderGlobalBar>
-        <ThemeToggle />
-        {hasUser ? (
-          <HeaderGlobalAction aria-label="Open dashboard" onClick={() => onNavigate("/app")}>
-            <LoginIcon size={20} />
-          </HeaderGlobalAction>
-        ) : (
-          <>
-            <HeaderGlobalAction aria-label="Sign in" onClick={() => onNavigate("/login")}>
-              <LoginIcon size={20} />
-            </HeaderGlobalAction>
-            <HeaderGlobalAction aria-label="Request access" onClick={() => onNavigate("/register")}>
-              <UserFollow size={20} />
-            </HeaderGlobalAction>
-          </>
-        )}
-      </HeaderGlobalBar>
-
-      <SideNav
-        aria-label="Side navigation"
-        expanded={isSideNavExpanded}
-        isPersistent={false}
-        onSideNavBlur={onClickSideNavExpand}
-      >
-        <SideNavItems>
-          {PUBLIC_NAV.map((item) => (
-            <SideNavLink key={item.to} as={NavLink} to={item.to} end={item.to === "/"}>
-              {item.label}
-            </SideNavLink>
-          ))}
-          {hasUser ? (
-            <SideNavLink as={NavLink} to="/app">
-              Open dashboard
-            </SideNavLink>
-          ) : (
-            <>
-              <SideNavLink as={NavLink} to="/login">
-                Sign in
-              </SideNavLink>
-              <SideNavLink as={NavLink} to="/register">
-                Request access
-              </SideNavLink>
-            </>
-          )}
-        </SideNavItems>
-      </SideNav>
-    </Header>
-  );
-}
-
 export function PublicShell({
   children, title, description,
 }: {
@@ -150,10 +42,84 @@ export function PublicShell({
   usePageMeta(title, description);
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  function go(path: string) {
+    setDrawerOpen(false);
+    navigate(path);
+  }
 
   return (
     <div className="public-shell">
-      <HeaderContainer hasUser={!!user} onNavigate={navigate} render={PublicShellHeader} />
+      <header className="topbar" aria-label="Socca Intelligence">
+        <NavLink to="/" className="topbar-brand">
+          <span className="topbar-brand-mark">SI</span>
+          <span className="topbar-brand-full">Socca Intelligence</span>
+          <span className="topbar-brand-short">Socca</span>
+        </NavLink>
+
+        <nav className="public-nav" aria-label="Primary">
+          {PUBLIC_NAV.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.to === "/"}
+              className={({ isActive }) => `public-nav-link${isActive ? " active" : ""}`}
+            >
+              {item.label}
+            </NavLink>
+          ))}
+        </nav>
+
+        <span className="topbar-spacer" />
+
+        <div className="topbar-actions">
+          <ThemeToggle />
+          {user ? (
+            <button type="button" className="topbar-icon-btn" aria-label="Open dashboard" onClick={() => navigate("/app")}>
+              <LoginIcon size={18} />
+            </button>
+          ) : (
+            <>
+              <button type="button" className="topbar-icon-btn" aria-label="Sign in" onClick={() => navigate("/login")}>
+                <LoginIcon size={18} />
+              </button>
+              <button type="button" className="topbar-icon-btn" aria-label="Request access" onClick={() => navigate("/register")}>
+                <UserFollow size={18} />
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            className="topbar-menu-btn"
+            aria-label={drawerOpen ? "Close menu" : "Open menu"}
+            aria-expanded={drawerOpen}
+            onClick={() => setDrawerOpen((v) => !v)}
+          >
+            {drawerOpen ? <Close size={20} /> : <Menu size={20} />}
+          </button>
+        </div>
+      </header>
+
+      {drawerOpen && (
+        <div className="public-drawer" onClick={() => setDrawerOpen(false)}>
+          <div className="public-drawer-panel" onClick={(e) => e.stopPropagation()}>
+            {PUBLIC_NAV.map((item) => (
+              <NavLink key={item.to} to={item.to} end={item.to === "/"} onClick={() => setDrawerOpen(false)}>
+                {item.label}
+              </NavLink>
+            ))}
+            {user ? (
+              <button type="button" onClick={() => go("/app")}>Open dashboard</button>
+            ) : (
+              <>
+                <button type="button" onClick={() => go("/login")}>Sign in</button>
+                <button type="button" onClick={() => go("/register")}>Request access</button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       <main className="public-main" id="main-content">
         {children}

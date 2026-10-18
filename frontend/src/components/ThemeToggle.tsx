@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { applyCarbonTheme } from "../lib/carbonTheme";
 
 export const THEME_OVERRIDE_KEY = "theme_override";
 
@@ -22,7 +21,6 @@ export function ThemeToggle() {
       if (e.key !== THEME_OVERRIDE_KEY) return;
       const next = currentTheme();
       document.documentElement.setAttribute("data-theme", next);
-      applyCarbonTheme(next);
       setTheme(next);
     }
     window.addEventListener("storage", onStorage);
@@ -32,7 +30,6 @@ export function ThemeToggle() {
   function toggle() {
     const next = theme === "dark" ? "light" : "dark";
     document.documentElement.setAttribute("data-theme", next);
-    applyCarbonTheme(next);
     try {
       localStorage.setItem(THEME_OVERRIDE_KEY, next);
     } catch {

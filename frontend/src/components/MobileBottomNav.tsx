@@ -1,12 +1,12 @@
 import { NavLink } from "react-router-dom";
-import { Home, ChartLine, ShoppingCatalog, AiGenerate } from "@carbon/icons-react";
+import { Home, ChartLine, ShoppingCatalog, AiGenerate, Live as LiveIcon } from "./icons";
 
 const ITEMS: { to: string; label: string; end?: boolean; icon?: typeof Home }[] = [
   { to: "/app", label: "Home", end: true, icon: Home },
   { to: "/app/predictions", label: "Picks", icon: ChartLine },
   { to: "/app/markets", label: "Markets", icon: ShoppingCatalog },
   { to: "/app/betcodes", label: "AI Gen", icon: AiGenerate },
-  { to: "/app/live", label: "Live" },
+  { to: "/app/live", label: "Live", icon: LiveIcon },
 ];
 
 /** One-tap access to the five pages a member opens most, on a phone where

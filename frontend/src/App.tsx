@@ -1,6 +1,5 @@
 import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
-import { Loading } from "@carbon/react";
 import { AppShell } from "./components/AppShell";
 import { RequireAccess, RequireAuth, RequireSuperadmin } from "./components/RequireAuth";
 
@@ -37,7 +36,7 @@ const Welcome = lazy(() => import("./pages/Welcome").then((m) => ({ default: m.W
 function RouteFallback() {
   return (
     <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "40vh" }}>
-      <Loading withOverlay={false} description="Loading" />
+      <span className="route-spinner" role="status" aria-label="Loading" />
     </div>
   );
 }

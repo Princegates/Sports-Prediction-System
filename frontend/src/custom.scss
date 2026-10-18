@@ -1,88 +1,53 @@
 // ==========================================================================
-// CARBON TOKEN BRIDGE
+// DESIGN TOKENS -- Vertix-style: rounded cards, soft shadow, a gradient
+// accent, on a flat neutral surface. No Carbon dependency: every value
+// below is literal, not an alias onto a --cds-* token -- the ~60 component/
+// page files that read var(--bg-surface), var(--space-4), var(--accent) and
+// so on don't need to change, only what those names resolve to.
 //
-// Every custom property below is an alias onto a real Carbon token
-// (--cds-*), not a separately-maintained color/spacing/radius scale. This
-// is what makes the full-Carbon adoption reach every page in one pass:
-// the ~60 component/page files that already read var(--bg-surface),
-// var(--space-4), var(--accent) and so on don't need to change what they
-// reference, but the *values* those names resolve to are now entirely
-// Carbon's own -- its palette, its 2/4/8/12/16px spacing scale, its
-// (mostly square) corner radii, and IBM Plex. Carbon's own React
-// components (Button, Tile, DataTable, ...) read --cds-* directly and are
-// unaffected by any of this; this bridge exists only for the bespoke,
-// non-component CSS (cards, the chat dock, the fixture calendar, chart
-// colors) sitting alongside them.
-//
-// Light/dark is Carbon's own `white` and `g100` themes, switched by toggling
-// the .cds--white / .cds--g100 class Carbon's <Theme> component itself
-// would apply -- see main.tsx, which does the same thing at the document
-// level so it applies before React ever mounts.
-//
-// Bound to `body`, not `:root`: that's the element carbonTheme.ts actually
-// puts the .cds--g100/.cds--white class on, and custom properties only
-// inherit downward, so a `:root` (html) block can't see tokens Carbon only
-// defines starting at body -- every var(--cds-*) reference below would
-// resolve to nothing.
+// Theme (day/night) lives on <html data-theme="dark|light"> (see main.tsx);
+// :root sees it directly, so theme tokens live here, not on body.
 // ==========================================================================
-body {
-  // Surfaces
-  --bg-page: var(--cds-background);
-  --bg-surface: var(--cds-layer-01);
-  --bg-surface-2: var(--cds-layer-02);
-  --bg-surface-3: var(--cds-layer-03);
-  --bg-overlay: var(--cds-overlay);
-  --bg-topbar: var(--cds-background);
+:root {
+  // Dark is the default (first paint, before any theme is known) --
+  // matches main.tsx's own fallback.
+  --bg-page: #111214;
+  --bg-surface: #1a1b1e;
+  --bg-surface-2: #202126;
+  --bg-surface-3: #27282e;
+  --bg-overlay: rgba(0, 0, 0, 0.6);
+  --bg-topbar: #16171a;
 
-  // Ink
-  --text-primary: var(--cds-text-primary);
-  --text-secondary: var(--cds-text-secondary);
-  --text-muted: var(--cds-text-helper);
+  --text-primary: #f4f4f6;
+  --text-secondary: #b6b8c0;
+  --text-muted: #7c7e88;
 
-  // Structure
-  --border: var(--cds-border-subtle-01);
-  --border-strong: var(--cds-border-strong-01);
-  --gridline: var(--cds-border-subtle-01);
-  --baseline: var(--cds-border-subtle-02);
+  --border: #2c2d33;
+  --border-strong: #3a3b42;
+  --gridline: #232429;
+  --baseline: #26272c;
 
-  // Accent -- Carbon's own interactive blue by default, swappable via one
-  // of the 20 accent themes below (body[data-accent="..."], picked in
-  // Settings > Appearance, same as before Carbon). --accent-soft/-strong
-  // and --ai-violet are deliberately *derived from* --accent rather than
-  // given their own per-theme values: since every accent theme only
-  // overrides --accent itself, these three keep following it automatically
-  // in whichever direction the current Carbon theme needs --
-  // color-mix(..., var(--text-primary) ...) lightens toward white in
-  // --cds--g100 and darkens toward near-black in --cds--white, matching
-  // what the old hand-picked light/dark accent-strong pairs did by hand.
-  --accent: var(--cds-link-primary);
-  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
-  --accent-strong: color-mix(in srgb, var(--accent) 75%, var(--text-primary) 25%);
-  --ai-violet: var(--accent);
-  --ai-violet-soft: var(--accent-soft);
+  // Status -- fixed in both themes, never repurposed for series identity
+  // or for the accent.
+  --good: #22c55e;
+  --good-soft: color-mix(in srgb, #22c55e 14%, transparent);
+  --warning: #f59e0b;
+  --warning-soft: color-mix(in srgb, #f59e0b 14%, transparent);
+  --serious: #f59e0b;
+  --critical: #ef4444;
+  --critical-soft: color-mix(in srgb, #ef4444 14%, transparent);
+  --live: #ef4444;
 
-  // Decorative-only (mascot sparkles) -- Carbon's support colors, reused
-  // rather than a separate decorative palette.
-  --spark-lime: var(--cds-support-success);
-  --spark-peach: var(--cds-support-warning);
-  --spark-yellow: var(--cds-support-warning);
-  --spark-neon: var(--cds-support-success);
+  // Decorative-only (mascot sparkles).
+  --spark-lime: #22c55e;
+  --spark-peach: #f59e0b;
+  --spark-yellow: #f59e0b;
+  --spark-neon: #22c55e;
 
-  // Status (fixed -- never repurposed for series identity)
-  --good: var(--cds-support-success);
-  --good-soft: color-mix(in srgb, var(--cds-support-success) 14%, transparent);
-  --warning: var(--cds-support-warning);
-  --warning-soft: color-mix(in srgb, var(--cds-support-warning) 14%, transparent);
-  --serious: var(--cds-support-warning);
-  --critical: var(--cds-support-error);
-  --critical-soft: color-mix(in srgb, var(--cds-support-error) 14%, transparent);
-  --live: var(--cds-support-error);
-
-  // Scale -- Carbon is a flat, square-cornered system; radius-pill is the
-  // one exception kept for pill-shaped chips/badges.
-  --radius-sm: 0;
-  --radius-md: 0;
-  --radius-lg: 0;
+  // Scale -- cards/pills rounded, a 4px spacing grid.
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 20px;
   --radius-pill: 999px;
   --space-1: 4px;
   --space-2: 8px;
@@ -91,73 +56,101 @@ body {
   --space-5: 24px;
   --space-6: 32px;
   --space-7: 48px;
-  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.15);
-  --shadow-pop: 0 4px 14px rgba(0, 0, 0, 0.28);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.18), 0 8px 24px rgba(0, 0, 0, 0.22);
+  --shadow-pop: 0 4px 16px rgba(0, 0, 0, 0.28), 0 16px 40px rgba(0, 0, 0, 0.32);
 
-  // Type -- IBM Plex Sans for UI/body text (Carbon's own face). Headings
-  // use Plex Serif instead of more Plex Sans -- still the same Plex
-  // superfamily Carbon ships, but a serif display face reads as
-  // considered/editorial rather than the generic geometric-grotesk look
-  // that's become a template-AI tell.
-  --font-sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-  --font-display: "IBM Plex Serif", Georgia, "Times New Roman", serif;
+  // Type -- Inter for UI/body, a serif for display headings (still reads
+  // as considered/editorial rather than the generic grotesk-everywhere
+  // look), JetBrains Mono wherever a value needs tabular figures.
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-display: "Source Serif 4", Georgia, "Times New Roman", serif;
   --font-public-display: var(--font-display);
   --font-public-body: var(--font-sans);
-  --font-data: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-data: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  // Matches Carbon's actual UI Shell dimensions (Header = 3rem, SideNav =
-  // 16rem) now that AppShell/PublicShell render the real components.
-  --topbar-h: 48px;
-  --sidebar-w: 256px;
-  // AppShell's desktop nav collapses to this width at rest (a bare hover/
-  // focus target, not an icon rail -- see the .app-sidenav-rail rules
-  // below) and expands back to --sidebar-w only while it's actually being
-  // used.
-  --sidebar-rail-w: 6px;
+  // AppShell dimensions -- a real icon rail now (collapsed = icons only,
+  // not a bare hover sliver), expanding to show labels on hover/pin.
+  --topbar-h: 56px;
+  --sidebar-w: 240px;
+  --sidebar-rail-w: 64px;
+}
 
-  font-family: var(--font-sans);
-  background: var(--cds-background);
-  color: var(--cds-text-primary);
+:root[data-theme="light"] {
+  --bg-page: #f5f5f7;
+  --bg-surface: #ffffff;
+  --bg-surface-2: #fafafb;
+  --bg-surface-3: #f0f0f2;
+  --bg-overlay: rgba(17, 18, 20, 0.45);
+  --bg-topbar: #ffffff;
+
+  --text-primary: #15161a;
+  --text-secondary: #55575f;
+  --text-muted: #8a8c94;
+
+  --border: #e7e7ea;
+  --border-strong: #d3d4d9;
+  --gridline: #ececef;
+  --baseline: #e2e2e6;
 }
 
 // ==========================================================================
-// ACCENT THEMES
-// One admin-controlled, site-wide accent (Settings > Appearance ->
-// default_accent; see lib/accentThemes.ts and main.tsx), switchable "from
-// time to time" without touching Carbon's own light/dark theme. Each block
-// overrides only --accent -- --accent-soft/--accent-strong/--ai-violet*
-// above are already derived from var(--accent), so one line per theme is
-// enough for it to reach every button, link, and highlight that reads the
-// accent tokens, in either Carbon theme.
+// ACCENT THEMES -- one admin-controlled, site-wide accent (Settings >
+// Appearance -> default_accent; see lib/accentProfiles.ts and main.tsx),
+// switchable independently of the day/night theme above. Lives on <body
+// data-accent="...">, since that's the element main.tsx actually sets it
+// on. Each preset overrides only --accent (a single hex); --accent-2 (the
+// gradient's second stop) is derived from it automatically via color-mix,
+// and so are --accent-soft/--accent-strong/--ai-violet* -- one line per
+// preset is enough for it to reach every gradient card, button, link and
+// highlight that reads the accent tokens, in either day/night theme.
+// --accent-on-accent (the text/icon color to put on a gradient-filled
+// surface) defaults to white and is flipped to near-black only for the
+// handful of presets light enough that white text fails contrast on them
+// -- computed per-preset below (approximate relative luminance), not
+// eyeballed.
 // ==========================================================================
+body {
+  --accent: #ff6115;
+  --accent-2: color-mix(in srgb, var(--accent) 78%, white 22%);
+  --accent-on-accent: #fff;
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
+  --accent-strong: color-mix(in srgb, var(--accent) 75%, var(--text-primary) 25%);
+  --ai-violet: var(--accent);
+  --ai-violet-soft: var(--accent-soft);
+
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--bg-page);
+  color: var(--text-primary);
+}
+
 body[data-accent="sunset"] { --accent: #ff6115; }
 body[data-accent="teal"] { --accent: #14b8a6; }
 body[data-accent="violet"] { --accent: #8b5cf6; }
 body[data-accent="berry"] { --accent: #c026d3; }
-body[data-accent="blush"] { --accent: #f472b6; }
+body[data-accent="blush"] { --accent: #f472b6; --accent-on-accent: #15161a; }
 body[data-accent="steel"] { --accent: #64748b; }
-body[data-accent="orchid"] { --accent: #c77dff; }
+body[data-accent="orchid"] { --accent: #c77dff; --accent-on-accent: #15161a; }
 body[data-accent="plum"] { --accent: #a873e0; }
 body[data-accent="magenta"] { --accent: #ea4fc0; }
 body[data-accent="grape"] { --accent: #a378e2; }
-body[data-accent="rose"] { --accent: #ff7a9e; }
-body[data-accent="lilac"] { --accent: #b3a0e8; }
+body[data-accent="rose"] { --accent: #ff7a9e; --accent-on-accent: #15161a; }
+body[data-accent="lilac"] { --accent: #b3a0e8; --accent-on-accent: #15161a; }
 body[data-accent="mulberry"] { --accent: #d46ba6; }
-body[data-accent="amethyst"] { --accent: #b47aec; }
+body[data-accent="amethyst"] { --accent: #b47aec; --accent-on-accent: #15161a; }
 body[data-accent="wine"] { --accent: #c6789b; }
 body[data-accent="mauve"] { --accent: #a68a96; }
 body[data-accent="cobalt"] { --accent: #2f6fed; }
 body[data-accent="indigo"] { --accent: #6366f1; }
-body[data-accent="cyan"] { --accent: #22d3ee; }
+body[data-accent="cyan"] { --accent: #22d3ee; --accent-on-accent: #15161a; }
 body[data-accent="denim"] { --accent: #3b6ea5; }
 
 // ==========================================================================
-// Bespoke widgets Carbon has no equivalent for. Structure kept from the
-// previous pass, recolored onto the bridge above so they sit correctly in
-// either Carbon theme.
+// Bespoke widgets -- recolored onto the literal tokens above (no more
+// --cds-* references anywhere in this file).
 // ==========================================================================
 
-// --- Mascot (Guda) -- brand element, orthogonal to Carbon ------------------
+// --- Mascot (Guda) -- brand element -----------------------------------------
 .mascot {
   position: relative;
   display: inline-block;
@@ -168,13 +161,13 @@ body[data-accent="denim"] { --accent: #3b6ea5; }
   height: 100%;
   overflow: hidden;
   border-radius: 50%;
-  border: 2px solid var(--cds-border-subtle-01);
-  background: var(--cds-layer-02);
+  border: 2px solid var(--border);
+  background: var(--bg-surface-2);
 }
 
 .mascot-hero .mascot-frame {
   border-radius: 0;
-  border: 1px solid var(--cds-border-subtle-01);
+  border: 1px solid var(--border);
   aspect-ratio: 550 / 619;
 }
 
@@ -263,8 +256,8 @@ body[data-accent="denim"] { --accent: #3b6ea5; }
 }
 
 .public-footer {
-  background: var(--cds-layer-01);
-  border-top: 1px solid var(--cds-border-subtle-01);
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border);
   padding: var(--space-6) var(--space-5) var(--space-5);
 }
 
@@ -287,7 +280,7 @@ body[data-accent="denim"] { --accent: #3b6ea5; }
 }
 
 .public-footer-brand p {
-  color: var(--cds-text-secondary);
+  color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.6;
   margin: 0;
@@ -303,23 +296,23 @@ body[data-accent="denim"] { --accent: #3b6ea5; }
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--cds-text-helper);
+  color: var(--text-muted);
   margin: 0 0 var(--space-1);
 }
 
 .public-footer-col a {
-  color: var(--cds-text-secondary);
+  color: var(--text-secondary);
   font-size: 13px;
   text-decoration: none;
 }
 
 .public-footer-col a:hover {
-  color: var(--cds-link-primary);
+  color: var(--accent);
   text-decoration: underline;
 }
 
 .public-footer-note {
-  color: var(--cds-text-helper);
+  color: var(--text-muted);
   font-size: 12px;
 }
 
@@ -327,11 +320,11 @@ body[data-accent="denim"] { --accent: #3b6ea5; }
   max-width: 1120px;
   margin: var(--space-6) auto 0;
   padding-top: var(--space-4);
-  border-top: 1px solid var(--cds-border-subtle-01);
+  border-top: 1px solid var(--border);
 }
 
 .public-footer-legal p {
-  color: var(--cds-text-helper);
+  color: var(--text-muted);
   font-size: 12px;
   line-height: 1.6;
   margin: 0 0 var(--space-2);
@@ -343,195 +336,266 @@ body[data-accent="denim"] { --accent: #3b6ea5; }
   }
 }
 
-// --- AppShell header bits ----------------------------------------------------
-.app-league-select {
-  width: 200px;
-  align-self: center;
-  margin-right: var(--space-2);
+// --- Top bar (shared shape for AppShell + PublicShell) ----------------------
+// Segmented pill tab nav + a brand mark + a right-side icon cluster, on a
+// surface the page content scrolls under. Collapses its nav row on phones
+// (AppShell leans on MobileBottomNav there; PublicShell swaps to a
+// slide-out drawer -- see TopBar.tsx).
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  height: var(--topbar-h);
+  padding: 0 var(--space-5);
+  background: color-mix(in srgb, var(--bg-topbar) 88%, transparent);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  border-bottom: 1px solid var(--border);
 }
 
-.app-league-select .cds--select-input {
-  height: 2.5rem;
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 17px;
+  color: var(--text-primary);
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
-// The short brand wordmark only shows once the phone breakpoint below hides
-// the full one -- keeping both in the DOM (rather than swapping the text
-// with JS) means nothing shifts on resize and a screen reader still gets
-// one name, not two.
-.app-brand-short {
+.topbar-brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: var(--accent-on-accent);
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--font-sans);
+}
+
+.topbar-brand-short { display: none; }
+
+.topbar-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--bg-surface-2);
+  border-radius: var(--radius-pill);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.topbar-tabs::-webkit-scrollbar { display: none; }
+
+.topbar-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.topbar-tab:hover { color: var(--text-primary); }
+
+.topbar-tab.active {
+  background: var(--text-primary);
+  color: var(--bg-page);
+}
+
+.topbar-spacer { flex: 1; }
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.topbar-icon-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-pill);
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.topbar-icon-btn:hover {
+  background: var(--bg-surface-2);
+  color: var(--text-primary);
+}
+
+.topbar-icon-btn .queue-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+}
+
+.topbar-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: var(--accent-on-accent);
+}
+
+.topbar-menu-btn {
   display: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-pill);
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
 }
 
-// The full wordmark plus a 200px select genuinely don't fit a phone-width
-// header alongside the hamburger and the global action icons -- without
-// this the header overflows sideways and clips its own right-side icons
-// (profile, sign out, ...) off the edge of the screen rather than wrapping.
+.topbar-league-select {
+  width: 180px;
+  height: 36px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
 @media (max-width: 640px) {
-  .app-brand-full {
-    display: none;
-  }
-
-  .app-brand-short {
-    display: inline;
-  }
-
-  .app-league-select {
-    // Just wide enough to read as a control to tap, not to show a whole
-    // league name -- the select's own dropdown lists every league in full
-    // regardless of how narrow its closed trigger is.
-    width: 52px;
-    margin-right: var(--space-1);
-  }
-
-  .app-league-select .cds--list-box__label {
-    padding-right: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
+  .topbar { padding: 0 var(--space-3); gap: var(--space-2); }
+  .topbar-brand-full { display: none; }
+  .topbar-brand-short { display: inline; }
+  .topbar-league-select { width: 44px; padding: 0 4px; text-align: center; }
 }
+
+// --- Public nav (horizontal links, no pill tabs -- fewer items, plainer) ---
+.public-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.public-nav-link {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.public-nav-link:hover,
+.public-nav-link.active { color: var(--text-primary); }
+
+@media (max-width: 860px) {
+  .public-nav { display: none; }
+  .topbar-menu-btn { display: inline-flex; }
+}
+
+.public-drawer {
+  position: fixed;
+  inset: var(--topbar-h) 0 0 0;
+  z-index: 8900;
+  background: var(--bg-overlay);
+}
+
+.public-drawer-panel {
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  padding: var(--space-4) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.public-drawer-panel a,
+.public-drawer-panel button {
+  padding: var(--space-2) 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-decoration: none;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+// --- Account menu (avatar dropdown, superadmin links) -----------------------
+.account-menu {
+  position: relative;
+}
+
+.account-menu-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 9100;
+  min-width: 200px;
+  padding: var(--space-2);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-pop);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.account-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  text-decoration: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+}
+
+.account-menu-item:hover { background: var(--bg-surface-2); }
 
 .app-content {
   min-height: calc(100vh - var(--topbar-h));
   padding: var(--space-5);
 }
 
-// The desktop nav is a hover-reveal rail (isRail, below), not a fixed
-// permanent sidebar: collapsed to a thin edge by default so the page gets
-// full width while nothing is being picked, and only flies out to its full
-// 256px width -- as a fixed-position overlay on top of the content, not by
-// pushing it over -- while the pointer (or keyboard focus, for anyone
-// tabbing through it) is actually on it. Content's margin only needs to
-// clear the permanent collapsed sliver, not the occasional hover-expanded
-// width. Carbon's own Content margin rule (@carbon/styles ui-shell/content)
-// assumes neither figure, so it's overridden outright, only above the
-// breakpoint Carbon's own SideNav CSS treats as "persistent" (66rem/1056px;
-// below it the nav is a hamburger-toggled drawer that must not push content
-// over at all).
-@media (min-width: 66rem) {
-  .cds--content.app-content {
-    margin-inline-start: var(--sidebar-rail-w);
-  }
-}
-
-// Carbon's own .cds--side-nav--rail collapsed width (mini-units(6), 48px)
-// assumes icon-only nav items to show at that width -- ours are plain text
-// links with no icons, so at 48px they'd just show clipped, unreadable
-// fragments of each label instead of reading as "collapsed". Shrink the
-// collapsed state down to a thin, deliberately-bare hover/focus target
-// instead (the expanded-on-hover width is untouched -- that's Carbon's own
-// .cds--side-nav--expanded rule, unaffected by this). Scoped to >=66rem:
-// Carbon's own .cds--side-nav--rail width isn't breakpoint-scoped, so
-// without this override it would also override the mobile drawer's
-// closed (0-width) state below that.
-@media (min-width: 66rem) {
-  .cds--side-nav.app-sidenav-rail:not(.cds--side-nav--expanded) {
-    inline-size: var(--sidebar-rail-w);
-    // A sliver this thin in Carbon's own side-nav background (same as the
-    // page background) would be invisible, not just unobtrusive -- nothing
-    // left to show a pointer where to find it again.
-    background: var(--accent);
-    opacity: 0.5;
-  }
-}
-
-// The expanded panel (hover, focus, or pinned) is Carbon's own solid
-// --cds-background by default -- a flat opaque block sitting on top of
-// whatever page content it's covering. A frosted-glass surface instead:
-// still readable (the tint underneath it is the same surface color the
-// rest of the app already uses), but the page keeps showing through, so
-// opening the nav doesn't read as a wall dropped over the dashboard.
-.cds--side-nav.app-sidenav-rail.cds--side-nav--expanded {
-  background: color-mix(in srgb, var(--bg-surface) 78%, transparent);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-}
-
-// Pinning locks the nav to its expanded width permanently (expanded prop
-// forced true, see AppShell.tsx) instead of only while it's being hovered
-// or focused -- at that point it's a normal persistent sidebar again, and
-// content needs to give it the full width back rather than just the rail's.
-@media (min-width: 66rem) {
-  .cds--content.app-content.app-content--nav-pinned {
-    margin-inline-start: var(--sidebar-w);
-  }
-}
-
-// The pin toggle lives inside the nav's own expanded panel (only reachable
-// once it's already open via hover/focus/pin) rather than in the header,
-// so it never competes for space with the collapsed rail or the mobile
-// hamburger button.
-.app-sidenav-pin-row {
-  display: flex;
-  justify-content: flex-end;
-  padding: var(--space-2) var(--space-3) 0;
-}
-
-.app-sidenav-pin-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 500;
-  padding: 4px 8px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.app-sidenav-pin-btn:hover {
-  background: var(--bg-surface-2);
-  color: var(--text-primary);
-}
-
-.app-sidenav-pin-btn[aria-pressed="true"] {
-  color: var(--accent);
-}
-
-// The floating hint that the collapsed rail is a nav, not decoration --
-// see the comment on its JSX in AppShell.tsx for why it exists alongside a
-// rail that's already hoverable on its own. Sits just to the right of the
-// rail, vertically centered, below the rail's own z-index (Carbon's
-// $z-index('header'), 8000) so the real expanded panel simply covers it
-// once opened rather than needing to be hidden by hand.
-.app-sidenav-hint {
-  display: none;
-}
-
-@media (min-width: 66rem) {
-  .app-sidenav-hint {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: fixed;
-    z-index: 100;
-    inset-inline-start: var(--sidebar-rail-w);
-    inset-block-start: 50%;
-    transform: translateY(-50%);
-    width: 20px;
-    height: 40px;
-    padding: 0;
-    border: none;
-    border-radius: 0 var(--radius-md) var(--radius-md) 0;
-    background: var(--accent);
-    color: #fff;
-    opacity: 0.6;
-    cursor: pointer;
-    transition: opacity 0.15s ease;
-  }
-
-  .app-sidenav-hint:hover {
-    opacity: 1;
-  }
-}
-
-@media (max-width: 65.98rem) {
-  .cds--side-nav.app-sidenav-rail:not(.cds--side-nav--expanded) {
-    inline-size: 0;
-  }
-}
+.topbar-avatar { position: relative; }
+.topbar-avatar .queue-badge { position: absolute; top: -2px; right: -2px; margin-left: 0; }
 
 .queue-badge {
   display: inline-flex;
@@ -542,8 +606,8 @@ body[data-accent="denim"] { --accent: #3b6ea5; }
   padding: 0 4px;
   margin-left: 6px;
   border-radius: var(--radius-pill);
-  background: var(--cds-support-error);
-  color: var(--cds-text-on-color);
+  background: var(--critical);
+  color: #fff;
   font-size: 10px;
   font-weight: 700;
 }
@@ -561,27 +625,28 @@ body[data-accent="denim"] { --accent: #3b6ea5; }
   justify-content: center;
   min-width: 48px;
   padding: 6px 10px;
-  border: 1px solid var(--cds-border-subtle-01);
-  background: var(--cds-layer-01);
-  color: var(--cds-text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-primary);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
   transition: all 0.12s ease;
 }
 
-.odds-cell:hover { border-color: var(--cds-border-strong-01); }
+.odds-cell:hover { border-color: var(--border-strong); }
 
 .odds-cell.ai-top {
-  border-color: var(--cds-link-primary);
-  background: color-mix(in srgb, var(--cds-link-primary) 12%, transparent);
-  color: var(--cds-link-primary);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
 }
 
 .odds-cell.picked {
-  background: var(--cds-interactive);
-  border-color: var(--cds-interactive);
-  color: var(--cds-text-on-color);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-on-accent);
 }
 
 .odds-cell.empty { opacity: 0.35; cursor: default; border-style: dashed; }
@@ -591,7 +656,7 @@ body[data-accent="denim"] { --accent: #3b6ea5; }
 .fixture-calendar-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-3); }
 .fixture-calendar-header strong { font-size: 14px; }
 .fixture-calendar-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); margin-bottom: var(--space-1); }
-.fixture-calendar-weekdays span { text-align: center; font-size: 11px; color: var(--cds-text-helper); font-weight: 600; }
+.fixture-calendar-weekdays span { text-align: center; font-size: 11px; color: var(--text-muted); font-weight: 600; }
 .fixture-calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
 
 .fixture-calendar-cell {
@@ -603,8 +668,9 @@ body[data-accent="denim"] { --accent: #3b6ea5; }
   justify-content: center;
   gap: 2px;
   border: 1px solid transparent;
+  border-radius: var(--radius-sm);
   background: none;
-  color: var(--cds-text-secondary);
+  color: var(--text-secondary);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
@@ -612,12 +678,31 @@ body[data-accent="denim"] { --accent: #3b6ea5; }
 }
 
 .fixture-calendar-cell.empty { cursor: default; visibility: hidden; }
-.fixture-calendar-cell:not(:disabled):hover { border-color: var(--cds-border-strong-01); color: var(--cds-text-primary); }
-.fixture-calendar-cell.today .day-number { color: var(--cds-link-primary); font-weight: 700; }
-.fixture-calendar-cell.selected { background: var(--cds-interactive); border-color: var(--cds-interactive); color: var(--cds-text-on-color); }
-.fixture-calendar-cell.selected .day-number { color: var(--cds-text-on-color); }
+.fixture-calendar-cell:not(:disabled):hover { border-color: var(--border-strong); color: var(--text-primary); }
+.fixture-calendar-cell.today .day-number { color: var(--accent); font-weight: 700; }
+.fixture-calendar-cell.selected { background: var(--accent); border-color: var(--accent); color: var(--accent-on-accent); }
+.fixture-calendar-cell.selected .day-number { color: var(--accent-on-accent); }
 .fixture-calendar-cell:disabled { opacity: 0.3; cursor: default; }
-.fixture-calendar-cell.no-fixtures:not(.selected) { color: var(--cds-text-helper); }
+.fixture-calendar-cell.no-fixtures:not(.selected) { color: var(--text-muted); }
 
-.fixture-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--cds-link-primary); }
-.fixture-calendar-cell.selected .fixture-dot { background: var(--cds-text-on-color); }
+.fixture-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--accent); }
+.fixture-calendar-cell.selected .fixture-dot { background: var(--accent-on-accent); }
+
+// --- Route loading spinner (App.tsx's lazy-route fallback) ------------------
+.route-spinner {
+  display: inline-block;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  animation: route-spinner-spin 0.7s linear infinite;
+}
+
+@keyframes route-spinner-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-spinner { animation: none; }
+}
