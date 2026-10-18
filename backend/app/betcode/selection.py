@@ -897,6 +897,82 @@ def select_legs_by_confidence(
     )
 
 
+def _build_random_pool(
+    db: Session,
+    *,
+    min_probability: float,
+    markets: tuple[str, ...],
+    leagues: tuple[str, ...],
+    league: str | None,
+    days_ahead: int,
+) -> dict[int, list[Leg]]:
+    """Like build_confidence_candidates, but keyed by match_id with every
+    qualifying market kept, not collapsed to the single strongest one.
+
+    build_confidence_candidates picks max(outcomes, key=probability) per
+    match -- the right call for select_legs_by_confidence's ranked slip,
+    where the strongest signal should win. But a wide handicap line
+    (Handicap +3: the home side only has to avoid losing by 4+) clears
+    min_probability on almost every match and is very often *the*
+    highest-probability outcome available, so a random draw sampled from
+    that already-collapsed pool kept landing on "Handicap +3: Home" leg
+    after leg -- technically a random pick of *matches*, but not of
+    *markets*, which is what made a 7-leg slip read as one market repeated
+    seven times. Keeping every qualifying outcome per match here, and
+    picking one at random per match in select_random_legs below, makes the
+    market itself part of the draw.
+    """
+
+    now = dt.datetime.utcnow()
+    cutoff = now + dt.timedelta(days=days_ahead)
+
+    match_query = (
+        select(Match)
+        .where(Match.date >= now, Match.date < cutoff, Match.status == "SCHEDULED")
+        .options(selectinload(Match.home_team), selectinload(Match.away_team))
+    )
+    if leagues:
+        match_query = match_query.where(Match.league.in_(leagues))
+    elif league:
+        match_query = match_query.where(Match.league == league)
+    matches = list(db.execute(match_query).scalars())
+    if not matches:
+        return {}
+
+    by_id = {m.id: m for m in matches}
+    predictions = db.execute(
+        select(Prediction).where(Prediction.match_id.in_(list(by_id))).order_by(Prediction.created_at.asc())
+    ).scalars()
+    latest_prediction: dict[int, Prediction] = {p.match_id: p for p in predictions}
+
+    wanted_markets = markets or DEFAULT_MARKETS
+
+    pool: dict[int, list[Leg]] = {}
+    for match_id, prediction in latest_prediction.items():
+        match = by_id[match_id]
+        outcomes = [
+            o for o in outcomes_from_prediction(prediction)
+            if o.probability >= min_probability and (not wanted_markets or o.market in wanted_markets)
+        ]
+        if not outcomes:
+            continue
+        pool[match_id] = [
+            Leg(
+                match_id=match.id,
+                league=match.league,
+                home_team=match.home_team.name,
+                away_team=match.away_team.name,
+                kickoff=match.date,
+                market=o.market,
+                selection=o.selection,
+                model_probability=o.probability,
+            )
+            for o in outcomes
+        ]
+
+    return pool
+
+
 def select_random_legs(
     db: Session,
     *,
@@ -909,9 +985,12 @@ def select_random_legs(
     days_ahead: int = DEFAULT_DAYS_AHEAD,
     rng: random.Random | None = None,
 ) -> ConfidencePick:
-    """select_legs_by_confidence's random sibling: the same qualifying pool
-    (build_confidence_candidates -- one leg per match, a wanted market,
-    min_probability or better), but drawn rather than ranked. Where
+    """select_legs_by_confidence's random sibling: the same qualifying
+    matches (_build_random_pool -- one *match* per leg, a wanted market,
+    min_probability or better), drawn rather than ranked, with the market
+    itself drawn too -- not always whichever single market happens to be
+    each match's strongest (see _build_random_pool's docstring for why
+    that collapsed every random slip onto one repeated market). Where
     select_legs_by_confidence always returns the same safest-first slip for
     a given pool, this returns a different slip -- a different leg count
     each time too, somewhere between min_legs and max_legs -- every time
@@ -924,11 +1003,11 @@ def select_random_legs(
     """
 
     rng = rng or random.Random()
-    candidates = build_confidence_candidates(
+    pool = _build_random_pool(
         db, min_probability=min_probability, markets=markets, leagues=leagues, league=league, days_ahead=days_ahead,
     )
 
-    if not candidates:
+    if not pool:
         return ConfidencePick(
             legs=[],
             combined_probability=0.0,
@@ -939,18 +1018,23 @@ def select_random_legs(
             ],
         )
 
+    match_ids = list(pool)
     target_size = rng.randint(min_legs, max_legs) if max_legs > min_legs else min_legs
-    size = min(target_size, len(candidates))
-    chosen = rng.sample(candidates, size)
+    size = min(target_size, len(match_ids))
+    chosen_match_ids = rng.sample(match_ids, size)
+    # One market drawn per match, not the match's own strongest -- this is
+    # the actual fix: the same match can supply a Handicap +3 on one draw
+    # and a Double Chance or Match Result on the next.
+    chosen = [rng.choice(pool[match_id]) for match_id in chosen_match_ids]
 
     combined_probability = 1.0
     for leg in chosen:
         combined_probability *= leg.model_probability
 
     warnings: list[str] = []
-    if len(candidates) < min_legs:
+    if len(match_ids) < min_legs:
         warnings.append(
-            f"Only {len(candidates)} matches clear {min_probability:.0%} right now -- fewer than the usual "
+            f"Only {len(match_ids)} matches clear {min_probability:.0%} right now -- fewer than the usual "
             f"{min_legs}-{max_legs}."
         )
     if chosen:
@@ -962,7 +1046,7 @@ def select_random_legs(
     return ConfidencePick(
         legs=chosen,
         combined_probability=combined_probability,
-        candidates_considered=len(candidates),
+        candidates_considered=len(match_ids),
         warnings=warnings,
     )
 

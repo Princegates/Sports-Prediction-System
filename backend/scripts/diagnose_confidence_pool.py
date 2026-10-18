@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
-"""Read-only: run the exact pool scripts/generate_random_picks.py and
-select_legs_by_confidence draw from (app.betcode.selection.
-build_confidence_candidates) against the real database, printing where it
-empties -- scheduled matches in the window (every league, unlike
-diagnose_betcodes.py's single-league default), how many have a Prediction
-row, and for those, the single highest-probability outcome across every
-market this project scores, not just the markets build_confidence_candidates
-itself is willing to use. Changes nothing.
+"""Read-only: run the exact pool select_legs_by_confidence draws from
+(app.betcode.selection.build_confidence_candidates) against the real
+database, printing where it empties -- scheduled matches in the window
+(every league, unlike diagnose_betcodes.py's single-league default), how
+many have a Prediction row, and for those, the single highest-probability
+outcome across every market this project scores, not just the markets
+build_confidence_candidates itself is willing to use.
+
+scripts/generate_random_picks.py draws from a related but different pool
+now (app.betcode.selection._build_random_pool): every qualifying market per
+match, not collapsed to the single strongest one -- the collapse is exactly
+what this script's section 3/4 still shows, and exactly what made a random
+draw keep landing on one repeated market (whichever was almost always each
+match's single strongest, e.g. a wide handicap line) instead of a mix.
+Changes nothing.
 
     python scripts/diagnose_confidence_pool.py --days-ahead 3 --min-probability 0.6
 """
@@ -80,7 +87,7 @@ def main() -> None:
                 f"best_default_markets={(best_default.market, best_default.selection, round(best_default.probability, 3)) if best_default else None}"
             )
 
-        print(f"\n4. build_confidence_candidates() -- the exact function select_random_legs/select_legs_by_confidence call:")
+        print(f"\n4. build_confidence_candidates() -- the exact function select_legs_by_confidence calls:")
         candidates = build_confidence_candidates(
             db, min_probability=args.min_probability, leagues=(), league=args.league, days_ahead=args.days_ahead,
         )

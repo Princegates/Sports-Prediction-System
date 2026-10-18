@@ -649,6 +649,26 @@ def test_random_selection_is_not_always_the_same_slip(db_session, three_matches)
     assert len(draws) > 1
 
 
+def test_random_selection_mixes_markets_not_just_matches(db_session, three_matches):
+    """The bug this fixes: a heavy favourite (these fixtures are 80-90% home
+    favourites) almost always has Handicap +3: Home as its single highest-
+    probability DEFAULT_MARKETS outcome, since it's a very wide line. The old
+    build_confidence_candidates-based draw collapsed each match to only that
+    one strongest outcome before sampling, so a random slip kept coming back
+    as Handicap +3 leg after leg -- randomly drawn matches, but one repeated
+    market, not a mix. Over enough seeds, the market itself should vary too,
+    not just which matches get picked."""
+
+    markets_seen: set[str] = set()
+    for seed in range(30):
+        pick = select_random_legs(
+            db_session, min_probability=0.5, min_legs=3, max_legs=3, rng=random.Random(seed),
+        )
+        markets_seen.update(leg.market for leg in pick.legs)
+
+    assert len(markets_seen) > 1
+
+
 def test_random_selection_notes_it_is_a_draw_not_a_ranking(db_session, three_matches):
     pick = select_random_legs(
         db_session, min_probability=0.5, min_legs=3, max_legs=3, markets=("Match Result",), rng=random.Random(5),
