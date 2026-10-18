@@ -85,13 +85,19 @@ def _ai_picks_leagues(requested: tuple[str, ...]) -> tuple[str, ...]:
 
 
 def _ai_picks_markets(requested: tuple[str, ...]) -> tuple[str, ...]:
-    """Same restriction as _ai_picks_leagues, for markets: "AI Picks" only
-    ever searches DEFAULT_MARKETS, regardless of what a caller asks for --
-    including the "High risk" preset's old trick of explicitly listing every
-    market, which this narrows right back down."""
+    """An explicit request is honored as given -- the frontend's market
+    picker (components/MarketPicker.tsx) now offers the full catalog the
+    outcome registry prices, grouped and searchable, not the old fixed
+    six-market chip row, and a member choosing a market deliberately from
+    that list is a different thing from an unfiltered, un-chosen search
+    silently grabbing every market (the actual problem a now-removed
+    allowlist here used to guard against: an empty request landing on
+    barely-above-stake extremes). That case is still covered -- nothing
+    requested still falls back to DEFAULT_MARKETS, same as
+    build_confidence_candidates/build_candidate_legs already do for any
+    other empty-markets caller."""
 
-    narrowed = tuple(m for m in requested if m in DEFAULT_MARKETS)
-    return narrowed or DEFAULT_MARKETS
+    return requested or DEFAULT_MARKETS
 
 
 @router.post("/suggest", response_model=SuggestedPicksOut)

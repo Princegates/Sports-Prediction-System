@@ -79,6 +79,27 @@ def test_suggest_requires_active_access(headers_no_access):
     assert response.status_code == 403
 
 
+def test_suggest_honors_an_explicit_market_outside_the_default_six(auth_headers, upcoming_match):
+    """The bug this fixed: an explicitly requested market used to be
+    silently narrowed back to DEFAULT_MARKETS (Match Result, Double Chance,
+    Draw No Bet, Total Goals 1.5, Handicap -3/+3) if it wasn't one of those
+    six -- so asking for Both Teams To Score (not in that list) used to
+    come back as a Match Result leg instead. The Markets picker now offers
+    the full catalog, and an explicit, deliberate choice from it should be
+    honored as asked."""
+
+    response = client.post(
+        "/api/betcodes/suggest",
+        json={"min_probability": 0.5, "markets": ["Both Teams To Score"]},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    legs = response.json()["legs"]
+    assert len(legs) == 1
+    assert legs[0]["market"] == "Both Teams To Score"
+    assert legs[0]["selection"] == "Yes"
+
+
 def test_suggest_returns_no_priced_fields(auth_headers, upcoming_match):
     response = client.post("/api/betcodes/suggest", json={"min_probability": 0.5}, headers=auth_headers)
     assert response.status_code == 200, response.text

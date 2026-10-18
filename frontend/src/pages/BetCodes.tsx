@@ -5,6 +5,7 @@ import {
   createAdminPick,
   deleteAdminPick,
   fetchAdminPicksAdmin,
+  fetchOutcomesForLeagues,
   fetchPublicTeaserPickAdmin,
   bookPicks,
   promotePickToPublicTeaser,
@@ -18,13 +19,14 @@ import {
 import { CopyButton } from "../components/CopyButton";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
+import { MarketPicker, type MarketPreset } from "../components/MarketPicker";
 import { MyCodesHistory } from "../components/MyCodesHistory";
 import { SiteCodes } from "../components/SiteCodes";
 import { StickySlipBar } from "../components/StickySlipBar";
 import { useLeague } from "../components/AppShell";
 import { useAuth } from "../lib/AuthContext";
 import { useIsMobile } from "../lib/useIsMobile";
-import type { AdminPick, BetCodePick, PublicTeaserPick, SuggestCriteria, SuggestedLeg, SuggestedPicks } from "../types";
+import type { AdminPick, BetCodePick, MarketSummary, PublicTeaserPick, SuggestCriteria, SuggestedLeg, SuggestedPicks } from "../types";
 
 /** Plain-text description of one selected combo, meant to be pasted
  * wherever the user places bets themselves. No bookmaker code, no odds
@@ -67,30 +69,23 @@ const AI_PICKS_LEAGUES = [
   "Turkish Süper Lig",
 ];
 
-// Matches the backend's own DEFAULT_MARKETS (app.betcode.selection) exactly
-// -- a product choice (fixed 2026-10) that AI Picks only ever searches
-// these six, so there is nothing to offer here beyond them.
-const MARKET_OPTIONS = [
-  { value: "Match Result", label: "Match result (1X2)" },
-  { value: "Double Chance", label: "Double chance" },
-  { value: "Draw No Bet", label: "Draw no bet" },
-  { value: "Total Goals 1.5", label: "Over/Under 1.5 goals" },
-  { value: "Handicap -3", label: "Handicap -3 (home)" },
-  { value: "Handicap +3", label: "Handicap +3 (home)" },
-];
+// The engine's own safe default when nothing is explicitly ticked below --
+// matches the backend's DEFAULT_MARKETS (app.betcode.selection) exactly.
+// Shown as a quick preset, not the ceiling: the picker itself (below) now
+// offers the full catalog the outcome registry prices, same as the Markets
+// page's own dropdown, grouped and searchable rather than two flat chip
+// rows capped at twelve markets total.
+const DEFAULT_MARKET_PRESET: MarketPreset = {
+  label: "Default (match result, double chance, draw no bet, O/U 1.5, handicap ±3)",
+  markets: ["Match Result", "Double Chance", "Draw No Bet", "Total Goals 1.5", "Handicap -3", "Handicap +3"],
+};
 
-// A separate list (and its own filter row below) rather than folded into
-// MARKET_OPTIONS on purpose: the "High risk" preset spreads every entry of
-// MARKET_OPTIONS into its own market filter, and half-time markets being
-// swept into that by simply appending here would silently change what an
-// existing preset generates.
-const HT_MARKET_OPTIONS = [
-  { value: "HT Result", label: "Half-time result (1X2)" },
-  { value: "HT Double Chance", label: "Half-time double chance" },
-  { value: "HT Both Teams To Score", label: "Half-time BTTS" },
-  { value: "HT Total Goals 0.5", label: "HT Over/Under 0.5 goals" },
-  { value: "HT Total Goals 1.5", label: "HT Over/Under 1.5 goals" },
-  { value: "HT Correct Score", label: "Half-time correct score" },
+const AI_MARKET_PRESETS: MarketPreset[] = [
+  DEFAULT_MARKET_PRESET,
+  { label: "1X2 + GG/NG + O/U 2.5", markets: ["Match Result", "Both Teams To Score", "Total Goals 2.5"] },
+  { label: "Goal lines", markets: ["Total Goals 1.5", "Total Goals 2.5", "Total Goals 3.5"] },
+  { label: "Half-time", markets: ["HT Result", "HT Total Goals 0.5", "HT Total Goals 1.5"] },
+  { label: "Corners", markets: ["Most Corners", "Total Corners 9.5"] },
 ];
 
 const ACCURACY_OPTIONS = [
@@ -118,10 +113,10 @@ type RiskLevel = "low" | "medium" | "high";
  * legs isn't a separate lever the way it was when a leg count doubled as
  * "keep searching until the price target is hit" -- here it's just how
  * many of the safest qualifying matches to show). Markets aren't a risk
- * lever any more: AI Picks only ever searches MARKET_OPTIONS' fixed six
- * (DEFAULT_MARKETS on the backend, same list) regardless of preset, so
- * every preset's own `markets` field below is the same "leave it at the
- * engine's default" empty list.
+ * lever either: every preset below leaves `markets` empty, which the
+ * engine takes as its own curated default (DEFAULT_MARKET_PRESET above) --
+ * the full catalog is there to explore by hand in the Markets step, not
+ * folded into a one-click preset.
  */
 const RISK_PRESETS: Record<
   RiskLevel,
@@ -189,6 +184,25 @@ export function BetCodes() {
   // cleared the moment any control is touched by hand, so the highlighted
   // chip never claims a match that no longer holds.
   const [activeRisk, setActiveRisk] = useState<RiskLevel | null>(null);
+
+  // Every market the system currently prices for the leagues in scope, for
+  // the Markets step's picker -- same source and shape the Markets page's
+  // own dropdown uses (one tiny-cap call per league, only the `markets`
+  // summary is read), scoped to whichever of the 8 AI Picks leagues are
+  // selected (all 8 when none are, matching "none selected = all 8" below).
+  const [marketCatalog, setMarketCatalog] = useState<MarketSummary[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetchOutcomesForLeagues(selectedLeagues.length > 0 ? selectedLeagues : AI_PICKS_LEAGUES, {
+      days_ahead: 21,
+      limit_per_league: 1,
+    })
+      .then((d) => !cancelled && setMarketCatalog(d.markets))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedLeagues]);
 
   const isMobile = useIsMobile();
   const [wizardStep, setWizardStep] = useState(0);
@@ -335,11 +349,6 @@ export function BetCodes() {
     setActiveRisk(null);
     setFromExternalPicks(false);
     return runPreview(() => suggestRandomPicks({ leagues: selectedLeagues, days_ahead: daysAhead }));
-  }
-
-  function toggleMarket(value: string) {
-    setActiveRisk(null);
-    setMarkets((m) => (m.includes(value) ? m.filter((v) => v !== value) : [...m, value]));
   }
 
   // Drops one leg from the current preview -- client-side only, no new
@@ -668,45 +677,24 @@ export function BetCodes() {
         )}
 
         {(!isMobile || step === 2) && (
-          <>
-            <div style={{ marginTop: isMobile ? 0 : 14 }}>
-              <div className="meta" style={{ marginBottom: 6 }}>
-                Markets{" "}
-                <span style={{ fontWeight: 400 }}>
-                  (none selected = match result, double chance, BTTS, draw no bet, and the three main goal lines)
-                </span>
-              </div>
-              <div className="filter-bar">
-                {MARKET_OPTIONS.map((m) => (
-                  <button
-                    key={m.value}
-                    className={`filter-chip${markets.includes(m.value) ? " active" : ""}`}
-                    onClick={() => toggleMarket(m.value)}
-                  >
-                    {m.label}
-                  </button>
-                ))}
-              </div>
+          <div style={{ marginTop: isMobile ? 0 : 14 }}>
+            <div className="meta" style={{ marginBottom: 6 }}>
+              Markets{" "}
+              <span style={{ fontWeight: 400 }}>
+                (every market the system currently prices -- search or browse by group; none selected = the default six)
+              </span>
             </div>
-
-            <div style={{ marginTop: 14 }}>
-              <div className="meta" style={{ marginBottom: 6 }}>
-                Half-time markets{" "}
-                <span style={{ fontWeight: 400 }}>(selecting any of these searches half-time outcomes instead)</span>
-              </div>
-              <div className="filter-bar">
-                {HT_MARKET_OPTIONS.map((m) => (
-                  <button
-                    key={m.value}
-                    className={`filter-chip${markets.includes(m.value) ? " active" : ""}`}
-                    onClick={() => toggleMarket(m.value)}
-                  >
-                    {m.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </>
+            <MarketPicker
+              markets={marketCatalog}
+              selected={markets}
+              onChange={(next) => {
+                setActiveRisk(null);
+                setMarkets(next);
+              }}
+              presets={AI_MARKET_PRESETS}
+              emptyLabel="Default markets"
+            />
+          </div>
         )}
 
         {isMobile && step === 3 && (
@@ -720,11 +708,7 @@ export function BetCodes() {
               <li>
                 Up to {maxLegs} legs, {(minProbability * 100).toFixed(0)}%+ accuracy each
               </li>
-              <li>
-                {markets.length === 0
-                  ? "Default markets (match result, double chance, BTTS, draw no bet, main goal lines)"
-                  : markets.join(", ")}
-              </li>
+              <li>{markets.length === 0 ? DEFAULT_MARKET_PRESET.label : markets.join(", ")}</li>
             </ul>
           </div>
         )}
