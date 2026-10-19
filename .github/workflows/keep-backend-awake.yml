@@ -1,0 +1,36 @@
+# Render's free tier sleeps the backend after ~15 minutes of no inbound
+# traffic and takes 50+ seconds to wake on the next request (see
+# render.yaml's own comment). A sleeping backend isn't just slow for a
+# visitor who happens to hit it first -- it's also the likely reason
+# Google's crawler was indexing an empty page: when Googlebot's JS-
+# rendering pass tries to fetch live data, a cold backend can easily blow
+# past its render budget before the real content ever shows up.
+#
+# This can't be solved from inside the backend itself (a sleeping process
+# can't run its own timer to wake itself -- the whole point of "sleep" is
+# that the OS suspends it until inbound traffic arrives), so it has to
+# come from outside, on a schedule.
+#
+# Caveat, from this repo's own experience: GitHub Actions' cron schedules
+# have been observed landing hours late on this project (see
+# app/random_picks.py's docstring on why the daily picks draw moved to an
+# in-process timer instead of relying on a scheduled workflow for that).
+# A ping every 10 minutes here is still far better than no keep-alive at
+# all, but if gaps keep showing up in practice, a dedicated external
+# uptime pinger (UptimeRobot, cron-job.org, etc. -- free, hits this same
+# URL) is the more reliable fix and takes about two minutes to set up.
+name: Keep backend awake
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+
+    steps:
+      - name: Ping health endpoint
+        run: curl -fsS --max-time 90 https://sports-prediction-api-8csr.onrender.com/api/health

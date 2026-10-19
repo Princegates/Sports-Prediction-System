@@ -120,6 +120,20 @@ Without it every deep link (`/how-it-works`, a shared match URL) 404s on refresh
 
 Cloudflare Pages has unlimited bandwidth on the free plan and never sleeps.
 
+`npm run build` also runs a `postbuild` step (`scripts/prerender.mjs`) that
+opens each public marketing page in a real headless browser after the build
+and overwrites that route's HTML with what actually rendered -- otherwise
+every route ships as `<div id="root"></div>` and nothing else until JS runs,
+which is close to invisible to a search crawler. This is why `playwright` is
+a frontend devDependency despite being a backend-shaped tool, and why a
+Cloudflare Pages build here takes noticeably longer than a bare `vite build`
+(`npm install` downloads a Chromium binary). If a build ever times out or the
+Chromium download fails in Cloudflare's build environment, the postbuild step
+fails soft -- it logs a warning and leaves `dist/` as the plain, un-prerendered
+build output rather than failing the deploy, so this is never what breaks a
+release; worst case is a silent return to today's empty-shell pages until
+it's fixed.
+
 ---
 
 ## Option B — Render + Neon + Cloudflare Pages (no credit card)
