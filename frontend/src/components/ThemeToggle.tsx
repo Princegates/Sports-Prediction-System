@@ -6,12 +6,12 @@ function currentTheme(): "dark" | "light" {
   return document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
 }
 
-/** A visitor's own day/night choice for the public pages, independent of
- * the admin's site-wide default theme (see main.tsx, which always applies
- * this over the admin default once it's been set, and never lets a later
- * branding fetch clobber it). Persisted so it survives a reload; the
- * logged-in app keeps the admin default only -- this is public-pages only,
- * same as the request that added it. */
+/** A visitor's own day/night choice, independent of the admin's site-wide
+ * default theme (see main.tsx, which always applies this over the admin
+ * default once it's been set, and never lets a later branding fetch
+ * clobber it). Persisted so it survives a reload, and shared across public
+ * pages (PublicShell) and the logged-in app (AppShell) -- one toggle,
+ * one stored choice, wherever it's mounted. */
 export function ThemeToggle() {
   const [theme, setTheme] = useState<"dark" | "light">(currentTheme);
 

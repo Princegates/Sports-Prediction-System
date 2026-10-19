@@ -14,11 +14,11 @@ import "./styles.css";
 // Accent is admin-controlled, site-wide, with no personal override -- a
 // separate axis from day/night theme, picked in Settings > Appearance from
 // the 20 body[data-accent="..."] themes custom.scss defines. Theme (day/
-// night) is: a visitor's own choice,
-// made with ThemeToggle on any public page, is stored under
-// THEME_OVERRIDE_KEY and always wins over the admin's site-wide default
-// once set -- checked first here, and again after the branding fetch below
-// so a slow response can't clobber it.
+// night) is: a visitor's own choice, made with ThemeToggle on any public
+// page or in the logged-in app, is stored under THEME_OVERRIDE_KEY and
+// always wins over the admin's site-wide default once set -- checked
+// first here, and again after the branding fetch below so a slow
+// response can't clobber it.
 //
 // A cached copy of the last-fetched branding applies immediately regardless
 // (avoids a flash of the compiled-in default on repeat visits, and covers a

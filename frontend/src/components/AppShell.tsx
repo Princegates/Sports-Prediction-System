@@ -4,6 +4,7 @@ import { Search, UserAvatar, SettingsIcon, Locked, UserFollow } from "./icons";
 import { SearchCommand } from "./SearchCommand";
 import { ChatDock } from "./ChatDock";
 import { MobileBottomNav } from "./MobileBottomNav";
+import { ThemeToggle } from "./ThemeToggle";
 import { useAuth } from "../lib/AuthContext";
 
 const LEAGUES = [
@@ -219,6 +220,8 @@ export function AppShell() {
         )}
 
         <div className="topbar-actions">
+          <ThemeToggle />
+
           <button type="button" className="topbar-icon-btn" aria-label="Search teams" onClick={() => setSearchOpen(true)}>
             <Search size={18} />
           </button>
