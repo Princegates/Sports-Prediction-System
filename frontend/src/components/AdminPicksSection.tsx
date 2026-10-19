@@ -39,7 +39,7 @@ export function AdminPicksSection({ picks: allPicks }: { picks: AdminPick[] | nu
         <h2>Admin Picks</h2>
         <span className="meta">Multi-leg slips our team has put together, risk factor included</span>
       </div>
-      <div className="grid">
+      <div className="picks-grid">
         {picks.map((pick) => (
           <AdminPickCard key={pick.id} pick={pick} whatsapp={whatsapp} />
         ))}

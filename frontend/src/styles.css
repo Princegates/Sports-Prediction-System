@@ -905,6 +905,59 @@ h1, h2, h3, h4 {
   gap: var(--space-4);
 }
 
+/* AdminPicksSection / WeeklyPicksSection / RandomPicksSection's own grid --
+   same base as .grid, but forced to 2 columns under ~700px (every phone)
+   instead of .grid's usual single-column collapse there. Scoped to just
+   these "featured slip" cards rather than changing .grid itself, since a
+   PredictionCard's probability bars (Dashboard, Live) would turn unreadable
+   at half a phone's width -- a 9-15 leg Admin Pick card can afford it
+   because its content is already a plain vertical list (LedgerRow), which
+   degrades by wrapping text, not by squeezing a chart. */
+.picks-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--space-4);
+}
+
+@media (max-width: 699px) {
+  .picks-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-3);
+  }
+
+  .picks-grid .match-card {
+    padding: var(--space-3);
+  }
+
+  .picks-grid .ledger-row {
+    padding: 8px 0;
+  }
+
+  .picks-grid .ledger-row-index {
+    display: none;
+  }
+
+  .picks-grid .ledger-row-top {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+
+  .picks-grid .ledger-row-teams {
+    font-size: 12px;
+  }
+
+  .picks-grid .ledger-row-meta {
+    font-size: 10.5px;
+  }
+
+  .picks-grid .result-tag,
+  .picks-grid .risk-tag {
+    font-size: 9px;
+    padding: 2px 6px;
+  }
+}
+
 .card {
   background: var(--bg-surface);
   border: 1px solid var(--border);

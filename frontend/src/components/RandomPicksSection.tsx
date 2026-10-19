@@ -59,7 +59,7 @@ export function RandomPicksSection({ picks: allPicks }: { picks: AdminPick[] | n
               <h2>{title}</h2>
               <span className="meta">{blurb}</span>
             </div>
-            <div className="grid">
+            <div className="picks-grid">
               {group.map((pick) => (
                 <div key={pick.id}>
                   <AdminPickCard pick={pick} hideRisk />

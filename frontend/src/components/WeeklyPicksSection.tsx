@@ -61,7 +61,7 @@ export function WeeklyPicksSection({ picks: allPicks }: { picks: AdminPick[] | n
           10-leg accumulators across every competition -- Low (5-10 odds), Medium (11-20) and High (21-30)
         </span>
       </div>
-      <div className="grid">
+      <div className="picks-grid">
         {picks.map((pick) => (
           <div key={pick.id}>
             <AdminPickCard pick={pick} whatsapp={whatsapp} riskOverride={tierOf(pick) ?? undefined} />
