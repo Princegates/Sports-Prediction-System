@@ -500,7 +500,13 @@ h1, h2, h3, h4 {
 
 .market-picker-panel {
   position: absolute;
-  z-index: 40;
+  /* The chat launcher (.chat-fab/.chat-dock) is fixed-position at z-index
+     8500 and defaults to the bottom-right corner -- on a narrow viewport
+     that's exactly where this popover opens too, so without outranking it
+     here the launcher visually sits on top of (and blocks taps on) options
+     near the bottom of an open picker. 9000 matches the other fixed
+     overlay that already has to clear the chat launcher (.cookie-banner). */
+  z-index: 9000;
   top: calc(100% + 6px);
   left: 0;
   width: 360px;
