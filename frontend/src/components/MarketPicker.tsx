@@ -18,6 +18,12 @@ interface Props {
   /** What the button says with nothing ticked -- the list view treats that
    * as "every market", the coupon as "choose some". */
   emptyLabel?: string;
+  /** True while `markets` itself is still loading -- an empty `markets`
+   * reads identically whether nothing has been priced yet or the catalog
+   * fetch just hasn't resolved (a cold-starting free-tier backend can take
+   * 30-50s), so without this an in-flight load looks exactly like "no
+   * data", not "loading". */
+  loading?: boolean;
 }
 
 const MAIN_MARKETS = ["Match Result", "Double Chance", "Both Teams To Score", "Draw No Bet"];
@@ -36,7 +42,9 @@ function categoryOf(market: string): string {
   return "Scores & margins";
 }
 
-export function MarketPicker({ markets, selected, onChange, presets = [], emptyLabel = "Choose markets" }: Props) {
+export function MarketPicker({
+  markets, selected, onChange, presets = [], emptyLabel = "Choose markets", loading = false,
+}: Props) {
   const items = useMemo(
     () => markets.map((m) => ({ key: m.market, label: m.market, group: categoryOf(m.market) })),
     [markets],
@@ -51,9 +59,13 @@ export function MarketPicker({ markets, selected, onChange, presets = [], emptyL
       onChange={onChange}
       presets={pickerPresets}
       emptyLabel={emptyLabel}
-      searchPlaceholder={`Search ${markets.length} markets`}
+      searchPlaceholder={loading ? "Loading markets…" : `Search ${markets.length} markets`}
       ariaLabel="Choose markets"
-      noItemsLabel="No upcoming match has been priced yet."
+      noItemsLabel={
+        loading
+          ? "Loading markets -- the backend can take up to a minute to wake up if it's been idle."
+          : "No upcoming match has been priced yet."
+      }
     />
   );
 }

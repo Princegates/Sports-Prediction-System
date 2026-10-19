@@ -223,11 +223,14 @@ export function BetCodes() {
   // read), scoped to whichever leagues are selected (every league when
   // none are).
   const [marketCatalog, setMarketCatalog] = useState<MarketSummary[]>([]);
+  const [marketCatalogLoading, setMarketCatalogLoading] = useState(true);
   useEffect(() => {
     let cancelled = false;
+    setMarketCatalogLoading(true);
     fetchOutcomesForLeagues(selectedLeagues, { days_ahead: 21, limit_per_league: 1 })
       .then((d) => !cancelled && setMarketCatalog(d.markets))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => !cancelled && setMarketCatalogLoading(false));
     return () => {
       cancelled = true;
     };
@@ -758,6 +761,7 @@ export function BetCodes() {
               }}
               presets={AI_MARKET_PRESETS}
               emptyLabel="Default markets"
+              loading={marketCatalogLoading}
             />
             {markets.length > 0 && (
               <label
