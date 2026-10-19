@@ -238,6 +238,57 @@ def test_matches_without_a_prediction_are_skipped_not_generated(db_session, auth
     assert db_session.query(Prediction).filter_by(match_id=bare.id).count() == 0
 
 
+def test_without_a_market_filter_the_cap_still_applies(db_session, auth_headers, fixtures):
+    """limit_per_league bounds the result even with no market filter at all
+    -- the "every league, every market" shape AI Generation's "All leagues"
+    preset exercises, and the one the bounded-heap rewrite has to get right
+    without ever materializing every qualifying outcome at once."""
+
+    body = _get(auth_headers, days_ahead=7, limit_per_league=3)
+    epl = next(lg for lg in body["leagues"] if lg["league"] == "English Premier League")
+    assert len(epl["outcomes"]) == 3
+    # The three kept are the three highest-probability outcomes available,
+    # not an arbitrary subset.
+    probs = [o["probability"] for o in epl["outcomes"]]
+    assert probs == sorted(probs, reverse=True)
+    assert probs[0] >= 0.78  # the Over 1.5 outcome every fixture carries
+
+
+def test_a_probability_tie_keeps_the_earlier_kickoff(db_session, auth_headers, fixtures):
+    """Two outcomes at the exact same probability -- the bounded heap has to
+    break the tie exactly like the original sort-then-slice did (earliest
+    kickoff survives), not by whichever happened to be seen first."""
+
+    home = Team(name="Wolves", league="English Premier League", aliases=[])
+    away = Team(name="Burnley", league="English Premier League", aliases=[])
+    db_session.add_all([home, away])
+    db_session.commit()
+    db_session.refresh(home)
+    db_session.refresh(away)
+
+    # A later match than every fixture above, same market/selection/
+    # probability (Match Result Home Win isn't shared across fixtures at
+    # the exact same value by default, so this pins it explicitly).
+    later = Match(
+        league="English Premier League", season="2025-26", date=BASE + dt.timedelta(days=6),
+        home_team_id=home.id, away_team_id=away.id, status="SCHEDULED",
+    )
+    db_session.add(later)
+    db_session.commit()
+    db_session.refresh(later)
+    db_session.add(_prediction(later.id))  # same home=0.55 as every other fixture
+    db_session.commit()
+
+    body = _get(auth_headers, days_ahead=7, market="Match Result", limit_per_league=1)
+    epl = next(lg for lg in body["leagues"] if lg["league"] == "English Premier League")
+    assert len(epl["outcomes"]) == 1
+    kept = epl["outcomes"][0]
+    assert kept["probability"] == 0.55
+    # Three matches tie at 0.55 (both original EPL fixtures plus this one) --
+    # the earliest kickoff (day 1's Arsenal-Chelsea) has to be the survivor.
+    assert kept["match_id"] == fixtures[0].id
+
+
 def test_query_count_does_not_grow_with_the_number_of_matches(db_session, auth_headers, fixtures):
     """The guard that matters. A per-match fetch is what cost this project a
     month of database egress in two nights."""

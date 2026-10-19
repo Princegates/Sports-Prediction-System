@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import datetime as dt
+import heapq
+import itertools
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import or_, select
@@ -220,6 +222,20 @@ def browse_outcomes(
     With several ``market`` values, ``limit_per_league`` caps each market
     separately within a league, so one market's near-certain outcomes (a 99%
     Under 7.5) can't push another market's rows out of a shared cap.
+
+    **Kept rows are bounded as outcomes are seen, not after collecting
+    everything.** The obvious way to apply ``limit_per_league`` is to build
+    the full list of qualifying outcomes per league, sort, then slice -- but
+    with no league filter and no market filter (AI Generation's "All
+    leagues" preset, searching every market), that list is every outcome of
+    every match in the window, held in memory all at once regardless of how
+    small ``limit_per_league`` actually is. A bounded min-heap per league (or
+    per league+market, when markets are filtered) keeps only the
+    ``limit_per_league`` strongest candidates as they're seen instead, so
+    memory scales with leagues x markets x limit_per_league -- never with
+    how many matches qualify. This is what cost this project an OOM crash on
+    a sibling endpoint before it was given the same treatment (see
+    routes_matches.py's days_ahead bound).
     """
 
     now = dt.datetime.utcnow()
@@ -250,13 +266,30 @@ def browse_outcomes(
     wanted_confidence = confidence.upper() if confidence else None
     wanted_markets = set(market) if market else None
 
-    per_league: dict[str, list[OutcomeOut]] = {}
+    # Keyed by (league, market) when markets are filtered -- a separate
+    # bounded heap per market, matching the existing "each ticked market
+    # gets its own cap" rule. Keyed by (league, None) otherwise -- one
+    # bounded heap per league, matching the existing "share the cap across
+    # every market" rule for an unfiltered browse. Each heap entry is
+    # (probability, -kickoff_ordinal, tiebreak, row): a min-heap evicts the
+    # lowest-probability entry first, and among equal probabilities the one
+    # with the *latest* kickoff (so, matching the original
+    # sort-by-(-probability, kickoff) exactly, the earliest kickoff is what
+    # survives a tie). `tiebreak` is a monotonic counter purely so heapq
+    # never has to compare two OutcomeOut rows directly, which aren't
+    # orderable -- it's never meant to influence which entries are kept.
+    heaps: dict[tuple[str, str | None], list[tuple[float, float, int, OutcomeOut]]] = {}
+    tiebreak = itertools.count()
     matches_with_outcomes: dict[str, set[int]] = {}
     # Dicts rather than sets so markets and their selections keep the
     # registry's own order (Home Win, Draw, Away Win; Over before Under) --
     # the Markets page lays its coupon columns out in exactly this order.
     market_selections: dict[str, dict[str, None]] = {}
     market_groups: dict[str, str] = {}
+    # Every qualifying outcome counted once, regardless of whether it ends
+    # up kept by a heap's cap -- this is "how many exist", not "how many are
+    # shown", so it has to be tallied independently of the bounded heaps.
+    market_total_count: dict[str, int] = {}
 
     for match_id, prediction in latest.items():
         match = by_id[match_id]
@@ -271,38 +304,40 @@ def browse_outcomes(
 
             market_selections.setdefault(outcome.market, {})[outcome.selection] = None
             market_groups[outcome.market] = outcome.mutually_exclusive_group
-
-            per_league.setdefault(match.league, []).append(
-                OutcomeOut(
-                    match_id=match.id,
-                    league=match.league,
-                    home_team=match.home_team.name,
-                    away_team=match.away_team.name,
-                    kickoff=match.date,
-                    market=outcome.market,
-                    selection=outcome.selection,
-                    probability=outcome.probability,
-                    confidence=prediction.confidence,
-                    data_quality_score=prediction.data_quality_score,
-                    model_agreement_score=prediction.model_agreement_score,
-                    group=outcome.mutually_exclusive_group,
-                    definition=outcome.definition,
-                )
-            )
+            market_total_count[outcome.market] = market_total_count.get(outcome.market, 0) + 1
             matches_with_outcomes.setdefault(match.league, set()).add(match.id)
 
+            row = OutcomeOut(
+                match_id=match.id,
+                league=match.league,
+                home_team=match.home_team.name,
+                away_team=match.away_team.name,
+                kickoff=match.date,
+                market=outcome.market,
+                selection=outcome.selection,
+                probability=outcome.probability,
+                confidence=prediction.confidence,
+                data_quality_score=prediction.data_quality_score,
+                model_agreement_score=prediction.model_agreement_score,
+                group=outcome.mutually_exclusive_group,
+                definition=outcome.definition,
+            )
+
+            heap_key = (match.league, outcome.market) if wanted_markets else (match.league, None)
+            heap = heaps.setdefault(heap_key, [])
+            entry = (outcome.probability, -match.date.timestamp(), next(tiebreak), row)
+            if len(heap) < limit_per_league:
+                heapq.heappush(heap, entry)
+            elif entry > heap[0]:
+                heapq.heapreplace(heap, entry)
+            # else: weaker than everything already kept for this key -- drop it.
+
     leagues = []
-    for name in sorted(per_league):
-        ranked = sorted(per_league[name], key=lambda o: (-o.probability, o.kickoff))
-        if wanted_markets:
-            kept: dict[str, int] = {}
-            rows = []
-            for o in ranked:
-                if kept.get(o.market, 0) < limit_per_league:
-                    kept[o.market] = kept.get(o.market, 0) + 1
-                    rows.append(o)
-        else:
-            rows = ranked[:limit_per_league]
+    for name in sorted(matches_with_outcomes):
+        kept_rows = [
+            entry[-1] for key, heap in heaps.items() if key[0] == name for entry in heap
+        ]
+        rows = sorted(kept_rows, key=lambda o: (-o.probability, o.kickoff))
         leagues.append(LeagueOutcomesOut(league=name, matches=len(matches_with_outcomes[name]), outcomes=rows))
 
     # A group appearing on more than one market name -- "Total Goals 2.5" and
@@ -310,9 +345,6 @@ def browse_outcomes(
     # within each. See NOT_A_FULL_PARTITION_GROUPS for which groups' selections
     # don't actually add up to 100% (Correct Score's truncated top-N, and
     # every Double-Chance-flavored union).
-    #
-    # Correct-score selections are each match's own top-N scorelines, so
-    # first-seen order is just whichever match came first -- sort those.
     markets = [
         MarketOut(
             market=name,
@@ -322,7 +354,7 @@ def browse_outcomes(
                 if market_groups[name] in ("correct_score", "ht_correct_score")
                 else list(selections)
             ),
-            outcomes=sum(1 for rows in per_league.values() for o in rows if o.market == name),
+            outcomes=market_total_count[name],
             mutually_exclusive=market_groups[name] not in NOT_A_FULL_PARTITION_GROUPS,
         )
         for name, selections in market_selections.items()
