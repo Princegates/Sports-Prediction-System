@@ -93,7 +93,10 @@ const AI_MARKET_PRESETS: MarketPreset[] = [
   { label: "Corners", markets: ["Most Corners", "Total Corners 9.5"] },
 ];
 
-const AI_LEAGUE_PRESETS = [{ label: "Big 8", keys: AI_PICKS_LEAGUES }];
+const AI_LEAGUE_PRESETS = [
+  { label: "Big 8", keys: AI_PICKS_LEAGUES },
+  { label: "All leagues", keys: LEAGUES },
+];
 
 const ACCURACY_OPTIONS = [
   { value: 0.3, label: "30%+" },
