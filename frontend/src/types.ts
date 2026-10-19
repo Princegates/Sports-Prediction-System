@@ -597,6 +597,13 @@ export interface SuggestCriteria {
    * range. ISO date strings (YYYY-MM-DD). */
   date_from?: string | null;
   date_to?: string | null;
+  /** Default (false/omitted): each match contributes its single strongest
+   * qualifying outcome, regardless of which selected market that is. True:
+   * every market in `markets` gets its own leg, each on a different match,
+   * whenever the data allows -- for someone who ticked several markets
+   * specifically to see all of them on the slip. Only meaningful with a
+   * non-empty `markets`. */
+  feature_all_markets?: boolean;
 }
 
 /** What POST /api/betcodes/suggest-random searches with -- min_legs/max_legs

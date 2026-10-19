@@ -179,6 +179,13 @@ export function BetCodes() {
   const location = useLocation();
   const [maxLegs, setMaxLegs] = useState(DEFAULT_MAX_LEGS);
   const [markets, setMarkets] = useState<string[]>([]);
+  // Off by default: each match contributes its single strongest qualifying
+  // outcome, regardless of which selected market that is. On: every market
+  // ticked above gets its own leg, on its own match, whenever the data
+  // allows -- for someone who ticked several markets specifically to see
+  // all of them on the slip, not just whichever one wins each match's own
+  // probability contest. Only meaningful with a non-empty `markets`.
+  const [featureAllMarkets, setFeatureAllMarkets] = useState(false);
   const [minProbability, setMinProbability] = useState(0.65);
   const [daysAhead, setDaysAhead] = useState(7);
   // Which leagues to search -- initialized from the top bar's single-league
@@ -312,6 +319,7 @@ export function BetCodes() {
       days_ahead: daysAhead,
       date_from: selectedDate,
       date_to: selectedDate,
+      feature_all_markets: featureAllMarkets,
       ...overrides,
     };
   }
@@ -355,10 +363,13 @@ export function BetCodes() {
     setMaxLegs(p.maxLegs);
     setMinProbability(p.minProbability);
     setMarkets(p.markets);
+    setFeatureAllMarkets(false);
     setActiveRisk(risk);
     setFromExternalPicks(false);
     return runPreview(() =>
-      suggestPicks(criteria({ max_legs: p.maxLegs, min_probability: p.minProbability, markets: p.markets })),
+      suggestPicks(
+        criteria({ max_legs: p.maxLegs, min_probability: p.minProbability, markets: p.markets, feature_all_markets: false }),
+      ),
     );
   }
 
@@ -748,6 +759,24 @@ export function BetCodes() {
               presets={AI_MARKET_PRESETS}
               emptyLabel="Default markets"
             />
+            {markets.length > 0 && (
+              <label
+                style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", marginTop: 10 }}
+              >
+                <input
+                  type="checkbox"
+                  checked={featureAllMarkets}
+                  onChange={(e) => {
+                    setActiveRisk(null);
+                    setFeatureAllMarkets(e.target.checked);
+                  }}
+                />
+                <span style={{ fontSize: 13.5 }}>
+                  Feature every selected market on the slip, one leg each -- instead of just whichever market
+                  wins each match's own probability contest
+                </span>
+              </label>
+            )}
           </div>
         )}
 
@@ -768,7 +797,10 @@ export function BetCodes() {
               <li>
                 Up to {maxLegs} legs, {(minProbability * 100).toFixed(0)}%+ accuracy each
               </li>
-              <li>{markets.length === 0 ? DEFAULT_MARKET_PRESET.label : markets.join(", ")}</li>
+              <li>
+                {markets.length === 0 ? DEFAULT_MARKET_PRESET.label : markets.join(", ")}
+                {featureAllMarkets && markets.length > 0 ? " -- one leg each" : ""}
+              </li>
             </ul>
           </div>
         )}

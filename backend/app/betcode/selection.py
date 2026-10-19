@@ -938,6 +938,119 @@ def select_legs_by_confidence(
     )
 
 
+def select_legs_featuring_every_market(
+    db: Session,
+    *,
+    min_probability: float = DEFAULT_MIN_PROBABILITY,
+    max_legs: int = DEFAULT_MAX_LEGS,
+    markets: tuple[str, ...] = (),
+    leagues: tuple[str, ...] = (),
+    league: str | None = None,
+    days_ahead: int = DEFAULT_DAYS_AHEAD,
+    date_from: dt.date | None = None,
+    date_to: dt.date | None = None,
+) -> ConfidencePick:
+    """select_legs_by_confidence collapses each match to its single
+    strongest qualifying outcome, regardless of which wanted market that
+    is -- a match where Match Result clears 85% never contributes its own
+    60% BTTS leg instead, even when BTTS was one of the markets explicitly
+    asked for. This is the opposite trade: every wanted market gets its own
+    leg, each on its own match, whenever the data allows -- for someone who
+    ticked several markets specifically because they want all of them
+    represented on the slip, not just whichever one keeps winning each
+    match's own probability contest.
+
+    Empty ``markets`` has nothing to feature, so this is identical to
+    select_legs_by_confidence in that case.
+
+    Still safest-first, just applied per market instead of per match: each
+    wanted market's own strongest available leg is taken, in order of that
+    market's own best probability (highest first) -- so when two wanted
+    markets' strongest legs land on the same match, the stronger market
+    keeps it and the weaker one falls back to its next-best match rather
+    than losing out by coincidence of selection order. A market left with
+    no qualifying, not-yet-used match is skipped and named in a warning,
+    never forced in below the accuracy floor or onto a match another
+    market already took. More wanted markets than ``max_legs`` allows means
+    only that many -- the ones with the strongest available leg -- are
+    featured; the rest are named in a warning too.
+    """
+
+    if not markets:
+        return select_legs_by_confidence(
+            db, min_probability=min_probability, max_legs=max_legs, markets=markets,
+            leagues=leagues, league=league, days_ahead=days_ahead, date_from=date_from, date_to=date_to,
+        )
+
+    pool = _build_random_pool(
+        db, min_probability=min_probability, markets=markets, leagues=leagues, league=league,
+        days_ahead=days_ahead, date_from=date_from, date_to=date_to,
+    )
+
+    legs_by_market: dict[str, list[Leg]] = {}
+    for match_legs in pool.values():
+        for leg in match_legs:
+            legs_by_market.setdefault(leg.market, []).append(leg)
+    for legs in legs_by_market.values():
+        legs.sort(key=lambda l: -l.model_probability)
+
+    ranked = sorted(
+        (m for m in markets if m in legs_by_market),
+        key=lambda m: -legs_by_market[m][0].model_probability,
+    )
+    no_data = [m for m in markets if m not in legs_by_market]
+    dropped_for_cap = ranked[max_legs:]
+    ranked = ranked[:max_legs]
+
+    chosen: list[Leg] = []
+    used_matches: set[int] = set()
+    no_available_match: list[str] = []
+    for market in ranked:
+        leg = next((l for l in legs_by_market[market] if l.match_id not in used_matches), None)
+        if leg is None:
+            no_available_match.append(market)
+            continue
+        chosen.append(leg)
+        used_matches.add(leg.match_id)
+
+    chosen.sort(key=lambda leg: -leg.model_probability)
+
+    combined_probability = 1.0
+    for leg in chosen:
+        combined_probability *= leg.model_probability
+
+    warnings: list[str] = []
+    if not pool:
+        warnings.append(
+            f"No scheduled match {_window_description(days_ahead, date_from, date_to)} clears "
+            f"{min_probability:.0%} model probability in any of the selected markets."
+        )
+    skipped = no_data + no_available_match
+    if skipped:
+        warnings.append(
+            f"Couldn't feature: {', '.join(skipped)} -- no qualifying match available for it "
+            "without reusing a match another selected market already took."
+        )
+    if dropped_for_cap:
+        warnings.append(
+            f"{len(markets)} markets selected but the leg cap is {max_legs} -- "
+            f"{', '.join(dropped_for_cap)} didn't make the cut."
+        )
+    if chosen:
+        drop = 1.0 - combined_probability
+        warnings.append(
+            f"Combined probability is {combined_probability:.0%} -- stacking {len(chosen)} legs "
+            f"multiplies the risk by about {drop:.0%}, it doesn't add the confidence."
+        )
+
+    return ConfidencePick(
+        legs=chosen,
+        combined_probability=combined_probability,
+        candidates_considered=len(pool),
+        warnings=warnings,
+    )
+
+
 def _build_random_pool(
     db: Session,
     *,

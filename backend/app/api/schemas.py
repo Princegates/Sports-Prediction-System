@@ -800,6 +800,15 @@ class SuggestCriteriaIn(BaseModel):
     # means that one day, not "from then on"; both together is a range.
     date_from: dt.date | None = None
     date_to: dt.date | None = None
+    # Default (false): each match contributes its single strongest
+    # qualifying outcome, regardless of which wanted market that is -- a
+    # match where Match Result clears 85% never shows its 60% BTTS leg
+    # instead, even if BTTS was explicitly selected. True: every selected
+    # market gets its own leg, each on a different match, whenever the data
+    # allows -- for someone who ticked several markets specifically to see
+    # all of them on the slip. See
+    # app.betcode.selection.select_legs_featuring_every_market.
+    feature_all_markets: bool = False
 
 
 class SuggestRandomCriteriaIn(BaseModel):

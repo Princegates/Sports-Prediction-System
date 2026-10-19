@@ -40,6 +40,7 @@ from app.betcode.selection import (
     Leg,
     resolve_legs_unpriced,
     select_legs_by_confidence,
+    select_legs_featuring_every_market,
     select_random_legs,
 )
 from app.db.models import AuditLog, BookingSlip, User
@@ -103,7 +104,8 @@ def _ai_picks_markets(requested: tuple[str, ...]) -> tuple[str, ...]:
 
 @router.post("/suggest", response_model=SuggestedPicksOut)
 def suggest(payload: SuggestCriteriaIn, db: Session = Depends(get_db)) -> SuggestedPicksOut:
-    pick: ConfidencePick = select_legs_by_confidence(
+    engine = select_legs_featuring_every_market if payload.feature_all_markets else select_legs_by_confidence
+    pick: ConfidencePick = engine(
         db,
         min_probability=payload.min_probability if payload.min_probability is not None else 0.65,
         max_legs=payload.max_legs if payload.max_legs is not None else 8,

@@ -178,6 +178,55 @@ def test_suggest_with_a_calendar_date_only_returns_that_day(db_session, auth_hea
     assert legs[0]["home_team"] == "Arsenal"
 
 
+def test_suggest_with_feature_all_markets_gives_every_selected_market_its_own_leg(db_session, auth_headers):
+    """Default mode collapses each match to its single strongest qualifying
+    outcome -- two matches whose strongest outcome is Match Result (85%)
+    never surface their own Both Teams To Score leg (55%) instead, even
+    though it clears min_probability and was explicitly selected.
+    feature_all_markets=True instead gives each selected market its own
+    leg, on its own match, whenever the data allows it."""
+
+    home1 = Team(name="Arsenal", league="English Premier League", aliases=[])
+    away1 = Team(name="Chelsea", league="English Premier League", aliases=[])
+    home2 = Team(name="Liverpool", league="English Premier League", aliases=[])
+    away2 = Team(name="Everton", league="English Premier League", aliases=[])
+    db_session.add_all([home1, away1, home2, away2])
+    db_session.commit()
+    for t in (home1, away1, home2, away2):
+        db_session.refresh(t)
+
+    match1 = Match(
+        league="English Premier League", season="2025-26", date=BASE + dt.timedelta(days=1),
+        home_team_id=home1.id, away_team_id=away1.id, status="SCHEDULED",
+    )
+    match2 = Match(
+        league="English Premier League", season="2025-26", date=BASE + dt.timedelta(days=1),
+        home_team_id=home2.id, away_team_id=away2.id, status="SCHEDULED",
+    )
+    db_session.add_all([match1, match2])
+    db_session.commit()
+    for m in (match1, match2):
+        db_session.refresh(m)
+    db_session.add(_prediction(match1.id))
+    db_session.add(_prediction(match2.id))
+    db_session.commit()
+
+    criteria = {"min_probability": 0.5, "markets": ["Match Result", "Both Teams To Score"]}
+
+    default_response = client.post("/api/betcodes/suggest", json=criteria, headers=auth_headers)
+    assert default_response.status_code == 200, default_response.text
+    assert {leg["market"] for leg in default_response.json()["legs"]} == {"Match Result"}
+
+    response = client.post(
+        "/api/betcodes/suggest", json={**criteria, "feature_all_markets": True}, headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    legs = response.json()["legs"]
+    assert len(legs) == 2
+    assert {leg["market"] for leg in legs} == {"Match Result", "Both Teams To Score"}
+    assert len({leg["match_id"] for leg in legs}) == 2
+
+
 def test_suggest_returns_no_priced_fields(auth_headers, upcoming_match):
     response = client.post("/api/betcodes/suggest", json={"min_probability": 0.5}, headers=auth_headers)
     assert response.status_code == 200, response.text
