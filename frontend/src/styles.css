@@ -56,6 +56,26 @@ button, input, select {
   color: inherit;
 }
 
+/* A plain <select> with no page-specific class (most do have one --
+   .filter-select, .topbar-league-select -- and those win on specificity;
+   this is just the sane default for the rest). Explicit background/color
+   on the element AND its <option>s, not just `color: inherit` above --
+   the dropdown's own open popup is native chrome most browsers render
+   with a plain white background regardless of the page's dark theme, so
+   inherited light text without an explicit light background read as
+   barely-visible gray-on-white once the list opened. */
+select {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+}
+
+select option {
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+}
+
 /* iOS Safari (and most mobile Chromium builds) auto-zoom the page on focus
    of any text input/select/textarea whose computed font-size is under
    16px -- most of ours are 13-15px for layout reasons that have nothing to
