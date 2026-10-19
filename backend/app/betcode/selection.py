@@ -774,6 +774,39 @@ class ConfidencePick:
     warnings: list[str] = field(default_factory=list)
 
 
+def _match_window(
+    days_ahead: int, date_from: dt.date | None, date_to: dt.date | None,
+) -> tuple[dt.datetime, dt.datetime]:
+    """The [start, end] window candidate matches are drawn from -- either an
+    explicit date (or date range, both inclusive) from a calendar pick, or
+    the usual rolling "next N days from now" default. A lone date_from with
+    no date_to is a single day, not an open-ended "from here on": that
+    matches the frontend calendar's one-click day pick, not a range picker.
+    Never includes a match that's already kicked off today, even when
+    date_from is today -- max() against `now` keeps that true for the
+    date-based path the same way `Match.date >= now` already did for the
+    days_ahead one.
+    """
+
+    now = dt.datetime.utcnow()
+    if date_from or date_to:
+        start = max(now, dt.datetime.combine(date_from or date_to, dt.time.min))
+        end = dt.datetime.combine(date_to or date_from, dt.time.max)
+        return start, end
+    return now, now + dt.timedelta(days=days_ahead)
+
+
+def _window_description(days_ahead: int, date_from: dt.date | None, date_to: dt.date | None) -> str:
+    """How a "no matches qualify" warning should name the window that came
+    up empty -- a calendar pick reads oddly described back as a day count."""
+
+    if date_from and date_to and date_from != date_to:
+        return f"between {date_from.isoformat()} and {date_to.isoformat()}"
+    if date_from or date_to:
+        return f"on {(date_from or date_to).isoformat()}"
+    return f"in the next {days_ahead} day(s)"
+
+
 def build_confidence_candidates(
     db: Session,
     *,
@@ -782,6 +815,8 @@ def build_confidence_candidates(
     leagues: tuple[str, ...] = (),
     league: str | None = None,
     days_ahead: int = DEFAULT_DAYS_AHEAD,
+    date_from: dt.date | None = None,
+    date_to: dt.date | None = None,
 ) -> list[Leg]:
     """Every match whose current prediction clears min_probability in a
     wanted market -- same matching as build_candidate_legs (one leg per
@@ -791,14 +826,17 @@ def build_confidence_candidates(
     stored bookmaker quote would only drop otherwise-good matches for no
     reason -- see resolve_legs_unpriced's docstring for the same trade-off
     on an explicit pick.
+
+    ``date_from``/``date_to`` (see _match_window) take over from
+    ``days_ahead`` when given -- a calendar pick is more specific than a
+    rolling window, not an addition to it.
     """
 
-    now = dt.datetime.utcnow()
-    cutoff = now + dt.timedelta(days=days_ahead)
+    start, end = _match_window(days_ahead, date_from, date_to)
 
     match_query = (
         select(Match)
-        .where(Match.date >= now, Match.date < cutoff, Match.status == "SCHEDULED")
+        .where(Match.date >= start, Match.date <= end, Match.status == "SCHEDULED")
         .options(selectinload(Match.home_team), selectinload(Match.away_team))
     )
     if leagues:
@@ -852,6 +890,8 @@ def select_legs_by_confidence(
     leagues: tuple[str, ...] = (),
     league: str | None = None,
     days_ahead: int = DEFAULT_DAYS_AHEAD,
+    date_from: dt.date | None = None,
+    date_to: dt.date | None = None,
 ) -> ConfidencePick:
     """The no-odds sibling of select_legs: picks up to max_legs matches,
     safest (highest model probability) first, each clearing min_probability
@@ -863,6 +903,7 @@ def select_legs_by_confidence(
 
     candidates = build_confidence_candidates(
         db, min_probability=min_probability, markets=markets, leagues=leagues, league=league, days_ahead=days_ahead,
+        date_from=date_from, date_to=date_to,
     )
     candidates.sort(key=lambda leg: -leg.model_probability)
     chosen = candidates[:max_legs]
@@ -874,9 +915,9 @@ def select_legs_by_confidence(
     warnings: list[str] = []
     if not candidates:
         warnings.append(
-            f"No scheduled match in the next {days_ahead} day(s) clears {min_probability:.0%} model "
-            "probability in these markets. Widen the window, lower the accuracy floor, or pick a "
-            "different market."
+            f"No scheduled match {_window_description(days_ahead, date_from, date_to)} clears "
+            f"{min_probability:.0%} model probability in these markets. Widen the window, lower the "
+            "accuracy floor, or pick a different market."
         )
     elif len(candidates) > len(chosen):
         warnings.append(
@@ -905,6 +946,8 @@ def _build_random_pool(
     leagues: tuple[str, ...],
     league: str | None,
     days_ahead: int,
+    date_from: dt.date | None = None,
+    date_to: dt.date | None = None,
 ) -> dict[int, list[Leg]]:
     """Like build_confidence_candidates, but keyed by match_id with every
     qualifying market kept, not collapsed to the single strongest one.
@@ -923,12 +966,11 @@ def _build_random_pool(
     market itself part of the draw.
     """
 
-    now = dt.datetime.utcnow()
-    cutoff = now + dt.timedelta(days=days_ahead)
+    start, end = _match_window(days_ahead, date_from, date_to)
 
     match_query = (
         select(Match)
-        .where(Match.date >= now, Match.date < cutoff, Match.status == "SCHEDULED")
+        .where(Match.date >= start, Match.date <= end, Match.status == "SCHEDULED")
         .options(selectinload(Match.home_team), selectinload(Match.away_team))
     )
     if leagues:
@@ -983,6 +1025,8 @@ def select_random_legs(
     leagues: tuple[str, ...] = (),
     league: str | None = None,
     days_ahead: int = DEFAULT_DAYS_AHEAD,
+    date_from: dt.date | None = None,
+    date_to: dt.date | None = None,
     rng: random.Random | None = None,
 ) -> ConfidencePick:
     """select_legs_by_confidence's random sibling: the same qualifying
@@ -1005,6 +1049,7 @@ def select_random_legs(
     rng = rng or random.Random()
     pool = _build_random_pool(
         db, min_probability=min_probability, markets=markets, leagues=leagues, league=league, days_ahead=days_ahead,
+        date_from=date_from, date_to=date_to,
     )
 
     if not pool:
@@ -1013,8 +1058,8 @@ def select_random_legs(
             combined_probability=0.0,
             candidates_considered=0,
             warnings=[
-                f"No scheduled match in the next {days_ahead} day(s) clears {min_probability:.0%} model "
-                "probability in these markets."
+                f"No scheduled match {_window_description(days_ahead, date_from, date_to)} clears "
+                f"{min_probability:.0%} model probability in these markets."
             ],
         )
 

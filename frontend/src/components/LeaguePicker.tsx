@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { MultiSelectPicker } from "./MultiSelectPicker";
+import { MultiSelectPicker, type PickerPreset } from "./MultiSelectPicker";
 
 /** Markets' and Predictions' league filter: pick any number of leagues, not
  * just one or all. The topbar's own league select (AppShell's
@@ -28,9 +28,10 @@ interface Props {
   selected: string[];
   onChange: (next: string[]) => void;
   emptyLabel?: string;
+  presets?: PickerPreset[];
 }
 
-export function LeaguePicker({ leagues, selected, onChange, emptyLabel = "All leagues" }: Props) {
+export function LeaguePicker({ leagues, selected, onChange, emptyLabel = "All leagues", presets = [] }: Props) {
   const items = useMemo(
     () => leagues.map((l) => ({ key: l, label: l, group: MAIN_LEAGUES.has(l) ? "Main leagues" : "Other leagues" })),
     [leagues],
@@ -42,6 +43,7 @@ export function LeaguePicker({ leagues, selected, onChange, emptyLabel = "All le
       groupOrder={GROUP_ORDER}
       selected={selected}
       onChange={onChange}
+      presets={presets}
       emptyLabel={emptyLabel}
       searchPlaceholder={`Search ${leagues.length} leagues`}
       ariaLabel="Choose leagues"

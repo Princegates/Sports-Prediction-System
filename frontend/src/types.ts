@@ -592,6 +592,11 @@ export interface SuggestCriteria {
    * one of these (a match only has one league, so this is a union). */
   leagues?: string[];
   days_ahead: number;
+  /** A calendar pick -- takes over from days_ahead when set. date_from
+   * alone means that one day, not "from then on"; both together is a
+   * range. ISO date strings (YYYY-MM-DD). */
+  date_from?: string | null;
+  date_to?: string | null;
 }
 
 /** What POST /api/betcodes/suggest-random searches with -- min_legs/max_legs
@@ -605,6 +610,8 @@ export interface SuggestRandomCriteria {
   markets?: string[];
   leagues?: string[];
   days_ahead?: number;
+  date_from?: string | null;
+  date_to?: string | null;
 }
 
 export interface SuggestedLeg {

@@ -100,6 +100,84 @@ def test_suggest_honors_an_explicit_market_outside_the_default_six(auth_headers,
     assert legs[0]["selection"] == "Yes"
 
 
+def test_suggest_honors_an_explicit_league_outside_the_curated_eight(db_session, auth_headers):
+    """The bug this fixed: an explicitly requested league used to be
+    silently narrowed back to AI_PICKS_LEAGUES (the 8 biggest leagues) if
+    it wasn't one of those -- so asking for Scottish Premiership (not in
+    that list) used to search the full 8 instead, finding whatever
+    unrelated match happened to qualify there rather than nothing or the
+    league actually asked for."""
+
+    home = Team(name="Celtic", league="Scottish Premiership", aliases=[])
+    away = Team(name="Rangers", league="Scottish Premiership", aliases=[])
+    db_session.add_all([home, away])
+    db_session.commit()
+    db_session.refresh(home)
+    db_session.refresh(away)
+    match = Match(
+        league="Scottish Premiership", season="2025-26", date=BASE + dt.timedelta(days=1),
+        home_team_id=home.id, away_team_id=away.id, status="SCHEDULED",
+    )
+    db_session.add(match)
+    db_session.commit()
+    db_session.refresh(match)
+    db_session.add(_prediction(match.id, home=0.8))
+    db_session.commit()
+
+    response = client.post(
+        "/api/betcodes/suggest",
+        json={"min_probability": 0.5, "leagues": ["Scottish Premiership"]},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    legs = response.json()["legs"]
+    assert len(legs) == 1
+    assert legs[0]["league"] == "Scottish Premiership"
+
+
+def test_suggest_with_a_calendar_date_only_returns_that_day(db_session, auth_headers):
+    """date_from (no date_to) means that one day, not "from then on" --
+    a match a day later must not come back."""
+
+    home = Team(name="Arsenal", league="English Premier League", aliases=[])
+    away = Team(name="Chelsea", league="English Premier League", aliases=[])
+    home2 = Team(name="Liverpool", league="English Premier League", aliases=[])
+    away2 = Team(name="Everton", league="English Premier League", aliases=[])
+    db_session.add_all([home, away, home2, away2])
+    db_session.commit()
+    for t in (home, away, home2, away2):
+        db_session.refresh(t)
+
+    target_day = (BASE + dt.timedelta(days=3)).date()
+    on_target = Match(
+        league="English Premier League", season="2025-26",
+        date=dt.datetime.combine(target_day, dt.time(15, 0)),
+        home_team_id=home.id, away_team_id=away.id, status="SCHEDULED",
+    )
+    day_after = Match(
+        league="English Premier League", season="2025-26",
+        date=dt.datetime.combine(target_day + dt.timedelta(days=1), dt.time(15, 0)),
+        home_team_id=home2.id, away_team_id=away2.id, status="SCHEDULED",
+    )
+    db_session.add_all([on_target, day_after])
+    db_session.commit()
+    for m in (on_target, day_after):
+        db_session.refresh(m)
+    db_session.add(_prediction(on_target.id, home=0.8))
+    db_session.add(_prediction(day_after.id, home=0.8))
+    db_session.commit()
+
+    response = client.post(
+        "/api/betcodes/suggest",
+        json={"min_probability": 0.5, "date_from": target_day.isoformat()},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    legs = response.json()["legs"]
+    assert len(legs) == 1
+    assert legs[0]["home_team"] == "Arsenal"
+
+
 def test_suggest_returns_no_priced_fields(auth_headers, upcoming_match):
     response = client.post("/api/betcodes/suggest", json={"min_probability": 0.5}, headers=auth_headers)
     assert response.status_code == 200, response.text

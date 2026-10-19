@@ -794,6 +794,12 @@ class SuggestCriteriaIn(BaseModel):
     # without also having to mean "all of them".
     leagues: list[str] = []
     days_ahead: int = 7
+    # A calendar pick (frontend/src/components/FixtureCalendar.tsx) takes
+    # over from days_ahead when set -- see
+    # app.betcode.selection._match_window for exactly how. date_from alone
+    # means that one day, not "from then on"; both together is a range.
+    date_from: dt.date | None = None
+    date_to: dt.date | None = None
 
 
 class SuggestRandomCriteriaIn(BaseModel):
@@ -811,6 +817,8 @@ class SuggestRandomCriteriaIn(BaseModel):
     markets: list[str] = []
     leagues: list[str] = []
     days_ahead: int = 7
+    date_from: dt.date | None = None
+    date_to: dt.date | None = None
 
 
 class ResolvePicksIn(BaseModel):

@@ -5,6 +5,7 @@ import {
   createAdminPick,
   deleteAdminPick,
   fetchAdminPicksAdmin,
+  fetchMatchesForLeagues,
   fetchOutcomesForLeagues,
   fetchPublicTeaserPickAdmin,
   bookPicks,
@@ -19,14 +20,16 @@ import {
 import { CopyButton } from "../components/CopyButton";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
+import { FixtureCalendar } from "../components/FixtureCalendar";
+import { LeaguePicker } from "../components/LeaguePicker";
 import { MarketPicker, type MarketPreset } from "../components/MarketPicker";
 import { MyCodesHistory } from "../components/MyCodesHistory";
 import { SiteCodes } from "../components/SiteCodes";
 import { StickySlipBar } from "../components/StickySlipBar";
-import { useLeague } from "../components/AppShell";
+import { LEAGUES, useLeague } from "../components/AppShell";
 import { useAuth } from "../lib/AuthContext";
 import { useIsMobile } from "../lib/useIsMobile";
-import type { AdminPick, BetCodePick, MarketSummary, PublicTeaserPick, SuggestCriteria, SuggestedLeg, SuggestedPicks } from "../types";
+import type { AdminPick, BetCodePick, MarketSummary, MatchSummary, PublicTeaserPick, SuggestCriteria, SuggestedLeg, SuggestedPicks } from "../types";
 
 /** Plain-text description of one selected combo, meant to be pasted
  * wherever the user places bets themselves. No bookmaker code, no odds
@@ -52,12 +55,14 @@ function formatLegsForCopy(legs: SuggestedLeg[], combinedProbability: number): s
  * own odds; nothing here ever estimates or invents a price of its own.
  */
 
-// Matches the backend's own AI_PICKS_LEAGUES (app.betcode.selection)
-// exactly -- a product choice (fixed 2026-10) that AI Picks only ever
-// searches these 8, regardless of what's checked here: the backend
-// narrows any other league right back out, so there's nothing to offer
-// beyond them. The app's full LEAGUES list (AppShell.tsx) is unaffected --
-// this restriction is specific to AI Generation.
+// The engine's own default when nothing is explicitly picked -- matches
+// the backend's AI_PICKS_LEAGUES (app.betcode.selection) exactly. No
+// longer a ceiling: the league picker below (LeaguePicker, same component
+// Markets/Predictions use) offers the app's full LEAGUES list, and an
+// explicit pick from it is searched as asked, same reasoning as
+// MARKET_OPTIONS -> the full market catalog above. Kept here as a quick
+// "Big 8" preset in that picker, and as the fallback label/behavior for
+// "nothing selected".
 const AI_PICKS_LEAGUES = [
   "English Premier League",
   "Spanish La Liga",
@@ -87,6 +92,8 @@ const AI_MARKET_PRESETS: MarketPreset[] = [
   { label: "Half-time", markets: ["HT Result", "HT Total Goals 0.5", "HT Total Goals 1.5"] },
   { label: "Corners", markets: ["Most Corners", "Total Corners 9.5"] },
 ];
+
+const AI_LEAGUE_PRESETS = [{ label: "Big 8", keys: AI_PICKS_LEAGUES }];
 
 const ACCURACY_OPTIONS = [
   { value: 0.3, label: "30%+" },
@@ -172,31 +179,43 @@ export function BetCodes() {
   const [minProbability, setMinProbability] = useState(0.65);
   const [daysAhead, setDaysAhead] = useState(7);
   // Which leagues to search -- initialized from the top bar's single-league
-  // context (so this page starts scoped the same way it always has, when
-  // that league is actually one of the 8 AI Picks can search -- otherwise
-  // there'd be no matching chip to show as active), but from here on this
-  // list, not the top bar, is what actually drives the search: empty means
-  // all 8, and any number of them can be picked at once.
-  const [selectedLeagues, setSelectedLeagues] = useState<string[]>(
-    league && AI_PICKS_LEAGUES.includes(league) ? [league] : [],
-  );
+  // context (so this page starts scoped the same way it always has), but
+  // from here on this list, not the top bar, is what actually drives the
+  // search: empty means every league this deployment tracks, and any
+  // number can be picked at once, not just the 8 AI_PICKS_LEAGUES default.
+  const [selectedLeagues, setSelectedLeagues] = useState<string[]>(league ? [league] : []);
   // Which risk preset (if any) exactly matches the form's current values --
   // cleared the moment any control is touched by hand, so the highlighted
   // chip never claims a match that no longer holds.
   const [activeRisk, setActiveRisk] = useState<RiskLevel | null>(null);
 
+  // A calendar pick (below) takes over from the Window select when set --
+  // one click's worth of "just this day" instead of a rolling N-day
+  // window. calendarMatches is every SCHEDULED match for the leagues in
+  // scope, no day cap -- same source/shape as Markets.tsx's own calendar,
+  // just for the dots, never rendered as rows itself.
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [calendarMatches, setCalendarMatches] = useState<MatchSummary[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetchMatchesForLeagues(selectedLeagues, { status: "SCHEDULED" })
+      .then((m) => !cancelled && setCalendarMatches(m))
+      .catch(() => !cancelled && setCalendarMatches([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedLeagues]);
+
   // Every market the system currently prices for the leagues in scope, for
   // the Markets step's picker -- same source and shape the Markets page's
-  // own dropdown uses (one tiny-cap call per league, only the `markets`
-  // summary is read), scoped to whichever of the 8 AI Picks leagues are
-  // selected (all 8 when none are, matching "none selected = all 8" below).
+  // own dropdown uses (one tiny-cap call, only the `markets` summary is
+  // read), scoped to whichever leagues are selected (every league when
+  // none are).
   const [marketCatalog, setMarketCatalog] = useState<MarketSummary[]>([]);
   useEffect(() => {
     let cancelled = false;
-    fetchOutcomesForLeagues(selectedLeagues.length > 0 ? selectedLeagues : AI_PICKS_LEAGUES, {
-      days_ahead: 21,
-      limit_per_league: 1,
-    })
+    fetchOutcomesForLeagues(selectedLeagues, { days_ahead: 21, limit_per_league: 1 })
       .then((d) => !cancelled && setMarketCatalog(d.markets))
       .catch(() => {});
     return () => {
@@ -288,13 +307,10 @@ export function BetCodes() {
       min_probability: minProbability,
       leagues: selectedLeagues,
       days_ahead: daysAhead,
+      date_from: selectedDate,
+      date_to: selectedDate,
       ...overrides,
     };
-  }
-
-  function toggleLeague(l: string) {
-    setActiveRisk(null);
-    setSelectedLeagues((prev) => (prev.includes(l) ? prev.filter((v) => v !== l) : [...prev, l]));
   }
 
   async function runPreview(fetchPreview: () => Promise<SuggestedPicks>) {
@@ -348,7 +364,9 @@ export function BetCodes() {
   function runRandomSlip() {
     setActiveRisk(null);
     setFromExternalPicks(false);
-    return runPreview(() => suggestRandomPicks({ leagues: selectedLeagues, days_ahead: daysAhead }));
+    return runPreview(() =>
+      suggestRandomPicks({ leagues: selectedLeagues, days_ahead: daysAhead, date_from: selectedDate, date_to: selectedDate }),
+    );
   }
 
   // Drops one leg from the current preview -- client-side only, no new
@@ -513,7 +531,7 @@ export function BetCodes() {
           Combine matches by model confidence -- scoped to{" "}
           <strong>
             {selectedLeagues.length === 0
-              ? "all 8 top leagues"
+              ? "the Big 8"
               : selectedLeagues.length === 1
                 ? selectedLeagues[0]
                 : `${selectedLeagues.length} leagues`}
@@ -584,9 +602,10 @@ export function BetCodes() {
           <>
             <div className="auth-form" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
               <label>
-                Window
+                Window{selectedDate ? <span style={{ fontWeight: 400 }}> (overridden by the date below)</span> : null}
                 <select
                   value={daysAhead}
+                  disabled={!!selectedDate}
                   onChange={(e) => {
                     setActiveRisk(null);
                     setDaysAhead(Number(e.target.value));
@@ -603,31 +622,63 @@ export function BetCodes() {
 
             <div style={{ marginTop: 14 }}>
               <div className="meta" style={{ marginBottom: 6 }}>
-                Leagues{" "}
-                <span style={{ fontWeight: 400 }}>
-                  (AI Picks only searches these 8 -- none selected = all 8; pick as many as you like)
-                </span>
+                Or pick a specific date <span style={{ fontWeight: 400 }}>(overrides the window above)</span>
               </div>
-              <div className="filter-bar">
-                <button
-                  className={`filter-chip${selectedLeagues.length === 0 ? " active" : ""}`}
-                  onClick={() => {
-                    setActiveRisk(null);
-                    setSelectedLeagues([]);
-                  }}
-                >
-                  All 8
-                </button>
-                {AI_PICKS_LEAGUES.map((l) => (
+              {selectedDate ? (
+                <div className="filter-bar">
+                  <span className="filter-chip active">
+                    {new Date(`${selectedDate}T00:00:00`).toLocaleDateString(undefined, {
+                      weekday: "short", month: "short", day: "numeric",
+                    })}
+                  </span>
                   <button
-                    key={l}
-                    className={`filter-chip${selectedLeagues.includes(l) ? " active" : ""}`}
-                    onClick={() => toggleLeague(l)}
+                    type="button"
+                    className="filter-chip"
+                    onClick={() => {
+                      setActiveRisk(null);
+                      setSelectedDate(null);
+                    }}
                   >
-                    {l}
+                    Clear date
                   </button>
-                ))}
+                </div>
+              ) : (
+                <>
+                  <button type="button" className="filter-chip" onClick={() => setCalendarOpen((o) => !o)}>
+                    {calendarOpen ? "Hide calendar" : "Choose a date"}
+                  </button>
+                  {calendarOpen && (
+                    <div style={{ marginTop: 8 }}>
+                      <FixtureCalendar
+                        matches={calendarMatches}
+                        selectedDate={selectedDate}
+                        onSelectDate={(d) => {
+                          setActiveRisk(null);
+                          setSelectedDate(d);
+                          setCalendarOpen(false);
+                        }}
+                      />
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div style={{ marginTop: 14 }}>
+              <div className="meta" style={{ marginBottom: 6 }}>
+                Leagues{" "}
+                <span style={{ fontWeight: 400 }}>(every league this deployment tracks -- none selected = the usual Big 8)</span>
               </div>
+              <LeaguePicker
+                leagues={LEAGUES}
+                selected={selectedLeagues}
+                onChange={(next) => {
+                  setActiveRisk(null);
+                  setSelectedLeagues(next);
+                }}
+                presets={AI_LEAGUE_PRESETS}
+                emptyLabel="Big 8 (default)"
+              />
             </div>
           </>
         )}
@@ -703,8 +754,14 @@ export function BetCodes() {
               Ready to generate with:
             </div>
             <ul className="wizard-review-list">
-              <li>Next {daysAhead} days</li>
-              <li>{selectedLeagues.length === 0 ? "All 8 top leagues" : selectedLeagues.join(", ")}</li>
+              <li>
+                {selectedDate
+                  ? new Date(`${selectedDate}T00:00:00`).toLocaleDateString(undefined, {
+                      weekday: "short", month: "short", day: "numeric",
+                    })
+                  : `Next ${daysAhead} days`}
+              </li>
+              <li>{selectedLeagues.length === 0 ? "Big 8 (default)" : selectedLeagues.join(", ")}</li>
               <li>
                 Up to {maxLegs} legs, {(minProbability * 100).toFixed(0)}%+ accuracy each
               </li>

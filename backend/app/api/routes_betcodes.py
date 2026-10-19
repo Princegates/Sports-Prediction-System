@@ -75,13 +75,14 @@ def _combined_probability(legs: list[Leg]) -> float:
 
 
 def _ai_picks_leagues(requested: tuple[str, ...]) -> tuple[str, ...]:
-    """"AI Picks" only ever searches AI_PICKS_LEAGUES -- a product choice,
-    not a default a caller can widen. An unrecognised or empty request
-    falls back to the full pool rather than an accidental zero-match
-    search."""
+    """An explicit request is honored as given -- the frontend's league
+    picker (components/LeaguePicker.tsx) now offers every league this
+    deployment tracks, not just the 8-league AI_PICKS_LEAGUES default, same
+    reasoning as _ai_picks_markets below. Nothing requested still falls
+    back to that curated 8 rather than an accidental all-leagues search no
+    one asked for."""
 
-    narrowed = tuple(l for l in requested if l in AI_PICKS_LEAGUES)
-    return narrowed or AI_PICKS_LEAGUES
+    return requested or AI_PICKS_LEAGUES
 
 
 def _ai_picks_markets(requested: tuple[str, ...]) -> tuple[str, ...]:
@@ -109,6 +110,8 @@ def suggest(payload: SuggestCriteriaIn, db: Session = Depends(get_db)) -> Sugges
         markets=_ai_picks_markets(tuple(payload.markets)),
         leagues=_ai_picks_leagues(tuple(payload.leagues)),
         days_ahead=payload.days_ahead,
+        date_from=payload.date_from,
+        date_to=payload.date_to,
     )
     return SuggestedPicksOut(
         legs=_picked_legs_to_out(pick.legs),
@@ -136,6 +139,8 @@ def suggest_random(payload: SuggestRandomCriteriaIn, db: Session = Depends(get_d
         markets=_ai_picks_markets(tuple(payload.markets)),
         leagues=_ai_picks_leagues(tuple(payload.leagues)),
         days_ahead=payload.days_ahead,
+        date_from=payload.date_from,
+        date_to=payload.date_to,
     )
     return SuggestedPicksOut(
         legs=_picked_legs_to_out(pick.legs),
