@@ -1063,7 +1063,7 @@ def _build_random_pool(
     date_to: dt.date | None = None,
 ) -> dict[int, list[Leg]]:
     """Like build_confidence_candidates, but keyed by match_id with every
-    qualifying market kept, not collapsed to the single strongest one.
+    qualifying *market* kept, not collapsed to the single strongest one.
 
     build_confidence_candidates picks max(outcomes, key=probability) per
     match -- the right call for select_legs_by_confidence's ranked slip,
@@ -1074,9 +1074,21 @@ def _build_random_pool(
     that already-collapsed pool kept landing on "Handicap +3: Home" leg
     after leg -- technically a random pick of *matches*, but not of
     *markets*, which is what made a 7-leg slip read as one market repeated
-    seven times. Keeping every qualifying outcome per match here, and
+    seven times. Keeping every qualifying market per match here, and
     picking one at random per match in select_random_legs below, makes the
     market itself part of the draw.
+
+    Only the strongest *selection* within each market survives, though --
+    a market with many selections (Correct Score's top-N scorelines
+    especially) doesn't add market variety by keeping all of them, only
+    outcome volume. With no market filter and every match in a wide
+    "all leagues" window contributing one row per (market, selection) pair
+    instead of one per market, this pool was the same unbounded-until-the-
+    end memory shape that cost two other endpoints an OOM crash already
+    today (see routes_matches.py and routes_predictions.py's own fixes) --
+    collapsing to one Leg per (match, market) bounds it to
+    matches x distinct-markets-wanted, regardless of how many selections
+    any one market happens to offer.
     """
 
     start, end = _match_window(days_ahead, date_from, date_to)
@@ -1111,6 +1123,16 @@ def _build_random_pool(
         ]
         if not outcomes:
             continue
+
+        # One outcome per market -- its own strongest selection -- not
+        # every selection that market offers; see this function's own
+        # docstring for why.
+        best_per_market: dict[str, Outcome] = {}
+        for o in outcomes:
+            current = best_per_market.get(o.market)
+            if current is None or o.probability > current.probability:
+                best_per_market[o.market] = o
+
         pool[match_id] = [
             Leg(
                 match_id=match.id,
@@ -1122,7 +1144,7 @@ def _build_random_pool(
                 selection=o.selection,
                 model_probability=o.probability,
             )
-            for o in outcomes
+            for o in best_per_market.values()
         ]
 
     return pool

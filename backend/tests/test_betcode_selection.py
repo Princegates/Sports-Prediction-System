@@ -17,6 +17,7 @@ import random
 
 from app.betcode.selection import (
     SlipCriteria,
+    _build_random_pool,
     build_candidate_legs,
     build_confidence_candidates,
     price_legs,
@@ -667,6 +668,47 @@ def test_random_selection_mixes_markets_not_just_matches(db_session, three_match
         markets_seen.update(leg.market for leg in pick.legs)
 
     assert len(markets_seen) > 1
+
+
+def test_random_pool_keeps_only_the_strongest_selection_per_market(db_session):
+    """_build_random_pool keeps every qualifying *market* per match, but
+    only that market's own strongest selection -- a market with many
+    selections (Correct Score especially) must not multiply the pool's
+    size by how many of them clear the floor. Without this, "all leagues,
+    all markets" held one Leg per scoreline per match in memory instead of
+    one per market -- the same unbounded-until-trimmed shape that cost two
+    other endpoints an OOM crash already (routes_matches.py,
+    routes_predictions.py)."""
+
+    home = Team(name="Arsenal", league="English Premier League", aliases=[])
+    away = Team(name="Chelsea", league="English Premier League", aliases=[])
+    db_session.add_all([home, away])
+    db_session.commit()
+    db_session.refresh(home)
+    db_session.refresh(away)
+
+    match = Match(
+        league="English Premier League", season="2025-26", date=BASE + dt.timedelta(days=1),
+        home_team_id=home.id, away_team_id=away.id, status="SCHEDULED",
+    )
+    db_session.add(match)
+    db_session.commit()
+    db_session.refresh(match)
+
+    prediction = _prediction(match.id)
+    # Four scorelines, all above the floor below -- one pool entry per
+    # scoreline without the fix, one for the whole market with it.
+    prediction.correct_score_probabilities = {"2-1": 0.11, "1-0": 0.10, "1-1": 0.09, "2-0": 0.08}
+    db_session.add(prediction)
+    db_session.commit()
+
+    pool = _build_random_pool(
+        db_session, min_probability=0.05, markets=("Correct Score",), leagues=(), league=None, days_ahead=7,
+    )
+    legs = pool[match.id]
+    assert len(legs) == 1
+    assert legs[0].market == "Correct Score"
+    assert legs[0].selection == "2-1"  # the strongest of the four
 
 
 def test_random_selection_notes_it_is_a_draw_not_a_ranking(db_session, three_matches):
