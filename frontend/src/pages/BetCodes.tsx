@@ -863,6 +863,11 @@ export function BetCodes() {
             </button>
           )}
         </div>
+        {(!isMobile || step === WIZARD_STEPS.length - 1) && (
+          <p className="setting-note" style={{ marginTop: 8 }}>
+            Takes 5 to 10 seconds to load.
+          </p>
+        )}
       </div>
 
       {previewError && <ErrorState message={previewError} />}
