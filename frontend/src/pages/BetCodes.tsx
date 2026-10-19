@@ -98,6 +98,15 @@ const AI_LEAGUE_PRESETS = [
   { label: "All leagues", keys: LEAGUES },
 ];
 
+// The FixtureCalendar's own data source (below) used to ask for every
+// SCHEDULED match ever imported, no cutoff at all -- harmless for a single
+// league, but combined with "All leagues" (every league, one click) that
+// query has no bound on either leagues or time and is what ran the backend
+// out of its 512MB memory budget. 120 days is generous for a calendar
+// someone is browsing month by month to cover (four months of "Next
+// month" clicks), while still being a real cutoff.
+const CALENDAR_DAYS_AHEAD = 120;
+
 const ACCURACY_OPTIONS = [
   { value: 0.1, label: "10%+" },
   { value: 0.2, label: "20%+" },
@@ -204,14 +213,14 @@ export function BetCodes() {
   // A calendar pick (below) takes over from the Window select when set --
   // one click's worth of "just this day" instead of a rolling N-day
   // window. calendarMatches is every SCHEDULED match for the leagues in
-  // scope, no day cap -- same source/shape as Markets.tsx's own calendar,
-  // just for the dots, never rendered as rows itself.
+  // scope within CALENDAR_DAYS_AHEAD -- same source/shape as Markets.tsx's
+  // own calendar, just for the dots, never rendered as rows itself.
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calendarMatches, setCalendarMatches] = useState<MatchSummary[]>([]);
   useEffect(() => {
     let cancelled = false;
-    fetchMatchesForLeagues(selectedLeagues, { status: "SCHEDULED" })
+    fetchMatchesForLeagues(selectedLeagues, { status: "SCHEDULED", days_ahead: CALENDAR_DAYS_AHEAD })
       .then((m) => !cancelled && setCalendarMatches(m))
       .catch(() => !cancelled && setCalendarMatches([]));
     return () => {

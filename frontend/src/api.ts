@@ -654,12 +654,15 @@ export function fetchLive(matchId: number): Promise<LivePrediction[]> {
   return get(`/api/matches/${matchId}/live`);
 }
 
-export function fetchMatches(params: { league?: string; status?: string; teamId?: number; date?: string } = {}): Promise<MatchSummary[]> {
+export function fetchMatches(
+  params: { league?: string; status?: string; teamId?: number; date?: string; days_ahead?: number } = {},
+): Promise<MatchSummary[]> {
   const search = new URLSearchParams();
   if (params.league) search.set("league", params.league);
   if (params.status) search.set("status", params.status);
   if (params.teamId) search.set("team_id", String(params.teamId));
   if (params.date) search.set("date", params.date);
+  if (params.days_ahead !== undefined) search.set("days_ahead", String(params.days_ahead));
   const query = search.toString();
   return get(`/api/matches${query ? `?${query}` : ""}`);
 }

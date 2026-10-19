@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -31,6 +31,7 @@ router = APIRouter(prefix="/api/matches", tags=["matches"])
 def list_matches(
     league: str | None = None,
     date: dt.date | None = None,
+    days_ahead: int | None = Query(None, ge=0, le=365),
     status: str | None = None,
     team_id: int | None = None,
     db: Session = Depends(get_db),
@@ -42,9 +43,25 @@ def list_matches(
     # fixtures across most of AI_PICKS_LEAGUES that's 100+ serial round trips
     # to a remote DB -- comfortably enough to blow past a client-side request
     # timeout on its own.
+    #
+    # days_ahead is optional and unbounded by default (None), unlike
+    # /api/predictions/outcomes' own always-capped days_ahead -- several
+    # existing callers (TeamPage/MatchDetail's head-to-head lookups,
+    # Live's own scoped-to-one-league fetch) rely on this endpoint
+    # returning everything matching their other filters, not a rolling
+    # window, and changing that default would silently change what they
+    # show. Opt in instead: a calendar's "every SCHEDULED match, no
+    # league filter" query (FixtureCalendar's data source in both
+    # Markets.tsx and BetCodes.tsx) is the one shape that genuinely needs
+    # a bound -- literally every future SCHEDULED match across every
+    # league this deployment tracks, with no cutoff at all, is what ran
+    # this service out of its 512MB memory budget.
     stmt = select(Match).options(selectinload(Match.home_team), selectinload(Match.away_team))
     if league:
         stmt = stmt.where(Match.league == league)
+    if days_ahead is not None:
+        now = dt.datetime.utcnow()
+        stmt = stmt.where(Match.date >= now, Match.date <= now + dt.timedelta(days=days_ahead))
     if status:
         status = status.upper()
         if status == "LIVE":

@@ -49,6 +49,14 @@ import type { BettingOutcome, MarketSummary, MatchSummary, OutcomesResponse } fr
 // so a 14-day cap could hide an already-scheduled, already-predicted fixture
 // for the entire gap between rounds.
 const DAY_OPTIONS = [3, 7, 14, 21];
+
+// The FixtureCalendar's own data source (below) used to ask for every
+// SCHEDULED match ever imported, no cutoff at all -- harmless for a single
+// league, but with every league selected that query has no bound on either
+// leagues or time, and is what ran the backend out of its 512MB memory
+// budget. 120 days is generous for a calendar someone is browsing month by
+// month to cover, while still being a real cutoff.
+const CALENDAR_DAYS_AHEAD = 120;
 const FLOORS = [
   { value: 0, label: "Any" },
   { value: 0.5, label: "50%+" },
@@ -244,11 +252,11 @@ export function Markets() {
 
   useEffect(() => storePicks(picks), [picks]);
 
-  // Every SCHEDULED fixture this league has, regardless of how far out --
+  // Every SCHEDULED fixture this league has within CALENDAR_DAYS_AHEAD --
   // just for the calendar's dots, never rendered as rows itself.
   useEffect(() => {
     let cancelled = false;
-    fetchMatchesForLeagues(selectedLeagues, { status: "SCHEDULED" })
+    fetchMatchesForLeagues(selectedLeagues, { status: "SCHEDULED", days_ahead: CALENDAR_DAYS_AHEAD })
       .then((m) => !cancelled && setCalendarMatches(m))
       .catch(() => !cancelled && setCalendarMatches([]));
     return () => {

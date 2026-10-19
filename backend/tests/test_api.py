@@ -147,6 +147,52 @@ def test_list_matches_endpoint(db_session, auth_headers):
     assert len(response.json()) == 17  # 16 finished + 1 scheduled
 
 
+def test_list_matches_days_ahead_bounds_the_window(db_session, auth_headers):
+    """days_ahead is opt-in and unbounded by default -- every other test in
+    this module omits it and still sees matches regardless of date. This
+    proves passing it actually excludes a match further out than the
+    window, which is what makes a calendar's "every SCHEDULED match" query
+    boundable instead of asking for literally every future fixture
+    regardless of league count (the bug that ran the backend out of its
+    512MB memory budget once "All leagues" made picking every league one
+    click away)."""
+
+    from app.main import app
+
+    base = dt.datetime.utcnow()
+    home = Team(name="Near FC", league="Window League")
+    away = Team(name="Far FC", league="Window League")
+    db_session.add_all([home, away])
+    db_session.commit()
+    db_session.refresh(home)
+    db_session.refresh(away)
+
+    near = Match(
+        league="Window League", season="2025-26", date=base + dt.timedelta(days=5),
+        home_team_id=home.id, away_team_id=away.id, status="SCHEDULED",
+    )
+    far = Match(
+        league="Window League", season="2025-26", date=base + dt.timedelta(days=100),
+        home_team_id=away.id, away_team_id=home.id, status="SCHEDULED",
+    )
+    db_session.add_all([near, far])
+    db_session.commit()
+
+    client = TestClient(app)
+    response = client.get(
+        "/api/matches", params={"league": "Window League", "status": "SCHEDULED", "days_ahead": 30},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    ids = {m["id"] for m in response.json()}
+    assert ids == {near.id}
+
+    unbounded = client.get(
+        "/api/matches", params={"league": "Window League", "status": "SCHEDULED"}, headers=auth_headers,
+    )
+    assert {m["id"] for m in unbounded.json()} == {near.id, far.id}
+
+
 def test_list_matches_filters_by_team(db_session, auth_headers):
     from app.main import app
 
