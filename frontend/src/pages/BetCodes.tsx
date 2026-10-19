@@ -226,17 +226,28 @@ export function BetCodes() {
   // none are).
   const [marketCatalog, setMarketCatalog] = useState<MarketSummary[]>([]);
   const [marketCatalogLoading, setMarketCatalogLoading] = useState(true);
+  // Set only when the catalog fetch itself failed (a cold backend timing
+  // out, a dropped connection) -- distinct from a fetch that genuinely
+  // succeeded with zero markets, which is a real "nothing priced" state,
+  // not an error. Without this the two looked identical: both landed on
+  // the same "no markets" empty state with no way to tell a transient
+  // failure from an honest empty result, or any way to retry one.
+  const [marketCatalogError, setMarketCatalogError] = useState(false);
+  // Bumped by the retry button below to re-run the effect without also
+  // depending on `selectedLeagues` changing.
+  const [marketCatalogRetryTick, setMarketCatalogRetryTick] = useState(0);
   useEffect(() => {
     let cancelled = false;
     setMarketCatalogLoading(true);
+    setMarketCatalogError(false);
     fetchOutcomesForLeagues(selectedLeagues, { days_ahead: 21, limit_per_league: 1 })
       .then((d) => !cancelled && setMarketCatalog(d.markets))
-      .catch(() => {})
+      .catch(() => !cancelled && setMarketCatalogError(true))
       .finally(() => !cancelled && setMarketCatalogLoading(false));
     return () => {
       cancelled = true;
     };
-  }, [selectedLeagues]);
+  }, [selectedLeagues, marketCatalogRetryTick]);
 
   const isMobile = useIsMobile();
   const [wizardStep, setWizardStep] = useState(0);
@@ -763,8 +774,21 @@ export function BetCodes() {
               }}
               presets={AI_MARKET_PRESETS}
               emptyLabel="Default markets"
-              loading={marketCatalogLoading}
+              loading={marketCatalogLoading || marketCatalogError}
             />
+            {marketCatalogError && !marketCatalogLoading && (
+              <p className="setting-note" style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 10 }}>
+                Couldn't load the market catalog -- the backend may be waking up from idle.{" "}
+                <button
+                  type="button"
+                  className="btn ghost"
+                  style={{ padding: "2px 10px", fontSize: 12.5 }}
+                  onClick={() => setMarketCatalogRetryTick((t) => t + 1)}
+                >
+                  Retry
+                </button>
+              </p>
+            )}
             {markets.length > 0 && (
               <label
                 style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", marginTop: 10 }}
