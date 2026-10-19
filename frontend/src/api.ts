@@ -664,18 +664,33 @@ export function fetchMatches(params: { league?: string; status?: string; teamId?
   return get(`/api/matches${query ? `?${query}` : ""}`);
 }
 
+/** Past this many leagues, a one-request-per-league fan-out (below) risks
+ * opening more concurrent DB connections than the backend's pool has --
+ * AI Generation's "All leagues" preset is one click away from every league
+ * the platform tracks, not just a deliberate handful, so this has to hold
+ * at the full catalog size. Picking this many leagues one at a time in the
+ * picker is implausible; selecting all of them with one preset isn't. */
+const LEAGUE_FANOUT_LIMIT = 10;
+
 /** fetchMatches for any number of leagues -- the endpoint only ever takes
  * one. Empty `leagues` means "every league", exactly like omitting the
  * `league` param does, in a single unfiltered call rather than one call
- * per league in the system. Two or more leagues run one narrow,
+ * per league in the system. A handful of leagues run one narrow,
  * already-scoped call per league (same query the single-league case always
  * made) and merge the results, instead of asking the backend for every
- * league and discarding most of it client-side. */
+ * league and discarding most of it client-side. Past LEAGUE_FANOUT_LIMIT,
+ * that per-league fan-out would open too many concurrent connections, so
+ * it falls back to the same single unfiltered call as "every league" and
+ * filters the result down client-side instead. */
 export function fetchMatchesForLeagues(
   leagues: string[],
   params: Omit<Parameters<typeof fetchMatches>[0], "league"> = {},
 ): Promise<MatchSummary[]> {
   if (leagues.length === 0) return fetchMatches(params);
+  if (leagues.length > LEAGUE_FANOUT_LIMIT) {
+    const wanted = new Set(leagues);
+    return fetchMatches(params).then((matches) => matches.filter((m) => wanted.has(m.league)));
+  }
   return Promise.all(leagues.map((league) => fetchMatches({ ...params, league }))).then((results) => results.flat());
 }
 
@@ -811,15 +826,33 @@ export function fetchOutcomes(params: {
 
 /** fetchOutcomes for any number of leagues, same reasoning as
  * fetchMatchesForLeagues above: empty is one unfiltered call (the backend
- * already groups and caps per league for "every league"), two or more run
+ * already groups and caps per league for "every league"), a handful run
  * one call per league and merge the already-league-grouped responses --
  * each market's catalog entry kept once (identical across leagues), each
- * league's own group kept as the backend returned it. */
+ * league's own group kept as the backend returned it. Past
+ * LEAGUE_FANOUT_LIMIT, same fallback as fetchMatchesForLeagues: one
+ * unfiltered call (which already groups every league in one response),
+ * with its `leagues` entries -- and the totals that sum them, matching the
+ * backend's own sum(...) exactly -- filtered down client-side. `markets`
+ * is kept as-is: it's the same catalog regardless of which leagues are
+ * selected, never computed per-league. */
 export function fetchOutcomesForLeagues(
   leagues: string[],
   params: Omit<Parameters<typeof fetchOutcomes>[0], "league">,
 ): Promise<OutcomesResponse> {
   if (leagues.length === 0) return fetchOutcomes(params);
+  if (leagues.length > LEAGUE_FANOUT_LIMIT) {
+    const wanted = new Set(leagues);
+    return fetchOutcomes(params).then((response) => {
+      const kept = response.leagues.filter((l) => wanted.has(l.league));
+      return {
+        ...response,
+        leagues: kept,
+        total_outcomes: kept.reduce((sum, l) => sum + l.outcomes.length, 0),
+        total_matches: kept.reduce((sum, l) => sum + l.matches, 0),
+      };
+    });
+  }
   return Promise.all(leagues.map((league) => fetchOutcomes({ ...params, league }))).then((responses) => {
     const marketsByName = new Map(responses.flatMap((r) => r.markets).map((m) => [m.market, m]));
     return {
