@@ -111,6 +111,7 @@ Connect the repo at [dash.cloudflare.com](https://dash.cloudflare.com) → Worke
 | Build output directory | `dist` |
 | Root directory | `frontend` |
 | Environment variable | `VITE_API_URL` = `https://api.yourdomain.com` |
+| Environment variable | `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD` = `1` |
 
 `VITE_API_URL` is **baked in at build time**, not read at runtime — if you change
 it you must trigger a rebuild, or the site will keep calling the old address.
@@ -127,12 +128,21 @@ every route ships as `<div id="root"></div>` and nothing else until JS runs,
 which is close to invisible to a search crawler. This is why `playwright` is
 a frontend devDependency despite being a backend-shaped tool, and why a
 Cloudflare Pages build here takes noticeably longer than a bare `vite build`
-(`npm install` downloads a Chromium binary). If a build ever times out or the
-Chromium download fails in Cloudflare's build environment, the postbuild step
-fails soft -- it logs a warning and leaves `dist/` as the plain, un-prerendered
-build output rather than failing the deploy, so this is never what breaks a
-release; worst case is a silent return to today's empty-shell pages until
-it's fixed.
+(the postbuild step downloads a Chromium binary).
+
+**`PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` must be set as a project environment
+variable** (same place as `VITE_API_URL`, above). Without it, `playwright`
+tries to download Chromium automatically during `npm install`, *before* the
+build command -- and therefore before the postbuild step's own fail-soft
+handling -- ever runs; a blocked or flaky download there fails `npm install`
+itself and takes the whole deploy down with it (Cloudflare keeps serving the
+last successful build, silently, with no obvious error pointing at this).
+With the env var set, `npm install` never attempts that download, and
+`scripts/prerender.mjs` fetches the browser itself as its first step, inside
+the same try/catch that already guards the rest of prerendering -- so a
+failed download there (or a timeout) only skips prerendering for that build,
+logs a warning, and leaves `dist/` as the plain, un-prerendered build output
+rather than failing the deploy or masking a stale old release.
 
 ---
 

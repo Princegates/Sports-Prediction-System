@@ -32,11 +32,24 @@
  * for whatever needed live data -- strictly better than today's empty
  * shell, never a hung or failed build over it. A failure on one route is
  * logged and skipped, not fatal to the others.
+ *
+ * Chromium itself is installed here, on demand, rather than left to
+ * `playwright`'s own automatic postinstall download -- that download runs
+ * during `npm install`, *before* this script (or any try/catch in it) gets
+ * a chance to run, so a flaky or blocked download there would fail the
+ * entire install and take the whole deploy down with it, not just skip
+ * prerendering. Cloudflare Pages' project settings should set
+ * PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 so that automatic download never even
+ * attempts to run (see DEPLOYMENT.md); this script then fetches the browser
+ * itself, inside the same try/catch that already guards the rest of
+ * prerendering, so a failed download here degrades to the plain build
+ * output instead of failing the build.
  */
 
 import { createServer } from "node:http";
 import { readFile, mkdir, writeFile, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -100,11 +113,24 @@ async function main() {
     return;
   }
 
-  let chromium;
+  let chromium, cliPath;
   try {
     ({ chromium } = require("playwright"));
+    cliPath = path.join(path.dirname(require.resolve("playwright/package.json")), "cli.js");
   } catch {
     console.log("prerender: playwright not installed -- skipping (dist/ keeps the plain build output)");
+    return;
+  }
+
+  try {
+    execFileSync(process.execPath, [cliPath, "install", "chromium"], {
+      stdio: "inherit",
+      timeout: 120_000,
+    });
+  } catch (err) {
+    console.warn(
+      `prerender: couldn't install chromium (${err instanceof Error ? err.message : err}) -- skipping (dist/ keeps the plain build output)`,
+    );
     return;
   }
 
