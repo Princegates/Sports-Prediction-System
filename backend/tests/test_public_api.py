@@ -74,6 +74,18 @@ def test_stats_needs_no_authentication(db_session, seeded):
     assert body["league_names"] == [LEAGUE]
 
 
+def test_stats_markets_per_match_matches_the_registry(db_session, seeded):
+    """The bug this fixed: markets_per_match was a typed-in literal (18)
+    that the outcome registry grew well past without anything catching it.
+    It has to track the registry itself, not drift independently."""
+
+    from app.outcomes.registry import full_registry_market_count
+
+    body = client.get("/api/public/stats").json()
+    assert body["markets_per_match"] == full_registry_market_count()
+    assert body["markets_per_match"] > 18  # the stale literal this replaced
+
+
 def test_stats_counts_only_active_members(db_session, seeded):
     from app.auth.passwords import hash_password
 

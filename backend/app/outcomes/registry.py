@@ -16,6 +16,7 @@ groups -- that cross-market comparison is the entire point of spec section
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 
 from app.prediction_models.corners_model import build_corners_matrix, markets_from_corners_matrix
 from app.prediction_models.poisson_model import HT_MAX_GOALS, build_score_matrix, markets_from_matrix
@@ -923,6 +924,41 @@ def outcomes_from_prediction(prediction) -> list[Outcome]:
         outcomes += corners_outcomes(lambda_home_corners, lambda_away_corners, matches_available)
 
     return outcomes
+
+
+def full_registry_market_count() -> int:
+    """How many distinct markets the registry scores for a match with
+    complete data -- every lambda the Poisson model can produce (full time,
+    half time, corners) present, and enough history for every data-gated
+    market (Correct Score included). This is a capability figure ("what can
+    this system score"), not a per-match guarantee -- a thin-data or
+    corners-less match offers fewer.
+
+    Computed from the same code path real predictions run through
+    (``outcomes_from_prediction``) against representative, non-degenerate
+    synthetic inputs, rather than hardcoded -- the landing page's own public
+    stats endpoint quotes this number specifically so it can't go stale the
+    way a typed-in literal did once the registry grew past it.
+    """
+
+    synthetic = SimpleNamespace(
+        home_win=0.45, draw=0.28, away_win=0.27,
+        over_probabilities={"0.5": 0.95, "1.5": 0.78, "2.5": 0.52, "3.5": 0.28, "4.5": 0.12},
+        btts_yes=0.55, btts_no=0.45,
+        correct_score_probabilities={
+            "1-0": 0.11, "2-1": 0.10, "1-1": 0.09, "0-0": 0.08, "2-0": 0.07,
+            "0-1": 0.06, "1-2": 0.05, "3-1": 0.04, "2-2": 0.04, "0-2": 0.03,
+        },
+        data_quality_score=1.0,
+        model_breakdown={
+            "poisson": {
+                "lambda_home": 1.6, "lambda_away": 1.1,
+                "lambda_home_ht": 0.7, "lambda_away_ht": 0.5,
+                "lambda_home_corners": 6.0, "lambda_away_corners": 4.5,
+            },
+        },
+    )
+    return len({o.market for o in outcomes_from_prediction(synthetic)})
 
 
 def find_outcome(prediction, market: str, selection: str) -> Outcome | None:

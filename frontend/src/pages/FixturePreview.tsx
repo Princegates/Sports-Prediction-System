@@ -35,8 +35,8 @@ function fixtureDescription(fixture: PublicFixture): string {
   const matchup = `${fixture.home_team} vs ${fixture.away_team}`;
   const { date } = formatKickoff(fixture.kickoff);
   return fixture.has_prediction
-    ? `${matchup} kicks off ${date} in the ${fixture.league}. Our model has analyzed this fixture with ${(fixture.confidence ?? "").toLowerCase()} confidence -- see the full prediction across 18 markets.`
-    : `${matchup} kicks off ${date} in the ${fixture.league}. Full AI-driven prediction coverage across 18 markets, powered by an Elo/Poisson/gradient-boosting ensemble.`;
+    ? `${matchup} kicks off ${date} in the ${fixture.league}. Our model has analyzed this fixture with ${(fixture.confidence ?? "").toLowerCase()} confidence -- see the full prediction across 100+ markets.`
+    : `${matchup} kicks off ${date} in the ${fixture.league}. Full AI-driven prediction coverage across 100+ markets, powered by an Elo/Poisson/gradient-boosting ensemble.`;
 }
 
 // SportsEvent structured data, built only from fields this endpoint
@@ -151,7 +151,7 @@ export function FixturePreview() {
               <p style={{ marginTop: "var(--space-3)" }}>
                 Our ensemble -- Elo ratings, a Dixon-Coles Poisson goal model and a gradient-boosting
                 classifier, blended and calibrated against held-out history -- has analyzed this fixture
-                across 18 markets: match result, double chance, both-teams-to-score, over/under lines and
+                across 100+ markets: match result, double chance, both-teams-to-score, over/under lines and
                 the full correct-score grid.
               </p>
             </>

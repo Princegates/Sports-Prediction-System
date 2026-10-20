@@ -44,6 +44,7 @@ from app.api.serializers import public_teaser_pick_to_schema
 from app.assistant import retrieval
 from app.betcode.selection import Leg, price_legs
 from app.db.models import AdminPick, FeaturedPick, Match, Prediction, User
+from app.outcomes.registry import full_registry_market_count
 from app.pick_settlement import frozen_admin_pick_legs, settle_admin_pick, settle_featured_pick
 
 router = APIRouter(prefix="/api/public", tags=["public"])
@@ -101,10 +102,11 @@ def public_stats(db: Session = Depends(get_db)) -> PublicStatsOut:
         upcoming_fixtures=counts["upcoming_fixtures"],
         active_members=active_members,
         league_names=leagues,
-        # Markets the outcome registry scores for every match: 1X2 (3),
-        # double chance (3), BTTS (2), five over/under lines (10), plus the
-        # correct-score grid.
-        markets_per_match=18,
+        # Computed from the registry itself (see full_registry_market_count's
+        # own docstring) rather than a typed-in literal, which is exactly
+        # what went stale here before -- the registry grew well past the old
+        # hardcoded 18 and nothing caught it.
+        markets_per_match=full_registry_market_count(),
     )
 
 

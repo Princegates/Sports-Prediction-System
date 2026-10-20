@@ -28,7 +28,7 @@ const ORGANIZATION_SCHEMA = {
   url: "https://soccaintel.com/",
   logo: "https://soccaintel.com/brand/icon-512.png",
   description:
-    "AI-calibrated football and soccer predictions across 50+ leagues, scored on 18 markets per match.",
+    "AI-calibrated football and soccer predictions across 50+ leagues, scored on 100+ markets per match.",
 };
 
 /**
@@ -116,7 +116,7 @@ const FEATURES = [
   {
     icon: "◎",
     title: "Global Most-Likely Outcome",
-    body: "Instead of one market at a time, every fixture is scored across 18 markets and the single highest-probability outcome is surfaced -- but only among outcomes that clear a data-quality gate.",
+    body: "Instead of one market at a time, every fixture is scored across 100+ markets and the single highest-probability outcome is surfaced -- but only among outcomes that clear a data-quality gate.",
   },
   {
     icon: "◈",
@@ -232,7 +232,7 @@ export function Welcome() {
   return (
     <PublicShell
       title="AI Football & Soccer Predictions — Socca Intelligence"
-      description="AI-calibrated football and soccer predictions across 50+ leagues, scored on 18 markets per match -- Elo, Poisson and machine learning, backtested on real results. Never a guarantee."
+      description="AI-calibrated football and soccer predictions across 50+ leagues, scored on 100+ markets per match -- Elo, Poisson and machine learning, backtested on real results. Never a guarantee."
     >
       {/* ---------------- Hero ---------------- */}
       <section className="landing-hero">
@@ -251,7 +251,7 @@ export function Welcome() {
           </h1>
           <p className="lede">
             Three independent models -- Elo, Dixon-Coles Poisson and gradient boosting -- blended and
-            calibrated against held-out history, then scored across 18 markets per match. You see the
+            calibrated against held-out history, then scored across 100+ markets per match. You see the
             probability, the confidence, and the factors behind it. Never a guarantee.
           </p>
 
@@ -314,7 +314,7 @@ export function Welcome() {
               </div>
               <div className="hero-panel-body">
                 <div className="hero-panel-metric">
-                  <span className="hero-panel-number">18</span>
+                  <span className="hero-panel-number">{stats ? stats.markets_per_match : "100+"}</span>
                   <span>markets scored per fixture</span>
                 </div>
                 <div className="hero-panel-rows">
