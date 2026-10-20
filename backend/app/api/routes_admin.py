@@ -7,6 +7,7 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.timeutil import utcnow
+from app.account_deletion import AccountDeletionError, delete_user_account
 from app.access import (
     AccessCodeError,
     access_code_effective_status,
@@ -34,6 +35,7 @@ from app.api.schemas import (
     FeaturePickIn,
     FeaturePickUpdateIn,
     MatchOut,
+    MessageOut,
     PublicTeaserPickOut,
     RevokeCodeIn,
     RevokeGrantIn,
@@ -218,6 +220,19 @@ def reinstate_user(user_id: int, admin: User = Depends(require_superadmin), db: 
     db.commit()
     db.refresh(target)
     return admin_user_to_schema(target, db)
+
+
+@router.delete("/users/{user_id}", response_model=MessageOut)
+def delete_user(user_id: int, admin: User = Depends(require_superadmin), db: Session = Depends(get_db)) -> MessageOut:
+    """Removes the account and everything that is the person's own -- see
+    app.account_deletion for exactly what goes and what stays. Permanent."""
+
+    target = _get_target_user(user_id, db)
+    try:
+        delete_user_account(db, admin, target)
+    except AccountDeletionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return MessageOut(message="Account deleted.")
 
 
 @router.post("/users/{user_id}/promote", response_model=AdminUserOut)

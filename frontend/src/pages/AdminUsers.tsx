@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   createAccessCode,
+  deleteUser,
   demoteUser,
   extendUserAccess,
   fetchAccessCodes,
@@ -133,7 +134,7 @@ export function AdminUsers() {
       .catch(() => {});
   }, []);
 
-  async function withBusy(id: number, action: () => Promise<AdminUser>) {
+  async function withBusy(id: number, action: () => Promise<unknown>) {
     setBusyId(id);
     try {
       await action();
@@ -214,6 +215,20 @@ export function AdminUsers() {
     const days = Number(raw);
     if (!Number.isFinite(days) || days <= 0) return;
     await withBusy(id, () => extendUserAccess(id, days));
+  }
+
+  async function handleDelete(u: AdminUser) {
+    // Typing the email back is the confirmation: this can't be undone.
+    const typed = window.prompt(
+      `Delete ${u.email} permanently?\n\nThis removes the account, its access, chat history and saved slips. ` +
+        "It cannot be undone. Type the email address to confirm.",
+    );
+    if (typed == null) return;
+    if (typed.trim().toLowerCase() !== u.email.toLowerCase()) {
+      setError("The email didn't match -- nothing was deleted.");
+      return;
+    }
+    await withBusy(u.id, () => deleteUser(u.id));
   }
 
   async function handleRevokeAccess(id: number) {
@@ -368,6 +383,11 @@ export function AdminUsers() {
                             Revoke admin
                           </button>
                         )
+                      )}
+                      {u.role !== "superadmin" && !isSelf && (
+                        <button className="btn ghost admin-delete-btn" disabled={busy} onClick={() => handleDelete(u)}>
+                          Delete
+                        </button>
                       )}
                     </div>
                   </td>

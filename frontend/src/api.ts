@@ -415,6 +415,11 @@ export function promoteUser(userId: number): Promise<AdminUser> {
   return post(`/api/admin/users/${userId}/promote`, {});
 }
 
+/** Removes the account and everything that's the person's own, for good. */
+export function deleteUser(userId: number): Promise<{ message: string }> {
+  return del(`/api/admin/users/${userId}`);
+}
+
 export function demoteUser(userId: number): Promise<AdminUser> {
   return post(`/api/admin/users/${userId}/demote`, {});
 }

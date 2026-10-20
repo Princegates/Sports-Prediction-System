@@ -6162,3 +6162,12 @@ table.admin-table {
     gap: 2px;
   }
 }
+
+/* Admin -> Users: the permanent "Delete" action reads as destructive. */
+.admin-delete-btn {
+  color: var(--critical);
+  border-color: rgba(230, 103, 103, 0.4);
+}
+.admin-delete-btn:hover:not(:disabled) {
+  background: var(--critical-soft);
+}
