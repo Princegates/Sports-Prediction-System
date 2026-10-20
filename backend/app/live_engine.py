@@ -36,16 +36,15 @@ def is_genuinely_live(match: Match, *, now: dt.datetime | None = None) -> bool:
     """Whether a match should be reported as live to everyone, not just
     reachable from its own Live tab.
 
-    ``status == "LIVE"`` alone is not enough to answer that: it is also set
-    by anyone with access pushing a simulated event from the Live tab's
-    sandbox (see record_live_event) -- a local demo of the recalculation,
-    never meant to broadcast to the shared Live Match Center -- and, for a
-    real fixture, it can get stuck if the one poll that would have flipped
-    it to FINISHED is ever missed. Requiring a *recent* confirmation from
-    the real sync job (live_synced_at) rather than trusting the status
-    column alone fixes both: a simulated match never sets it, so it is
-    never genuinely live, and a real one that stops being confirmed quietly
-    stops being reported as live instead of staying wrong forever.
+    ``status == "LIVE"`` alone is not enough to answer that: rows written by
+    the old Live-tab sandbox (before simulate_live_event stopped saving
+    anything) can still carry it, and a real fixture can get stuck LIVE if
+    the one poll that would have flipped it to FINISHED is ever missed.
+    Requiring a *recent* confirmation from the real sync job
+    (live_synced_at) rather than trusting the status column alone fixes
+    both: a simulated match never sets it, so it is never genuinely live,
+    and a real one that stops being confirmed quietly stops being reported
+    as live instead of staying wrong forever.
     """
 
     if match.status != "LIVE" or match.live_synced_at is None:
@@ -174,7 +173,7 @@ def _rough_history_count(db: Session, team_id: int, league: str, as_of: dt.datet
     return matches_played_before(db, team_id, as_of, league)
 
 
-def record_live_event(
+def _build_live_prediction(
     db: Session,
     match: Match,
     minute: int,
@@ -187,7 +186,7 @@ def record_live_event(
 
     projection = predict_live(db, match, minute, score_home, score_away, trigger_event)
 
-    live_prediction = LivePrediction(
+    return LivePrediction(
         match_id=match.id,
         minute=minute,
         score_home=score_home,
@@ -202,6 +201,46 @@ def record_live_event(
         global_outcome_probability=projection["global_outcome_probability"],
         trigger_event=trigger_event,
     )
+
+
+def simulate_live_event(
+    db: Session,
+    match: Match,
+    minute: int,
+    score_home: int,
+    score_away: int,
+    trigger_event: str,
+) -> LivePrediction:
+    """The Live tab's what-if sandbox: the same re-projection the real sync
+    produces, returned without being saved anywhere.
+
+    This used to go through record_live_event, which writes the score and
+    status onto the real Match row -- so anyone with access (a free trial
+    included) could mark any fixture FINISHED with any scoreline, and pick
+    settlement, the public track record and the next retrain all read that
+    row as the truth. A hypothetical belongs to the person exploring it, so
+    it now lives only in their own page's state; the Match row is written
+    by real data feeds alone.
+    """
+
+    live_prediction = _build_live_prediction(db, match, minute, score_home, score_away, trigger_event)
+    live_prediction.created_at = dt.datetime.utcnow()
+    return live_prediction
+
+
+def record_live_event(
+    db: Session,
+    match: Match,
+    minute: int,
+    score_home: int,
+    score_away: int,
+    trigger_event: str,
+) -> LivePrediction:
+    """Persist a live re-projection from a real data feed and move the Match
+    row to the score it reports. Only the live-sync job calls this -- never
+    a user-facing endpoint (see simulate_live_event)."""
+
+    live_prediction = _build_live_prediction(db, match, minute, score_home, score_away, trigger_event)
     db.add(live_prediction)
 
     match.status = "LIVE" if minute < 90 else "FINISHED"

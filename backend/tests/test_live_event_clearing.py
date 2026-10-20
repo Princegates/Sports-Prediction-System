@@ -1,7 +1,8 @@
-"""A pushed live event writes straight onto the real Match row (score,
-status), and any user with access can push one from the Live tab's sandbox
--- so a superadmin needs a way to undo it. These tests cover the admin-only
-clear endpoint added for exactly that.
+"""The Live tab's sandbox used to write straight onto the real Match row
+(score, status), so any user with access could push a fake result. It no
+longer saves anything (see live_engine.simulate_live_event); these tests
+cover both that and the admin-only clear endpoint, which stays to clean up
+rows the old sandbox left behind.
 """
 
 from __future__ import annotations
@@ -15,6 +16,8 @@ from app.auth.passwords import hash_password
 from app.auth.tokens import create_token
 from app.config import get_settings
 from app.db.models import AuditLog, Match, Team, User
+from app.db.session import SessionLocal
+from app.live_engine import record_live_event
 from app.main import app
 
 client = TestClient(app)
@@ -62,12 +65,52 @@ def _seed_scheduled_match(db_session) -> Match:
 
 
 def _push_event(match_id: int, headers: dict) -> None:
+    """Leaves the kind of row the old sandbox wrote -- through the
+    persisting path, since the endpoint itself no longer saves anything."""
+
+    del headers
+    db = SessionLocal()
+    try:
+        record_live_event(db, db.get(Match, match_id), minute=60, score_home=1, score_away=0, trigger_event="goal")
+    finally:
+        db.close()
+
+
+def test_sandbox_event_returns_a_projection_without_touching_the_match(db_session, auth_headers):
+    match = _seed_scheduled_match(db_session)
+
     response = client.post(
-        f"/api/matches/{match_id}/live-event",
-        json={"minute": 60, "score_home": 1, "score_away": 0, "trigger_event": "goal"},
-        headers=headers,
+        f"/api/matches/{match.id}/live-event",
+        json={"minute": 95, "score_home": 7, "score_away": 0, "trigger_event": "goal"},
+        headers=auth_headers,
     )
     assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["minute"] == 95
+    assert body["score_home"] == 7
+    assert 0.0 <= body["home_win"] <= 1.0
+
+    db_session.refresh(match)
+    assert match.status == "SCHEDULED"
+    assert match.home_score is None
+    assert match.away_score is None
+    assert not match.is_finished
+    assert client.get(f"/api/matches/{match.id}/live", headers=auth_headers).json() == []
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"minute": -1, "score_home": 0, "score_away": 0, "trigger_event": "goal"},
+        {"minute": 200, "score_home": 0, "score_away": 0, "trigger_event": "goal"},
+        {"minute": 60, "score_home": -3, "score_away": 0, "trigger_event": "goal"},
+        {"minute": 60, "score_home": 0, "score_away": 0, "trigger_event": "not_an_event"},
+    ],
+)
+def test_sandbox_rejects_impossible_states(db_session, auth_headers, payload):
+    match = _seed_scheduled_match(db_session)
+    response = client.post(f"/api/matches/{match.id}/live-event", json=payload, headers=auth_headers)
+    assert response.status_code == 422, response.text
 
 
 def test_superadmin_clears_a_pushed_simulated_event(db_session, admin, auth_headers):

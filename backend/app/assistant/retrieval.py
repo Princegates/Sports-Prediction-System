@@ -310,11 +310,10 @@ def live_snapshots(db: Session, match_id: int, limit: int = 1) -> list[LivePredi
 
 
 def live_matches(db: Session, limit: int = 8) -> list[MatchCard]:
-    # A simulated event from a match's own Live tab sets status="LIVE" too
-    # (see live_engine.record_live_event) -- that's a local sandbox demo,
-    # not something Guda should tell every user is actually in play. Only a
-    # *recent* confirmation from the real sync job counts here, the same
-    # gate /api/matches?status=LIVE applies.
+    # status="LIVE" alone can be stale (a missed final poll, or a row left
+    # by the old Live-tab sandbox). Only a *recent* confirmation from the
+    # real sync job counts here, the same gate /api/matches?status=LIVE
+    # applies (see live_engine.is_genuinely_live).
     cutoff = dt.datetime.utcnow() - LIVE_STALE_AFTER
     matches = db.execute(
         select(Match)

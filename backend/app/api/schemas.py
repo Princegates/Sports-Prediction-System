@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class TeamOut(BaseModel):
@@ -401,10 +401,10 @@ class ExtendGrantIn(BaseModel):
 
 
 class LiveEventIn(BaseModel):
-    minute: int
-    score_home: int
-    score_away: int
-    trigger_event: str
+    minute: int = Field(ge=0, le=130)
+    score_home: int = Field(ge=0, le=30)
+    score_away: int = Field(ge=0, le=30)
+    trigger_event: str = Field(max_length=32)
 
 
 class LivePredictionOut(BaseModel):

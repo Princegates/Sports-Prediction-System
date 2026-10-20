@@ -67,7 +67,8 @@ export function LiveEventControls({
       <p style={{ marginTop: 0, fontSize: 13, color: "var(--text-secondary)" }}>
         A real match syncs here automatically every few minutes when live data is configured. Push a
         simulated event below to see the live engine recalculate the Global Most-Likely Outcome for real, on any
-        match, live or not.
+        match, live or not. Simulated events stay on this page only -- they never change the real score or anyone
+        else's view.
       </p>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10, marginBottom: 12 }}>
         <label style={{ fontSize: 12, color: "var(--text-muted)" }}>
@@ -75,7 +76,7 @@ export function LiveEventControls({
           <input
             type="number"
             min={0}
-            max={120}
+            max={130}
             value={minute}
             onChange={(e) => setMinute(Number(e.target.value))}
             style={{ display: "block", width: "100%", marginTop: 4, background: "var(--bg-surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: 8, color: "var(--text-primary)" }}
@@ -86,6 +87,7 @@ export function LiveEventControls({
           <input
             type="number"
             min={0}
+            max={30}
             value={scoreHome}
             onChange={(e) => setScoreHome(Number(e.target.value))}
             style={{ display: "block", width: "100%", marginTop: 4, background: "var(--bg-surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: 8, color: "var(--text-primary)" }}
@@ -96,6 +98,7 @@ export function LiveEventControls({
           <input
             type="number"
             min={0}
+            max={30}
             value={scoreAway}
             onChange={(e) => setScoreAway(Number(e.target.value))}
             style={{ display: "block", width: "100%", marginTop: 4, background: "var(--bg-surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: 8, color: "var(--text-primary)" }}
@@ -121,7 +124,7 @@ export function LiveEventControls({
           {busy ? "Recalculating..." : "Push live event"}
         </button>
         {canClear && hasEvents && (
-          <button className="btn ghost" onClick={handleClear} disabled={clearing} title="Superadmin only -- wipes every simulated event and resets this fixture to SCHEDULED">
+          <button className="btn ghost" onClick={handleClear} disabled={clearing} title="Superadmin only -- wipes simulated events saved by the old sandbox and resets this fixture to SCHEDULED">
             {clearing ? "Clearing..." : "Clear simulated events"}
           </button>
         )}
