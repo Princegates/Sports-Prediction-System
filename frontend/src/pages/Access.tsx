@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { fetchBranding, redeemAccessCode } from "../api";
+import { fetchBranding, redeemAccessCode, reportPayment } from "../api";
 import { Mascot } from "../components/Mascot";
 import { useTilt } from "../lib/useTilt";
 import { useAuth } from "../lib/AuthContext";
@@ -59,8 +59,52 @@ function formatDuration(activatedAt: string | null, expiresAt: string): string |
   return `${days}-day grant`;
 }
 
+/** "I've paid" -- sends the reference to the Super Admins straight away so
+ * issuing the code doesn't wait on someone spotting a WhatsApp message.
+ * Payment itself still happens outside the platform. */
+function PaymentNotice() {
+  const [reference, setReference] = useState("");
+  const [sent, setSent] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      setSent((await reportPayment(reference)).message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (sent) return <p className="meta" style={{ marginTop: 12 }}>{sent}</p>;
+
+  return (
+    <form onSubmit={handleSubmit} className="auth-form" style={{ marginTop: 16, textAlign: "left" }}>
+      <label>
+        Already paid? Add your payment reference
+        <input
+          required
+          maxLength={120}
+          value={reference}
+          onChange={(e) => setReference(e.target.value)}
+          placeholder="e.g. mobile money transaction ID"
+        />
+      </label>
+      {error && <p className="auth-error">{error}</p>}
+      <button className="btn ghost" type="submit" disabled={busy || !reference.trim()}>
+        {busy ? "Sending..." : "Tell the team I've paid"}
+      </button>
+    </form>
+  );
+}
+
 export function Access() {
-  const { accessStatus, accessLoading, refreshAccessStatus } = useAuth();
+  const { user, accessStatus, accessLoading, refreshAccessStatus } = useAuth();
   const navigate = useNavigate();
   const tilt = useTilt<HTMLDivElement>();
   const [code, setCode] = useState("");
@@ -187,15 +231,19 @@ export function Access() {
                 <div className="status-result-actions">
                   <a
                     className="btn btn-lg"
-                    href={whatsappLink(whatsapp, "Hi, I'd like an access code for Socca Intelligence.")}
+                    href={whatsappLink(
+                      whatsapp,
+                      `Hi, I'd like an access code for Socca Intelligence.${price ? ` (${price})` : ""} My account email is ${user?.email ?? ""}.`,
+                    )}
                     target="_blank"
                     rel="noreferrer noopener"
                   >
                     Contact admin on WhatsApp
                   </a>
-                  <span className="meta">WhatsApp only -- no calls or texts.</span>
+                  <span className="meta">WhatsApp only -- no calls or texts. Your account email is filled in for you.</span>
                 </div>
               )}
+              <PaymentNotice />
             </>
           )}
         </div>

@@ -662,7 +662,7 @@ export function Markets() {
                                               type="button"
                                               className={`odds-cell${tops.has(key) ? " ai-top" : ""}${isPicked ? " picked" : ""}`}
                                               onClick={() => togglePick(o)}
-                                              title={`${o.market}: ${o.selection} -- ${o.definition} AI probability ${(o.probability * 100).toFixed(0)}%${isHotPick(o.probability, o.data_quality_score, o.model_agreement_score) ? " -- hot pick" : ""}`}
+                                              title={`${o.market}: ${o.selection} -- ${o.definition} AI probability ${(o.probability * 100).toFixed(0)}%${isHotPick(o.probability, o.data_quality_score, o.model_agreement_score) ? " -- high confidence" : ""}`}
                                             >
                                               {(o.probability * 100).toFixed(0)}%
                                               {isHotPick(o.probability, o.data_quality_score, o.model_agreement_score) && (
@@ -718,7 +718,7 @@ export function Markets() {
                                         type="button"
                                         className={`odds-cell coupon-mobile-odds-btn${tops.has(key) ? " ai-top" : ""}${isPicked ? " picked" : ""}`}
                                         onClick={() => togglePick(o)}
-                                        title={`${o.market}: ${o.selection} -- ${o.definition} AI probability ${(o.probability * 100).toFixed(0)}%${isHotPick(o.probability, o.data_quality_score, o.model_agreement_score) ? " -- hot pick" : ""}`}
+                                        title={`${o.market}: ${o.selection} -- ${o.definition} AI probability ${(o.probability * 100).toFixed(0)}%${isHotPick(o.probability, o.data_quality_score, o.model_agreement_score) ? " -- high confidence" : ""}`}
                                       >
                                         <span className="coupon-mobile-odds-label">{c.header}</span>
                                         <span className="coupon-mobile-odds-value">

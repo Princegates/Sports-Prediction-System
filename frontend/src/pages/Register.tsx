@@ -163,8 +163,17 @@ export function Register() {
 
         <h1 style={{ fontSize: 20, marginBottom: 6 }}>Create an account</h1>
         <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 0, marginBottom: 20 }}>
-          Sign in right after creating your account. Predictions unlock once you redeem an access code, which
-          a Super Admin issues after confirming payment outside the platform.
+          {branding?.trial_days ? (
+            <>
+              Your first {branding.trial_days} day{branding.trial_days === 1 ? "" : "s"} of full access are free -- no card, no code.
+              After that, a Super Admin issues an access code once you've paid outside the platform.
+            </>
+          ) : (
+            <>
+              Sign in right after creating your account. Predictions unlock once you redeem an access code, which
+              a Super Admin issues after confirming payment outside the platform.
+            </>
+          )}
           {price && <> Access is <strong>{price}</strong>.</>}
         </p>
 

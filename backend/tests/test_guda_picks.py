@@ -476,9 +476,9 @@ def test_a_settled_result_is_frozen_and_never_regraded(db_session, admin, upcomi
 
 def test_public_admin_pick_track_record_includes_featured_picks(db_session, admin, upcoming_match):
     created = _feature(admin, upcoming_match.id, market="Both Teams To Score", selection="Yes")
+    _feature_public(admin, created["id"])  # committed before kickoff
     _finish(db_session, upcoming_match, 2, 1)  # won
     client.get("/api/predictions/guda-picks", headers=_headers(admin))  # settle it
-    _feature_public(admin, created["id"])
 
     response = client.get("/api/public/admin-picks-track-record")
     assert response.status_code == 200
@@ -520,23 +520,25 @@ def _feature_public(admin: User, pick_id: int, featured: bool = True):
     return response.json()
 
 
-def test_admin_can_feature_a_settled_guda_pick_in_the_public_track_record(db_session, admin, upcoming_match):
+def test_admin_can_commit_a_pending_guda_pick_before_kickoff(db_session, admin, upcoming_match):
     created = _feature(admin, upcoming_match.id, market="Both Teams To Score", selection="Yes")
-    _finish(db_session, upcoming_match, 2, 1)  # won
-    client.get("/api/predictions/guda-picks", headers=_headers(admin))  # settle it
+    assert created["track_record_open"] is True
 
     resolved = _feature_public(admin, created["id"])
     assert resolved["featured_public"] is True
 
     pick = db_session.get(FeaturedPick, created["id"])
     assert pick.featured_public is True
+    assert pick.featured_public_at is not None
 
     log = db_session.query(AuditLog).filter(AuditLog.action == "featured_pick.featured_public_set").one()
     assert log.detail == {"featured_pick_id": created["id"], "featured_public": True}
 
 
-def test_a_pending_guda_pick_cannot_be_featured(db_session, admin, upcoming_match):
+def test_a_settled_guda_pick_cannot_be_featured_after_the_fact(db_session, admin, upcoming_match):
     created = _feature(admin, upcoming_match.id, market="Both Teams To Score", selection="Yes")
+    _finish(db_session, upcoming_match, 2, 1)  # won
+    client.get("/api/predictions/guda-picks", headers=_headers(admin))  # settle it
     response = client.patch(
         f"/api/admin/featured-picks/{created['id']}/featured-public",
         json={"featured_public": True},

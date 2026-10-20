@@ -5,6 +5,7 @@ import { useTilt } from "../lib/useTilt";
 import { CopyButton } from "./CopyButton";
 import { LedgerRow } from "./LedgerRow";
 import { whatsappLink } from "../lib/whatsapp";
+import { chanceLabel } from "../lib/odds";
 
 const RISK_LABELS: Record<AdminPick["risk_tier"], string> = {
   low: "Low risk",
@@ -130,7 +131,7 @@ export function AdminPickCard({
 
       <div className="match-meta-row tabular-nums" style={{ fontWeight: 600 }}>
         {pick.priced && pick.combined_odds !== null ? `${pick.combined_odds.toFixed(2)} combined odds · ` : ""}
-        {(pick.combined_probability * 100).toFixed(0)}% combined probability
+        {(pick.combined_probability * 100).toFixed(0)}% combined probability (lands {chanceLabel(pick.combined_probability)})
       </div>
 
       {pick.booking_code && pick.booking_code_bookmaker && (

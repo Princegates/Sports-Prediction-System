@@ -10,6 +10,7 @@ import {
 } from "../api";
 import { LedgerRow } from "../components/LedgerRow";
 import { Mascot } from "../components/Mascot";
+import { chanceLabel } from "../lib/odds";
 import { PublicShell } from "../components/PublicShell";
 import { fixtureSlug } from "../lib/slug";
 import { usePageStructuredData } from "../lib/pageMeta";
@@ -220,14 +221,19 @@ export function Welcome() {
   // "" (not set) falls back to the generic "arrange payment externally"
   // wording every one of these already had before pricing_label existed.
   const price = branding?.pricing_label || null;
-  const faqs = FAQS.map((f, i) =>
-    i === 0 && price
-      ? {
-          ...f,
-          a: `You can sign in immediately -- there's no approval queue. What's locked until you redeem an access code is the prediction surface itself: teams, matches, predictions and the AI assistant. Access is ${price} -- a Super Admin issues a code once you've arranged payment with them outside the platform; you enter it on the Access page and it unlocks for the code's duration.`,
-        }
-      : f
-  );
+  const trialDays = branding?.trial_days ?? 0;
+  const faqs = FAQS.map((f, i) => {
+    if (i !== 0) return f;
+    const trial =
+      trialDays > 0
+        ? `Every new account gets ${trialDays} day${trialDays === 1 ? "" : "s"} of full access as soon as it confirms its email -- no code, no card. `
+        : "";
+    const cost = price ? ` Access is ${price}.` : "";
+    return {
+      ...f,
+      a: `Yes. You can sign in immediately -- there's no approval queue. ${trial}After that, teams, matches, full predictions and the AI assistant need an access code: a Super Admin issues one once you've arranged payment with them outside the platform, you enter it on the Access page, and it unlocks for the code's duration.${cost}`,
+    };
+  });
 
   return (
     <PublicShell
@@ -257,17 +263,26 @@ export function Welcome() {
 
           <div className="landing-cta-row">
             <Link className="btn btn-lg" to="/register">
-              Explore AI predictions
+              {trialDays > 0 ? `Start your ${trialDays}-day free trial` : "Create a free account"}
             </Link>
             <Link className="btn ghost btn-lg" to="/login">
-              Enter access code
+              Sign in
             </Link>
           </div>
 
           <p className="landing-cta-note">
-            Sign in is instant. Predictions unlock once you redeem an access code, issued by a Super
-            Admin after payment is confirmed outside the platform -- there's no card form here.
-            {price && <> Access is <strong>{price}</strong>.</>}
+            {trialDays > 0 ? (
+              <>
+                Full access for {trialDays} day{trialDays === 1 ? "" : "s"}. No card, and it takes about 30 seconds.
+                {price && <> After that, access is <strong>{price}</strong>.</>}
+              </>
+            ) : (
+              <>
+                Free to sign up, with one headline pick per league on the free tier.
+                {price && <> Full access is <strong>{price}</strong>.</>}
+              </>
+            )}{" "}
+            <Link to="/pricing">How paying works</Link>
           </p>
         </div>
 
@@ -277,7 +292,7 @@ export function Welcome() {
             <div className="hero-panel">
               <div className="hero-panel-head">
                 <span className="tag">Featured results</span>
-                <span className="confidence-tag high">LIVE</span>
+                <span className="confidence-tag high">Called before kickoff</span>
               </div>
               <div className="hero-panel-body">
                 <div className="hero-panel-metric">
@@ -302,8 +317,8 @@ export function Welcome() {
                 </div>
               </div>
               <p className="hero-panel-foot">
-                Every settled pick our team has chosen to feature, win or lose -- the same record further
-                down this page.
+                Every pick our team committed to before kickoff, win or lose -- none can be added after the
+                result or taken down after a loss. The full record is further down this page.
               </p>
             </div>
           ) : (
@@ -356,10 +371,11 @@ export function Welcome() {
       {teaserPick?.has_data && (
         <section className="landing-section">
           <div className="section-head">
-            <h2>This week's long shot</h2>
+            <h2>A sample combo from this week</h2>
             <p>
-              One combo our system drew at random from this week's priced matches, {teaserPick.combined_odds.toFixed(2)}x
-              combined -- a taste of what a redeemed account gets every day, across every match we cover.
+              One combo our system drew from this week's priced matches, {teaserPick.combined_odds.toFixed(2)}x combined.
+              Our model gives it <strong>{chanceLabel(teaserPick.combined_probability)}</strong> chance of landing
+              -- most combos like this lose, which is why we show the odds of winning next to the payout.
             </p>
           </div>
 
@@ -399,8 +415,8 @@ export function Welcome() {
             {teaserGenerateClicked ? (
               <div className="state-card" style={{ maxWidth: 420, margin: "0 auto" }}>
                 <p style={{ margin: "0 0 12px" }}>
-                  Generating a code needs an account with active access -- that's the whole product, not
-                  a locked button. Sign up free, then redeem a code to generate real ones like this.
+                  Generating a code needs an account with access -- that's the whole product, not a locked
+                  button.{trialDays > 0 ? ` Start your ${trialDays}-day free trial to generate real ones like this.` : " Sign up free to get started."}
                 </p>
                 <Link className="btn btn-lg" to="/register">
                   Create an account
@@ -646,15 +662,15 @@ export function Welcome() {
         <div className="section-head">
           <h2>Our Admin Picks, graded on real results</h2>
           <p>
-            A hand-picked selection of our settled Admin Picks, chosen by our team to show how they
-            actually landed -- shown below exactly as picked, teams and all, so you can see what was
-            called and what actually happened.
+            Picks our team committed to publicly before kickoff, graded against the real results. A pick
+            can only join this record before its first match starts, and once it has started it stays,
+            win or lose -- shown below exactly as picked, teams and all.
           </p>
           <p>
             Every week the system itself publishes six standing accumulators, pooled across every
             league it covers: Low, Medium and High risk (10 legs each, rising combined-odds bands),
             plus three High-Risk Jackpot slips (10-20 legs, 50x+ combined odds). Generated and settled
-            the same way as everything else here, and eligible for the number below once featured.
+            the same way as everything else here, and counted below when committed before kickoff.
           </p>
         </div>
 
@@ -826,7 +842,7 @@ export function Welcome() {
 
         <div className="access-cta">
           <Link className="btn btn-lg" to="/register">
-            Create an account
+            {trialDays > 0 ? `Start your ${trialDays}-day free trial` : "Create an account"}
           </Link>
           <Link className="btn ghost btn-lg" to="/account-status">
             Check your access status
@@ -861,10 +877,14 @@ export function Welcome() {
       {/* ---------------- Final CTA ---------------- */}
       <section className="doc-cta">
         <h2>Ready to see what the models say about this week's fixtures?</h2>
-        <p>Create an account, then redeem your access code the moment you have one.</p>
+        <p>
+          {trialDays > 0
+            ? `Create an account and the next ${trialDays} day${trialDays === 1 ? "" : "s"} are on us -- no card, no code.`
+            : "Create a free account, then redeem an access code whenever you're ready."}
+        </p>
         <div className="landing-cta-row">
           <Link className="btn btn-lg" to="/register">
-            Get access
+            {trialDays > 0 ? "Start free trial" : "Create an account"}
           </Link>
           <Link className="btn ghost btn-lg" to="/login">
             Sign in

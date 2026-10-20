@@ -115,18 +115,22 @@ export function GudaPickCard({
         </div>
       )}
 
-      {pick.result !== "pending" && onToggleFeatured && (
+      {onToggleFeatured && (pick.track_record_open || pick.featured_public) && (
         <div style={{ marginTop: 8 }}>
-          <button
-            type="button"
-            className="btn ghost"
-            style={{ padding: "2px 8px", fontSize: 12 }}
-            disabled={busy}
-            onClick={() => onToggleFeatured(pick.id, !pick.featured_public)}
-            title="Whether this settled pick shows in the public track record on the Welcome page."
-          >
-            {pick.featured_public ? "Featured in track record -- unfeature" : "Feature in track record"}
-          </button>
+          {pick.track_record_open ? (
+            <button
+              type="button"
+              className="btn ghost"
+              style={{ padding: "2px 8px", fontSize: 12 }}
+              disabled={busy}
+              onClick={() => onToggleFeatured(pick.id, !pick.featured_public)}
+              title="Commit this pick to the public track record on the Welcome page. From kickoff on it stays there, win or lose."
+            >
+              {pick.featured_public ? "Committed to track record -- withdraw" : "Commit to track record"}
+            </button>
+          ) : (
+            <span className="sub">In the public track record -- committed before kickoff.</span>
+          )}
         </div>
       )}
     </div>

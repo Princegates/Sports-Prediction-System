@@ -118,6 +118,10 @@ _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     ("users", "referral_rewarded_at", "TIMESTAMP"),
     ("users", "paused_until", "TIMESTAMP"),
     ("access_codes", "kind", "VARCHAR(16) DEFAULT 'issued'"),
+    # Pre-kickoff commitment to the public track record -- null on every
+    # existing row, which keeps picks featured after their result out of it.
+    ("featured_picks", "featured_public_at", "TIMESTAMP"),
+    ("admin_picks", "featured_public_at", "TIMESTAMP"),
 ]
 
 

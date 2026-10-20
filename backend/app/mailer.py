@@ -379,23 +379,45 @@ def password_reset_message(link: str) -> tuple[str, str]:
     return "Reset your password", body
 
 
-def trial_ending_message(
-    hours_left: int, site_url: str | None = None, whatsapp: str | None = None, price_label: str | None = None
+def access_ending_message(
+    hours_left: int,
+    *,
+    trial: bool,
+    site_url: str | None = None,
+    whatsapp: str | None = None,
+    price_label: str | None = None,
 ) -> tuple[str, str]:
-    """Subject and body for the automatic heads-up before a trial ends."""
+    """Subject and body for the automatic heads-up a day before access ends
+    -- see app.access_reminders."""
 
-    where = site_url or "the site"
+    where = (site_url or "").rstrip("/") or "the site"
+    what = "free trial" if trial else "access"
     price = f" Access is {price_label}." if price_label else ""
     contact = (
         f"To keep going, message {format_whatsapp(whatsapp)} on WhatsApp for an access code.{price}\n\n"
         if whatsapp
-        else f"To keep going, redeem an access code at {where}.{price}\n\n"
+        else f"To keep going, get an access code from the team.{price}\n\n"
     )
     body = (
-        f"Your free trial ends in about {hours_left} hours.\n\n"
+        f"Your {what} ends in about {hours_left} hours.\n\n"
         "After that you'll drop to the free tier (one headline pick per league).\n"
         "Your account, history and saved slips all stay put.\n\n"
         f"{contact}"
         f"Already have a code? Redeem it at {where}/app/access\n"
     )
-    return "Your free trial ends soon", body
+    subject = "Your free trial ends tomorrow" if trial else "Your access ends tomorrow"
+    return subject, body
+
+
+def payment_reported_message(account_email: str, reference: str, site_url: str | None = None) -> tuple[str, str]:
+    """Subject and body for the Super Admin alert when an account says it
+    has paid -- see routes_access.report_payment."""
+
+    where = f"{site_url.rstrip('/')}/app/admin" if site_url else "the admin panel"
+    body = (
+        f"{account_email} says they've paid for access.\n\n"
+        f"Reference they gave: {reference}\n\n"
+        "Check it against your payment records, then issue their code from\n"
+        f"{where}\n"
+    )
+    return f"Payment reported: {account_email}", body

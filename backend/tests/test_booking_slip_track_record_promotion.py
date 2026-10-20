@@ -1,9 +1,9 @@
-"""Publishing a settled booking code to the public track record: an admin's
-own "My codes -- results history" (BookingSlip) is personal, but a won or
-lost one can be promoted into a new, already-settled, featured_public
-AdminPick -- the same public page every other featured pick appears on
-(see routes_admin.promote_booking_slip_to_track_record). The source
-BookingSlip itself is never touched.
+"""Committing a booking code to the public track record: an admin's own
+"My codes" (BookingSlip) is personal, but one whose matches haven't kicked
+off can be promoted into a new, pending, featured_public AdminPick that
+then settles on its own -- win or lose, it stays (see
+routes_admin.promote_booking_slip_to_track_record and app.track_record).
+The source BookingSlip itself is never touched.
 """
 
 from __future__ import annotations
@@ -135,70 +135,65 @@ def _feature_public(admin: User, pick_id: int) -> dict:
     return response.json()
 
 
-def test_admin_can_promote_a_won_booking_slip_to_track_record(db_session, admin, two_matches):
+def test_admin_can_commit_an_upcoming_booking_slip_and_it_settles_on_its_own(db_session, admin, two_matches):
     slip = _make_slip(db_session, admin, two_matches)
-    for match in two_matches:
-        _finish(db_session, match, 2, 0)  # Home Win, as every leg picked
 
     response = _promote(admin, slip.id)
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body["result"] == "won"
-    assert body["settled_at"] is not None
+    assert body["result"] == "pending"
     assert body["featured_public"] is True
-    assert len(body["legs"]) == 2
-    assert all(leg["result"] == "won" for leg in body["legs"])
     assert body["priced"] is False
 
-    # Shows up on the public, unauthenticated track record immediately.
-    public = client.get("/api/public/admin-picks-track-record")
-    data = public.json()
+    pick = db_session.get(AdminPick, body["id"])
+    assert pick.featured_public_at is not None
+
+    for match in two_matches:
+        _finish(db_session, match, 2, 0)  # Home Win, as every leg picked
+
+    data = client.get("/api/public/admin-picks-track-record").json()
     assert data["has_data"] is True
     assert data["won"] == 1
     assert data["settled_count"] == 1
 
-    # The source BookingSlip is untouched -- still there, same id, settled
-    # the same way it would have settled on its own (lazy settlement runs
-    # regardless), nothing about it changed by being promoted. Refreshed
-    # explicitly: the endpoint ran in its own DB session, so this test's
-    # session has a stale identity-map copy of the row otherwise.
+    # The source BookingSlip is untouched.
     db_session.refresh(slip)
-    original = db_session.get(BookingSlip, slip.id)
-    assert original is not None
-    assert original.result == "won"
+    assert db_session.get(BookingSlip, slip.id) is not None
 
     log = db_session.query(AuditLog).filter(AuditLog.action == "booking_slip.promoted_to_track_record").one()
-    assert log.detail == {"booking_slip_id": slip.id, "legs": 2, "result": "won"}
+    assert log.detail == {"booking_slip_id": slip.id, "legs": 2}
 
 
-def test_admin_can_promote_a_lost_booking_slip_too(db_session, admin, two_matches):
+def test_a_committed_slip_that_loses_is_shown_as_lost(db_session, admin, two_matches):
+    slip = _make_slip(db_session, admin, two_matches)
+    assert _promote(admin, slip.id).status_code == 200
+    for match in two_matches:
+        _finish(db_session, match, 0, 2)  # every "Home Win" leg loses
+
+    assert client.get("/api/public/admin-picks-track-record").json()["lost"] == 1
+
+
+def test_promote_rejects_a_slip_whose_result_is_already_known(db_session, admin, two_matches):
     slip = _make_slip(db_session, admin, two_matches)
     for match in two_matches:
-        _finish(db_session, match, 0, 2)  # Away Win -- every leg's "Home Win" pick loses
+        _finish(db_session, match, 2, 0)
 
-    response = _promote(admin, slip.id)
-    assert response.status_code == 200, response.text
-    body = response.json()
-    assert body["result"] == "lost"
-    assert body["featured_public"] is True
-
-    public = client.get("/api/public/admin-picks-track-record")
-    data = public.json()
-    assert data["lost"] == 1
-
-
-def test_promote_rejects_a_still_pending_slip(db_session, admin, two_matches):
-    slip = _make_slip(db_session, admin, two_matches)  # matches never finish
     response = _promote(admin, slip.id)
     assert response.status_code == 400
     assert db_session.query(AdminPick).count() == 0
 
 
+def test_promote_rejects_a_slip_once_its_first_match_has_kicked_off(db_session, admin, two_matches):
+    two_matches[0].date = dt.datetime.utcnow() - dt.timedelta(minutes=5)
+    db_session.commit()
+    slip = _make_slip(db_session, admin, two_matches)
+
+    assert _promote(admin, slip.id).status_code == 400
+
+
 def test_promote_rejects_someone_elses_booking_slip(db_session, admin, two_matches):
     other = _make_user(db_session, "other-member@example.com")
     slip = _make_slip(db_session, other, two_matches)
-    for match in two_matches:
-        _finish(db_session, match, 2, 0)
 
     response = _promote(admin, slip.id)
     assert response.status_code == 404
@@ -212,8 +207,6 @@ def test_promote_rejects_an_unknown_slip_id(db_session, admin):
 
 def test_promote_is_superadmin_only(db_session, admin, two_matches):
     slip = _make_slip(db_session, admin, two_matches)
-    for match in two_matches:
-        _finish(db_session, match, 2, 0)
 
     plain = _make_user(db_session, "plain-user@example.com")
     response = client.post(
@@ -222,19 +215,11 @@ def test_promote_is_superadmin_only(db_session, admin, two_matches):
     assert response.status_code == 403
 
 
-def test_promoting_twice_creates_two_separate_track_record_entries(db_session, admin, two_matches):
-    """Unlike the public teaser (always exactly one row), the track record
-    accumulates -- promoting the same slip again is a harmless duplicate
-    publish, not an error, since there's no "only one teaser" invariant here."""
+def test_the_same_slip_cannot_be_committed_twice(db_session, admin, two_matches):
+    """A duplicate would count one call twice in the public record."""
 
     slip = _make_slip(db_session, admin, two_matches)
-    for match in two_matches:
-        _finish(db_session, match, 2, 0)
-
-    first = _promote(admin, slip.id)
-    assert first.status_code == 200, first.text
+    assert _promote(admin, slip.id).status_code == 200
     second = _promote(admin, slip.id)
-    assert second.status_code == 200, second.text
-    assert first.json()["id"] != second.json()["id"]
-
-    assert db_session.query(AdminPick).filter(AdminPick.featured_public.is_(True)).count() == 2
+    assert second.status_code == 409
+    assert db_session.query(AdminPick).filter(AdminPick.featured_public.is_(True)).count() == 1

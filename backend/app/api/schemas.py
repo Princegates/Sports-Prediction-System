@@ -431,6 +431,12 @@ class AccessGrantOut(BaseModel):
     revoked_reason: str | None = None
 
 
+class PaymentNoticeIn(BaseModel):
+    # A mobile-money transaction ID or similar -- recorded for the admin to
+    # match against their own records, never processed here.
+    reference: str = Field(max_length=120)
+
+
 class AccessRedeemIn(BaseModel):
     code: str = Field(max_length=64)
 
@@ -570,6 +576,9 @@ class BrandingOut(BaseModel):
     # "you get N bonus days" copy when this is true.
     referral_enabled: bool
     referral_bonus_days: int
+    # Free trial on offer to a new signup, so the landing page can lead
+    # with it instead of reading like a paywall. 0 when trials are off.
+    trial_days: int = 0
 
 
 # --- Outcome browser -------------------------------------------------------
@@ -695,6 +704,9 @@ class FeaturedPickOut(BaseModel):
     # An admin's choice to include this settled pick in the public track
     # record -- see FeaturedPick.featured_public.
     featured_public: bool = False
+    # Whether featured_public can still be changed (pending, before
+    # kickoff) -- see app.track_record.
+    track_record_open: bool = False
 
 
 class FeaturedPickResultIn(BaseModel):
@@ -817,6 +829,8 @@ class AdminPickOut(BaseModel):
     # An admin's choice to include this settled pick in the public track
     # record -- see AdminPick.featured_public.
     featured_public: bool = False
+    # Whether featured_public can still be changed -- see app.track_record.
+    track_record_open: bool = False
 
 
 # --- Booking codes -----------------------------------------------------

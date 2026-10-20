@@ -344,6 +344,8 @@ export interface FeaturedPick {
   // record (see AdminPickTrackRecord) -- can only be set once result
   // leaves "pending".
   featured_public: boolean;
+  /** Whether featured_public can still change -- pending and before kickoff. */
+  track_record_open: boolean;
 }
 
 export interface AdminPickLeg {
@@ -409,6 +411,8 @@ export interface AdminPick {
   // record (see AdminPickTrackRecord) -- can only be set once result
   // leaves "pending".
   featured_public: boolean;
+  /** Whether featured_public can still change -- pending and before kickoff. */
+  track_record_open: boolean;
 }
 
 /** One settled, featured pick shown with its real teams/market/selection on
@@ -551,6 +555,8 @@ export interface Branding {
   default_market_tab: string;
   referral_enabled: boolean;
   referral_bonus_days: number;
+  /** Free trial a new signup gets; 0 when trials are off. */
+  trial_days: number;
 }
 
 // --- Outcome browser -------------------------------------------------------

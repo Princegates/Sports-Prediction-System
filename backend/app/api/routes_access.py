@@ -11,15 +11,17 @@ from __future__ import annotations
 import datetime as dt
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import mailer
 from app.access import AccessCodeError, current_grant, redeem_access_code
 from app.api.deps import get_current_user, get_db
 from app.api.rate_limit import enforce_key
-from app.api.schemas import AccessGrantOut, AccessRedeemIn, AccessStatusOut
+from app.api.schemas import AccessGrantOut, AccessRedeemIn, AccessStatusOut, MessageOut, PaymentNoticeIn
 from app.api.serializers import access_grant_to_schema
 from app.config import get_settings
-from app.db.models import User
+from app.db.models import AuditLog, User
 
 router = APIRouter(prefix="/api/access", tags=["access"])
 
@@ -59,4 +61,42 @@ def access_status(user: User = Depends(get_current_user), db: Session = Depends(
         status="active" if has_access else "expired",
         activated_at=grant.activated_at,
         expires_at=grant.expires_at,
+    )
+
+
+@router.post("/payment-notice", response_model=MessageOut)
+def report_payment(
+    payload: PaymentNoticeIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> MessageOut:
+    """"I've paid" -- tells the Super Admins straight away, with the
+    reference the account gave, so issuing the code doesn't wait on someone
+    noticing a WhatsApp message. Records the reference only; nothing here
+    takes or verifies a payment (payment stays outside the platform)."""
+
+    enforce_key(f"payment_notice-user:{user.id}", 3, 24 * 3600)
+    reference = payload.reference.strip()
+    if not reference:
+        raise HTTPException(status_code=400, detail="Add the payment reference so the team can match it.")
+
+    db.add(
+        AuditLog(
+            actor_user_id=user.id,
+            actor_email=user.email,
+            action="access.payment_reported",
+            target_user_id=user.id,
+            detail={"reference": reference},
+        )
+    )
+    db.commit()
+
+    if mailer.is_configured(db):
+        admins = db.execute(select(User).where(User.role == "superadmin", User.status != "suspended")).scalars().all()
+        subject, body = mailer.payment_reported_message(user.email, reference, mailer.resolve_config(db).site_url or None)
+        for admin in admins:
+            mailer.send_email(admin.email, subject, body, db=db)
+
+    return MessageOut(
+        message="Thanks -- the team has been told. Your code will come by email or WhatsApp once the payment is confirmed."
     )

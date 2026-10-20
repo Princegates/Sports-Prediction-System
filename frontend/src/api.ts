@@ -341,6 +341,10 @@ export function pauseAccount(days: number): Promise<User> {
   return post("/api/auth/pause", { days });
 }
 
+export function reportPayment(reference: string): Promise<{ message: string }> {
+  return post("/api/access/payment-notice", { reference });
+}
+
 export function fetchReferralStats(): Promise<ReferralStats> {
   return get("/api/auth/referrals");
 }

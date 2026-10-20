@@ -30,6 +30,7 @@ import { LEAGUES, useLeague } from "../components/AppShell";
 import { useAuth } from "../lib/AuthContext";
 import { useIsMobile } from "../lib/useIsMobile";
 import type { AdminPick, BetCodePick, MarketSummary, MatchSummary, PublicTeaserPick, SuggestCriteria, SuggestedLeg, SuggestedPicks } from "../types";
+import { chanceLabel } from "../lib/odds";
 
 /** Plain-text description of one selected combo, meant to be pasted
  * wherever the user places bets themselves. No bookmaker code, no odds
@@ -950,7 +951,7 @@ export function BetCodes() {
             <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
               {editedLegs.length > 0 && (
                 <span className="meta tabular-nums" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  {(editedCombinedProbability * 100).toFixed(0)}% combined probability
+                  {(editedCombinedProbability * 100).toFixed(0)}% combined probability -- lands {chanceLabel(editedCombinedProbability)}
                   <span className={`risk-tag ${resultRiskLabel(editedCombinedProbability).tone}`}>
                     {resultRiskLabel(editedCombinedProbability).label}
                   </span>
@@ -1108,7 +1109,7 @@ export function BetCodes() {
                 <span className="sub">
                   {pick.legs.length} leg{pick.legs.length === 1 ? "" : "s"} ·{" "}
                   {pick.priced && pick.combined_odds !== null ? `${pick.combined_odds.toFixed(2)} odds · ` : ""}
-                  {(pick.combined_probability * 100).toFixed(0)}% probability
+                  {(pick.combined_probability * 100).toFixed(0)}% probability ({chanceLabel(pick.combined_probability)})
                 </span>
                 {pick.result !== "pending" && (
                   <span className={`result-tag ${pick.result}`} style={{ marginLeft: 8 }}>
@@ -1166,16 +1167,18 @@ export function BetCodes() {
                     </button>
                   </>
                 )}
-                {pick.result !== "pending" && (
+                {pick.track_record_open ? (
                   <button
                     className="btn ghost"
                     style={{ padding: "2px 8px", fontSize: 12 }}
                     disabled={pickBusy === pick.id}
                     onClick={() => handleToggleFeaturedPublic(pick.id, !pick.featured_public)}
-                    title="Whether this settled pick shows in the public track record on the Welcome page."
+                    title="Commit this slip to the public track record on the Welcome page. From kickoff on it stays there, win or lose."
                   >
-                    {pick.featured_public ? "Unfeature from track record" : "Feature in track record"}
+                    {pick.featured_public ? "Withdraw from track record" : "Commit to track record"}
                   </button>
+                ) : (
+                  pick.featured_public && <span className="sub">In the public track record</span>
                 )}
                 {!pick.priced && (
                   <button
@@ -1232,7 +1235,9 @@ export function BetCodes() {
                   <span className="badge-neutral">{leg.decimal_odds?.toFixed(2)}</span>
                 </div>
               ))}
-              <p className="meta" style={{ marginTop: 8 }}>Combined odds: {teaserPick.combined_odds.toFixed(2)}x</p>
+              <p className="meta" style={{ marginTop: 8 }}>
+                Combined odds: {teaserPick.combined_odds.toFixed(2)}x -- lands {chanceLabel(teaserPick.combined_probability)}
+              </p>
               <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
                 <button className="btn ghost" disabled={teaserBusy} onClick={handleClearTeaser}>
                   Remove

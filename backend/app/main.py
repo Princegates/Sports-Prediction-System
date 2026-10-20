@@ -24,6 +24,7 @@ from app.api.routes_settings import router as settings_router
 from app.api.routes_teams import router as teams_router
 from app.config import get_settings
 from app import scheduler_lease
+from app.access_reminders import send_expiry_reminders
 from app.data.api_football_ingest import LIVE_WINDOW_BEFORE_KICKOFF, run_live_sync_from_settings
 from app.data.providers.api_football import ApiFootballError, QuotaExceeded
 from app.data.squad_ingest import run_lineup_check_from_settings
@@ -174,6 +175,20 @@ def _run_random_daily_picks_once() -> float:
     return RANDOM_PICKS_INTERVAL_SECONDS
 
 
+ACCESS_REMINDER_INTERVAL_SECONDS = 3600.0
+
+
+def _run_access_reminders_once() -> float:
+    db = SessionLocal()
+    try:
+        sent = send_expiry_reminders(db)
+    finally:
+        db.close()
+    if sent:
+        logger.info("Access reminders: %d sent", sent)
+    return ACCESS_REMINDER_INTERVAL_SECONDS
+
+
 def _run_if_lease_held(name: str, run_once, ttl: dt.timedelta) -> float:
     db = SessionLocal()
     try:
@@ -209,6 +224,7 @@ _LOOPS = (
         dt.timedelta(seconds=RANDOM_PICKS_INTERVAL_SECONDS + 600),
         RANDOM_PICKS_INTERVAL_SECONDS,
     ),
+    ("access_reminders", _run_access_reminders_once, LEASE_TTL, ACCESS_REMINDER_INTERVAL_SECONDS),
 )
 
 

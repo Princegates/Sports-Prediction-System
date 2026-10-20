@@ -730,15 +730,15 @@ def test_public_admin_pick_track_record_counts_wins_and_losses_and_shows_the_rea
     db_session, admin, two_matches
 ):
     first = _create(admin, [_legs(two_matches)[0]])
+    _feature_public(admin, first["id"])  # committed before kickoff
     _finish(db_session, two_matches[0], 2, 0)  # won
     client.get("/api/predictions/admin-picks", headers=_headers(admin))  # settle it
-    _feature_public(admin, first["id"])
 
     second_match = _match_with_odds(db_session, "Charlie", home=0.5)
     second = _create(admin, [{"match_id": second_match.id, "market": "Match Result", "selection": "Home Win"}])
+    _feature_public(admin, second["id"])
     _finish(db_session, second_match, 0, 1)  # lost
     client.get("/api/predictions/admin-picks", headers=_headers(admin))  # settle it
-    _feature_public(admin, second["id"])
 
     response = client.get("/api/public/admin-picks-track-record")
     assert response.status_code == 200
@@ -767,9 +767,9 @@ def test_public_admin_pick_track_record_caps_the_picks_list_but_not_the_aggregat
     for i in range(total):
         match = _match_with_odds(db_session, f"Cap{i}")
         created = _create(admin, [{"match_id": match.id, "market": "Match Result", "selection": "Home Win"}])
+        _feature_public(admin, created["id"])
         _finish(db_session, match, 2, 0)  # won
         client.get("/api/predictions/admin-picks", headers=_headers(admin))  # settle it
-        _feature_public(admin, created["id"])
 
     response = client.get("/api/public/admin-picks-track-record")
     body = response.json()
@@ -805,34 +805,73 @@ def _feature_public(admin: User, pick_id: int, featured: bool = True):
     return response.json()
 
 
-def test_admin_can_feature_a_settled_pick_in_the_public_track_record(db_session, admin, two_matches):
+def test_admin_can_commit_a_pending_pick_to_the_public_track_record_before_kickoff(db_session, admin, two_matches):
     created = _create(admin, _legs(two_matches))
-    for match in two_matches:
-        _finish(db_session, match, 2, 0)
-    client.get("/api/predictions/admin-picks", headers=_headers(admin))  # settles it to "won"
+    assert created["track_record_open"] is True
 
     resolved = _feature_public(admin, created["id"])
     assert resolved["featured_public"] is True
 
     pick = db_session.get(AdminPick, created["id"])
     assert pick.featured_public is True
+    assert pick.featured_public_at is not None
 
     log = db_session.query(AuditLog).filter(AuditLog.action == "admin_pick.featured_public_set").one()
     assert log.detail == {"admin_pick_id": created["id"], "featured_public": True}
 
 
-def test_a_pending_pick_cannot_be_featured(db_session, admin, two_matches):
+def test_a_settled_pick_cannot_be_featured_after_the_fact(db_session, admin, two_matches):
+    """Featuring once the result is known would make the public record a
+    list of chosen winners -- see app.track_record."""
+
     created = _create(admin, _legs(two_matches))
+    for match in two_matches:
+        _finish(db_session, match, 2, 0)
+    client.get("/api/predictions/admin-picks", headers=_headers(admin))  # settles it to "won"
+
     response = client.patch(
         f"/api/admin/admin-picks/{created['id']}/featured-public",
         json={"featured_public": True},
         headers=_headers(admin),
     )
     assert response.status_code == 400
+    assert "before kickoff" in response.json()["detail"]
 
 
-def test_unfeaturing_a_pick_is_always_allowed_even_pending(db_session, admin, two_matches):
+def test_a_committed_pick_cannot_be_withdrawn_once_it_loses(db_session, admin, two_matches):
     created = _create(admin, _legs(two_matches))
+    _feature_public(admin, created["id"])
+    for match in two_matches:
+        _finish(db_session, match, 0, 3)
+    client.get("/api/predictions/admin-picks", headers=_headers(admin))  # settles it to "lost"
+
+    response = client.patch(
+        f"/api/admin/admin-picks/{created['id']}/featured-public",
+        json={"featured_public": False},
+        headers=_headers(admin),
+    )
+    assert response.status_code == 400
+    assert client.get("/api/public/admin-picks-track-record").json()["lost"] == 1
+
+
+def test_a_pick_featured_under_the_old_rule_does_not_count(db_session, admin, two_matches):
+    """featured_public set with no featured_public_at is what every pick
+    featured before this rule looks like -- it stays out of the record."""
+
+    created = _create(admin, _legs(two_matches))
+    for match in two_matches:
+        _finish(db_session, match, 2, 0)
+    client.get("/api/predictions/admin-picks", headers=_headers(admin))
+    pick = db_session.get(AdminPick, created["id"])
+    pick.featured_public = True
+    db_session.commit()
+
+    assert client.get("/api/public/admin-picks-track-record").json()["has_data"] is False
+
+
+def test_unfeaturing_a_pending_pick_before_kickoff_is_allowed(db_session, admin, two_matches):
+    created = _create(admin, _legs(two_matches))
+    _feature_public(admin, created["id"])
     response = client.patch(
         f"/api/admin/admin-picks/{created['id']}/featured-public",
         json={"featured_public": False},

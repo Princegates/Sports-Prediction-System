@@ -46,7 +46,7 @@ export function Login() {
 
         <h1 style={{ fontSize: 20, marginBottom: 6 }}>Sign in</h1>
         <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 0, marginBottom: 20 }}>
-          Predictions unlock once you redeem an access code -- signing in doesn't need one.
+          New here? <Link to="/register">Create an account</Link> -- signing in never needs a code.
         </p>
 
         <form onSubmit={handleSubmit} className="auth-form">

@@ -582,14 +582,16 @@ class FeaturedPick(Base):
     # Self-cleaning rather than relying on an admin to remember to remove it
     # -- a couple of days past kickoff, whatever it was celebrating is over.
     expires_at: Mapped[dt.datetime] = mapped_column(DateTime, index=True)
-    # An admin's explicit choice to include this settled pick in the public
-    # track record (routes_public.admin_pick_track_record) -- False for
-    # every pick by default, including a freshly settled one; can only be
-    # set True once result has left "pending" (see routes_admin's
-    # set_featured_pick_featured_public). Curated, not automatic: the
-    # public record is now whatever an admin has chosen to show, not every
-    # settled pick unconditionally.
+    # An admin's commitment to show this pick in the public track record
+    # (routes_public.admin_pick_track_record), win or lose. Only settable
+    # while the pick is pending and before its match kicks off, and locked
+    # from kickoff on (see app.track_record) -- featuring after the result
+    # was known turned the public "hit rate" into a list of winners chosen
+    # in hindsight.
     featured_public: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    # When it was committed. Only rows with this set count publicly, which
+    # is what keeps picks featured under the old after-the-result rule out.
+    featured_public_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class AdminPick(Base):
@@ -661,8 +663,10 @@ class AdminPick(Base):
     # Self-cleaning, same as FeaturedPick -- 2 days past the LATEST leg's
     # kickoff, since a combo spans several matches rather than just one.
     expires_at: Mapped[dt.datetime] = mapped_column(DateTime, index=True)
-    # Same curation flag as FeaturedPick.featured_public -- see there.
+    # Same pre-kickoff commitment as FeaturedPick.featured_public /
+    # featured_public_at -- see there. "Kickoff" here is the earliest leg's.
     featured_public: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    featured_public_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     # True for the one showcase combo shown on the public, unauthenticated
     # Welcome page (routes_public's public_teaser_pick) -- unlike every
     # other pick here, its match/market/selection are shown to everyone,

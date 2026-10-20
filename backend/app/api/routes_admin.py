@@ -41,7 +41,7 @@ from app.api.routes_public import resolve_public_teaser_pick
 from app.api.serializers import access_code_to_schema, admin_pick_to_schema, admin_user_to_schema, featured_pick_to_schema, match_to_schema
 from app.betcode.selection import price_legs, resolve_legs_unpriced
 from app.config import get_settings
-from app import mailer
+from app import mailer, track_record
 from app.db.models import AccessCode, AccessGrant, AdminPick, AuditLog, BookingSlip, ChatMessage, FeaturedPick, LivePrediction, Match, Prediction, User
 from app.outcomes.registry import find_outcome
 from app.pick_settlement import frozen_admin_pick_legs, settle_admin_pick, settle_booking_slip, settle_featured_pick
@@ -629,18 +629,16 @@ def set_featured_pick_featured_public(
     admin: User = Depends(require_superadmin),
     db: Session = Depends(get_db),
 ) -> FeaturedPickOut:
-    """An admin's choice of which settled picks appear in the public track
-    record (routes_public.admin_pick_track_record) -- unfeaturing is always
-    allowed, but a still-pending pick has no result yet to show off, so it
-    can't be featured until it settles."""
+    """Commit this pick to the public track record (or take it back out)
+    -- only before its match kicks off; see app.track_record."""
 
     pick = db.get(FeaturedPick, pick_id)
     if pick is None:
         raise HTTPException(status_code=404, detail=f"Featured pick {pick_id} not found")
-    if payload.featured_public and pick.result == "pending":
-        raise HTTPException(status_code=400, detail="Only a settled pick can be featured in the public track record.")
-
-    pick.featured_public = payload.featured_public
+    try:
+        track_record.set_featured(db, pick, payload.featured_public)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     _record(
         db, admin, "featured_pick.featured_public_set",
         detail={"featured_pick_id": pick_id, "featured_public": payload.featured_public},
@@ -895,18 +893,16 @@ def set_admin_pick_featured_public(
     admin: User = Depends(require_superadmin),
     db: Session = Depends(get_db),
 ) -> AdminPickOut:
-    """An admin's choice of which settled picks appear in the public track
-    record (routes_public.admin_pick_track_record) -- unfeaturing is always
-    allowed, but a still-pending pick has no result yet to show off, so it
-    can't be featured until it settles."""
+    """Commit this pick to the public track record (or take it back out)
+    -- only before its first leg kicks off; see app.track_record."""
 
     pick = db.get(AdminPick, pick_id)
     if pick is None:
         raise HTTPException(status_code=404, detail=f"Admin pick {pick_id} not found")
-    if payload.featured_public and pick.result == "pending":
-        raise HTTPException(status_code=400, detail="Only a settled pick can be featured in the public track record.")
-
-    pick.featured_public = payload.featured_public
+    try:
+        track_record.set_featured(db, pick, payload.featured_public)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     _record(
         db, admin, "admin_pick.featured_public_set",
         detail={"admin_pick_id": pick_id, "featured_public": payload.featured_public},
@@ -1032,15 +1028,12 @@ def promote_booking_slip_to_track_record(
     admin: User = Depends(require_superadmin),
     db: Session = Depends(get_db),
 ) -> AdminPickOut:
-    """Publishes one of the admin's own settled booking codes (the "My
-    codes -- results history" panel on BetCodes) to the public track record
-    -- the same page every other featured pick appears on
-    (AdminPick.featured_public / GET /api/public/admin-picks-track-record)
-    -- as a new, already-settled AdminPick. Only a won or lost slip can be
-    published: an honest track record needs the losses shown too, not just
-    the wins, same reasoning as this platform's "never a guarantee" stance
-    everywhere else, so a still-pending or unresolved slip (nothing settled
-    yet to show) is rejected. The original BookingSlip is left untouched.
+    """Commits one of the admin's own booking codes (the "My codes" panel
+    on BetCodes) to the public track record as a new AdminPick, which then
+    settles on its own like any other. Only before its first match kicks
+    off -- publishing a code once its result was known is exactly the
+    hindsight selection app.track_record exists to rule out. The original
+    BookingSlip is left untouched.
 
     Scoped to the calling admin's own slips -- "my codes" is personal, and
     this never reaches into another member's booking history."""
@@ -1052,11 +1045,21 @@ def promote_booking_slip_to_track_record(
     if settle_booking_slip(db, slip):
         db.commit()
 
-    if slip.result not in ("won", "lost"):
+    now = dt.datetime.utcnow()
+    kickoffs = [dt.datetime.fromisoformat(leg["kickoff"]) for leg in slip.legs]
+    # The live fixture date wins over the one frozen on the slip, in case
+    # the match was rescheduled earlier.
+    first = track_record.first_kickoff(db, [leg["match_id"] for leg in slip.legs])
+    if slip.result != "pending" or not kickoffs or first is None or min(first, *kickoffs) <= now:
         raise HTTPException(
             status_code=400,
-            detail="Only a won or lost slip can be published -- this one is still pending or needs manual confirmation first.",
+            detail="Only a code whose matches haven't kicked off can be committed to the public track record.",
         )
+
+    label = f"Published from booking code #{slip.id}"
+    if db.execute(select(AdminPick.id).where(AdminPick.label == label)).first() is not None:
+        # A second copy would count the same call twice in the public record.
+        raise HTTPException(status_code=409, detail="This code is already in the public track record.")
 
     pick = AdminPick(
         legs=[
@@ -1069,27 +1072,27 @@ def promote_booking_slip_to_track_record(
             }
             for leg in slip.legs
         ],
-        result=slip.result,
-        leg_results=slip.leg_results,
-        settled_at=slip.settled_at,
+        result="pending",
         # Never a bookmaker quote on these legs (see book_picks -- each site
         # prices its own slip when opened), same as any other unpriced pick.
         priced=False,
-        label=f"Published from booking code #{slip.id}",
+        label=label,
         created_by_user_id=admin.id,
         featured_public=True,
-        expires_at=max(dt.datetime.fromisoformat(leg["kickoff"]) for leg in slip.legs) + dt.timedelta(days=2),
+        featured_public_at=now,
+        expires_at=max(kickoffs) + dt.timedelta(days=2),
     )
     db.add(pick)
     _record(
         db, admin, "booking_slip.promoted_to_track_record",
-        detail={"booking_slip_id": slip_id, "legs": len(pick.legs), "result": slip.result},
+        detail={"booking_slip_id": slip_id, "legs": len(pick.legs)},
     )
     db.commit()
     db.refresh(pick)
 
     resolved = _resolve_admin_pick(db, pick)
-    assert resolved is not None  # a just-settled pick's frozen branch never returns None
+    if resolved is None:
+        return admin_pick_to_schema(pick, frozen_admin_pick_legs(db, pick))
     return resolved
 
 

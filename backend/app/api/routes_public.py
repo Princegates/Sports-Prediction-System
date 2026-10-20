@@ -226,9 +226,8 @@ def admin_pick_track_record(db: Session = Depends(get_db)) -> AdminPickTrackReco
     recent MAX_TRACK_RECORD_ENTRIES; the aggregate counts cover every
     featured settled pick regardless of that cap. Each pick type is counted
     only while its own enabled setting is on, and only for picks an admin
-    has featured here (AdminPick.featured_public / FeaturedPick.featured_public)
-    -- see routes_admin's set_admin_pick_featured_public /
-    set_featured_pick_featured_public."""
+    committed to it before kickoff (featured_public_at) -- see
+    app.track_record for why picks featured after their result don't count."""
 
     values = app_settings.all_values(db)
     settled: list[AdminPick | FeaturedPick] = []
@@ -236,11 +235,11 @@ def admin_pick_track_record(db: Session = Depends(get_db)) -> AdminPickTrackReco
     if values.get("admin_picks_enabled", True):
         settled.extend(
             db.execute(
-                select(AdminPick).where(AdminPick.result != "pending", AdminPick.featured_public.is_(True))
+                select(AdminPick).where(AdminPick.result != "pending", AdminPick.featured_public.is_(True), AdminPick.featured_public_at.is_not(None))
             ).scalars().all()
         )
         pending = db.execute(
-            select(AdminPick).where(AdminPick.result == "pending", AdminPick.featured_public.is_(True))
+            select(AdminPick).where(AdminPick.result == "pending", AdminPick.featured_public.is_(True), AdminPick.featured_public_at.is_not(None))
         ).scalars().all()
         for pick in pending:
             if settle_admin_pick(db, pick):
@@ -249,11 +248,11 @@ def admin_pick_track_record(db: Session = Depends(get_db)) -> AdminPickTrackReco
     if values.get("guda_picks_enabled", True):
         settled.extend(
             db.execute(
-                select(FeaturedPick).where(FeaturedPick.result != "pending", FeaturedPick.featured_public.is_(True))
+                select(FeaturedPick).where(FeaturedPick.result != "pending", FeaturedPick.featured_public.is_(True), FeaturedPick.featured_public_at.is_not(None))
             ).scalars().all()
         )
         pending_featured = db.execute(
-            select(FeaturedPick).where(FeaturedPick.result == "pending", FeaturedPick.featured_public.is_(True))
+            select(FeaturedPick).where(FeaturedPick.result == "pending", FeaturedPick.featured_public.is_(True), FeaturedPick.featured_public_at.is_not(None))
         ).scalars().all()
         for pick in pending_featured:
             if settle_featured_pick(db, pick):
@@ -362,6 +361,7 @@ def public_branding(db: Session = Depends(get_db)) -> BrandingOut:
         default_market_tab=str(values["default_market_tab"]),
         referral_enabled=bool(values["referral_enabled"]),
         referral_bonus_days=int(values["referral_bonus_days"]),
+        trial_days=int(values["trial_duration_days"] or 0) if values["trial_enabled"] else 0,
     )
 
 

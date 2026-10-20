@@ -24,6 +24,7 @@ from app.api.schemas import (
 from app.betcode.selection import Leg, risk_tier
 from app.db.models import AccessCode, AccessGrant, AdminPick, FeaturedPick, LivePrediction, Match, MatchView, Prediction, Team, User
 from app.live_engine import is_genuinely_live
+from app.track_record import commitment_open
 from app.outcomes.engine import secondary_outcomes
 from app.outcomes.registry import outcomes_from_prediction
 
@@ -194,6 +195,7 @@ def featured_pick_to_schema(pick: FeaturedPick, match: Match, probability: float
         expires_at=pick.expires_at,
         locked=locked,
         featured_public=pick.featured_public,
+        track_record_open=commitment_open(pick, match.date),
     )
 
 
@@ -268,6 +270,7 @@ def admin_pick_to_schema(
         locked=locked,
         leg_count=len(legs),
         featured_public=pick.featured_public,
+        track_record_open=commitment_open(pick, min((leg.kickoff for leg in legs), default=None)),
     )
 
 
