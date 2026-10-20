@@ -5611,3 +5611,206 @@ table.admin-table {
   padding: 6px 12px;
   font-size: 12.5px;
 }
+
+/* ==========================================================================
+   LIVE SCORES (pages/Live.tsx) -- a livescore-site board: day + status
+   filters, matches grouped by competition, one dense row per match.
+   ========================================================================== */
+.ls-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.ls-days,
+.ls-filters {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.ls-day,
+.ls-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ls-day.active,
+.ls-filter.active {
+  background: var(--text-primary);
+  border-color: var(--text-primary);
+  color: var(--bg-surface);
+}
+.ls-filter.live.active {
+  background: var(--live);
+  border-color: var(--live);
+  color: #fff;
+}
+.ls-filter.live.active .live-dot {
+  background: #fff;
+}
+.ls-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  opacity: 0.75;
+}
+
+.ls-board {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ls-league {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+.ls-league-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 14px;
+  background: var(--bg-surface-2);
+  border-bottom: 1px solid var(--border);
+}
+.ls-league-name {
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  min-width: 0;
+}
+.ls-league-live {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--live);
+  white-space: nowrap;
+}
+
+.ls-row {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  min-height: 56px;
+  color: var(--text-primary);
+  text-decoration: none;
+  border-top: 1px solid var(--border);
+}
+.ls-league-head + .ls-row {
+  border-top: 0;
+}
+.ls-row:hover {
+  background: var(--bg-surface-2);
+}
+.ls-row.is-live {
+  box-shadow: inset 3px 0 0 var(--live);
+}
+.ls-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.ls-status.live {
+  color: var(--live);
+  font-weight: 700;
+}
+.ls-status.muted,
+.ls-score .muted {
+  color: var(--text-muted);
+}
+.ls-teams,
+.ls-score {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+  line-height: 1.25;
+}
+.ls-team {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ls-team.won,
+.ls-score .won {
+  font-weight: 700;
+}
+.ls-score {
+  align-items: flex-end;
+  min-width: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.ls-score.live {
+  color: var(--live);
+  font-weight: 700;
+}
+.ls-model {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ls-model-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.ls-row.skeleton-row {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-2);
+  animation: ls-skeleton 1.4s ease-in-out infinite;
+}
+@keyframes ls-skeleton {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+/* Phones: the model chip moves under the teams instead of squeezing them. */
+@media (max-width: 560px) {
+  .ls-row {
+    grid-template-columns: 46px minmax(0, 1fr) auto;
+    gap: 10px;
+    padding: 10px 12px;
+  }
+  .ls-model {
+    grid-column: 2 / 3;
+    grid-row: 2;
+    justify-self: start;
+  }
+  .ls-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .ls-days,
+  .ls-filters {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+}

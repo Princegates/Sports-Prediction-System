@@ -7,7 +7,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.timeutil import utcnow
-from app.api.deps import get_db, get_match_or_404
+from app.api.deps import get_db, get_match_or_404, require_superadmin
 from app.api.schemas import (
     LeagueOutcomesOut,
     LiveEventIn,
@@ -19,7 +19,7 @@ from app.api.schemas import (
     PredictionOut,
 )
 from app.api.serializers import live_prediction_to_schema, match_to_schema, prediction_to_schema
-from app.db.models import LivePrediction, Match, Prediction
+from app.db.models import LivePrediction, Match, Prediction, User
 from app.features.team_stats import compute_team_form
 from app.live_engine import LIVE_STALE_AFTER, simulate_live_event
 from app.outcomes.registry import outcomes_from_prediction
@@ -235,10 +235,13 @@ def get_match_live(match: Match = Depends(get_match_or_404), db: Session = Depen
 def post_match_live_event(
     payload: LiveEventIn,
     match: Match = Depends(get_match_or_404),
+    _admin: User = Depends(require_superadmin),
     db: Session = Depends(get_db),
 ) -> LivePredictionOut:
     """Re-project a hypothetical in-play state for this match. Nothing is
-    saved -- see live_engine.simulate_live_event for why."""
+    saved -- see live_engine.simulate_live_event for why. Superadmin only:
+    the Live pages are a livescore board for members, and the simulator is
+    an internal tool for checking how the live engine reacts."""
 
     try:
         live_prediction = simulate_live_event(

@@ -77,13 +77,13 @@ def _push_event(match_id: int, headers: dict) -> None:
         db.close()
 
 
-def test_sandbox_event_returns_a_projection_without_touching_the_match(db_session, auth_headers):
+def test_sandbox_event_returns_a_projection_without_touching_the_match(db_session, admin, auth_headers):
     match = _seed_scheduled_match(db_session)
 
     response = client.post(
         f"/api/matches/{match.id}/live-event",
         json={"minute": 95, "score_home": 7, "score_away": 0, "trigger_event": "goal"},
-        headers=auth_headers,
+        headers=_headers(admin),
     )
     assert response.status_code == 200, response.text
     body = response.json()
@@ -108,10 +108,20 @@ def test_sandbox_event_returns_a_projection_without_touching_the_match(db_sessio
         {"minute": 60, "score_home": 0, "score_away": 0, "trigger_event": "not_an_event"},
     ],
 )
-def test_sandbox_rejects_impossible_states(db_session, auth_headers, payload):
+def test_sandbox_rejects_impossible_states(db_session, admin, payload):
     match = _seed_scheduled_match(db_session)
-    response = client.post(f"/api/matches/{match.id}/live-event", json=payload, headers=auth_headers)
+    response = client.post(f"/api/matches/{match.id}/live-event", json=payload, headers=_headers(admin))
     assert response.status_code == 422, response.text
+
+
+def test_the_sandbox_is_superadmin_only(db_session, auth_headers):
+    match = _seed_scheduled_match(db_session)
+    response = client.post(
+        f"/api/matches/{match.id}/live-event",
+        json={"minute": 60, "score_home": 1, "score_away": 0, "trigger_event": "goal"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 403
 
 
 def test_superadmin_clears_a_pushed_simulated_event(db_session, admin, auth_headers):
