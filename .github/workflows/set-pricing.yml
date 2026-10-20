@@ -5,14 +5,22 @@
 # it back), but the "enable announcement email" box is worth leaving
 # unchecked until you're ready for scripts/send-pricing-announcement-email.yml
 # to actually broadcast.
+#
+# Leaving price blank clears pricing_label entirely, which every page that
+# reads it (Welcome, Pricing, AccountStatus, Access, Register) already
+# treats as "no price set" -- each one falls back to its own generic
+# "arrange payment externally with a Super Admin" wording instead of
+# showing a number. That's the supported way to stop showing a price
+# without putting a sentence where the UI expects a short price tag.
 name: Set pricing
 
 on:
   workflow_dispatch:
     inputs:
       price:
-        description: 'Price label to show, e.g. "GHC 20 / week"'
-        required: true
+        description: 'Price label to show, e.g. "GHC 20 / week" -- leave blank to clear it and fall back to "contact admin" wording everywhere.'
+        required: false
+        default: ""
       enable_announcement_email:
         description: "Type yes to also turn on the pricing-announcement email toggle."
         required: false
