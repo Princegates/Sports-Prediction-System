@@ -114,6 +114,7 @@ def suggest(payload: SuggestCriteriaIn, db: Session = Depends(get_db)) -> Sugges
         days_ahead=payload.days_ahead,
         date_from=payload.date_from,
         date_to=payload.date_to,
+        exclude_match_ids=frozenset(payload.exclude_match_ids),
     )
     return SuggestedPicksOut(
         legs=_picked_legs_to_out(pick.legs),
@@ -143,6 +144,7 @@ def suggest_random(payload: SuggestRandomCriteriaIn, db: Session = Depends(get_d
         days_ahead=payload.days_ahead,
         date_from=payload.date_from,
         date_to=payload.date_to,
+        exclude_match_ids=frozenset(payload.exclude_match_ids),
     )
     return SuggestedPicksOut(
         legs=_picked_legs_to_out(pick.legs),
