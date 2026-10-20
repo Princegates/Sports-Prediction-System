@@ -92,14 +92,14 @@ export class AuthExpiredError extends Error {}
 // of "feels broken."
 const REQUEST_TIMEOUT_MS = 20_000;
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function request<T>(path: string, options: RequestInit = {}, timeoutMs: number = REQUEST_TIMEOUT_MS): Promise<T> {
   const token = getStoredToken();
   const headers: Record<string, string> = { ...(options.headers as Record<string, string>) };
   if (token) headers.Authorization = `Bearer ${token}`;
   if (options.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
 
   const timeoutController = new AbortController();
-  const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs);
 
   let response: Response;
   try {
@@ -133,8 +133,8 @@ function get<T>(path: string): Promise<T> {
   return request(path);
 }
 
-function post<T>(path: string, body: unknown): Promise<T> {
-  return request(path, { method: "POST", body: JSON.stringify(body) });
+function post<T>(path: string, body: unknown, timeoutMs?: number): Promise<T> {
+  return request(path, { method: "POST", body: JSON.stringify(body) }, timeoutMs);
 }
 
 function patch<T>(path: string, body: unknown): Promise<T> {
@@ -804,10 +804,20 @@ export function fetchBettingSites(): Promise<BettingSite[]> {
   return get("/api/betcodes/sites");
 }
 
+// Booking fans out to each chosen betting site's own API on top of
+// whatever a cold free-tier backend itself costs to wake -- slower, by
+// nature, than the DB-only requests REQUEST_TIMEOUT_MS was sized for, and
+// the one place a visitor is most likely to hit it moments after the site
+// has been idle. Six times longer gives a cold start plus a slow site
+// response room to finish instead of erroring right as it was about to
+// succeed, while still eventually giving up on a connection that's
+// genuinely stalled rather than hanging forever.
+const BOOK_PICKS_TIMEOUT_MS = 120_000;
+
 /** Books the games and outcomes a member picked, as picked, on each chosen
  * site. No price needed -- each site prices its own slip. */
 export function bookPicks(picks: BetCodePick[], sites: string[]): Promise<PicksBooking> {
-  return post("/api/betcodes/picks", { picks, sites });
+  return post("/api/betcodes/picks", { picks, sites }, BOOK_PICKS_TIMEOUT_MS);
 }
 
 export function fetchOutcomes(params: {

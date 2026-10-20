@@ -104,6 +104,11 @@ export function SiteCodes({ legs, book }: Props) {
       <button className="btn" style={{ marginTop: 12 }} onClick={handleGenerate} disabled={busy || chosen.length === 0}>
         {busy ? "Asking the sites…" : `Get booking code${chosen.length === 1 ? "" : "s"}`}
       </button>
+      {busy && (
+        <p className="setting-note" style={{ marginTop: 8 }}>
+          Can take up to a couple of minutes -- each site is asked for a real price on this exact slip.
+        </p>
+      )}
       {error && <p className="auth-error">{error}</p>}
       {warnings.length > 0 && (
         <ul className="sub" style={{ marginTop: 10, paddingLeft: 18 }}>
