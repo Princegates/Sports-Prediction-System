@@ -227,6 +227,56 @@ def test_suggest_with_feature_all_markets_gives_every_selected_market_its_own_le
     assert len({leg["match_id"] for leg in legs}) == 2
 
 
+def test_feature_all_markets_fills_up_to_max_legs_not_just_one_per_market(db_session, auth_headers):
+    """The bug this fixed: with two markets selected and a much higher leg
+    cap, the slip used to stop at exactly 2 legs (one per market) even
+    though more qualifying matches -- and a higher max_legs -- were
+    available. Once every selected market has its guaranteed leg, the
+    remaining capacity should be filled by cycling back through the
+    markets instead of leaving the slip short of what was actually asked
+    for."""
+
+    teams = []
+    matches = []
+    for i in range(5):
+        home = Team(name=f"Home{i}", league="English Premier League", aliases=[])
+        away = Team(name=f"Away{i}", league="English Premier League", aliases=[])
+        db_session.add_all([home, away])
+        teams.extend([home, away])
+    db_session.commit()
+    for t in teams:
+        db_session.refresh(t)
+
+    for i in range(5):
+        m = Match(
+            league="English Premier League", season="2025-26", date=BASE + dt.timedelta(days=1),
+            home_team_id=teams[2 * i].id, away_team_id=teams[2 * i + 1].id, status="SCHEDULED",
+        )
+        db_session.add(m)
+        matches.append(m)
+    db_session.commit()
+    for m in matches:
+        db_session.refresh(m)
+        db_session.add(_prediction(m.id))
+    db_session.commit()
+
+    response = client.post(
+        "/api/betcodes/suggest",
+        json={
+            "min_probability": 0.5,
+            "markets": ["Match Result", "Both Teams To Score"],
+            "max_legs": 4,
+            "feature_all_markets": True,
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    legs = response.json()["legs"]
+    assert len(legs) == 4
+    assert {leg["market"] for leg in legs} == {"Match Result", "Both Teams To Score"}
+    assert len({leg["match_id"] for leg in legs}) == 4  # one leg per match, still
+
+
 def test_suggest_returns_no_priced_fields(auth_headers, upcoming_match):
     response = client.post("/api/betcodes/suggest", json={"min_probability": 0.5}, headers=auth_headers)
     assert response.status_code == 200, response.text

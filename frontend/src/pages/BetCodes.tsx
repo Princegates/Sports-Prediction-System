@@ -811,8 +811,9 @@ export function BetCodes() {
                   }}
                 />
                 <span style={{ fontSize: 13.5 }}>
-                  Feature every selected market on the slip, one leg each -- instead of just whichever market
-                  wins each match's own probability contest
+                  Make sure every selected market is featured on the slip, then fill up to the leg cap by
+                  cycling through them again -- instead of just whichever market wins each match's own
+                  probability contest
                 </span>
               </label>
             )}
@@ -838,7 +839,7 @@ export function BetCodes() {
               </li>
               <li>
                 {markets.length === 0 ? DEFAULT_MARKET_PRESET.label : markets.join(", ")}
-                {featureAllMarkets && markets.length > 0 ? " -- one leg each" : ""}
+                {featureAllMarkets && markets.length > 0 ? " -- featured, then filled to the leg cap" : ""}
               </li>
             </ul>
           </div>

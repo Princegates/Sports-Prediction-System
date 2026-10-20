@@ -963,17 +963,28 @@ def select_legs_featuring_every_market(
     Empty ``markets`` has nothing to feature, so this is identical to
     select_legs_by_confidence in that case.
 
-    Still safest-first, just applied per market instead of per match: each
-    wanted market's own strongest available leg is taken, in order of that
-    market's own best probability (highest first) -- so when two wanted
-    markets' strongest legs land on the same match, the stronger market
-    keeps it and the weaker one falls back to its next-best match rather
-    than losing out by coincidence of selection order. A market left with
-    no qualifying, not-yet-used match is skipped and named in a warning,
-    never forced in below the accuracy floor or onto a match another
-    market already took. More wanted markets than ``max_legs`` allows means
-    only that many -- the ones with the strongest available leg -- are
-    featured; the rest are named in a warning too.
+    Two phases, both safest-first:
+
+    **Guarantee.** Each wanted market's own strongest available leg is
+    taken, in order of that market's own best probability (highest first)
+    -- so when two wanted markets' strongest legs land on the same match,
+    the stronger market keeps it and the weaker one falls back to its
+    next-best match rather than losing out by coincidence of selection
+    order. A market left with no qualifying, not-yet-used match is skipped
+    and named in a warning, never forced in below the accuracy floor or
+    onto a match another market already took. More wanted markets than
+    ``max_legs`` allows means only that many -- the ones with the strongest
+    available leg -- are guaranteed a slot; the rest are named in a warning.
+
+    **Fill.** A handful of markets ticked with a much larger leg cap would
+    otherwise hand back a slip far shorter than what was asked for -- two
+    markets guaranteed one leg each is a 2-leg slip even when max_legs says
+    8. Once every market that can be has a leg, this round-robins through
+    the wanted markets (strongest first, same order as the guarantee phase)
+    taking each one's next-best not-yet-used-match leg, cycling back
+    through the list, until max_legs legs are chosen or every market has
+    run out of qualifying, not-yet-used matches. A market can end up with
+    several legs this way; no match or (match, market) pair is ever reused.
     """
 
     if not markets:
@@ -1000,18 +1011,49 @@ def select_legs_featuring_every_market(
     )
     no_data = [m for m in markets if m not in legs_by_market]
     dropped_for_cap = ranked[max_legs:]
-    ranked = ranked[:max_legs]
+    guaranteed = ranked[:max_legs]
 
     chosen: list[Leg] = []
     used_matches: set[int] = set()
+    # Index into each market's own sorted leg list -- a market's cursor
+    # only ever moves forward, across both phases, so the fill phase picks
+    # up exactly where the guarantee phase's own search left off instead of
+    # re-scanning legs it already knows are either taken or already used.
+    cursors: dict[str, int] = {m: 0 for m in guaranteed}
     no_available_match: list[str] = []
-    for market in ranked:
-        leg = next((l for l in legs_by_market[market] if l.match_id not in used_matches), None)
+
+    def _next_available(market: str) -> Leg | None:
+        legs = legs_by_market[market]
+        i = cursors[market]
+        while i < len(legs):
+            if legs[i].match_id not in used_matches:
+                cursors[market] = i + 1
+                return legs[i]
+            i += 1
+        cursors[market] = i
+        return None
+
+    for market in guaranteed:
+        leg = _next_available(market)
         if leg is None:
             no_available_match.append(market)
             continue
         chosen.append(leg)
         used_matches.add(leg.match_id)
+
+    exhausted = set(no_available_match)
+    while len(chosen) < max_legs and len(exhausted) < len(guaranteed):
+        for market in guaranteed:
+            if len(chosen) >= max_legs:
+                break
+            if market in exhausted:
+                continue
+            leg = _next_available(market)
+            if leg is None:
+                exhausted.add(market)
+                continue
+            chosen.append(leg)
+            used_matches.add(leg.match_id)
 
     chosen.sort(key=lambda leg: -leg.model_probability)
 
