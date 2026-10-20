@@ -109,7 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // A superadmin never needs a grant, so there's nothing to fetch --
           // this also keeps the admin panel from ever being gated on it.
           if (u.role === "superadmin") {
-            setAccessStatus({ has_access: true, status: "active", activated_at: null, expires_at: null });
+            setAccessStatus({ has_access: true, status: "unlimited", activated_at: null, expires_at: null });
             setAccessLoading(false);
           } else {
             await refreshAccessStatus();
@@ -149,7 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       storeToken(result.access_token);
       setUser(result.user);
       if (result.user.role === "superadmin") {
-        setAccessStatus({ has_access: true, status: "active", activated_at: null, expires_at: null });
+        setAccessStatus({ has_access: true, status: "unlimited", activated_at: null, expires_at: null });
         setAccessLoading(false);
       } else {
         await refreshAccessStatus();

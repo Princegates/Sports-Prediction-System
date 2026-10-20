@@ -91,9 +91,18 @@ def overview(db: Session = Depends(get_db)) -> AdminOverviewOut:
 
     now = utcnow()
     active_users = count_users(status="active")
+    live_grant_holders = select(AccessGrant.user_id).where(
+        AccessGrant.status == "active", AccessGrant.expires_at > now
+    )
     active_grants = db.execute(
         select(func.count(func.distinct(AccessGrant.user_id))).where(
             AccessGrant.status == "active", AccessGrant.expires_at > now
+        )
+    ).scalar() or 0
+    # Superadmins never need a grant, so they're never in this queue.
+    users_without_access = db.execute(
+        select(func.count()).select_from(User).where(
+            User.status == "active", User.role != "superadmin", User.id.not_in(live_grant_holders)
         )
     ).scalar() or 0
     return AdminOverviewOut(
@@ -101,7 +110,7 @@ def overview(db: Session = Depends(get_db)) -> AdminOverviewOut:
         suspended_users=count_users(status="suspended"),
         superadmins=count_users(role="superadmin"),
         total_users=count_users(),
-        users_without_access=max(active_users - active_grants, 0),
+        users_without_access=users_without_access,
         active_access_grants=active_grants,
         matches_analyzed=db.execute(
             select(func.count()).select_from(Match).where(Match.home_score.is_not(None))

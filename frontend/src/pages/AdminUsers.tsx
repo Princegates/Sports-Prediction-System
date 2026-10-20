@@ -27,6 +27,7 @@ const FILTERS: { label: string; value: UserStatus | "all" }[] = [
 ];
 
 const ACCESS_TONE: Record<AdminUser["access_status"], string> = {
+  unlimited: "active",
   active: "active",
   expired: "pending",
   none: "suspended",
@@ -321,12 +322,12 @@ export function AdminUsers() {
                   <td>{new Date(u.created_at).toLocaleDateString()}</td>
                   <td>
                     <div className="admin-actions">
-                      {u.access_status !== "none" && (
+                      {u.access_status !== "none" && u.access_status !== "unlimited" && (
                         <button className="btn ghost" disabled={busy} onClick={() => handleExtend(u.id)}>
                           Extend
                         </button>
                       )}
-                      {u.access_status !== "none" && (
+                      {u.access_status !== "none" && u.access_status !== "unlimited" && (
                         <button className="btn ghost" disabled={busy} onClick={() => handleRevokeAccess(u.id)}>
                           Revoke access
                         </button>

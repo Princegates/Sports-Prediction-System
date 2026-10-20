@@ -70,7 +70,11 @@ def admin_user_to_schema(user: User, db: Session) -> AdminUserOut:
     grant = current_grant(db, user)
     access_status = "none"
     access_expires_at = None
-    if grant is not None:
+    if user.role == "superadmin":
+        # Never gated on a grant (see require_active_access), so any trial or
+        # code they happen to hold is beside the point.
+        access_status = "unlimited"
+    elif grant is not None:
         access_expires_at = grant.expires_at
         access_status = "active" if grant.expires_at > utcnow() else "expired"
 

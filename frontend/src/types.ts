@@ -113,7 +113,7 @@ export interface MatchHistoryEntry {
 }
 
 export interface AdminUser extends User {
-  access_status: "active" | "expired" | "none";
+  access_status: "active" | "expired" | "none" | "unlimited";
   access_expires_at: string | null;
 }
 
@@ -351,7 +351,7 @@ export interface AccessGrant {
 
 export interface AccessStatus {
   has_access: boolean;
-  status: "active" | "expired" | "none";
+  status: "active" | "expired" | "none" | "unlimited";
   activated_at: string | null;
   expires_at: string | null;
 }

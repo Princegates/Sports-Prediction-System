@@ -193,7 +193,10 @@ export function Access() {
             <>
               <h1>Access activated</h1>
               <p className="status-result-message">
-                Predictions, teams and matches are unlocked. {activated?.expires_at && formatRemaining(activated.expires_at)}
+                Predictions, teams and matches are unlocked.{" "}
+                {accessStatus?.status === "unlimited"
+                  ? "As a Super Admin your access is unlimited -- it never expires."
+                  : activated?.expires_at && formatRemaining(activated.expires_at)}
               </p>
               {activated && (
                 <div className="status-result-explainer">

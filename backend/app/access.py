@@ -188,6 +188,8 @@ def extend_grant(db: Session, admin: User, user: User, additional_days: int) -> 
     exist -- a user who has never redeemed anything has nothing to extend,
     and the fix for that is a new assigned access code, not this."""
 
+    if user.role == "superadmin":
+        raise AccessCodeError("Super Admins have unlimited access -- there's nothing to extend.")
     if additional_days <= 0:
         raise AccessCodeError("Extension must be at least 1 day.")
 
@@ -214,6 +216,8 @@ def extend_grant(db: Session, admin: User, user: User, additional_days: int) -> 
 
 
 def revoke_current_grant(db: Session, admin: User, user: User, reason: str | None = None) -> AccessGrant:
+    if user.role == "superadmin":
+        raise AccessCodeError("Super Admins have unlimited access -- demote the account first to limit it.")
     grant = current_grant(db, user)
     if grant is None:
         raise AccessCodeError("This user has no active grant to revoke.")

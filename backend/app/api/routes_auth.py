@@ -458,6 +458,13 @@ def account_status(payload: LoginIn, request: Request, db: Session = Depends(get
             submitted_at=user.created_at,
         )
 
+    if user.role == "superadmin":
+        return AccountStatusOut(
+            status="active",
+            message="Your access is unlimited (Super Admin).",
+            submitted_at=user.created_at,
+        )
+
     grant = current_grant(db, user)
     if grant is not None and grant.expires_at > utcnow():
         return AccountStatusOut(

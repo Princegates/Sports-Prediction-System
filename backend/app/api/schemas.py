@@ -179,7 +179,8 @@ class MatchHistoryOut(BaseModel):
 
 class AdminUserOut(UserOut):
     # "active" / "expired" / "none" -- whether this user currently holds a
-    # live access grant, and until when if so. Replaces the old
+    # live access grant, and until when if so; "unlimited" for a superadmin,
+    # who never needs one. Replaces the old
     # payment_reference/approved_by column pair now that access is a
     # redeemed-code grant rather than a one-time superadmin approval.
     access_status: str
@@ -497,7 +498,7 @@ class AccessRedeemIn(BaseModel):
 
 class AccessStatusOut(BaseModel):
     has_access: bool
-    status: str  # "active" / "expired" / "none"
+    status: str  # "active" / "expired" / "none" / "unlimited" (superadmin)
     activated_at: dt.datetime | None = None
     expires_at: dt.datetime | None = None
 

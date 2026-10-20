@@ -52,6 +52,9 @@ def redeem(
 
 @router.get("/status", response_model=AccessStatusOut)
 def access_status(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> AccessStatusOut:
+    if user.role == "superadmin":
+        return AccessStatusOut(has_access=True, status="unlimited")
+
     grant = current_grant(db, user)
     if grant is None:
         return AccessStatusOut(has_access=False, status="none")
