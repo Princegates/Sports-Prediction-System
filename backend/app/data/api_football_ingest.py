@@ -117,8 +117,14 @@ class TeamIndex:
         for team in self._teams:
             for alias in team.aliases or []:
                 self._by_canonical.setdefault(canonical_alias(alias), team)
+        # Provider id -> every row carrying it. Usually one; two for a club
+        # with a row in each of two divisions (see resolve).
+        self._by_provider_id: dict[int, list[Team]] = {}
+        for team in self._teams:
+            if team.api_football_team_id is not None:
+                self._by_provider_id.setdefault(team.api_football_team_id, []).append(team)
 
-    def create(self, name: str, league: str) -> Team:
+    def create(self, name: str, league: str, *, provider_id: int | None = None) -> Team:
         """Add a new club, for a domestic league importing for the first time.
 
         Never used for a European competition -- there, an unresolved name
@@ -126,11 +132,13 @@ class TeamIndex:
         starts a second history for a club that already has one.
         """
 
-        team = Team(name=name, league=league, aliases=[])
+        team = Team(name=name, league=league, aliases=[], api_football_team_id=provider_id)
         self.db.add(team)
         self.db.flush()
         self._teams.append(team)
         self._by_canonical.setdefault(canonical_alias(name), team)
+        if provider_id is not None:
+            self._by_provider_id.setdefault(provider_id, []).append(team)
         return team
 
     def nearest(self, provider_name: str) -> tuple[Team | None, float]:
@@ -170,8 +178,20 @@ class TeamIndex:
         scored.sort(key=lambda row: (-row[0], -row[1], row[2].name))
         return scored
 
-    def resolve(self, provider_name: str, *, prefer_league: str | None = None) -> Team | None:
-        """Find the domestic club row for a name as the provider spells it.
+    def resolve(
+        self, provider_name: str, *, prefer_league: str | None = None, provider_id: int | None = None
+    ) -> Team | None:
+        """Find the domestic club row for a club as the provider identifies it.
+
+        ``provider_id`` (API-Football's team id), when the caller has it,
+        is tried first and wins outright: an id doesn't have spellings. Two
+        rows sharing one id (the same club in two divisions) are settled by
+        ``prefer_league`` like a name tie; unsettled, it falls back to the
+        name below. A name match then *learns* the id onto that row -- but
+        never onto a row already carrying a different id: two provider ids
+        for one row means two real clubs that a name match has merged, so
+        that is refused (and logged) rather than written into the wrong
+        club's history.
 
         Refuses an ambiguous match -- unless ``prefer_league`` is given and
         settles it: a promoted or relegated club keeps its old division's
@@ -192,6 +212,32 @@ class TeamIndex:
         history -- the failure this whole module exists to avoid.
         """
 
+        if provider_id is not None:
+            rows = self._by_provider_id.get(provider_id, [])
+            if len(rows) == 1:
+                return rows[0]
+            if rows and prefer_league is not None:
+                same_league = [t for t in rows if t.league == prefer_league]
+                if len(same_league) == 1:
+                    return same_league[0]
+
+        team = self._resolve_by_name(provider_name, prefer_league=prefer_league)
+        if team is None or provider_id is None:
+            return team
+        if team.api_football_team_id is None:
+            team.api_football_team_id = provider_id
+            self._by_provider_id.setdefault(provider_id, []).append(team)
+            return team
+        if team.api_football_team_id != provider_id:
+            logger.warning(
+                "Club name %r matched %s (provider id %s), but the provider says id %s -- "
+                "two different clubs; skipping rather than merging their histories",
+                provider_name, team.name, team.api_football_team_id, provider_id,
+            )
+            return None
+        return team
+
+    def _resolve_by_name(self, provider_name: str, *, prefer_league: str | None = None) -> Team | None:
         candidates = self._ranked(provider_name)
         if not candidates or candidates[0][0] < _NAME_THRESHOLD:
             return None
@@ -302,15 +348,17 @@ def import_fixtures(
 
         home_name = (teams.get("home") or {}).get("name") or ""
         away_name = (teams.get("away") or {}).get("name") or ""
+        home_pid = (teams.get("home") or {}).get("id")
+        away_pid = (teams.get("away") or {}).get("id")
         prefer_league = league_name if domestic else None
-        home = index.resolve(home_name, prefer_league=prefer_league)
-        away = index.resolve(away_name, prefer_league=prefer_league)
+        home = index.resolve(home_name, prefer_league=prefer_league, provider_id=home_pid)
+        away = index.resolve(away_name, prefer_league=prefer_league, provider_id=away_pid)
 
         if domestic:
             if home is None:
-                home = index.create(home_name, league_name)
+                home = index.create(home_name, league_name, provider_id=home_pid)
             if away is None:
-                away = index.create(away_name, league_name)
+                away = index.create(away_name, league_name, provider_id=away_pid)
 
         if home is None or away is None:
             missing = [n for n, t in ((home_name, home), (away_name, away)) if t is None]
@@ -633,8 +681,8 @@ def sync_live_matches(db: Session, client: ApiFootballClient) -> LiveSyncReport:
         home_name = (teams.get("home") or {}).get("name") or ""
         away_name = (teams.get("away") or {}).get("name") or ""
         prefer_league = league_name if league_name not in EUROPEAN_COMPETITIONS else None
-        home = index.resolve(home_name, prefer_league=prefer_league)
-        away = index.resolve(away_name, prefer_league=prefer_league)
+        home = index.resolve(home_name, prefer_league=prefer_league, provider_id=(teams.get("home") or {}).get("id"))
+        away = index.resolve(away_name, prefer_league=prefer_league, provider_id=(teams.get("away") or {}).get("id"))
         if home is None or away is None:
             continue
 

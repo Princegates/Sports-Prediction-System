@@ -102,7 +102,7 @@ def import_injuries(
             continue
 
         team_name = team_block.get("name") or ""
-        team = index.resolve(team_name, prefer_league=league_name)
+        team = index.resolve(team_name, prefer_league=league_name, provider_id=team_block.get("id"))
         if team is None:
             report.unresolved_teams.append(team_name)
             continue

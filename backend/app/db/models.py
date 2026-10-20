@@ -298,6 +298,12 @@ class Team(Base):
     # Free-text alias so we can match names across data sources
     # (football-data.co.uk vs TheSportsDB spell some clubs differently).
     aliases: Mapped[list[str]] = mapped_column(JSON, default=list)
+    # API-Football's own id for this club, learned the first time a fixture
+    # resolves to this row by name and authoritative from then on (see
+    # api_football_ingest.TeamIndex). Matching by name alone is what kept
+    # producing duplicated and wrongly merged clubs. Not unique: a promoted
+    # or relegated club keeps one row per league, both the same real club.
+    api_football_team_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
 
     __table_args__ = (UniqueConstraint("name", "league", name="uq_team_name_league"),)
 

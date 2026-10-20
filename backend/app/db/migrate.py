@@ -122,6 +122,9 @@ _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     # existing row, which keeps picks featured after their result out of it.
     ("featured_picks", "featured_public_at", "TIMESTAMP"),
     ("admin_picks", "featured_public_at", "TIMESTAMP"),
+    # Provider id per club -- see Team.api_football_team_id. Its index is
+    # created in _index_team_provider_ids (ADD COLUMN can't add one).
+    ("teams", "api_football_team_id", "INTEGER"),
 ]
 
 
@@ -333,6 +336,14 @@ def _backfill_access_code_kinds(engine: Engine) -> None:
         ))
 
 
+def _index_team_provider_ids(engine: Engine) -> None:
+    inspector = inspect(engine)
+    if "teams" not in inspector.get_table_names():
+        return
+    with engine.begin() as conn:
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_teams_api_football_team_id ON teams (api_football_team_id)"))
+
+
 def init_db(engine: Engine) -> None:
     """Bring a database up to date: create missing tables, add columns that
     existing tables are missing, and run one-time data migrations.
@@ -358,4 +369,5 @@ def init_db(engine: Engine) -> None:
     _migrate_pending_users_to_active(engine)
     _backfill_referral_codes(engine)
     _backfill_access_code_kinds(engine)
+    _index_team_provider_ids(engine)
     _enable_row_level_security(engine)
