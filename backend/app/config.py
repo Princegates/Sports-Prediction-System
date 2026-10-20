@@ -68,6 +68,13 @@ class Settings(BaseSettings):
     access_redeem_rate_limit_window_seconds: int = 300
     password_change_rate_limit_attempts: int = 5
     password_change_rate_limit_window_seconds: int = 300
+    # Blanket per-IP throttle across every endpoint, not just the credential
+    # ones above -- nothing previously stopped one client from hammering,
+    # say, /api/matches or the AI Generation search at full speed. Generous
+    # on purpose (normal multi-tab browsing fires several calls at once);
+    # this is a backstop against abuse, not a traffic-shaping tool.
+    global_rate_limit_requests: int = 120
+    global_rate_limit_window_seconds: int = 60
 
     # --- Optional AI assistant rewriter (see app/assistant/llm.py) --------
     # Left disabled so the assistant runs entirely locally at zero cost. The

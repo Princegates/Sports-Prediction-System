@@ -5,13 +5,14 @@ import logging
 import threading
 import time
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.timeutil import utcnow
+from app.api import rate_limit
 from app.api.deps import require_active_access, require_not_paused
 from app.api.routes_access import router as access_router
 from app.api.routes_admin import router as admin_router
@@ -342,6 +343,32 @@ app = FastAPI(
     redoc_url="/redoc" if settings.docs_enabled else None,
     openapi_url="/openapi.json" if settings.docs_enabled else None,
 )
+
+# Registered before CORSMiddleware so it ends up the *innermost* layer --
+# Starlette builds its middleware stack in reverse registration order, and a
+# short-circuited response (the 429 below) only picks up headers from layers
+# outside it. CORS needs to wrap this, not the other way round, or a
+# throttled browser request would show as a CORS failure instead of the
+# actual 429 + Retry-After.
+@app.middleware("http")
+async def _global_rate_limit(request: Request, call_next):
+    """Blanket per-IP throttle -- see Settings.global_rate_limit_requests.
+
+    Separate from the credential-specific limits in app/api/rate_limit.py's
+    own callers (login, register, chat, ...), which remain keyed on identity
+    first. This one exists because nothing previously stopped a single
+    client from hammering any endpoint at all, not just those.
+    """
+
+    if request.url.path != "/api/health":
+        try:
+            rate_limit.enforce(
+                request, "global", settings.global_rate_limit_requests, settings.global_rate_limit_window_seconds
+            )
+        except HTTPException as exc:
+            return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail}, headers=exc.headers)
+    return await call_next(request)
+
 
 app.add_middleware(
     CORSMiddleware,
