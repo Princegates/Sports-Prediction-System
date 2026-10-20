@@ -41,6 +41,31 @@ const ORGANIZATION_SCHEMA = {
  * thousands of matches.
  */
 
+// AI Generation demo -- a real, clickable preview of the wizard's own
+// controls (league/market/legs/accuracy), with no backend call behind any
+// of them: there's no logged-out, unpriced version of "generate" that
+// would be honest to show, so every control here is just for feel, and
+// clicking Generate always leads to sign-up (DEMO_GENERATE_* below), the
+// same "clicking it reveals the sign-up prompt" pattern the teaser pick
+// above already uses for the same reason. Names are real (the actual
+// league/market catalog), just not read live -- this is a logged-out page
+// with no access to that endpoint, and the fixed list costs nothing to
+// keep honest the way a live count would.
+const DEMO_LEAGUES = [
+  "English Premier League", "Spanish La Liga", "German Bundesliga", "Italian Serie A",
+  "French Ligue 1", "UEFA Champions League",
+];
+const DEMO_MARKETS = [
+  "Match Result", "Both Teams To Score", "Total Goals 2.5", "Double Chance", "Draw No Bet", "Correct Score",
+];
+const DEMO_LEG_OPTIONS = [4, 6, 8, 10];
+const DEMO_ACCURACY_OPTIONS = [
+  { value: 50, label: "50%+" },
+  { value: 65, label: "65%+" },
+  { value: 75, label: "75%+" },
+  { value: 85, label: "85%+" },
+];
+
 function StatTile({ value, label, hint }: { value: string; label: string; hint?: string }) {
   return (
     <div className="stat-tile">
@@ -164,6 +189,15 @@ export function Welcome() {
   // there's no account to generate one for yet, so clicking it reveals the
   // sign-up prompt in place rather than silently doing nothing.
   const [teaserGenerateClicked, setTeaserGenerateClicked] = useState(false);
+  // AI Generation demo controls -- local only, nothing fetched (see the
+  // constants above). Pre-ticked with a sensible starting point, same
+  // reasoning the real wizard's own defaults use, so the demo looks like
+  // something someone actually configured rather than an empty form.
+  const [demoLeagues, setDemoLeagues] = useState<string[]>(["English Premier League"]);
+  const [demoMarkets, setDemoMarkets] = useState<string[]>(["Match Result", "Both Teams To Score"]);
+  const [demoLegs, setDemoLegs] = useState(6);
+  const [demoAccuracy, setDemoAccuracy] = useState(65);
+  const [demoGenerateClicked, setDemoGenerateClicked] = useState(false);
   const heroTilt = useTilt<HTMLDivElement>();
   usePageStructuredData(ORGANIZATION_SCHEMA);
 
@@ -177,6 +211,10 @@ export function Welcome() {
     fetchPublicFixtures(5, 6).then(setFixtures).catch(() => setFixtures([]));
     fetchBranding().then(setBranding).catch(() => setBranding(null));
   }, []);
+
+  function toggleDemo(list: string[], setList: (next: string[]) => void, value: string) {
+    setList(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
+  }
 
   const nf = new Intl.NumberFormat();
   // "" (not set) falls back to the generic "arrange payment externally"
@@ -381,6 +419,106 @@ export function Welcome() {
           </div>
         </section>
       )}
+
+      {/* ---------------- AI Generation demo ----------------
+          Unlike the teaser pick above, this always renders -- it's not
+          read from live data, so there's no empty state to guard against,
+          and it's the one thing on this page a first-time visitor can
+          actually click around in before deciding whether to sign up. */}
+      <section className="landing-section">
+        <div className="section-head">
+          <h2>Try AI Generation</h2>
+          <p>
+            Pick leagues, markets, a leg count and an accuracy floor -- the same controls a redeemed
+            account uses to build a slip. Generating a real one needs an account with active access, since
+            every leg comes from live, priced predictions; everything else here is yours to play with.
+          </p>
+        </div>
+
+        <div className="card card-pad" style={{ maxWidth: 640, margin: "0 auto" }}>
+          <div className="meta" style={{ marginBottom: 6 }}>
+            Leagues
+          </div>
+          <div className="filter-bar" style={{ marginBottom: 14 }}>
+            {DEMO_LEAGUES.map((l) => (
+              <button
+                key={l}
+                type="button"
+                className={`filter-chip${demoLeagues.includes(l) ? " active" : ""}`}
+                onClick={() => toggleDemo(demoLeagues, setDemoLeagues, l)}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
+
+          <div className="meta" style={{ marginBottom: 6 }}>
+            Markets
+          </div>
+          <div className="filter-bar" style={{ marginBottom: 14 }}>
+            {DEMO_MARKETS.map((m) => (
+              <button
+                key={m}
+                type="button"
+                className={`filter-chip${demoMarkets.includes(m) ? " active" : ""}`}
+                onClick={() => toggleDemo(demoMarkets, setDemoMarkets, m)}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+
+          <div className="meta" style={{ marginBottom: 6 }}>
+            Number of legs
+          </div>
+          <div className="filter-bar" style={{ marginBottom: 14 }}>
+            {DEMO_LEG_OPTIONS.map((n) => (
+              <button
+                key={n}
+                type="button"
+                className={`filter-chip${demoLegs === n ? " active" : ""}`}
+                onClick={() => setDemoLegs(n)}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+
+          <div className="meta" style={{ marginBottom: 6 }}>
+            Minimum accuracy per leg
+          </div>
+          <div className="filter-bar">
+            {DEMO_ACCURACY_OPTIONS.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                className={`filter-chip${demoAccuracy === o.value ? " active" : ""}`}
+                onClick={() => setDemoAccuracy(o.value)}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ textAlign: "center", marginTop: 16 }}>
+          {demoGenerateClicked ? (
+            <div className="state-card" style={{ maxWidth: 420, margin: "0 auto" }}>
+              <p style={{ margin: "0 0 12px" }}>
+                Generating needs an account with active access -- every leg comes from live, priced
+                predictions, not a demo. Sign up free, then build real slips like this one.
+              </p>
+              <Link className="btn btn-lg" to="/register">
+                Create an account
+              </Link>
+            </div>
+          ) : (
+            <button className="btn btn-lg" onClick={() => setDemoGenerateClicked(true)}>
+              Generate selections
+            </button>
+          )}
+        </div>
+      </section>
 
       {/* ---------------- Live corpus stats ---------------- */}
       <section className="landing-section">
