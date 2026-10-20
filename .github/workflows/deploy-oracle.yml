@@ -1,0 +1,60 @@
+# Deploys the backend to the Oracle VM on every push to main, so a merge is
+# live without anyone needing to SSH in and run `git pull` by hand.
+#
+# The VM is the actual production backend (see DEPLOYMENT.md's Option A) --
+# this workflow only ever fast-forwards it to origin/main's own history
+# (`git fetch` + `git reset --hard`), it never pushes anything back, so a
+# local change made directly on the VM outside this workflow would simply be
+# discarded on the next deploy. That's intentional: the VM is a deploy
+# target, not a second place to edit from.
+#
+# Needs three repository secrets (Settings -> Secrets and variables ->
+# Actions -> New repository secret), none of which this workflow can create
+# for you:
+#   ORACLE_HOST     the VM's public IP or domain
+#   ORACLE_SSH_USER the SSH user (ubuntu, on the Canonical Ubuntu image)
+#   ORACLE_SSH_KEY  a private key authorized on that VM -- generate a
+#                   dedicated deploy key rather than reusing your own
+#                   personal one, so it can be revoked on its own:
+#                     ssh-keygen -t ed25519 -f deploy_key -N ""
+#                   then append deploy_key.pub to ~/.ssh/authorized_keys on
+#                   the VM, and paste deploy_key's contents (the private
+#                   half) as this secret's value.
+name: Deploy to Oracle
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        env:
+          SSH_KEY: ${{ secrets.ORACLE_SSH_KEY }}
+          SSH_HOST: ${{ secrets.ORACLE_HOST }}
+          SSH_USER: ${{ secrets.ORACLE_SSH_USER }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+          ssh -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" bash -s <<'REMOTE'
+            set -euo pipefail
+            cd ~/Sports-Prediction-System
+            git fetch origin main
+            git reset --hard origin/main
+            cd backend
+            source .venv/bin/activate
+            pip install -r requirements.txt
+            sudo systemctl restart predictions
+            # Give it a moment, then confirm it actually came back up rather
+            # than silently reporting "deployed" with a dead service.
+            sleep 3
+            sudo systemctl is-active --quiet predictions
+            curl -fsS --max-time 10 http://localhost:8000/api/health
+          REMOTE
