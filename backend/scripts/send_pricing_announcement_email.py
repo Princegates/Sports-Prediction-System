@@ -61,7 +61,7 @@ def main() -> None:
             print("Email isn't configured (Settings -> Email) -- nothing sent.")
             return
 
-        price_label = str(values.get("pricing_label") or "")
+        price_label = app_settings.price_display(values)[0]
         if not price_label:
             print("pricing_label is blank (Settings -> Access) -- nothing to announce.")
             return

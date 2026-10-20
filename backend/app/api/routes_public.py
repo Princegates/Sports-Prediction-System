@@ -21,7 +21,7 @@ from __future__ import annotations
 import datetime as dt
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.timeutil import utcnow
@@ -32,16 +32,21 @@ from app.api.schemas import (
     BrandingOut,
     ConfidenceBandRecordOut,
     LeagueAccuracyOut,
+    LandingOut,
     NoticeOut,
+    PickOfTheDayOut,
     PublicAccuracyOut,
+    PublicFixtureDetailOut,
     PublicFixtureOut,
+    PublicHeadToHeadOut,
+    PublicResultOut,
     PublicStatsOut,
     PublicTeaserPickOut,
     TrackRecordEntryOut,
     TrackRecordOut,
 )
 from app import app_settings
-from app.api.serializers import public_teaser_pick_to_schema
+from app.api.serializers import TEAM_LOGO_URL, public_teaser_pick_to_schema
 from app.assistant import retrieval
 from app.betcode.selection import Leg, price_legs
 from app.db.models import AdminPick, FeaturedPick, Match, Prediction, User
@@ -79,7 +84,16 @@ def _public_fixture_out(db: Session, match: Match) -> PublicFixtureOut:
         away_team=match.away_team.name,
         has_prediction=prediction is not None,
         confidence=prediction.confidence if prediction else None,
+        home_logo_url=_logo(match.home_team.api_football_team_id),
+        away_logo_url=_logo(match.away_team.api_football_team_id),
     )
+
+
+def _logo(provider_id: int | None) -> str | None:
+    return TEAM_LOGO_URL.format(id=provider_id) if provider_id else None
+
+
+_CONFIDENCE_RANK = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
 
 
 @router.get("/stats", response_model=PublicStatsOut)
@@ -351,6 +365,7 @@ def public_branding(db: Session = Depends(get_db)) -> BrandingOut:
     """
 
     values = app_settings.all_values(db)
+    price_label, price_per_day = app_settings.price_display(values)
     return BrandingOut(
         site_name=str(values["site_name"]),
         site_tagline=str(values["site_tagline"]),
@@ -358,7 +373,9 @@ def public_branding(db: Session = Depends(get_db)) -> BrandingOut:
         default_accent=str(values["default_accent"]),
         registration_open=bool(values["registration_open"]),
         contact_whatsapp=str(values["contact_whatsapp"]),
-        pricing_label=str(values["pricing_label"]),
+        pricing_label=price_label,
+        price_per_day=price_per_day,
+        whatsapp_channel_url=str(values.get("whatsapp_channel_url") or ""),
         default_market_tab=str(values["default_market_tab"]),
         referral_enabled=bool(values["referral_enabled"]),
         referral_bonus_days=int(values["referral_bonus_days"]),
@@ -381,32 +398,109 @@ def public_notice(db: Session = Depends(get_db)) -> NoticeOut:
     return NoticeOut(enabled=bool(values.get("notice_enabled")) and bool(message), message=message)
 
 
+# A league hub page lists more of one league's fixtures than the cross-league
+# teaser lists do.
+MAX_LEAGUE_FIXTURES = 60
+FORM_MATCHES = 5
+HEAD_TO_HEAD_MATCHES = 5
+# How soon a fixture must kick off to be eligible as the public pick of the day.
+PICK_OF_THE_DAY_WINDOW = dt.timedelta(hours=36)
+
+
+def _upcoming_fixtures(
+    db: Session, *, days_ahead: int, limit: int, league: str | None = None, best_first: bool = False
+) -> list[PublicFixtureOut]:
+    now = utcnow()
+    stmt = (
+        select(Match)
+        .where(Match.status == "SCHEDULED", Match.date >= now, Match.date < now + dt.timedelta(days=days_ahead))
+        .options(selectinload(Match.home_team), selectinload(Match.away_team))
+        .order_by(Match.date.asc())
+    )
+    if league:
+        stmt = stmt.where(Match.league == league)
+    if not best_first:
+        return [_public_fixture_out(db, m) for m in db.execute(stmt.limit(limit)).scalars()]
+    # Highest confidence first (then kickoff), so a showcase leads with the
+    # calls the model is surest of instead of whatever kicks off next.
+    candidates = [_public_fixture_out(db, m) for m in db.execute(stmt.limit(limit * 6)).scalars()]
+    candidates.sort(key=lambda f: (_CONFIDENCE_RANK.get(f.confidence or "", 3), f.kickoff))
+    return candidates[:limit]
+
+
 @router.get("/fixtures", response_model=list[PublicFixtureOut])
-def public_fixtures(days_ahead: int = 3, limit: int = 6, db: Session = Depends(get_db)) -> list[PublicFixtureOut]:
+def public_fixtures(
+    days_ahead: int = 3,
+    limit: int = 6,
+    league: str | None = None,
+    sort: str = "kickoff",
+    db: Session = Depends(get_db),
+) -> list[PublicFixtureOut]:
     """Upcoming fixtures with *whether* a prediction exists and how confident
     it is -- but never the selection or the probability. Enough to show the
-    system is live and covering real matches; not enough to be the product."""
+    system is live and covering real matches; not enough to be the product.
+    ``league`` narrows to one competition (the league hub pages);
+    ``sort=confidence`` puts high-confidence fixtures first."""
 
     days_ahead = max(0, min(days_ahead, MAX_PUBLIC_FIXTURE_DAYS_AHEAD))
-    limit = max(1, min(limit, 20))
-    now = utcnow()
+    limit = max(1, min(limit, MAX_LEAGUE_FIXTURES if league else 20))
+    return _upcoming_fixtures(db, days_ahead=days_ahead, limit=limit, league=league, best_first=sort == "confidence")
 
+
+def _recent_results(db: Session, team_id: int, before: dt.datetime) -> list[PublicResultOut]:
     rows = db.execute(
-        select(Match).where(Match.date >= now, Match.date < now + dt.timedelta(days=days_ahead))
-        .order_by(Match.date.asc())
-        .limit(limit)
-    ).scalars().all()
+        select(Match)
+        .where(
+            Match.status == "FINISHED",
+            Match.date < before,
+            Match.home_score.is_not(None),
+            or_(Match.home_team_id == team_id, Match.away_team_id == team_id),
+        )
+        .options(selectinload(Match.home_team), selectinload(Match.away_team))
+        .order_by(Match.date.desc())
+        .limit(FORM_MATCHES)
+    ).scalars()
+    out = []
+    for m in rows:
+        home = m.home_team_id == team_id
+        gf, ga = (m.home_score, m.away_score) if home else (m.away_score, m.home_score)
+        out.append(PublicResultOut(
+            date=m.date, opponent=(m.away_team if home else m.home_team).name, venue="H" if home else "A",
+            goals_for=gf, goals_against=ga, result="W" if gf > ga else "D" if gf == ga else "L",
+        ))
+    return out
 
-    return [_public_fixture_out(db, match) for match in rows]
+
+def _head_to_head(db: Session, match: Match) -> list[PublicHeadToHeadOut]:
+    a, b = match.home_team_id, match.away_team_id
+    rows = db.execute(
+        select(Match)
+        .where(
+            Match.status == "FINISHED",
+            Match.date < match.date,
+            Match.home_score.is_not(None),
+            or_(and_(Match.home_team_id == a, Match.away_team_id == b), and_(Match.home_team_id == b, Match.away_team_id == a)),
+        )
+        .options(selectinload(Match.home_team), selectinload(Match.away_team))
+        .order_by(Match.date.desc())
+        .limit(HEAD_TO_HEAD_MATCHES)
+    ).scalars()
+    return [
+        PublicHeadToHeadOut(date=m.date, league=m.league, home_team=m.home_team.name, away_team=m.away_team.name,
+                            home_score=m.home_score, away_score=m.away_score)
+        for m in rows
+    ]
 
 
-@router.get("/fixtures/{match_id}", response_model=PublicFixtureOut)
-def public_fixture_detail(match_id: int, db: Session = Depends(get_db)) -> PublicFixtureOut:
+@router.get("/fixtures/{match_id}", response_model=PublicFixtureDetailOut)
+def public_fixture_detail(match_id: int, db: Session = Depends(get_db)) -> PublicFixtureDetailOut:
     """One upcoming fixture's public-safe detail -- its own page (SEO: lets
     someone searching "team A vs team B prediction" land on a real page
     about that exact match instead of nowhere), same rule as the list
     above: whether a prediction exists and how confident it is, never the
-    selection or probability.
+    selection or probability -- unless this fixture is today's public pick.
+    Adds each side's last five results and their recent meetings: public
+    facts that make every page unique rather than one paragraph on 800 URLs.
 
     404s for a match that doesn't exist, has already kicked off, or is
     further out than the list endpoint ever shows (MAX_PUBLIC_FIXTURE_DAYS_AHEAD)
@@ -418,4 +512,68 @@ def public_fixture_detail(match_id: int, db: Session = Depends(get_db)) -> Publi
     now = utcnow()
     if match is None or not (now <= match.date < now + dt.timedelta(days=MAX_PUBLIC_FIXTURE_DAYS_AHEAD)):
         raise HTTPException(status_code=404, detail="Fixture not found")
-    return _public_fixture_out(db, match)
+    pick = pick_of_the_day(db)
+    return PublicFixtureDetailOut(
+        **_public_fixture_out(db, match).model_dump(),
+        home_form=_recent_results(db, match.home_team_id, match.date),
+        away_form=_recent_results(db, match.away_team_id, match.date),
+        head_to_head=_head_to_head(db, match),
+        pick_of_the_day=pick if pick.has_data and pick.fixture and pick.fixture.match_id == match.id else None,
+    )
+
+
+def pick_of_the_day(db: Session, *, now: dt.datetime | None = None) -> PickOfTheDayOut:
+    """The strongest high-confidence call among fixtures kicking off in the
+    next 36 hours -- the one prediction shown to everyone. Deterministic for
+    a given set of predictions, so it doesn't flicker between page loads."""
+
+    now = now or utcnow()
+    latest = (
+        select(Prediction.match_id, func.max(Prediction.created_at).label("created_at"))
+        .group_by(Prediction.match_id)
+        .subquery()
+    )
+    row = db.execute(
+        select(Prediction, Match)
+        .join(latest, and_(Prediction.match_id == latest.c.match_id, Prediction.created_at == latest.c.created_at))
+        .join(Match, Match.id == Prediction.match_id)
+        .where(
+            Match.status == "SCHEDULED",
+            Match.date >= now,
+            Match.date < now + PICK_OF_THE_DAY_WINDOW,
+            Prediction.confidence == "HIGH",
+        )
+        .options(selectinload(Match.home_team), selectinload(Match.away_team))
+        .order_by(Prediction.global_outcome_probability.desc(), Match.date.asc(), Match.id.asc())
+        .limit(1)
+    ).first()
+    if row is None:
+        return PickOfTheDayOut(has_data=False)
+    prediction, match = row
+    return PickOfTheDayOut(
+        has_data=True,
+        fixture=_public_fixture_out(db, match),
+        market=prediction.global_outcome_market,
+        selection=prediction.global_outcome_selection,
+        probability=prediction.global_outcome_probability,
+    )
+
+
+@router.get("/pick-of-the-day", response_model=PickOfTheDayOut)
+def public_pick_of_the_day(db: Session = Depends(get_db)) -> PickOfTheDayOut:
+    return pick_of_the_day(db)
+
+
+@router.get("/landing", response_model=LandingOut)
+def public_landing(db: Session = Depends(get_db)) -> LandingOut:
+    """Everything the public home page shows, in one call -- see LandingOut."""
+
+    return LandingOut(
+        branding=public_branding(db),
+        stats=public_stats(db),
+        track_record=public_track_record(db),
+        admin_pick_record=admin_pick_track_record(db),
+        fixtures=_upcoming_fixtures(db, days_ahead=2, limit=6, best_first=True),
+        pick_of_the_day=pick_of_the_day(db),
+        teaser_pick=public_teaser_pick(db),
+    )

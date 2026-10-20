@@ -60,7 +60,7 @@ def send_expiry_reminders(db: Session, *, now: dt.datetime | None = None) -> int
 
     site_url = mailer.resolve_config(db).site_url or None
     whatsapp = str(app_settings.get_value(db, "contact_whatsapp") or "") or None
-    price = str(app_settings.get_value(db, "pricing_label") or "") or None
+    price = app_settings.price_display(app_settings.all_values(db))[0] or None
 
     sent = 0
     for grant, user, code in rows:

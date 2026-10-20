@@ -12,6 +12,8 @@ import logging
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 
+from app.timeutil import utcnow
+
 logger = logging.getLogger(__name__)
 
 
@@ -344,6 +346,35 @@ def _index_team_provider_ids(engine: Engine) -> None:
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_teams_api_football_team_id ON teams (api_football_team_id)"))
 
 
+# The one free-text price ever saved in production, typo and all. It was the
+# headline of the Pricing page; replaced once by the structured price fields
+# (see app_settings.price_display), which can't misspell anything.
+_MISTYPED_PRICE_LABEL = "GHC 20/5 days acess"
+
+
+def _structure_mistyped_price_label(engine: Engine) -> None:
+    """One-time data fix: turn that exact label into amount 20, GH₵, 5 days.
+    Only when the label is still exactly that and no structured price has
+    been set, so any later admin edit is left alone. Idempotent."""
+
+    inspector = inspect(engine)
+    if "app_settings" not in inspector.get_table_names():
+        return
+    with engine.begin() as conn:
+        label = conn.execute(text("SELECT value FROM app_settings WHERE key = 'pricing_label'")).scalar()
+        already = conn.execute(text("SELECT 1 FROM app_settings WHERE key = 'price_amount'")).first()
+        if label != _MISTYPED_PRICE_LABEL or already is not None:
+            return
+        for key, value in (("price_amount", "20"), ("price_currency", "GH₵"), ("price_days", "5")):
+            conn.execute(
+                text("INSERT INTO app_settings (key, value, updated_at) VALUES (:k, :v, :t)"),
+                # A string rather than a datetime: sqlite3's implicit datetime adapter is
+                # deprecated, and Postgres casts the literal to TIMESTAMP itself.
+                {"k": key, "v": value, "t": utcnow().isoformat(sep=" ")},
+            )
+        conn.execute(text("UPDATE app_settings SET value = '' WHERE key = 'pricing_label'"))
+
+
 def init_db(engine: Engine) -> None:
     """Bring a database up to date: create missing tables, add columns that
     existing tables are missing, and run one-time data migrations.
@@ -370,4 +401,5 @@ def init_db(engine: Engine) -> None:
     _backfill_referral_codes(engine)
     _backfill_access_code_kinds(engine)
     _index_team_provider_ids(engine)
+    _structure_mistyped_price_label(engine)
     _enable_row_level_security(engine)

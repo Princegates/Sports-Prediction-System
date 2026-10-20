@@ -145,6 +145,18 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 "generic \"arrange payment externally\" wording with no amount, same as before this "
                 "existed.",
                 default=""),
+    SettingSpec("price_amount", "float", "access", "Price amount",
+                "With the period below, builds the price shown everywhere -- e.g. 20 and 5 days show as "
+                "\"GH₵20 for 5 days\", plus \"about GH₵4 a day\" on the public pages. Leave 0 to use "
+                "the free-text price above instead.",
+                default=0.0, minimum=0, maximum=100000),
+    SettingSpec("price_currency", "str", "access", "Price currency symbol", default="GH₵"),
+    SettingSpec("price_days", "int", "access", "Price period (days)",
+                "How many days of access the price buys.", default=0, minimum=0, maximum=365),
+    SettingSpec("whatsapp_channel_url", "str", "access", "WhatsApp Channel link",
+                "Your public WhatsApp Channel (https://whatsapp.com/channel/...). When set, the public "
+                "pages invite visitors to follow it for daily picks.",
+                default=""),
     SettingSpec("default_code_duration_days", "int", "access", "Default code duration (days)",
                 "Pre-filled when issuing a code. You can still change it per code.",
                 default=30, minimum=1, maximum=3650),
@@ -324,6 +336,30 @@ def get_value(db: Session, key: str) -> Any:
         # edited the table by hand. Falling back beats raising on every
         # request that touches it.
         return _env_default(spec)
+
+
+def _format_amount(amount: float) -> str:
+    return f"{amount:,.0f}" if float(amount).is_integer() else f"{amount:,.2f}"
+
+
+def price_display(values: dict[str, Any]) -> tuple[str, str]:
+    """``(label, per_day)`` for the price, from ``all_values`` output.
+
+    The structured fields (amount, currency, days) win when both amount and
+    days are set -- "GH₵20 for 5 days" and "about GH₵4 a day" -- so the
+    label can't carry a typo and the per-day figure is always right.
+    Otherwise the free-text ``pricing_label`` as typed, with no per-day.
+    Both are "" when no price is configured.
+    """
+
+    amount = float(values.get("price_amount") or 0)
+    days = int(values.get("price_days") or 0)
+    if amount > 0 and days > 0:
+        currency = str(values.get("price_currency") or "")
+        label = f"{currency}{_format_amount(amount)} for {days} day{'s' if days != 1 else ''}"
+        per_day = f"about {currency}{_format_amount(round(amount / days, 2))} a day" if days > 1 else ""
+        return label, per_day
+    return str(values.get("pricing_label") or "").strip(), ""
 
 
 def all_values(db: Session) -> dict[str, Any]:

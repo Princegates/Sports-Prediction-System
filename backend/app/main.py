@@ -351,6 +351,9 @@ app.add_middleware(
 )
 
 
+PUBLIC_CACHE_CONTROL = "public, max-age=300, stale-while-revalidate=600"
+
+
 @app.middleware("http")
 async def _security_headers(request: Request, call_next):
     """Headers a browser honors on every response, API or not.
@@ -367,6 +370,16 @@ async def _security_headers(request: Request, call_next):
     """
 
     response = await call_next(request)
+    # Public landing-page data is the same for every visitor and changes on
+    # the scale of minutes; letting browsers (and any CDN in front) reuse it
+    # spares a free-tier backend a burst of identical requests per visitor.
+    if (
+        request.method == "GET"
+        and request.url.path.startswith("/api/public/")
+        and response.status_code == 200
+        and "cache-control" not in response.headers
+    ):
+        response.headers["Cache-Control"] = PUBLIC_CACHE_CONTROL
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"

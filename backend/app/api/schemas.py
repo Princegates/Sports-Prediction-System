@@ -336,6 +336,57 @@ class PublicFixtureOut(BaseModel):
     away_team: str
     has_prediction: bool
     confidence: str | None = None
+    # Crests, so public fixture lists and share cards can show them --
+    # None until the club's provider id is known (see TeamOut.logo_url).
+    home_logo_url: str | None = None
+    away_logo_url: str | None = None
+
+
+class PublicResultOut(BaseModel):
+    """One past match from one side's point of view -- public facts only
+    (date, opponent, score), never a prediction."""
+
+    date: dt.datetime
+    opponent: str
+    venue: str  # "H" or "A"
+    goals_for: int
+    goals_against: int
+    result: str  # "W" / "D" / "L"
+
+
+class PublicHeadToHeadOut(BaseModel):
+    date: dt.datetime
+    league: str
+    home_team: str
+    away_team: str
+    home_score: int
+    away_score: int
+
+
+class PublicFixtureDetailOut(PublicFixtureOut):
+    """The fixture page's own payload: the list shape plus the public facts
+    that make each page genuinely about its match (recent results, past
+    meetings) rather than the same paragraph on 800 URLs."""
+
+    home_form: list[PublicResultOut] = []
+    away_form: list[PublicResultOut] = []
+    head_to_head: list[PublicHeadToHeadOut] = []
+    # Set only when this fixture is today's public pick (see PickOfTheDayOut).
+    pick_of_the_day: "PickOfTheDayOut | None" = None
+
+
+class PickOfTheDayOut(BaseModel):
+    """The one prediction shown in full to everyone, logged in or not: the
+    strongest high-confidence call among fixtures kicking off soon. A
+    deliberate marketing exception to "selections stay behind the login",
+    like the public teaser -- one a day, so it samples the product rather
+    than replacing it."""
+
+    has_data: bool
+    fixture: PublicFixtureOut | None = None
+    market: str | None = None
+    selection: str | None = None
+    probability: float | None = None
 
 
 class ConfidenceBandRecordOut(BaseModel):
@@ -582,6 +633,11 @@ class BrandingOut(BaseModel):
     # Free trial on offer to a new signup, so the landing page can lead
     # with it instead of reading like a paywall. 0 when trials are off.
     trial_days: int = 0
+    # "about GH₵4 a day" when the price is set as amount + days (see
+    # app_settings.price_display), otherwise "".
+    price_per_day: str = ""
+    # Public WhatsApp Channel, "" when not set.
+    whatsapp_channel_url: str = ""
 
 
 # --- Outcome browser -------------------------------------------------------
@@ -1046,3 +1102,20 @@ class PublicTeaserPickOut(BaseModel):
     combined_probability: float = 0.0
     label: str | None = None
     created_at: dt.datetime | None = None
+
+
+PublicFixtureDetailOut.model_rebuild()
+
+
+class LandingOut(BaseModel):
+    """Everything the public home page reads, in one response -- it used to
+    make seven separate calls to a backend that can be asleep, so each
+    section filled in on its own schedule (or not at all) on a cold start."""
+
+    branding: BrandingOut
+    stats: PublicStatsOut
+    track_record: TrackRecordOut
+    admin_pick_record: AdminPickTrackRecordOut
+    fixtures: list[PublicFixtureOut]
+    pick_of_the_day: PickOfTheDayOut
+    teaser_pick: PublicTeaserPickOut
