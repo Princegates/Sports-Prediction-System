@@ -549,6 +549,24 @@ class LivePrediction(Base):
     trigger_event: Mapped[str] = mapped_column(String(32))
 
 
+class PublicFreePickSet(Base):
+    """The three free picks currently on the public pages (see
+    routes_public.free_picks). Chosen once and kept fixed -- through kickoff
+    and full time, so visitors see them play out and win or lose -- until
+    every match in the set is over; only then is a fresh set chosen.
+
+    ``picks`` is [{kind, match_id, market, selection, label, probability,
+    kickoff}], the probability frozen at the moment of choosing like an
+    AdminPick's, so a later model refresh can't rewrite a published call.
+    """
+
+    __tablename__ = "public_free_pick_sets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    picks: Mapped[list] = mapped_column(JSON)
+
+
 class FeaturedPick(Base):
     """An admin-curated highlight on the "Guda Picks" dashboard section.
 

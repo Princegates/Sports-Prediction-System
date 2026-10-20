@@ -175,10 +175,10 @@ def test_public_fixture_detail_expose_no_selection_or_probability(db_session, se
 
     leaked = {"global_outcome_selection", "global_outcome_probability", "home_win", "explanation"}
     assert leaked.isdisjoint(body.keys())
-    # The one deliberate exception is the free pick of the day, which only
-    # ever appears under its own key (see test_public_pages_api.py for when
-    # it does and doesn't). Nothing else on the page may carry the pick.
-    rest = {k: v for k, v in body.items() if k != "pick_of_the_day"}
+    # The one deliberate exception is a free pick, which only ever appears
+    # under its own key (see test_public_pages_api.py for when it does and
+    # doesn't). Nothing else on the page may carry the pick.
+    rest = {k: v for k, v in body.items() if k != "free_pick"}
     assert "Home Win" not in str(rest)
     assert "0.52" not in str(rest)
 

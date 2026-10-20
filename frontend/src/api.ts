@@ -44,7 +44,7 @@ import type {
   ReferralStats,
   VerificationStatus,
   Landing,
-  PickOfTheDay,
+  PublicFreePick,
   PublicFixtureDetail,
 } from "./types";
 
@@ -195,8 +195,8 @@ export function fetchLanding(): Promise<Landing> {
   return get("/api/public/landing");
 }
 
-export function fetchPickOfTheDay(): Promise<PickOfTheDay> {
-  return get("/api/public/pick-of-the-day");
+export function fetchPublicFreePicks(): Promise<PublicFreePick[]> {
+  return get("/api/public/free-picks");
 }
 
 export function fetchLeagueFixtures(league: string, daysAhead = 7, limit = 60): Promise<PublicFixture[]> {

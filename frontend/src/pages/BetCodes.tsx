@@ -29,6 +29,7 @@ import { StickySlipBar } from "../components/StickySlipBar";
 import { LEAGUES, useLeague } from "../components/AppShell";
 import { useAuth } from "../lib/AuthContext";
 import { useIsMobile } from "../lib/useIsMobile";
+import { takePendingSlip } from "../lib/pendingSlip";
 import type { AdminPick, BetCodePick, MarketSummary, MatchSummary, PublicTeaserPick, SuggestCriteria, SuggestedLeg, SuggestedPicks } from "../types";
 import { chanceLabel } from "../lib/odds";
 
@@ -387,10 +388,13 @@ export function BetCodes() {
   }
 
   // A pick list handed over via navigation (Guda's "Send to AI Generation",
-  // Markets' "My picks" panel, or any future source) resolves immediately
+  // Markets' "My picks" panel, the public free picks, or any future source) resolves immediately
   // on arrival -- once per navigation, not on every re-render.
   useEffect(() => {
-    const picks = (location.state as { picks?: BetCodePick[] } | null)?.picks;
+    // ...or the public free-picks slip a visitor asked to book before they
+    // had an account (lib/pendingSlip), the first time they get here.
+    const pending = takePendingSlip();
+    const picks = (location.state as { picks?: BetCodePick[] } | null)?.picks ?? pending;
     if (!picks || picks.length === 0) return;
     setFromExternalPicks(true);
     runPreview(() => resolvePicks(picks), true);

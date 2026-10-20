@@ -183,7 +183,7 @@ export function FixturePreview() {
   const matchup = `${fixture.home_team} vs ${fixture.away_team}`;
   const pageTitle = `${matchup} Prediction — ${fixture.league} | Socca Intelligence`;
   const pageDescription = fixtureDescription(fixture);
-  const pick = fixture.pick_of_the_day;
+  const pick = fixture.free_pick;
 
   return (
     <PublicShell title={pageTitle} description={pageDescription}>
@@ -213,16 +213,17 @@ export function FixturePreview() {
         <div className="card card-pad" style={{ maxWidth: 620 }}>
           {pick ? (
             <>
-              <span className="eyebrow">Today's free pick</span>
+              <span className="eyebrow">One of today's 3 free picks</span>
               <div className="potd-call" style={{ marginTop: "var(--space-3)" }}>
                 <span className="potd-selection">
-                  {pick.market}: <strong>{pick.selection}</strong>
+                  {pick.market}: <strong>{pick.label}</strong>
                 </span>
-                <span className="potd-prob">{Math.round((pick.probability ?? 0) * 100)}%</span>
+                <span className="potd-prob">{Math.round(pick.probability * 100)}%</span>
               </div>
               <p style={{ marginTop: "var(--space-3)" }}>
-                This is the model's strongest call kicking off soon, so it's free for everyone today. By its own numbers
-                it lands {chanceLabel(pick.probability ?? 0)} of the time, so it can still lose. Members see a pick like
+                This is the model's strongest {pick.market} call kicking off soon, so it's free for everyone today. By its
+                own numbers it lands {chanceLabel(pick.probability)} of the time, so it can still lose.{" "}
+                <Link to="/#free-picks">See all 3 free picks and generate a booking code</Link>. Members see a pick like
                 this, with the reasoning, for every match.
               </p>
             </>

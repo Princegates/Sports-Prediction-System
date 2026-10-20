@@ -372,22 +372,29 @@ class PublicFixtureDetailOut(PublicFixtureOut):
     home_form: list[PublicResultOut] = []
     away_form: list[PublicResultOut] = []
     head_to_head: list[PublicHeadToHeadOut] = []
-    # Set only when this fixture is today's public pick (see PickOfTheDayOut).
-    pick_of_the_day: "PickOfTheDayOut | None" = None
+    # Set only when this fixture is one of today's free picks (see PublicFreePickOut).
+    free_pick: "PublicFreePickOut | None" = None
 
 
-class PickOfTheDayOut(BaseModel):
-    """The one prediction shown in full to everyone, logged in or not: the
-    strongest high-confidence call among fixtures kicking off soon. A
-    deliberate marketing exception to "selections stay behind the login",
-    like the public teaser -- one a day, so it samples the product rather
-    than replacing it."""
+class PublicFreePickOut(BaseModel):
+    """One of today's three free picks, shown in full to everyone, logged in
+    or not: one Match Result (1X2), one Double Chance and one Over 1.5 Goals,
+    each on a different match kicking off soon, kept until all three are
+    over (see PublicFreePickSet). A deliberate marketing
+    exception to "selections stay behind the login", like the public teaser
+    -- three a day samples the product rather than replacing it."""
 
-    has_data: bool
-    fixture: PublicFixtureOut | None = None
-    market: str | None = None
-    selection: str | None = None
-    probability: float | None = None
+    kind: str  # "1x2" / "double_chance" / "over_1_5"
+    fixture: PublicFixtureOut
+    market: str  # registry name, e.g. "Double Chance"
+    selection: str  # registry name, e.g. "Home/Draw"
+    label: str  # plain-English, e.g. "Arsenal or draw"
+    probability: float  # as published, frozen when the set was chosen
+    # upcoming / live / won / lost / void -- the set stays up through the
+    # matches, so its picks are seen to win or lose.
+    status: str = "upcoming"
+    home_score: int | None = None
+    away_score: int | None = None
 
 
 class ConfidenceBandRecordOut(BaseModel):
@@ -1118,5 +1125,5 @@ class LandingOut(BaseModel):
     track_record: TrackRecordOut
     admin_pick_record: AdminPickTrackRecordOut
     fixtures: list[PublicFixtureOut]
-    pick_of_the_day: PickOfTheDayOut
+    free_picks: list[PublicFreePickOut]
     teaser_pick: PublicTeaserPickOut

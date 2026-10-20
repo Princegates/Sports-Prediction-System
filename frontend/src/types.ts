@@ -275,20 +275,26 @@ export interface PublicHeadToHead {
   away_score: number;
 }
 
-/** The one prediction shown in full on the public pages each day. */
-export interface PickOfTheDay {
-  has_data: boolean;
-  fixture: PublicFixture | null;
-  market: string | null;
-  selection: string | null;
-  probability: number | null;
+/** One of the three free picks shown in full on the public pages -- one
+ * Match Result, one Double Chance, one Over 1.5 Goals. The set stays up
+ * until all three matches are over. */
+export interface PublicFreePick {
+  kind: "1x2" | "double_chance" | "over_1_5";
+  fixture: PublicFixture;
+  market: string;
+  selection: string;
+  label: string;
+  probability: number;
+  status: "upcoming" | "live" | "won" | "lost" | "void";
+  home_score: number | null;
+  away_score: number | null;
 }
 
 export interface PublicFixtureDetail extends PublicFixture {
   home_form: PublicResult[];
   away_form: PublicResult[];
   head_to_head: PublicHeadToHead[];
-  pick_of_the_day: PickOfTheDay | null;
+  free_pick: PublicFreePick | null;
 }
 
 /** The model's own graded pre-match calls -- GET /api/public/track-record. */
@@ -307,7 +313,7 @@ export interface Landing {
   track_record: TrackRecord;
   admin_pick_record: AdminPickTrackRecord;
   fixtures: PublicFixture[];
-  pick_of_the_day: PickOfTheDay;
+  free_picks: PublicFreePick[];
   teaser_pick: PublicTeaserPick;
 }
 

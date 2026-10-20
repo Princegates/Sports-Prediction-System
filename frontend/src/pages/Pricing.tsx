@@ -101,7 +101,7 @@ export function Pricing() {
           <div className="plan-tile">
             <span className="plan-name">Free</span>
             <span className="plan-price">Free</span>
-            <span className="plan-desc">One headline pick per league, plus the public pick of the day.</span>
+            <span className="plan-desc">One headline pick per league, plus today's 3 free picks.</span>
           </div>
           {trialDays > 0 && (
             <div className="plan-tile featured">

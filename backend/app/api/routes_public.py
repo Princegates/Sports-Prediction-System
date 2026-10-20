@@ -34,7 +34,7 @@ from app.api.schemas import (
     LeagueAccuracyOut,
     LandingOut,
     NoticeOut,
-    PickOfTheDayOut,
+    PublicFreePickOut,
     PublicAccuracyOut,
     PublicFixtureDetailOut,
     PublicFixtureOut,
@@ -49,7 +49,8 @@ from app import app_settings
 from app.api.serializers import TEAM_LOGO_URL, public_teaser_pick_to_schema
 from app.assistant import retrieval
 from app.betcode.selection import Leg, price_legs
-from app.db.models import AdminPick, FeaturedPick, Match, Prediction, User
+from app.db.models import AdminPick, FeaturedPick, Match, Prediction, PublicFreePickSet, User
+from app.outcomes.grading import grade_outcome
 from app.outcomes.registry import full_registry_market_count
 from app.pick_settlement import frozen_admin_pick_legs, settle_admin_pick, settle_featured_pick
 
@@ -403,8 +404,18 @@ def public_notice(db: Session = Depends(get_db)) -> NoticeOut:
 MAX_LEAGUE_FIXTURES = 60
 FORM_MATCHES = 5
 HEAD_TO_HEAD_MATCHES = 5
-# How soon a fixture must kick off to be eligible as the public pick of the day.
-PICK_OF_THE_DAY_WINDOW = dt.timedelta(hours=36)
+# Free picks come from fixtures kicking off within FREE_PICK_WINDOW; only when
+# a market has nothing left there (a quiet midweek) does it reach out to
+# FREE_PICK_FALLBACK_WINDOW, so there are three picks whenever there's football.
+FREE_PICK_WINDOW = dt.timedelta(hours=36)
+FREE_PICK_FALLBACK_WINDOW = dt.timedelta(hours=72)
+# The three free picks, in the order they're chosen: the market with the
+# fewest strong candidates picks its match first.
+FREE_PICK_KINDS = ("1x2", "double_chance", "over_1_5")
+# A pick's match counts as over at full time -- or, if no result ever
+# arrives (postponed, abandoned, a feed that stopped updating), this long
+# after its published kickoff, so one dead fixture can't freeze the set.
+FREE_PICK_GIVE_UP_AFTER = dt.timedelta(hours=6)
 
 
 def _upcoming_fixtures(
@@ -498,7 +509,7 @@ def public_fixture_detail(match_id: int, db: Session = Depends(get_db)) -> Publi
     someone searching "team A vs team B prediction" land on a real page
     about that exact match instead of nowhere), same rule as the list
     above: whether a prediction exists and how confident it is, never the
-    selection or probability -- unless this fixture is today's public pick.
+    selection or probability -- unless this fixture is one of today's free picks.
     Adds each side's last five results and their recent meetings: public
     facts that make every page unique rather than one paragraph on 800 URLs.
 
@@ -512,56 +523,167 @@ def public_fixture_detail(match_id: int, db: Session = Depends(get_db)) -> Publi
     now = utcnow()
     if match is None or not (now <= match.date < now + dt.timedelta(days=MAX_PUBLIC_FIXTURE_DAYS_AHEAD)):
         raise HTTPException(status_code=404, detail="Fixture not found")
-    pick = pick_of_the_day(db)
+    pick = next((p for p in free_picks(db) if p.fixture.match_id == match.id), None)
     return PublicFixtureDetailOut(
         **_public_fixture_out(db, match).model_dump(),
         home_form=_recent_results(db, match.home_team_id, match.date),
         away_form=_recent_results(db, match.away_team_id, match.date),
         head_to_head=_head_to_head(db, match),
-        pick_of_the_day=pick if pick.has_data and pick.fixture and pick.fixture.match_id == match.id else None,
+        free_pick=pick,
     )
 
 
-def pick_of_the_day(db: Session, *, now: dt.datetime | None = None) -> PickOfTheDayOut:
-    """The strongest high-confidence call among fixtures kicking off in the
-    next 36 hours -- the one prediction shown to everyone. Deterministic for
-    a given set of predictions, so it doesn't flicker between page loads."""
+def _free_pick_options(prediction: Prediction, home: str, away: str) -> dict[str, tuple[str, str, str, float]]:
+    """This prediction's best call in each free-pick market, as
+    {kind: (market, selection, label, probability)}."""
 
-    now = now or utcnow()
+    result = max(
+        (
+            ("Home Win", f"{home} to win", prediction.home_win),
+            ("Draw", "Draw", prediction.draw),
+            ("Away Win", f"{away} to win", prediction.away_win),
+        ),
+        key=lambda o: o[2],
+    )
+    double = max(
+        (
+            ("Home/Draw", f"{home} or draw", prediction.home_win + prediction.draw),
+            ("Draw/Away", f"{away} or draw", prediction.draw + prediction.away_win),
+            ("Home/Away", f"{home} or {away}", prediction.home_win + prediction.away_win),
+        ),
+        key=lambda o: o[2],
+    )
+    options = {
+        "1x2": ("Match Result", result[0], result[1], result[2]),
+        "double_chance": ("Double Chance", double[0], double[1], double[2]),
+    }
+    over = (prediction.over_probabilities or {}).get("1.5")
+    if over is not None:
+        options["over_1_5"] = ("Total Goals 1.5", "Over 1.5", "Over 1.5 goals", over)
+    return options
+
+
+def _choose_free_picks(db: Session, now: dt.datetime) -> list[dict]:
+    """A fresh set: the model's strongest Match Result, Double Chance and
+    Over 1.5 Goals calls, each on a different match, from fixtures kicking
+    off in the next 36 hours (72 if a market runs out). LOW-confidence
+    predictions are never used."""
+
     latest = (
         select(Prediction.match_id, func.max(Prediction.created_at).label("created_at"))
         .group_by(Prediction.match_id)
         .subquery()
     )
-    row = db.execute(
+    rows = db.execute(
         select(Prediction, Match)
         .join(latest, and_(Prediction.match_id == latest.c.match_id, Prediction.created_at == latest.c.created_at))
         .join(Match, Match.id == Prediction.match_id)
         .where(
             Match.status == "SCHEDULED",
             Match.date >= now,
-            Match.date < now + PICK_OF_THE_DAY_WINDOW,
-            Prediction.confidence == "HIGH",
+            Match.date < now + FREE_PICK_FALLBACK_WINDOW,
+            Prediction.confidence.in_(("HIGH", "MEDIUM")),
         )
         .options(selectinload(Match.home_team), selectinload(Match.away_team))
-        .order_by(Prediction.global_outcome_probability.desc(), Match.date.asc(), Match.id.asc())
-        .limit(1)
-    ).first()
-    if row is None:
-        return PickOfTheDayOut(has_data=False)
-    prediction, match = row
-    return PickOfTheDayOut(
-        has_data=True,
-        fixture=_public_fixture_out(db, match),
-        market=prediction.global_outcome_market,
-        selection=prediction.global_outcome_selection,
-        probability=prediction.global_outcome_probability,
-    )
+    ).all()
+    candidates = [
+        (match, _free_pick_options(prediction, match.home_team.name, match.away_team.name))
+        for prediction, match in rows
+    ]
+
+    picks: list[dict] = []
+    used: set[int] = set()
+    for kind in FREE_PICK_KINDS:
+        best = min(
+            (
+                (match, options[kind])
+                for match, options in candidates
+                if match.id not in used and kind in options
+            ),
+            # Soon first, then the strongest call, then the earlier kickoff.
+            key=lambda c: (c[0].date >= now + FREE_PICK_WINDOW, -c[1][3], c[0].date, c[0].id),
+            default=None,
+        )
+        if best is None:
+            continue
+        match, (market, selection, label, probability) = best
+        used.add(match.id)
+        picks.append({
+            "kind": kind, "match_id": match.id, "market": market, "selection": selection,
+            "label": label, "probability": probability, "kickoff": match.date.isoformat(),
+        })
+    return picks
 
 
-@router.get("/pick-of-the-day", response_model=PickOfTheDayOut)
-def public_pick_of_the_day(db: Session = Depends(get_db)) -> PickOfTheDayOut:
-    return pick_of_the_day(db)
+def _free_pick_state(pick: dict, match: Match | None, now: dt.datetime) -> tuple[str, bool]:
+    """(status, is_over) for one published pick."""
+
+    if match is not None and match.status == "FINISHED" and match.home_score is not None and match.away_score is not None:
+        won = grade_outcome(pick["market"], pick["selection"], home_score=match.home_score, away_score=match.away_score)
+        return ("void" if won is None else "won" if won else "lost"), True
+    if match is None or now >= dt.datetime.fromisoformat(pick["kickoff"]) + FREE_PICK_GIVE_UP_AFTER:
+        return "void", True
+    if match.status == "LIVE" or match.date <= now:
+        return "live", False
+    return "upcoming", False
+
+
+def free_picks(db: Session, *, now: dt.datetime | None = None) -> list[PublicFreePickOut]:
+    """Today's free picks (see PublicFreePickOut). The published set stays
+    exactly as chosen until every one of its matches is over; the first
+    read after that chooses -- and stores -- the next set."""
+
+    now = now or utcnow()
+    current = db.execute(
+        select(PublicFreePickSet).order_by(PublicFreePickSet.created_at.desc(), PublicFreePickSet.id.desc()).limit(1)
+    ).scalars().first()
+
+    def load(picks: list[dict]) -> tuple[dict[int, Match], list[tuple[str, bool]]]:
+        matches = {
+            m.id: m
+            for m in db.execute(
+                select(Match)
+                .where(Match.id.in_([p["match_id"] for p in picks]))
+                .options(selectinload(Match.home_team), selectinload(Match.away_team))
+            ).scalars()
+        }
+        return matches, [_free_pick_state(p, matches.get(p["match_id"]), now) for p in picks]
+
+    picks = current.picks if current is not None else []
+    matches, states = load(picks) if picks else ({}, [])
+    if not picks or all(over for _, over in states):
+        # With nothing new to offer yet, the finished set stays up, results
+        # and all, rather than an empty section.
+        fresh = _choose_free_picks(db, now)
+        if fresh:
+            db.add(PublicFreePickSet(created_at=now, picks=fresh))
+            db.commit()
+            picks = fresh
+            matches, states = load(picks)
+
+    out: list[PublicFreePickOut] = []
+    for pick, (status, _) in zip(picks, states):
+        match = matches.get(pick["match_id"])
+        if match is None:
+            continue
+        finished = status in ("won", "lost")
+        out.append(PublicFreePickOut(
+            kind=pick["kind"],
+            fixture=_public_fixture_out(db, match),
+            market=pick["market"],
+            selection=pick["selection"],
+            label=pick["label"],
+            probability=pick["probability"],
+            status=status,
+            home_score=match.home_score if finished or status == "live" else None,
+            away_score=match.away_score if finished or status == "live" else None,
+        ))
+    return out
+
+
+@router.get("/free-picks", response_model=list[PublicFreePickOut])
+def public_free_picks(db: Session = Depends(get_db)) -> list[PublicFreePickOut]:
+    return free_picks(db)
 
 
 @router.get("/landing", response_model=LandingOut)
@@ -574,6 +696,6 @@ def public_landing(db: Session = Depends(get_db)) -> LandingOut:
         track_record=public_track_record(db),
         admin_pick_record=admin_pick_track_record(db),
         fixtures=_upcoming_fixtures(db, days_ahead=2, limit=6, best_first=True),
-        pick_of_the_day=pick_of_the_day(db),
+        free_picks=free_picks(db),
         teaser_pick=public_teaser_pick(db),
     )

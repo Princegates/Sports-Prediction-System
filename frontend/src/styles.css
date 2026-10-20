@@ -5851,7 +5851,7 @@ table.admin-table {
 }
 
 /* ==========================================================================
-   PUBLIC HOME (pages/Welcome.tsx): free pick, proof bars, plan strip
+   PUBLIC HOME (pages/Welcome.tsx): free picks, proof bars, plan strip
    ========================================================================== */
 .crest-name {
   display: inline-flex;
@@ -5863,13 +5863,89 @@ table.admin-table {
   margin: 0 6px;
 }
 
-.potd {
-  max-width: 640px;
+/* Today's three free picks, shown together as one slip
+   (components/FreePicksSlip.tsx). */
+.free-slip {
+  max-width: 680px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   border-color: var(--accent);
+}
+.free-slip-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.free-slip-row {
+  display: grid;
+  grid-template-columns: 118px 1fr;
+  gap: 4px 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+}
+.free-slip-kind {
+  grid-row: span 3;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+.free-slip-match {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+.free-slip-when {
+  font-size: 0.8rem;
+}
+.free-slip-call {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.free-slip-call .potd-prob {
+  font-size: 1.15rem;
+  margin-left: auto;
+}
+.free-slip-status {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle, currentColor);
+}
+.free-slip-status.won {
+  color: var(--good);
+  background: var(--good-soft);
+}
+.free-slip-status.lost {
+  color: var(--critical);
+  background: var(--critical-soft);
+}
+.free-slip-status.live {
+  color: var(--accent);
 }
 .potd-head {
   display: flex;
@@ -5877,17 +5953,6 @@ table.admin-table {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-}
-.potd-match {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  font-family: var(--font-display);
-  font-size: 1.35rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  text-decoration: none;
 }
 .potd-call {
   display: flex;
@@ -5993,8 +6058,14 @@ table.admin-table {
     grid-column: 1 / -1;
     grid-row: 2;
   }
-  .potd-match {
-    font-size: 1.15rem;
+  .free-slip-kind {
+    grid-row: auto;
+    grid-column: 1 / -1;
+    justify-self: start;
+    padding: 2px 8px;
+  }
+  .free-slip-row {
+    grid-template-columns: 1fr;
   }
 }
 

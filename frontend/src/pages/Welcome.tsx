@@ -2,11 +2,9 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchLanding } from "../api";
 import { FixtureTeaserRow } from "../components/FixtureTeaserRow";
+import { FreePicksSlip } from "../components/FreePicksSlip";
 import { Mascot } from "../components/Mascot";
 import { PublicShell } from "../components/PublicShell";
-import { TeamCrest } from "../components/TeamCrest";
-import { chanceLabel } from "../lib/odds";
-import { fixtureSlug } from "../lib/slug";
 import { usePageStructuredData } from "../lib/pageMeta";
 import { useTilt } from "../lib/useTilt";
 import { whatsappLink } from "../lib/whatsapp";
@@ -18,7 +16,7 @@ import type { Landing, TrackRecord } from "../types";
  * Built around one question a visitor is really asking -- "do these picks
  * actually land?" -- so the hero leads with the model's own graded record
  * rather than its architecture. Six sections: hero + record, today's free
- * pick, the best-rated upcoming fixtures, what the confidence rating is
+ * picks slip, the best-rated upcoming fixtures, what the confidence rating is
  * worth, the AI Generation demo, then price and answers.
  *
  * Every figure comes from GET /api/public/landing (one call; it used to be
@@ -80,10 +78,6 @@ function band(record: TrackRecord, key: string) {
   return record.by_confidence?.find((b) => b.confidence === key);
 }
 
-function kickoffLabel(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false });
-}
-
 export function Welcome() {
   const [landing, setLanding] = useState<Landing | null>(bakedLanding);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
@@ -103,7 +97,7 @@ export function Welcome() {
   const branding = landing?.branding ?? null;
   const record = landing?.track_record ?? null;
   const stats = landing?.stats ?? null;
-  const pick = landing?.pick_of_the_day?.has_data ? landing.pick_of_the_day : null;
+  const freePicks = landing?.free_picks ?? [];
   const adminRecord = landing?.admin_pick_record?.has_data && landing.admin_pick_record.settled_count >= 5 ? landing.admin_pick_record : null;
   const fixtures = landing?.fixtures ?? [];
   const price = branding?.pricing_label || null;
@@ -249,45 +243,17 @@ export function Welcome() {
         </div>
       </section>
 
-      {/* ---------------- Today's free pick ---------------- */}
-      {pick && pick.fixture && (
+      {/* ---------------- Today's free picks ---------------- */}
+      {freePicks.length > 0 && (
         <section className="landing-section">
-          <div className="potd card card-pad">
-            <div className="potd-head">
-              <span className="eyebrow">Today's free pick</span>
-              <span className="confidence-tag high">High confidence</span>
-            </div>
-            <Link to={`/predict/${fixtureSlug(pick.fixture)}`} className="potd-match">
-              <TeamCrest name={pick.fixture.home_team} logoUrl={pick.fixture.home_logo_url} size={28} />
-              <span>
-                {pick.fixture.home_team} <span className="vs-divider">v</span> {pick.fixture.away_team}
-              </span>
-              <TeamCrest name={pick.fixture.away_team} logoUrl={pick.fixture.away_logo_url} size={28} />
-            </Link>
-            <p className="meta" style={{ margin: 0 }}>
-              {pick.fixture.league} · {kickoffLabel(pick.fixture.kickoff)}
+          <FreePicksSlip picks={freePicks} trialDays={trialDays} />
+          {channel && (
+            <p className="meta" style={{ marginTop: "var(--space-3)" }}>
+              <a href={channel} target="_blank" rel="noreferrer noopener">
+                Get the free picks on our WhatsApp channel
+              </a>
             </p>
-            <div className="potd-call">
-              <span className="potd-selection">
-                {pick.market}: <strong>{pick.selection}</strong>
-              </span>
-              <span className="potd-prob">{pct(pick.probability ?? 0)}</span>
-            </div>
-            <p className="meta" style={{ margin: 0 }}>
-              Our strongest call kicking off soon -- {chanceLabel(pick.probability ?? 0)} chance by the model's own
-              numbers, so it can still lose. One pick like this is free every day; members see every match.
-            </p>
-            <div className="landing-cta-row" style={{ marginTop: 4 }}>
-              <Link className="btn" to="/register">
-                {trialCta}
-              </Link>
-              {channel && (
-                <a className="btn ghost" href={channel} target="_blank" rel="noreferrer noopener">
-                  Get the daily pick on WhatsApp
-                </a>
-              )}
-            </div>
-          </div>
+          )}
         </section>
       )}
 
@@ -455,7 +421,7 @@ export function Welcome() {
           <div className="plan-tile">
             <span className="plan-name">Free</span>
             <span className="plan-price">Free</span>
-            <span className="plan-desc">One headline pick per league, plus today's free pick.</span>
+            <span className="plan-desc">One headline pick per league, plus today's 3 free picks.</span>
           </div>
           {trialDays > 0 && (
             <div className="plan-tile featured">

@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Brand } from "../components/Brand";
 import { Mascot } from "../components/Mascot";
 import { PublicShell } from "../components/PublicShell";
+import { hasPendingSlip } from "../lib/pendingSlip";
 import { useAuth } from "../lib/AuthContext";
 
 export function Login() {
@@ -14,7 +15,7 @@ export function Login() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const from = (location.state as { from?: string } | null)?.from ?? "/app";
+  const from = (location.state as { from?: string } | null)?.from ?? (hasPendingSlip() ? "/app/betcodes" : "/app");
 
   // A 403 here only ever means suspended -- login itself has no other gate
   // any more, so this is a different situation from a wrong password.
