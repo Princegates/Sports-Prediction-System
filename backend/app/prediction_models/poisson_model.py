@@ -19,6 +19,7 @@ from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.models import Match
+from app.prediction_models.elo import EUROPEAN_COMPETITIONS
 
 MAX_GOALS = 8
 
@@ -44,6 +45,25 @@ DECAY_HORIZON_DAYS = 5 * 540
 # sides, a handful of home games). Tuned alongside the half-life; 3-5 all
 # helped and 3 was best.
 SHRINKAGE_MATCHES = 3.0
+
+# The same shrinkage, but for a team's history *within one European
+# competition* (passed as ``league`` here, same as a domestic league -- see
+# expected_goals). A domestic side's 3-pseudo-match prior assumes a large,
+# representative history sits behind it; a club's European résumé can be its
+# entire continental history, often just a qualifying run against similarly
+# weak opposition before the pool it is now being measured against includes
+# genuine elite sides. Rating that club "relative to the competition average"
+# off a handful of blowout qualifying wins overstates it the same way one 5-0
+# would in a domestic table (see test_shrinkage_pulls_a_short_record_toward_
+# league_average) -- just with no following 20 games to correct it. A larger
+# prior pulls a thin, opponent-biased sample much harder toward "an average
+# side in this competition" while barely touching a club with a real, deep
+# European history (Champions League regulars). Not yet backtested against
+# real European-competition results from this environment (no production
+# database access here, unlike SHRINKAGE_MATCHES's own validation-slice
+# tuning) -- scripts/backtest.py should confirm or retune this figure before
+# it is trusted the same way.
+EUROPEAN_SHRINKAGE_MATCHES = 10.0
 
 # Half-time score grids stay much smaller than full-time ones -- more than a
 # handful of goals inside 45 minutes is vanishingly rare, and Poisson decay
@@ -146,11 +166,19 @@ def league_goal_averages(db: Session, league: str, as_of) -> tuple[float, float]
 
 
 def team_attack_defense(
-    db: Session, team_id: int, league: str, as_of, avg_home_goals: float, avg_away_goals: float
+    db: Session,
+    team_id: int,
+    league: str,
+    as_of,
+    avg_home_goals: float,
+    avg_away_goals: float,
+    shrinkage_matches: float = SHRINKAGE_MATCHES,
 ) -> tuple[float, float, float, float]:
     """Returns (home_attack, home_defense, away_attack, away_defense), each a
     time-weighted rate relative to the league average, shrunk toward 1.0 by
-    ``SHRINKAGE_MATCHES`` pseudo-matches."""
+    ``shrinkage_matches`` pseudo-matches (``SHRINKAGE_MATCHES`` by default --
+    see ``EUROPEAN_SHRINKAGE_MATCHES`` for why expected_goals passes a larger
+    one for a European competition)."""
 
     at_home = Match.home_team_id == team_id
     at_away = Match.away_team_id == team_id
@@ -179,8 +207,8 @@ def team_attack_defense(
         # league average rather than inventing a number.
         if league_avg <= 0:
             return 1.0
-        goals = float(weighted_goals or 0.0) + SHRINKAGE_MATCHES * league_avg
-        weights = float(total_weight or 0.0) + SHRINKAGE_MATCHES
+        goals = float(weighted_goals or 0.0) + shrinkage_matches * league_avg
+        weights = float(total_weight or 0.0) + shrinkage_matches
         if weights <= 0:
             return 1.0
         return max((goals / weights) / league_avg, 0.05)
@@ -197,9 +225,14 @@ def expected_goals(
     db: Session, home_team_id: int, away_team_id: int, league: str, as_of
 ) -> tuple[float, float]:
     avg_home_goals, avg_away_goals = league_goal_averages(db, league, as_of)
+    shrinkage = EUROPEAN_SHRINKAGE_MATCHES if league in EUROPEAN_COMPETITIONS else SHRINKAGE_MATCHES
 
-    h_attack, h_defense, _, _ = team_attack_defense(db, home_team_id, league, as_of, avg_home_goals, avg_away_goals)
-    _, _, a_attack, a_defense = team_attack_defense(db, away_team_id, league, as_of, avg_home_goals, avg_away_goals)
+    h_attack, h_defense, _, _ = team_attack_defense(
+        db, home_team_id, league, as_of, avg_home_goals, avg_away_goals, shrinkage
+    )
+    _, _, a_attack, a_defense = team_attack_defense(
+        db, away_team_id, league, as_of, avg_home_goals, avg_away_goals, shrinkage
+    )
 
     lambda_home = avg_home_goals * h_attack * a_defense
     lambda_away = avg_away_goals * a_attack * h_defense

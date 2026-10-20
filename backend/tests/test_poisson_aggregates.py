@@ -24,8 +24,10 @@ import pytest
 from app.db.models import Match, Team
 from app.prediction_models.poisson_model import (
     DEFAULT_HT_GOAL_FRACTION,
+    EUROPEAN_SHRINKAGE_MATCHES,
     SHRINKAGE_MATCHES,
     decay_weight,
+    expected_goals,
     ht_goal_fraction,
     league_goal_averages,
     team_attack_defense,
@@ -349,3 +351,68 @@ def test_ht_goal_fraction_only_considers_matches_before_as_of(db_session, teams)
     db_session.commit()
     cutoff = BASE + dt.timedelta(days=10)
     assert ht_goal_fraction(db_session, LEAGUE, cutoff) == pytest.approx(0.5)
+
+
+# --- European-competition shrinkage ----------------------------------------
+#
+# A club's maiden continental run is often its *entire* history in that
+# competition -- a few blowout qualifying wins against similarly weak
+# opposition, not a representative season against the competition's real
+# population (which also holds the giants that history is about to be
+# compared against). See poisson_model.EUROPEAN_SHRINKAGE_MATCHES.
+
+
+def test_a_short_qualifying_run_is_shrunk_harder_in_a_european_competition(db_session, teams):
+    a, b = teams["alpha"], teams["beta"]
+    for day in range(1, 5):
+        _add(db_session, a, b, day, 4, 0)
+    db_session.commit()
+
+    domestic, _, _, _ = team_attack_defense(db_session, a.id, LEAGUE, AS_OF, 1.5, 1.1)
+    european, _, _, _ = team_attack_defense(
+        db_session, a.id, LEAGUE, AS_OF, 1.5, 1.1, EUROPEAN_SHRINKAGE_MATCHES
+    )
+
+    # Same four blowout wins either way -- both read as an above-average
+    # attack, but the European shrinkage pulls it much closer to 1.0 (an
+    # average side in this competition) than the domestic one does.
+    assert 1.0 < european < domestic
+
+
+def _seed_identical_history(db, league, a, b, g):
+    """Team g vs team b, many times at a modest rate -- establishes a stable
+    league average that team a's own blowout run (below) does not itself
+    dominate, the same role the 20-match Gamma record plays in
+    test_shrinkage_pulls_a_short_record_toward_league_average above. Team a's
+    own competition history is only the short, lopsided qualifying-style run
+    this test is about."""
+
+    for day in range(1, 21):
+        db.add(Match(
+            league=league, season="2024-25", date=BASE + dt.timedelta(days=day),
+            home_team_id=g.id, away_team_id=b.id, home_score=1, away_score=1, status="FINISHED",
+        ))
+    for day in range(21, 25):
+        db.add(Match(
+            league=league, season="2024-25", date=BASE + dt.timedelta(days=day),
+            home_team_id=a.id, away_team_id=b.id, home_score=4, away_score=0, status="FINISHED",
+        ))
+
+
+def test_expected_goals_shrinks_harder_for_a_european_competition_than_a_domestic_league(db_session, teams):
+    a, b, g = teams["alpha"], teams["beta"], teams["gamma"]
+    _seed_identical_history(db_session, LEAGUE, a, b, g)
+    db_session.commit()
+    domestic_home, _ = expected_goals(db_session, a.id, b.id, LEAGUE, AS_OF)
+
+    db_session.query(Match).delete()
+    db_session.commit()
+    _seed_identical_history(db_session, "UEFA Champions League", a, b, g)
+    db_session.commit()
+    european_home, _ = expected_goals(db_session, a.id, b.id, "UEFA Champions League", AS_OF)
+
+    # Team a's record is identical either way -- a short, lopsided run on top
+    # of the same stable league-average backdrop. Only the competition
+    # differs, and that alone should pull a's expected home goals closer to
+    # the league average in the European case.
+    assert european_home < domestic_home

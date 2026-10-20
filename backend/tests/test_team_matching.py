@@ -72,6 +72,31 @@ def test_real_prefix_is_no_longer_dropped_for_fuzzy_matching():
     assert normalize_team_name("Real Madrid") == normalize_team_name("Real Madrid CF")
 
 
+def test_lille_and_lillestroem_are_different_clubs_not_an_abbreviation():
+    """"Lille" (Lille OSC, Ligue 1) is a genuine 5-letter prefix of every
+    spelling this project's providers use for Lillestrom SK (Norway) --
+    SportyBet's own "Lillestroem", the plain ASCII fold "Lillestrom", and
+    "Lillestr" (what's left of the native "Lillestrøm" once accent-stripping,
+    which does not touch "ø", and the tokenizer drops it). A provider that
+    shortens either club to its bare city name must not let that collide."""
+
+    assert name_match_score("Lille", "Lillestroem SK", abbreviation_only=True) == (0.0, 0.0)
+    assert name_match_score("Lille OSC", "Lillestroem SK", abbreviation_only=True) == (0.0, 0.0)
+    assert name_match_score("Lille", "Lillestrom SK", abbreviation_only=True) == (0.0, 0.0)
+    assert name_match_score("Lille", "Lillestrøm SK", abbreviation_only=True) == (0.0, 0.0)
+    # Each club's own exact-spelling path is unaffected.
+    assert name_match_score("Lille OSC", "Lille OSC") == (1.0, 1.0)
+    assert name_match_score("Lillestroem SK", "Lillestroem SK") == (1.0, 1.0)
+
+
+def test_psg_initialism_matches_paris_saint_germain():
+    """SportyBet's own match list writes the bare initialism, no spaces --
+    "paris sg" (already aliased) is the spelled-out abbreviation, a
+    different string."""
+
+    assert name_match_score("PSG", "Paris Saint-Germain", abbreviation_only=True) == (1.0, 1.0)
+
+
 def test_legitimate_abbreviations_still_match_despite_the_city_guard():
     """The fix must not overcorrect into refusing genuine abbreviation
     pairs that happen to involve one of the guarded city tokens."""

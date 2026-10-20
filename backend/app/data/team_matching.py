@@ -98,7 +98,27 @@ def _tokens(name: str) -> list[str]:
 # match instead of a missed one. Add here, not to EXPLICIT_ALIASES: an alias
 # entry would need to know every spelling of Inter's full name in advance,
 # while this blocks the collision for any of them at the token level.
-_FALSE_COGNATE_PAIRS: frozenset[frozenset[str]] = frozenset({frozenset({"milan", "milano"})})
+#
+# "Lille" (Lille OSC, Ligue 1) and "Lillestrom"/"Lillestroem"/"Lillestrom"
+# (Lillestrom SK, Norway's Eliteserien) are the same shape of false positive,
+# just prefix rather than exonym: "lille" is a genuine 5-letter prefix of
+# every spelling of the Norwegian club's name this project's providers use
+# ("lillestroem" -- SportyBet's own spelling, confirmed off its match list;
+# "lillestrom", the plain ASCII fold; "lillestr", what's left of the native
+# "Lillestrøm" once _strip_accents leaves "ø" untouched -- it has no NFKD
+# decomposition, unlike an accented Latin letter -- and the tokenizer drops
+# it as non-alphanumeric), long enough to clear _MIN_PREFIX_LEN. A provider
+# that shortens either club's name to its city ("Lille" alone, which
+# SportyBet's own match list does) scores a full 1.0 against the other --
+# found investigating a member's report of a booking-code leg SportyBet
+# "didn't list" that turned out to be this exact collision steering the
+# search at a different club's fixture.
+_FALSE_COGNATE_PAIRS: frozenset[frozenset[str]] = frozenset({
+    frozenset({"milan", "milano"}),
+    frozenset({"lille", "lillestroem"}),
+    frozenset({"lille", "lillestrom"}),
+    frozenset({"lille", "lillestr"}),
+})
 
 
 def _tokens_match(a: str, b: str) -> bool:
@@ -188,6 +208,9 @@ EXPLICIT_ALIASES: dict[str, str] = {
     "olympiakos piraeus": "olympiakos",
     # France
     "paris sg": "paris saint germain",
+    # SportyBet writes the bare initialism, no spaces -- "paris sg" above
+    # only catches the spelled-out abbreviation.
+    "psg": "paris saint germain",
     "st etienne": "saint etienne",
     "clermont": "clermont foot",
 }
