@@ -16,9 +16,10 @@ from pathlib import Path
 
 import pytest
 
+from app.timeutil import utcnow
 from app.db.models import AdminPick, Match, MatchOdds, Prediction, Team
 
-BASE = dt.datetime.utcnow() + dt.timedelta(hours=6)
+BASE = utcnow() + dt.timedelta(hours=6)
 
 # 40 matches on a wide, evenly-stepped odds ladder -- verified (see the
 # module this mirrors, test_betcode_selection.py) to put a qualifying
@@ -165,7 +166,7 @@ def test_a_tier_that_cannot_be_filled_leaves_its_previous_row_alone(db_session, 
 
     stale_high = AdminPick(
         source="system_weekly_high", legs=[], priced=True, label="Last week's high risk pick",
-        expires_at=dt.datetime.utcnow() + dt.timedelta(days=5),
+        expires_at=utcnow() + dt.timedelta(days=5),
     )
     db_session.add(stale_high)
     db_session.commit()

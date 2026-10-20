@@ -35,3 +35,10 @@ export function parseFixtureId(param: string | undefined): number | null {
   const id = Number(match[1]);
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
+
+/** URL slug for a league hub page, e.g. "English Premier League" ->
+ * "english-premier-league". Mirrored by backend/scripts/generate_sitemap.py
+ * and frontend/scripts/prerender.mjs. */
+export function leagueSlug(league: string): string {
+  return slugifyWord(league);
+}

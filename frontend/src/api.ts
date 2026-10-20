@@ -41,6 +41,11 @@ import type {
   TokenResponse,
   UnavailableResource,
   User,
+  ReferralStats,
+  VerificationStatus,
+  Landing,
+  PublicFreePick,
+  PublicFixtureDetail,
 } from "./types";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -186,7 +191,20 @@ export function fetchPublicFixtures(daysAhead = 5, limit = 6): Promise<PublicFix
  * the URL). Throws (via `get`'s normal error path) on a 404, same as any
  * other missing resource -- the page calling this is responsible for
  * showing a "not found" state rather than this function inventing one. */
-export function fetchPublicFixture(matchId: number): Promise<PublicFixture> {
+export function fetchLanding(): Promise<Landing> {
+  return get("/api/public/landing");
+}
+
+export function fetchPublicFreePicks(): Promise<PublicFreePick[]> {
+  return get("/api/public/free-picks");
+}
+
+export function fetchLeagueFixtures(league: string, daysAhead = 7, limit = 60): Promise<PublicFixture[]> {
+  const params = new URLSearchParams({ league, days_ahead: String(daysAhead), limit: String(limit) });
+  return get(`/api/public/fixtures?${params.toString()}`);
+}
+
+export function fetchPublicFixture(matchId: number): Promise<PublicFixtureDetail> {
   return get(`/api/public/fixtures/${matchId}`);
 }
 
@@ -305,8 +323,46 @@ export function updatePreferences(payload: { notify_weekly_picks?: boolean }): P
   return patch("/api/auth/preferences", payload);
 }
 
-export function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+/** Signs every other session out; the response carries a fresh token for
+ * this one, which the caller must store (AuthContext.adoptSession). */
+export function changePassword(currentPassword: string, newPassword: string): Promise<TokenResponse> {
   return patch("/api/auth/password", { current_password: currentPassword, new_password: newPassword });
+}
+
+export function revokeOtherSessions(): Promise<TokenResponse> {
+  return post("/api/auth/sessions/revoke-others", {});
+}
+
+export function verifyEmail(token: string): Promise<{ message: string; already_verified: boolean; access_days: number }> {
+  return post("/api/auth/verify-email", { token });
+}
+
+export function fetchVerificationStatus(): Promise<VerificationStatus> {
+  return get("/api/auth/verification");
+}
+
+export function resendVerification(): Promise<void> {
+  return post("/api/auth/resend-verification", {});
+}
+
+export function forgotPassword(email: string): Promise<{ message: string }> {
+  return post("/api/auth/forgot-password", { email });
+}
+
+export function resetPassword(token: string, newPassword: string): Promise<{ message: string }> {
+  return post("/api/auth/reset-password", { token, new_password: newPassword });
+}
+
+export function pauseAccount(days: number): Promise<User> {
+  return post("/api/auth/pause", { days });
+}
+
+export function reportPayment(reference: string): Promise<{ message: string }> {
+  return post("/api/access/payment-notice", { reference });
+}
+
+export function fetchReferralStats(): Promise<ReferralStats> {
+  return get("/api/auth/referrals");
 }
 
 export function recordMatchView(matchId: number): Promise<void> {
@@ -357,6 +413,11 @@ export function suspendUser(userId: number): Promise<AdminUser> {
 
 export function promoteUser(userId: number): Promise<AdminUser> {
   return post(`/api/admin/users/${userId}/promote`, {});
+}
+
+/** Removes the account and everything that's the person's own, for good. */
+export function deleteUser(userId: number): Promise<{ message: string }> {
+  return del(`/api/admin/users/${userId}`);
 }
 
 export function demoteUser(userId: number): Promise<AdminUser> {

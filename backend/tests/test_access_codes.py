@@ -16,6 +16,7 @@ import datetime as dt
 import pytest
 from fastapi.testclient import TestClient
 
+from app.timeutil import utcnow
 from app.auth.passwords import hash_password
 from app.auth.tokens import create_token
 from app.config import get_settings
@@ -170,7 +171,7 @@ def test_redemption_creates_grant_redemption_and_audit_rows(db_session, admin, u
 
     grant = db_session.query(AccessGrant).filter(AccessGrant.user_id == user_no_access.id).one()
     assert grant.status == "active"
-    assert grant.expires_at > dt.datetime.utcnow()
+    assert grant.expires_at > utcnow()
 
     redemption = db_session.query(AccessRedemption).filter(AccessRedemption.access_code_id == access_code.id).one()
     assert redemption.user_id == user_no_access.id
@@ -228,7 +229,7 @@ def test_redeeming_a_revoked_code_is_rejected(db_session, admin, user_no_access,
 def test_redeeming_an_expired_code_is_rejected(db_session, admin, user_no_access, headers_no_access):
     code = _create_code(admin, assignee=user_no_access, code_expires_in_days=1)
     row = db_session.query(AccessCode).filter(AccessCode.id == code["id"]).one()
-    row.code_expires_at = dt.datetime.utcnow() - dt.timedelta(days=1)
+    row.code_expires_at = utcnow() - dt.timedelta(days=1)
     db_session.commit()
 
     response = client.post("/api/access/redeem", json={"code": code["code"]}, headers=headers_no_access)

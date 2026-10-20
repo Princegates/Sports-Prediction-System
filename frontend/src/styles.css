@@ -1356,9 +1356,8 @@ h1, h2, h3, h4 {
   background: var(--critical-soft);
 }
 
-/* Fixed orange/red regardless of the chosen accent theme -- like .live-badge,
-   "hot" is a signal on its own, not a brand color, so it has to read the same
-   whichever of the 20+ accent themes is active. */
+/* The high-confidence mark (components/HotPickBadge). Calm on purpose --
+   accent-tinted, no glow or animation; see the component for why. */
 .hot-pick-badge {
   display: inline-flex;
   align-items: center;
@@ -1367,39 +1366,23 @@ h1, h2, h3, h4 {
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #fff;
-  background: linear-gradient(135deg, #ff8a00, #ff3d00);
+  color: var(--accent);
+  background: var(--accent-soft);
   padding: 3px 9px 3px 7px;
   border-radius: var(--radius-pill);
-  box-shadow: 0 0 0 1px rgba(255, 61, 0, 0.35), 0 0 10px rgba(255, 106, 0, 0.5);
-  animation: hot-pick-charge 1.6s ease-in-out infinite;
   white-space: nowrap;
   vertical-align: middle;
 }
 
 .hot-pick-badge.compact {
   background: none;
-  box-shadow: none;
-  animation: none;
   padding: 0;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .hot-pick-badge .hot-pick-flame {
   display: inline-block;
   line-height: 1;
-  animation: hot-pick-flicker 1s ease-in-out infinite;
-}
-
-@keyframes hot-pick-charge {
-  0%, 100% { box-shadow: 0 0 0 1px rgba(255, 61, 0, 0.35), 0 0 8px rgba(255, 106, 0, 0.45); }
-  50% { box-shadow: 0 0 0 1px rgba(255, 61, 0, 0.55), 0 0 16px rgba(255, 106, 0, 0.85); }
-}
-
-@keyframes hot-pick-flicker {
-  0%, 100% { transform: translateY(0) scale(1) rotate(0deg); }
-  30% { transform: translateY(-1px) scale(1.1) rotate(-4deg); }
-  60% { transform: translateY(0.5px) scale(0.94) rotate(3deg); }
 }
 
 .badge-neutral {
@@ -3803,8 +3786,10 @@ table.admin-table {
 .landing-hero-visual::after {
   content: "";
   position: absolute;
-  top: -22px;
-  right: -6px;
+  /* Inside the frame: .landing-hero clips its overflow, and at -22px the
+     ball was cut in half at the top of the hero. */
+  top: 4px;
+  right: 4px;
   width: 56px;
   height: 56px;
   border-radius: 50%;
@@ -5566,30 +5551,33 @@ table.admin-table {
    COOKIE NOTICE
    ========================================================================== */
 
+/* A slim strip, not a card: the site sets no tracking cookies, so this is
+   a notice rather than a consent prompt, and it used to cover about a fifth
+   of a phone's first screen on every public page. */
 .cookie-banner {
   position: fixed;
-  left: 16px;
-  right: 16px;
-  bottom: 16px;
+  left: 12px;
+  right: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
   z-index: 9000;
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 14px;
-  max-width: 640px;
+  gap: 10px;
+  max-width: 520px;
   margin: 0 auto;
-  padding: 16px 20px;
+  padding: 8px 8px 8px 14px;
   background: var(--bg-surface-2);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+  border-radius: var(--radius-pill);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
 }
 
 .cookie-banner p {
-  flex: 1 1 320px;
+  flex: 1 1 auto;
+  min-width: 0;
   margin: 0;
-  font-size: 13px;
-  line-height: 1.55;
+  font-size: 12.5px;
+  line-height: 1.4;
   color: var(--text-secondary);
 }
 
@@ -5600,4 +5588,659 @@ table.admin-table {
 
 .cookie-banner .btn {
   flex-shrink: 0;
+}
+
+/* Account-level notices above every app page (components/AccountBanners). */
+.account-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--text-primary);
+  font-size: 13.5px;
+}
+.account-banner > span:first-child {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.account-banner-note {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+.btn.btn-sm {
+  padding: 6px 12px;
+  font-size: 12.5px;
+}
+
+/* ==========================================================================
+   LIVE SCORES (pages/Live.tsx) -- a livescore-site board: day + status
+   filters, matches grouped by competition, one dense row per match.
+   ========================================================================== */
+.ls-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.ls-days,
+.ls-filters {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.ls-day,
+.ls-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ls-day.active,
+.ls-filter.active {
+  background: var(--text-primary);
+  border-color: var(--text-primary);
+  color: var(--bg-surface);
+}
+.ls-filter.live.active {
+  background: var(--live);
+  border-color: var(--live);
+  color: #fff;
+}
+.ls-filter.live.active .live-dot {
+  background: #fff;
+}
+.ls-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  opacity: 0.75;
+}
+
+.ls-board {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ls-league {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+.ls-league-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 14px;
+  background: var(--bg-surface-2);
+  border-bottom: 1px solid var(--border);
+}
+.ls-league-name {
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  min-width: 0;
+}
+.ls-league-live {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--live);
+  white-space: nowrap;
+}
+
+.ls-row {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  min-height: 56px;
+  color: var(--text-primary);
+  text-decoration: none;
+  border-top: 1px solid var(--border);
+}
+.ls-league-head + .ls-row {
+  border-top: 0;
+}
+.ls-row:hover {
+  background: var(--bg-surface-2);
+}
+.ls-row.is-live {
+  box-shadow: inset 3px 0 0 var(--live);
+}
+.ls-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.ls-status.live {
+  color: var(--live);
+  font-weight: 700;
+}
+.ls-status.muted,
+.ls-score .muted {
+  color: var(--text-muted);
+}
+.ls-teams,
+.ls-score {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+  line-height: 1.25;
+}
+.ls-team {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.ls-team-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Rows are 20px crests; keep the score column lined up with them. */
+.ls-score > span {
+  line-height: 20px;
+}
+.ls-teams,
+.ls-score {
+  gap: 6px;
+}
+
+/* Club crest or its lettered fallback (components/TeamCrest). */
+.team-crest {
+  flex: none;
+  object-fit: contain;
+}
+.team-crest-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.ls-team.won,
+.ls-score .won {
+  font-weight: 700;
+}
+.ls-score {
+  align-items: flex-end;
+  min-width: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.ls-score.live {
+  color: var(--live);
+  font-weight: 700;
+}
+.ls-model {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ls-model-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.ls-row.skeleton-row {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-2);
+  animation: ls-skeleton 1.4s ease-in-out infinite;
+}
+@keyframes ls-skeleton {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+/* Phones: the model chip moves under the teams instead of squeezing them. */
+@media (max-width: 560px) {
+  .ls-row {
+    grid-template-columns: 46px minmax(0, 1fr) auto;
+    gap: 10px;
+    padding: 10px 12px;
+  }
+  .ls-model {
+    grid-column: 2 / 3;
+    grid-row: 2;
+    justify-self: start;
+  }
+  .ls-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .ls-days,
+  .ls-filters {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+}
+
+/* ==========================================================================
+   PUBLIC HOME (pages/Welcome.tsx): free picks, proof bars, plan strip
+   ========================================================================== */
+.crest-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.fixture-teaser-teams .vs-divider {
+  margin: 0 6px;
+}
+
+/* Today's three free picks, shown together as one slip
+   (components/FreePicksSlip.tsx). */
+.free-slip {
+  max-width: 680px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-color: var(--accent);
+}
+.free-slip-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.free-slip-row {
+  display: grid;
+  grid-template-columns: 118px 1fr;
+  gap: 4px 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+}
+.free-slip-kind {
+  grid-row: span 3;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+.free-slip-match {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+.free-slip-when {
+  font-size: 0.8rem;
+}
+.free-slip-call {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.free-slip-call .potd-prob {
+  font-size: 1.15rem;
+  margin-left: auto;
+}
+.free-slip-status {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+}
+.free-slip-status.won {
+  color: var(--good);
+  background: var(--good-soft);
+}
+.free-slip-status.lost {
+  color: var(--critical);
+  background: var(--critical-soft);
+}
+.free-slip-status.live {
+  color: var(--accent);
+}
+.potd-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.potd-call {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+}
+.potd-selection {
+  font-size: 1.05rem;
+}
+.potd-prob {
+  font-family: var(--font-data);
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.proof-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 720px;
+}
+.proof-bar {
+  display: grid;
+  grid-template-columns: 9.5rem minmax(0, 1fr) 8.5rem;
+  align-items: center;
+  gap: 12px;
+}
+.proof-bar-label {
+  font-weight: 600;
+}
+.proof-bar-track {
+  height: 12px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface-2);
+  overflow: hidden;
+}
+.proof-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--text-muted);
+}
+.proof-bar-fill.high {
+  background: var(--good);
+}
+.proof-bar-fill.medium {
+  background: var(--warning, #d4a017);
+}
+.proof-bar-value {
+  font-family: var(--font-data);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.plan-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+}
+.plan-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+.plan-tile.featured {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.plan-name {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.plan-price {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+.plan-desc {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 560px) {
+  .proof-bar {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .proof-bar-track {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .free-slip-kind {
+    grid-row: auto;
+    grid-column: 1 / -1;
+    justify-self: start;
+    padding: 2px 8px;
+  }
+  .free-slip-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.topbar-trial-btn {
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   FIXTURE PAGE + LEAGUE HUBS (pages/FixturePreview.tsx, LeaguePredictions.tsx)
+   ========================================================================== */
+.breadcrumbs {
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding-top: var(--space-4);
+}
+.breadcrumbs a {
+  color: inherit;
+}
+.fixture-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.fixture-title .crest-name {
+  gap: 10px;
+}
+.form-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+.form-column {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.form-chips {
+  display: flex;
+  gap: 6px;
+}
+.form-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--text-muted);
+}
+.form-chip.w {
+  background: var(--good);
+}
+.form-chip.l {
+  background: var(--critical);
+}
+.form-results {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+}
+.h2h-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 720px;
+}
+.h2h-row {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: baseline;
+  font-size: 14px;
+}
+.h2h-score {
+  font-variant-numeric: tabular-nums;
+  margin: 0 4px;
+}
+.league-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+@media (max-width: 560px) {
+  .h2h-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+}
+
+/* Admin -> Users: the permanent "Delete" action reads as destructive. */
+.admin-delete-btn {
+  color: var(--critical);
+  border-color: rgba(230, 103, 103, 0.4);
+}
+.admin-delete-btn:hover:not(:disabled) {
+  background: var(--critical-soft);
+}
+
+/* Predictions: a match's own "All markets" panel, for picking an outcome
+   other than the AI's (components/MatchMarketsPanel.tsx). */
+.markets-toggle {
+  margin-top: 6px;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.own-pick {
+  margin: 2px 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+.markets-panel-row > td {
+  background: var(--bg-surface-2);
+}
+.markets-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 0 8px;
+}
+.markets-panel-market {
+  display: grid;
+  grid-template-columns: 170px 1fr;
+  gap: 8px;
+  align-items: start;
+}
+.markets-panel-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding-top: 6px;
+}
+.markets-panel-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.markets-panel-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.markets-panel-option:hover {
+  border-color: var(--accent);
+}
+.markets-panel-option.chosen {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+@media (max-width: 560px) {
+  .markets-panel-market {
+    grid-template-columns: 1fr;
+  }
+}
+.markets-panel > .btn {
+  align-self: flex-start;
 }

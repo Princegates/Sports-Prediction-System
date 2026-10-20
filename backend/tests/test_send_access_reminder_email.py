@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from app.timeutil import utcnow
 from app import app_settings, mailer
 from app.access import create_access_code, redeem_access_code
 from app.db.models import User
@@ -109,7 +110,7 @@ def test_an_expired_grant_still_counts_as_no_access(db_session, script, monkeypa
     code = create_access_code(db_session, admin, duration_days=1, redemption_limit=1,
                                assigned_user_id=lapsed.id, assigned_email=lapsed.email)
     grant = redeem_access_code(db_session, lapsed, code.code)
-    grant.expires_at = dt.datetime.utcnow() - dt.timedelta(days=1)
+    grant.expires_at = utcnow() - dt.timedelta(days=1)
     db_session.commit()
 
     sys.argv = ["send_access_reminder_email.py"]

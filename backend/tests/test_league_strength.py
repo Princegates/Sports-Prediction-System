@@ -14,6 +14,7 @@ import random
 
 import pytest
 
+from app.timeutil import utcnow
 from app.db.models import EloHistory, Match, Team
 from app.prediction_models import elo
 from app.prediction_models.league_strength import (
@@ -139,7 +140,7 @@ def test_unreadable_calibration_degrades_to_none(db_session):
     from app.db.models import AppSetting
     from app.prediction_models.league_strength import SETTING_KEY
 
-    db_session.add(AppSetting(key=SETTING_KEY, value="{not json", updated_at=dt.datetime.utcnow()))
+    db_session.add(AppSetting(key=SETTING_KEY, value="{not json", updated_at=utcnow()))
     db_session.commit()
 
     assert LeagueStrength.load(db_session).offsets == {}

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Regenerates frontend/public/sitemap.xml: the static marketing pages plus
+"""Regenerates frontend/public/sitemap.xml: the static marketing pages, one
+/predictions/<league> hub per league with fixtures coming up, plus
 one <url> per fixture currently live on GET /api/public/fixtures/{id} --
 the public, no-login prediction-preview pages (frontend/src/pages/
 FixturePreview.tsx) that exist specifically so a search engine has real,
@@ -35,6 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from sqlalchemy import select
 
+from app.timeutil import utcnow
 from app.api.routes_public import MAX_PUBLIC_FIXTURE_DAYS_AHEAD
 from app.db.migrate import init_db
 from app.db.models import Match
@@ -73,7 +75,13 @@ STATIC_URLS = [
 ]
 
 
-def render_sitemap(fixture_slugs: list[str]) -> str:
+def league_slug(league: str) -> str:
+    """Mirrors frontend/src/lib/slug.ts's leagueSlug: the /predictions/<slug>
+    league hub (frontend/src/pages/LeaguePredictions.tsx)."""
+    return _slugify_word(league)
+
+
+def render_sitemap(fixture_slugs: list[str], league_slugs: list[str] | None = None) -> str:
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         "<!--",
@@ -92,6 +100,14 @@ def render_sitemap(fixture_slugs: list[str]) -> str:
             f"    <loc>{escape(SITE_URL + path)}</loc>",
             f"    <changefreq>{changefreq}</changefreq>",
             f"    <priority>{priority}</priority>",
+            "  </url>",
+        ]
+    for slug in league_slugs or []:
+        lines += [
+            "  <url>",
+            f"    <loc>{escape(f'{SITE_URL}/predictions/{slug}')}</loc>",
+            "    <changefreq>daily</changefreq>",
+            "    <priority>0.8</priority>",
             "  </url>",
         ]
     for slug in fixture_slugs:
@@ -116,18 +132,24 @@ def main() -> None:
     init_db(engine)
     db = SessionLocal()
     try:
-        now = dt.datetime.utcnow()
+        now = utcnow()
         matches = db.execute(
             select(Match)
             .where(Match.date >= now, Match.date < now + dt.timedelta(days=MAX_PUBLIC_FIXTURE_DAYS_AHEAD))
             .order_by(Match.date.asc())
         ).scalars().all()
         slugs = [fixture_slug(m) for m in matches]
-        print(f"{len(slugs)} upcoming fixture(s) within {MAX_PUBLIC_FIXTURE_DAYS_AHEAD} days.")
+        # One hub per league that actually has fixtures in the window -- an
+        # empty hub is thin content, so it stays out of the sitemap.
+        leagues = list(dict.fromkeys(s for s in (league_slug(m.league) for m in matches) if s))
+        print(
+            f"{len(slugs)} upcoming fixture(s) in {len(leagues)} league(s) "
+            f"within {MAX_PUBLIC_FIXTURE_DAYS_AHEAD} days."
+        )
     finally:
         db.close()
 
-    content = render_sitemap(slugs)
+    content = render_sitemap(slugs, sorted(leagues))
 
     if args.dry_run:
         print(content)

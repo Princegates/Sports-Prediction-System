@@ -166,10 +166,12 @@ def test_both_clean_sheet_cannot_exceed_either_single_clean_sheet():
     assert both <= by_key[("Away Clean Sheet", "Yes")] + 1e-9
 
 
-def test_handicap_markets_exist_for_the_ten_standard_lines():
+def test_handicap_markets_exist_for_lines_up_to_two_goals_only():
     outcomes = matrix_derived_outcomes(lambda_home=1.6, lambda_away=1.1, matches_available=20)
     markets = {o.market for o in outcomes}
-    for line in ("-5", "-4", "-3", "-2", "-1", "+1", "+2", "+3", "+4", "+5"):
+    # Nothing wider than two goals either way (product rule).
+    assert not {f"Handicap {line}" for line in ("-5", "-4", "-3", "+3", "+4", "+5")} & markets
+    for line in ("-2", "-1", "+1", "+2"):
         assert f"Handicap {line}" in markets
         selections = {o.selection for o in outcomes if o.market == f"Handicap {line}"}
         assert selections == {"Home", "Draw", "Away"}
@@ -202,17 +204,16 @@ def test_handicap_minus_one_matches_a_direct_scoreline_comparison():
 def test_handicap_home_covers_less_often_on_a_tougher_line():
     """Covering Handicap -2 (win by 3+) can never be more likely than
     covering the easier Handicap -1 (win by 2+) -- the favourite's goal
-    output doesn't change, only how much of it the line demands. Holds
-    all the way out to -5, and the mirror image holds for Away covering
-    the positive lines."""
+    output doesn't change, only how much of it the line demands. The
+    mirror image holds for Away covering the positive lines."""
 
     outcomes = matrix_derived_outcomes(lambda_home=1.6, lambda_away=1.1, matches_available=20)
     by_key = {(o.market, o.selection): o.probability for o in outcomes}
-    negative_lines = ["-1", "-2", "-3", "-4", "-5"]
+    negative_lines = ["-1", "-2"]
     for easier, tougher in zip(negative_lines, negative_lines[1:]):
         assert by_key[(f"Handicap {tougher}", "Home")] <= by_key[(f"Handicap {easier}", "Home")] + 1e-9
 
-    positive_lines = ["+1", "+2", "+3", "+4", "+5"]
+    positive_lines = ["+1", "+2"]
     for easier, tougher in zip(positive_lines, positive_lines[1:]):
         assert by_key[(f"Handicap {tougher}", "Away")] <= by_key[(f"Handicap {easier}", "Away")] + 1e-9
 
@@ -248,7 +249,8 @@ def test_handicap_minus_one_equals_the_matching_winning_margin_buckets():
 def test_asian_handicap_markets_exist_for_the_standard_half_lines():
     outcomes = matrix_derived_outcomes(lambda_home=1.6, lambda_away=1.1, matches_available=20)
     markets = {o.market for o in outcomes}
-    for line in ("-3.5", "-2.5", "-1.5", "-0.5", "+0.5", "+1.5", "+2.5", "+3.5"):
+    assert not {f"Asian Handicap {line}" for line in ("-3.5", "-2.5", "+2.5", "+3.5")} & markets
+    for line in ("-1.5", "-0.5", "+0.5", "+1.5"):
         assert f"Asian Handicap {line}" in markets
         selections = {o.selection for o in outcomes if o.market == f"Asian Handicap {line}"}
         assert selections == {"Home", "Away"}
@@ -278,7 +280,7 @@ def test_asian_handicap_minus_half_matches_a_direct_scoreline_comparison():
 def test_asian_handicap_home_covers_less_often_on_a_tougher_line():
     outcomes = matrix_derived_outcomes(lambda_home=1.6, lambda_away=1.1, matches_available=20)
     by_key = {(o.market, o.selection): o.probability for o in outcomes}
-    negative_lines = ["-0.5", "-1.5", "-2.5", "-3.5"]
+    negative_lines = ["-0.5", "-1.5"]
     for easier, tougher in zip(negative_lines, negative_lines[1:]):
         assert by_key[(f"Asian Handicap {tougher}", "Home")] <= by_key[(f"Asian Handicap {easier}", "Home")] + 1e-9
 

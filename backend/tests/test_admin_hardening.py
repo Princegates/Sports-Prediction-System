@@ -62,7 +62,26 @@ def test_overview_surfaces_users_without_access(db_session, admin):
     assert body["superadmins"] == 1
     assert body["total_users"] == 5
     assert body["active_access_grants"] == 1
-    assert body["users_without_access"] == 3  # admin + the two without access
+    # The two without access -- not the admin, whose access is unlimited.
+    assert body["users_without_access"] == 2
+
+
+def test_superadmin_access_is_unlimited_whatever_grant_they_hold(db_session, admin):
+    # A leftover trial grant (as a promoted account would carry) is ignored.
+    grant_active_access(db_session, admin)
+    headers = _headers(admin)
+
+    users = client.get("/api/admin/users", headers=headers).json()
+    row = next(u for u in users if u["id"] == admin.id)
+    assert (row["access_status"], row["access_expires_at"]) == ("unlimited", None)
+
+    assert client.get("/api/access/status", headers=headers).json()["status"] == "unlimited"
+    assert client.get("/api/access/status", headers=headers).json()["has_access"] is True
+
+    extend = client.post(f"/api/admin/users/{admin.id}/access/extend", json={"additional_days": 30}, headers=headers)
+    assert extend.status_code == 400
+    revoke = client.post(f"/api/admin/users/{admin.id}/access/revoke", json={}, headers=headers)
+    assert revoke.status_code == 400
 
 
 def test_overview_requires_superadmin(db_session, admin):

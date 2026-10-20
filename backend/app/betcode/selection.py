@@ -51,12 +51,15 @@ market is still reachable by asking for it explicitly.
 from __future__ import annotations
 
 import datetime as dt
+import math
 import random
+from collections import Counter
 from dataclasses import dataclass, field
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.timeutil import utcnow
 from app.db.models import Match, MatchOdds, Prediction
 from app.outcomes.registry import Outcome, find_outcome, outcomes_from_prediction
 
@@ -72,7 +75,8 @@ DEFAULT_DAYS_AHEAD = 7
 # probability" comparison against every other market every time and be
 # worthless as a recommendation. This specific set is a product choice
 # (fixed 2026-10, "AI Picks" should only ever lean on these): the handicap
-# lines are ±3 specifically, not the full ±1..±5 range the registry offers.
+# lines are ±1 and ±2 -- the registry offers nothing wider (see its
+# HANDICAP_LINES).
 # An unusual market is still reachable -- just by asking for it explicitly
 # via criteria.markets, the same as any other specific choice.
 DEFAULT_MARKETS = (
@@ -80,9 +84,35 @@ DEFAULT_MARKETS = (
     "Double Chance",
     "Draw No Bet",
     "Total Goals 1.5",
-    "Handicap -3",
-    "Handicap +3",
+    "Handicap -1",
+    "Handicap +1",
+    "Handicap -2",
+    "Handicap +2",
 )
+
+# A ranked slip uses each market for one leg only (see _per_market_cap), so
+# "the safest legs" doesn't mean the same market eight times over --
+# Handicap +3 in particular clears almost any floor on almost every match.
+# Handicap lines count as one market for this: "+3 Home" and "-3 Away" are
+# the same bet shape from either side.
+MAX_LEGS_PER_MARKET = 1
+
+
+def _market_family(market: str) -> str:
+    return "Handicap" if market.startswith("Handicap ") else market
+
+
+def _per_market_cap(max_legs: int, markets: tuple[str, ...]) -> int:
+    """MAX_LEGS_PER_MARKET -- one leg per market -- for the default market
+    set, even if that means fewer legs than asked. Only someone who chose
+    their own markets, too few to fill max_legs one each, gets them
+    repeated: picking just Over 1.5 still gives a full slip of it."""
+
+    if not markets:
+        return MAX_LEGS_PER_MARKET
+    families = {_market_family(m) for m in markets}
+    return max(MAX_LEGS_PER_MARKET, math.ceil(max_legs / len(families)))
+
 
 # The fixed league pool for "AI Picks" -- the member-facing AI Generation
 # page and the weekly system accumulators (scripts/generate_weekly_picks.py,
@@ -267,7 +297,7 @@ def build_candidate_legs(db: Session, criteria: SlipCriteria) -> list[Leg]:
     this project has captured one from.
     """
 
-    now = dt.datetime.utcnow()
+    now = utcnow()
     cutoff = now + dt.timedelta(days=criteria.days_ahead)
 
     match_query = (
@@ -788,7 +818,7 @@ def _match_window(
     days_ahead one.
     """
 
-    now = dt.datetime.utcnow()
+    now = utcnow()
     if date_from or date_to:
         start = max(now, dt.datetime.combine(date_from or date_to, dt.time.min))
         end = dt.datetime.combine(date_to or date_from, dt.time.max)
@@ -908,7 +938,8 @@ def select_legs_by_confidence(
 ) -> ConfidencePick:
     """The no-odds sibling of select_legs: picks up to max_legs matches,
     safest (highest model probability) first, each clearing min_probability
-    in a wanted market. No price is required and there is no target to
+    in a wanted market, with each market used for one leg only (see
+    _per_market_cap) so a slip mixes markets. No price is required and there is no target to
     reach -- the result is meant to be booked directly with a betting site
     (app.betcode.sites), which prices the slip itself, rather than combined
     toward a target price the way select_legs's accumulator is.
@@ -916,12 +947,33 @@ def select_legs_by_confidence(
     See build_confidence_candidates for what ``exclude_match_ids`` is for.
     """
 
-    candidates = build_confidence_candidates(
+    # Every qualifying market per match (its strongest selection in each),
+    # not just the match's single strongest outcome -- otherwise a capped
+    # market leaves that match with nothing else to offer.
+    pool = _build_random_pool(
         db, min_probability=min_probability, markets=markets, leagues=leagues, league=league, days_ahead=days_ahead,
         date_from=date_from, date_to=date_to, exclude_match_ids=exclude_match_ids,
     )
-    candidates.sort(key=lambda leg: -leg.model_probability)
-    chosen = candidates[:max_legs]
+    candidates = [max(legs, key=lambda leg: leg.model_probability) for legs in pool.values()]
+    cap = _per_market_cap(max_legs, markets)
+
+    # Safest first, one leg per match, at most `cap` legs per market.
+    options = sorted(
+        (leg for legs in pool.values() for leg in legs),
+        key=lambda leg: (-leg.model_probability, leg.kickoff, leg.match_id, leg.market),
+    )
+    chosen: list[Leg] = []
+    used_matches: set[int] = set()
+    per_market: Counter[str] = Counter()
+    for leg in options:
+        if len(chosen) >= max_legs:
+            break
+        family = _market_family(leg.market)
+        if leg.match_id in used_matches or per_market[family] >= cap:
+            continue
+        chosen.append(leg)
+        used_matches.add(leg.match_id)
+        per_market[family] += 1
 
     combined_probability = 1.0
     for leg in chosen:
@@ -935,9 +987,16 @@ def select_legs_by_confidence(
             "accuracy floor, or pick a different market."
         )
     elif len(candidates) > len(chosen):
-        warnings.append(
-            f"{len(candidates)} matches qualify -- showing the {len(chosen)} safest by model probability."
-        )
+        if len(chosen) < max_legs:
+            warnings.append(
+                f"{len(candidates)} matches qualify, but only {len(chosen)} legs fit while keeping each market "
+                f"to {cap} leg{'s' if cap != 1 else ''} -- choose more markets or lower the accuracy floor for more."
+            )
+        else:
+            warnings.append(
+                f"{len(candidates)} matches qualify -- showing the {len(chosen)} safest by model probability, "
+                f"with no more than {cap} legs from any one market."
+            )
     if chosen:
         drop = 1.0 - combined_probability
         warnings.append(

@@ -1,56 +1,40 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  fetchAdminPickTrackRecord,
-  fetchBranding,
-  fetchPublicAccuracy,
-  fetchPublicFixtures,
-  fetchPublicStats,
-  fetchPublicTeaserPick,
-} from "../api";
-import { LedgerRow } from "../components/LedgerRow";
+import { fetchLanding } from "../api";
+import { FixtureTeaserRow } from "../components/FixtureTeaserRow";
+import { FreePicksSlip } from "../components/FreePicksSlip";
 import { Mascot } from "../components/Mascot";
 import { PublicShell } from "../components/PublicShell";
-import { fixtureSlug } from "../lib/slug";
 import { usePageStructuredData } from "../lib/pageMeta";
 import { useTilt } from "../lib/useTilt";
-import type { AdminPickTrackRecord, Branding, PublicAccuracy, PublicFixture, PublicStats, PublicTeaserPick } from "../types";
-
-// Module-level, not rebuilt per render -- every field here is a fact about
-// the organization itself, not read from live data, so there's nothing to
-// recompute. No "sameAs" social links: this project has no evidence of a
-// real account to point at, and a guessed one would be a false claim in a
-// structured-data block search engines treat as a statement of fact.
-const ORGANIZATION_SCHEMA = {
-  "@context": "https://schema.org",
-  "@type": "Organization",
-  name: "Socca Intelligence",
-  url: "https://soccaintel.com/",
-  logo: "https://soccaintel.com/brand/icon-512.png",
-  description:
-    "AI-calibrated football and soccer predictions across 50+ leagues, scored on 100+ markets per match.",
-};
+import { whatsappLink } from "../lib/whatsapp";
+import type { Landing, TrackRecord } from "../types";
 
 /**
  * Public landing page.
  *
- * Every figure on this page is read from /api/public/* rather than written
- * into the markup. That costs a loading state, and it buys the guarantee
- * that the page can't advertise a capability the deployment doesn't have --
- * a fresh install with no data imported says so instead of claiming
- * thousands of matches.
+ * Built around one question a visitor is really asking -- "do these picks
+ * actually land?" -- so the hero leads with the model's own graded record
+ * rather than its architecture. Six sections: hero + record, today's free
+ * picks slip, the best-rated upcoming fixtures, what the confidence rating is
+ * worth, the AI Generation demo, then price and answers.
+ *
+ * Every figure comes from GET /api/public/landing (one call; it used to be
+ * seven). The build's prerender step bakes that response into the page as
+ * a hidden data attribute (#landing-data below), so a visitor sees real
+ * numbers immediately and keeps them even if the backend is slow to wake.
  */
 
-// AI Generation demo -- a real, clickable preview of the wizard's own
-// controls (league/market/legs/accuracy), with no backend call behind any
-// of them: there's no logged-out, unpriced version of "generate" that
-// would be honest to show, so every control here is just for feel, and
-// clicking Generate always leads to sign-up (DEMO_GENERATE_* below), the
-// same "clicking it reveals the sign-up prompt" pattern the teaser pick
-// above already uses for the same reason. Names are real (the actual
-// league/market catalog), just not read live -- this is a logged-out page
-// with no access to that endpoint, and the fixed list costs nothing to
-// keep honest the way a live count would.
+const ORGANIZATION_SCHEMA = {
+  "@type": "Organization",
+  name: "Socca Intelligence",
+  url: "https://soccaintel.com/",
+  logo: "https://soccaintel.com/brand/icon-512.png",
+  description: "Football and soccer predictions with a public, graded track record, across 50+ leagues.",
+};
+
+// AI Generation demo -- the wizard's real controls with nothing fetched
+// behind them; clicking Generate leads to sign-up.
 const DEMO_LEAGUES = [
   "English Premier League", "Spanish La Liga", "German Bundesliga", "Italian Serie A",
   "French Ligue 1", "UEFA Champions League",
@@ -66,372 +50,285 @@ const DEMO_ACCURACY_OPTIONS = [
   { value: 85, label: "85%+" },
 ];
 
-function StatTile({ value, label, hint }: { value: string; label: string; hint?: string }) {
-  return (
-    <div className="stat-tile">
-      <div className="stat-tile-value">{value}</div>
-      <div className="stat-tile-label">{label}</div>
-      {hint && <div className="stat-tile-hint">{hint}</div>}
-    </div>
-  );
+const BAND_ORDER = ["HIGH", "MEDIUM", "LOW"];
+const BAND_LABEL: Record<string, string> = { HIGH: "High confidence", MEDIUM: "Medium", LOW: "Low" };
+
+/** The prerendered copy of the last landing response, if this page was
+ * served from the build's snapshot. Read during the first render, before
+ * React replaces the prerendered DOM. */
+function bakedLanding(): Landing | null {
+  try {
+    const raw = document.getElementById("landing-data")?.getAttribute("data-json");
+    return raw ? (JSON.parse(raw) as Landing) : null;
+  } catch {
+    return null;
+  }
 }
 
-function FeatureCard({ icon, title, body }: { icon: string; title: string; body: string }) {
-  const tilt = useTilt<HTMLDivElement>();
-  return (
-    <div className="feature-card tilt-card" {...tilt}>
-      <span className="feature-icon" aria-hidden>
-        {icon}
-      </span>
-      <h3>{title}</h3>
-      <p>{body}</p>
-    </div>
-  );
+function pct(n: number | undefined): string {
+  return `${Math.round((n ?? 0) * 1000) / 10}%`;
 }
 
-const MODEL_STACK = [
-  {
-    step: "01",
-    title: "Elo ratings",
-    body: "A match-by-match strength rating for every team, with home advantage and a margin-of-victory multiplier, mapped to probabilities through a fitted logistic curve.",
-  },
-  {
-    step: "02",
-    title: "Dixon-Coles Poisson",
-    body: "Attack and defense strength per team, split home and away, with the low-score correction. This produces the full score matrix behind every goals market.",
-  },
-  {
-    step: "03",
-    title: "Gradient boosting",
-    body: "A scikit-learn model over engineered features: recent form, goal differentials, rest days and the Elo gap between the two sides.",
-  },
-  {
-    step: "04",
-    title: "Blend and check",
-    body: "The three are weighted into one set of probabilities, on weights fitted to held-out matches from every league, then checked on a later split none of it saw -- so a stated 70% has historically happened about 70% of the time.",
-  },
-];
+function sinceLabel(since: string | null | undefined): string {
+  if (!since) return "";
+  return new Date(since).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
 
-const FEATURES = [
-  {
-    icon: "◎",
-    title: "Global Most-Likely Outcome",
-    body: "Instead of one market at a time, every fixture is scored across 100+ markets and the single highest-probability outcome is surfaced -- but only among outcomes that clear a data-quality gate.",
-  },
-  {
-    icon: "◈",
-    title: "Explainable, not oracular",
-    body: "Each call ships with the positive and negative factors that drove it, computed from real feature deltas, plus how each of the three models individually voted.",
-  },
-  {
-    icon: "◉",
-    title: "Confidence you can audit",
-    body: "Every prediction carries a data-quality score, a model-agreement score and a confidence band. Thin data produces a visibly low-confidence call, not a falsely certain one.",
-  },
-  {
-    icon: "⬗",
-    title: "Live in-play recalculation",
-    body: "Goals, red cards and other events re-project the remaining match and update every market immediately, with the probability timeline kept so you can see what moved.",
-  },
-  {
-    icon: "◍",
-    title: "Grounded AI assistant",
-    body: "Ask about any fixture in plain language. The assistant reads this system's own database to answer -- it reports stored numbers and cites them, so it cannot invent a statistic.",
-  },
-  {
-    icon: "⬢",
-    title: "Market-independent by design",
-    body: "The prediction models themselves never look at bookmaker odds -- probabilities are formed from match data alone, an independent opinion rather than a re-derivation of the market's. Real captured prices are used separately to price accumulators, never to shape a prediction.",
-  },
-  {
-    icon: "✚",
-    title: "Squad availability signal",
-    body: "Reported injuries, suspensions and lineups confirmed near kickoff shift a match's probability by a small, capped amount and get named in the explanation -- never a silent swing, and nothing changes until real absence data exists for that match.",
-  },
-];
-
-const FAQS = [
-  {
-    q: "Do I get access immediately after registering?",
-    a: "You can sign in immediately -- there's no approval queue. What's locked until you redeem an access code is the prediction surface itself: teams, matches, predictions and the AI assistant. A Super Admin issues a code once you've arranged payment with them outside the platform; you enter it on the Access page and it unlocks for the code's duration.",
-  },
-  {
-    q: "How accurate is it, honestly?",
-    a: "Football 1X2 is genuinely hard: professional bookmakers, with paid data and far larger models, land around 53-55% accuracy. The figures on this page come from a date-split backtest where the model is scored only on matches that happened after everything it trained on. Anything claiming dramatically more than the bookmaker baseline -- here or anywhere -- deserves suspicion.",
-  },
-  {
-    q: "Are these predictions guaranteed?",
-    a: "No, and nothing in this system will ever say otherwise. Every output is a probability with a confidence band attached. A 90% call still loses roughly one time in ten, and those losses arrive in clusters rather than politely spaced out.",
-  },
-  {
-    q: "Where does the data come from?",
-    a: "Fixtures, results, injuries/suspensions, confirmed lineups and bookmaker prices all come from commercial sports-data feeds, kept current day to day. Live shot-level in-play statistics remain a pluggable extension point rather than a shipped capability.",
-  },
-  {
-    q: "Is the AI chat a language model?",
-    a: "By default, no -- and that's the point. It parses your question, looks the answer up in the database, and composes a reply from the rows it found. That makes a fabricated statistic structurally impossible rather than merely unlikely. An optional phrasing-only rewriter can be pointed at a local model if you want more fluent prose, without changing what the numbers say.",
-  },
-  {
-    q: "What does it cost to run?",
-    a: "The software itself is free and open-source -- Python, Node, scikit-learn, nothing proprietary. This specific deployment pairs that with a paid commercial data feed for live fixtures, odds and squad data, plus managed Postgres and hosting, so the software costs nothing but keeping it fed with live data does.",
-  },
-];
+function band(record: TrackRecord, key: string) {
+  return record.by_confidence?.find((b) => b.confidence === key);
+}
 
 export function Welcome() {
-  const [stats, setStats] = useState<PublicStats | null>(null);
-  const [accuracy, setAccuracy] = useState<PublicAccuracy | null>(null);
-  const [pickRecord, setPickRecord] = useState<AdminPickTrackRecord | null>(null);
-  const [teaserPick, setTeaserPick] = useState<PublicTeaserPick | null>(null);
-  const [fixtures, setFixtures] = useState<PublicFixture[]>([]);
-  const [branding, setBranding] = useState<Branding | null>(null);
+  const [landing, setLanding] = useState<Landing | null>(bakedLanding);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
-  // "Generate code" on the public teaser pick is a deliberate dead end --
-  // there's no account to generate one for yet, so clicking it reveals the
-  // sign-up prompt in place rather than silently doing nothing.
-  const [teaserGenerateClicked, setTeaserGenerateClicked] = useState(false);
-  // AI Generation demo controls -- local only, nothing fetched (see the
-  // constants above). Pre-ticked with a sensible starting point, same
-  // reasoning the real wizard's own defaults use, so the demo looks like
-  // something someone actually configured rather than an empty form.
   const [demoLeagues, setDemoLeagues] = useState<string[]>(["English Premier League"]);
   const [demoMarkets, setDemoMarkets] = useState<string[]>(["Match Result", "Both Teams To Score"]);
   const [demoLegs, setDemoLegs] = useState(6);
   const [demoAccuracy, setDemoAccuracy] = useState(65);
   const [demoGenerateClicked, setDemoGenerateClicked] = useState(false);
   const heroTilt = useTilt<HTMLDivElement>();
-  usePageStructuredData(ORGANIZATION_SCHEMA);
 
   useEffect(() => {
-    // Each panel degrades independently: if the backend is down, the page
-    // still renders as a static brochure rather than an error screen.
-    fetchPublicStats().then(setStats).catch(() => setStats(null));
-    fetchPublicAccuracy().then(setAccuracy).catch(() => setAccuracy(null));
-    fetchAdminPickTrackRecord().then(setPickRecord).catch(() => setPickRecord(null));
-    fetchPublicTeaserPick().then(setTeaserPick).catch(() => setTeaserPick(null));
-    fetchPublicFixtures(5, 6).then(setFixtures).catch(() => setFixtures([]));
-    fetchBranding().then(setBranding).catch(() => setBranding(null));
+    // A failed refresh keeps whatever is already on screen (the baked
+    // snapshot), rather than blanking real numbers.
+    fetchLanding().then(setLanding).catch(() => {});
   }, []);
+
+  const branding = landing?.branding ?? null;
+  const record = landing?.track_record ?? null;
+  const stats = landing?.stats ?? null;
+  const freePicks = landing?.free_picks ?? [];
+  const adminRecord = landing?.admin_pick_record?.has_data && landing.admin_pick_record.settled_count >= 5 ? landing.admin_pick_record : null;
+  const fixtures = landing?.fixtures ?? [];
+  const price = branding?.pricing_label || null;
+  const perDay = branding?.price_per_day || null;
+  const trialDays = branding?.trial_days ?? 0;
+  const whatsapp = branding?.contact_whatsapp || null;
+  const channel = branding?.whatsapp_channel_url || null;
+  const high = record?.has_data ? band(record, "HIGH") : undefined;
+  const nf = new Intl.NumberFormat();
+
+  const faqs = [
+    {
+      q: "How does the free trial work?",
+      a:
+        trialDays > 0
+          ? `Create an account and confirm your email: you get ${trialDays} day${trialDays === 1 ? "" : "s"} of full access, with no card and no code. After that you stay on the free tier (one headline pick per league) until you buy an access code.`
+          : "Creating an account is free. The free tier shows one headline pick per league; an access code unlocks everything.",
+    },
+    {
+      q: "How do I pay?",
+      a: `Payment happens outside the site: message our team on WhatsApp and pay by mobile money or bank transfer. Once it's confirmed, you get an access code by email or WhatsApp, enter it on the Access page, and everything unlocks for the code's duration.${price ? ` Access is ${price}${perDay ? ` (${perDay})` : ""}.` : ""}`,
+    },
+    {
+      q: "How accurate is it, honestly?",
+      a:
+        record?.has_data && high
+          ? `Every call is graded against the real result. Since ${sinceLabel(record.since)}, ${pct(record.hit_rate)} of all ${nf.format(record.graded_predictions ?? 0)} graded calls landed, and ${pct(high.hit_rate)} of the high-confidence ones. For context, professional bookmakers land around 53-55% on match results. Anyone claiming far more than that deserves suspicion.`
+          : "Every call is graded against the real result once the match finishes. For context, professional bookmakers land around 53-55% on match results; anyone claiming far more than that deserves suspicion.",
+    },
+    {
+      q: "Are these predictions guaranteed?",
+      a: "No, and nothing here will ever say otherwise. Every prediction is a probability with a confidence rating. A 90% call still loses about one time in ten, and losses come in clusters.",
+    },
+    {
+      q: "Which leagues do you cover?",
+      a: stats
+        ? `${stats.leagues_covered} competitions, including the Premier League, La Liga, Serie A, the Bundesliga, Ligue 1 and the Champions League, with ${nf.format(stats.upcoming_fixtures)} upcoming fixtures loaded right now.`
+        : "50+ competitions, including the Premier League, La Liga, Serie A, the Bundesliga, Ligue 1 and the Champions League.",
+    },
+  ];
+
+  usePageStructuredData({
+    "@context": "https://schema.org",
+    "@graph": [
+      ORGANIZATION_SCHEMA,
+      {
+        "@type": "FAQPage",
+        mainEntity: faqs.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a } })),
+      },
+    ],
+  });
 
   function toggleDemo(list: string[], setList: (next: string[]) => void, value: string) {
     setList(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
   }
 
-  const nf = new Intl.NumberFormat();
-  // "" (not set) falls back to the generic "arrange payment externally"
-  // wording every one of these already had before pricing_label existed.
-  const price = branding?.pricing_label || null;
-  const faqs = FAQS.map((f, i) =>
-    i === 0 && price
-      ? {
-          ...f,
-          a: `You can sign in immediately -- there's no approval queue. What's locked until you redeem an access code is the prediction surface itself: teams, matches, predictions and the AI assistant. Access is ${price} -- a Super Admin issues a code once you've arranged payment with them outside the platform; you enter it on the Access page and it unlocks for the code's duration.`,
-        }
-      : f
-  );
+  const trialCta = trialDays > 0 ? `Start your ${trialDays}-day free trial` : "Create a free account";
 
   return (
     <PublicShell
       title="AI Football & Soccer Predictions — Socca Intelligence"
-      description="AI-calibrated football and soccer predictions across 50+ leagues, scored on 100+ markets per match -- Elo, Poisson and machine learning, backtested on real results. Never a guarantee."
+      description="Football and soccer predictions with a public, graded track record: every call rated for confidence and checked against the real result. 50+ leagues. Free trial, no card."
     >
+      {/* Snapshot for the next visitor's first paint -- see bakedLanding. */}
+      {landing && <div hidden id="landing-data" data-json={JSON.stringify(landing)} />}
+
       {/* ---------------- Hero ---------------- */}
       <section className="landing-hero">
         <div className="landing-hero-copy">
-          {/* The exact phrase a "soccer prediction"/"football prediction"
-              search is looking for, as real visible body text rather than
-              only in <title>/<meta> -- search engines weigh on-page content
-              for topical relevance more than meta tags, which mostly just
-              shape the result snippet. A kicker label above the headline is
-              the natural, non-spammy home for it: it doesn't force the
-              phrase into the crafted H1/lede prose below. */}
           <span className="eyebrow">Football &amp; Soccer Predictions</span>
           <h1>
-            Calibrated football predictions,
-            <span className="hero-gradient"> with the reasoning shown</span>
+            Football predictions
+            <span className="hero-gradient"> with a public track record</span>
           </h1>
           <p className="lede">
-            Three independent models -- Elo, Dixon-Coles Poisson and gradient boosting -- blended and
-            calibrated against held-out history, then scored across 100+ markets per match. You see the
-            probability, the confidence, and the factors behind it. Never a guarantee.
+            Every match gets a probability and a confidence rating, and every call is checked against the real
+            result once the final whistle goes. You can see exactly how often each rating lands before you pay
+            a cedi.
           </p>
-
           <div className="landing-cta-row">
             <Link className="btn btn-lg" to="/register">
-              Explore AI predictions
+              {trialCta}
             </Link>
-            <Link className="btn ghost btn-lg" to="/login">
-              Enter access code
+            <Link className="btn ghost btn-lg" to="/fixtures">
+              See today's fixtures
             </Link>
           </div>
-
           <p className="landing-cta-note">
-            Sign in is instant. Predictions unlock once you redeem an access code, issued by a Super
-            Admin after payment is confirmed outside the platform -- there's no card form here.
-            {price && <> Access is <strong>{price}</strong>.</>}
+            {trialDays > 0 ? "No card, no code, about 30 seconds." : "Free to sign up."}
+            {price && (
+              <>
+                {" "}
+                After that, <strong>{price}</strong>
+                {perDay && <> ({perDay})</>}.
+              </>
+            )}{" "}
+            <Link to="/pricing">How paying works</Link>
           </p>
         </div>
 
         <div className="landing-hero-visual tilt-card" {...heroTilt}>
           <Mascot pose="thinking" size={92} />
-          {pickRecord?.has_data ? (
-            <div className="hero-panel">
-              <div className="hero-panel-head">
-                <span className="tag">Featured results</span>
-                <span className="confidence-tag high">LIVE</span>
-              </div>
-              <div className="hero-panel-body">
-                <div className="hero-panel-metric">
-                  <span className="hero-panel-number">{(pickRecord.hit_rate * 100).toFixed(0)}%</span>
-                  <span>hit rate on {pickRecord.won + pickRecord.lost} decided picks</span>
-                </div>
-                <div className="hero-panel-rows">
-                  <div>
-                    <span>Won</span>
-                    <span>{pickRecord.won}</span>
-                  </div>
-                  <div>
-                    <span>Lost</span>
-                    <span>{pickRecord.lost}</span>
-                  </div>
-                  {pickRecord.unresolved > 0 && (
-                    <div>
-                      <span>Awaiting confirmation</span>
-                      <span>{pickRecord.unresolved}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-              <p className="hero-panel-foot">
-                Every settled pick our team has chosen to feature, win or lose -- the same record further
-                down this page.
-              </p>
+          <div className="hero-panel">
+            <div className="hero-panel-head">
+              <span className="tag">Graded results</span>
+              {record?.has_data && <span className="meta">since {sinceLabel(record.since)}</span>}
             </div>
-          ) : (
-            <div className="hero-panel">
-              <div className="hero-panel-head">
-                <span className="tag">Global Most-Likely Outcome</span>
-                <span className="confidence-tag high">HIGH</span>
-              </div>
-              <div className="hero-panel-body">
-                <div className="hero-panel-metric">
-                  <span className="hero-panel-number">{stats ? stats.markets_per_match : "100+"}</span>
-                  <span>markets scored per fixture</span>
-                </div>
-                <div className="hero-panel-rows">
-                  <div>
-                    <span>Match result</span>
-                    <span>Elo + Poisson + GBM</span>
+            {record?.has_data && high ? (
+              <>
+                <div className="hero-panel-body">
+                  <div className="hero-panel-metric">
+                    <span className="hero-panel-number">{pct(high.hit_rate)}</span>
+                    <span>of high-confidence calls landed ({nf.format(high.graded)} graded)</span>
                   </div>
-                  <div>
-                    <span>Goals &amp; BTTS</span>
-                    <span>Full score matrix</span>
-                  </div>
-                  <div>
-                    <span>Correct score</span>
-                    <span>Dixon-Coles corrected</span>
-                  </div>
-                  <div>
-                    <span>Calibration</span>
-                    <span>Held-out fit</span>
+                  <div className="hero-panel-rows">
+                    {BAND_ORDER.map((key) => {
+                      const b = band(record, key);
+                      return b ? (
+                        <div key={key}>
+                          <span>{BAND_LABEL[key]}</span>
+                          <span>
+                            {pct(b.hit_rate)} of {nf.format(b.graded)}
+                          </span>
+                        </div>
+                      ) : null;
+                    })}
                   </div>
                 </div>
-              </div>
-              <p className="hero-panel-foot">
-                Every output carries data-quality and model-agreement scores alongside the probability.
-              </p>
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* ---------------- Public teaser pick ----------------
-          First thing after the hero -- concrete proof of what a redeemed
-          account actually gets beats a stats panel for a cold visitor's
-          first few seconds on the page. Renders nothing when there's no
-          teaser set -- same "no empty state" rule the Dashboard's own
-          GudaPicksSection follows, since a quiet gap here is unremarkable,
-          not a broken page. Unlike every other public figure on this page,
-          this shows real selections -- see PublicTeaserPick's own
-          docstring for why. */}
-      {teaserPick?.has_data && (
-        <section className="landing-section">
-          <div className="section-head">
-            <h2>This week's long shot</h2>
-            <p>
-              One combo our system drew at random from this week's priced matches, {teaserPick.combined_odds.toFixed(2)}x
-              combined -- a taste of what a redeemed account gets every day, across every match we cover.
-            </p>
-          </div>
-
-          <div className="card card-pad" style={{ maxWidth: 560, margin: "0 auto" }}>
-            {teaserPick.legs.map((leg, i) => (
-              <div
-                key={`${leg.match_id}-${leg.market}-${leg.selection}`}
-                className="match-meta-row"
-                style={{
-                  justifyContent: "space-between",
-                  padding: "10px 0",
-                  borderTop: i === 0 ? undefined : "1px solid var(--border)",
-                }}
-              >
-                <span>
-                  <span className="sub">{leg.league}</span>
-                  <br />
-                  {leg.home_team} <span className="vs-divider">vs</span> {leg.away_team}
-                  <br />
-                  <span className="sub">
-                    {leg.market}: {leg.selection}
-                  </span>
-                </span>
-                <span className="badge-neutral">{leg.decimal_odds?.toFixed(2)}</span>
-              </div>
-            ))}
-            <div
-              className="match-meta-row"
-              style={{ justifyContent: "space-between", padding: "10px 0", borderTop: "1px solid var(--border)" }}
-            >
-              <strong>Combined odds</strong>
-              <strong>{teaserPick.combined_odds.toFixed(2)}x</strong>
-            </div>
-          </div>
-
-          <div style={{ textAlign: "center", marginTop: 16 }}>
-            {teaserGenerateClicked ? (
-              <div className="state-card" style={{ maxWidth: 420, margin: "0 auto" }}>
-                <p style={{ margin: "0 0 12px" }}>
-                  Generating a code needs an account with active access -- that's the whole product, not
-                  a locked button. Sign up free, then redeem a code to generate real ones like this.
+                <p className="hero-panel-foot">
+                  {pct(record.hit_rate)} across all {nf.format(record.graded_predictions ?? 0)} calls. Every
+                  prediction made before kickoff, graded on the real score -- wins and losses.
                 </p>
-                <Link className="btn btn-lg" to="/register">
-                  Create an account
-                </Link>
-              </div>
+              </>
             ) : (
-              <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
-                <button className="btn btn-lg" onClick={() => setTeaserGenerateClicked(true)}>
-                  Generate code
-                </button>
-                <Link className="btn ghost btn-lg" to="/register">
-                  Create an account
-                </Link>
+              <div className="hero-panel-body">
+                <p style={{ margin: 0 }}>
+                  Results appear here as matches finish -- every call is graded against the real score, wins and
+                  losses alike.
+                </p>
               </div>
             )}
           </div>
+        </div>
+      </section>
+
+      {/* ---------------- Today's free picks ---------------- */}
+      {freePicks.length > 0 && (
+        <section className="landing-section">
+          <FreePicksSlip picks={freePicks} trialDays={trialDays} />
+          {channel && (
+            <p className="meta" style={{ marginTop: "var(--space-3)" }}>
+              <a href={channel} target="_blank" rel="noreferrer noopener">
+                Get the free picks on our WhatsApp channel
+              </a>
+            </p>
+          )}
         </section>
       )}
 
-      {/* ---------------- AI Generation demo ----------------
-          Unlike the teaser pick above, this always renders -- it's not
-          read from live data, so there's no empty state to guard against,
-          and it's the one thing on this page a first-time visitor can
-          actually click around in before deciding whether to sign up. */}
+      {/* ---------------- Best-rated upcoming fixtures ---------------- */}
+      <section className="landing-section">
+        <div className="section-head">
+          <h2>Coming up, best-rated first</h2>
+          <p>
+            {stats
+              ? `${stats.leagues_covered} leagues · ${nf.format(stats.matches_analyzed)} matches analysed · ${nf.format(stats.upcoming_fixtures)} fixtures loaded. `
+              : ""}
+            Open any match for recent form and past meetings; the pick and its probability are for members.
+          </p>
+        </div>
+        {fixtures.length > 0 ? (
+          <div className="fixture-teaser-list">
+            {fixtures.map((f) => (
+              <FixtureTeaserRow key={f.match_id} fixture={f} />
+            ))}
+          </div>
+        ) : (
+          <p className="meta">Fixtures for the next two days appear here once they're loaded.</p>
+        )}
+        <p style={{ marginTop: 12 }}>
+          <Link to="/fixtures">See every upcoming fixture</Link>
+        </p>
+      </section>
+
+      {/* ---------------- What the confidence rating is worth ---------------- */}
+      {record?.has_data && (
+        <section className="landing-section">
+          <div className="section-head">
+            <h2>Does the confidence rating mean anything?</h2>
+            <p>
+              It should: a high-confidence call should land more often than a low one. Here is how every graded
+              call since {sinceLabel(record.since)} has done, by the rating it had before kickoff.
+            </p>
+          </div>
+          <div className="proof-bars card card-pad">
+            {BAND_ORDER.map((key) => {
+              const b = band(record, key);
+              if (!b) return null;
+              return (
+                <div key={key} className="proof-bar">
+                  <span className="proof-bar-label">{BAND_LABEL[key]}</span>
+                  <span className="proof-bar-track" aria-hidden>
+                    <span className={`proof-bar-fill ${key.toLowerCase()}`} style={{ width: `${Math.round(b.hit_rate * 100)}%` }} />
+                  </span>
+                  <span className="proof-bar-value">
+                    {pct(b.hit_rate)} <span className="meta">of {nf.format(b.graded)}</span>
+                  </span>
+                </div>
+              );
+            })}
+            <p className="meta" style={{ margin: "6px 0 0" }}>
+              For context, professional bookmakers land around 53-55% on match results.{" "}
+              <Link to="/how-it-works">How the model is built and tested</Link>
+            </p>
+          </div>
+          {adminRecord && (
+            <p style={{ marginTop: 12 }}>
+              Our team's own published picks, committed before kickoff: <strong>{pct(adminRecord.hit_rate)}</strong> of{" "}
+              {adminRecord.won + adminRecord.lost} decided.
+            </p>
+          )}
+        </section>
+      )}
+
+      {/* ---------------- AI Generation demo ---------------- */}
       <section className="landing-section">
         <div className="section-head">
           <h2>Try AI Generation</h2>
           <p>
-            Pick leagues, markets, a leg count and an accuracy floor -- the same controls a redeemed
-            account uses to build a slip. Generating a real one needs an account with active access, since
-            every leg comes from live, priced predictions; everything else here is yours to play with.
+            Pick leagues, markets, how many legs and how sure each leg must be -- the same controls members use
+            to build a slip from live predictions.
           </p>
         </div>
 
@@ -473,19 +370,14 @@ export function Welcome() {
           </div>
           <div className="filter-bar" style={{ marginBottom: 14 }}>
             {DEMO_LEG_OPTIONS.map((n) => (
-              <button
-                key={n}
-                type="button"
-                className={`filter-chip${demoLegs === n ? " active" : ""}`}
-                onClick={() => setDemoLegs(n)}
-              >
+              <button key={n} type="button" className={`filter-chip${demoLegs === n ? " active" : ""}`} onClick={() => setDemoLegs(n)}>
                 {n}
               </button>
             ))}
           </div>
 
           <div className="meta" style={{ marginBottom: 6 }}>
-            Minimum accuracy per leg
+            Minimum chance per leg
           </div>
           <div className="filter-bar">
             {DEMO_ACCURACY_OPTIONS.map((o) => (
@@ -505,11 +397,11 @@ export function Welcome() {
           {demoGenerateClicked ? (
             <div className="state-card" style={{ maxWidth: 420, margin: "0 auto" }}>
               <p style={{ margin: "0 0 12px" }}>
-                Generating needs an account with active access -- every leg comes from live, priced
-                predictions, not a demo. Sign up free, then build real slips like this one.
+                Generating needs an account -- every leg comes from live predictions, not a demo.
+                {trialDays > 0 ? ` Your ${trialDays}-day free trial includes it.` : ""}
               </p>
               <Link className="btn btn-lg" to="/register">
-                Create an account
+                {trialCta}
               </Link>
             </div>
           ) : (
@@ -520,316 +412,41 @@ export function Welcome() {
         </div>
       </section>
 
-      {/* ---------------- Live corpus stats ---------------- */}
+      {/* ---------------- Price ---------------- */}
       <section className="landing-section">
         <div className="section-head">
-          <h2>What the system is actually holding</h2>
-          <p>
-            Read live from the database on page load -- not numbers typed into a marketing page.
-          </p>
+          <h2>Start free, pay when it's worth it</h2>
         </div>
-
-        {stats ? (
-          <div className="stat-grid">
-            <StatTile value={nf.format(stats.matches_analyzed)} label="Matches analyzed" hint="Completed results in the corpus" />
-            <StatTile value={nf.format(stats.teams_tracked)} label="Teams tracked" hint="With point-in-time form history" />
-            <StatTile value={String(stats.leagues_covered)} label="Leagues covered" />
-            <StatTile value={nf.format(stats.predictions_generated)} label="Predictions generated" />
-            <StatTile value={nf.format(stats.upcoming_fixtures)} label="Upcoming fixtures" hint="Scheduled and awaiting kickoff" />
-            <StatTile value={String(stats.markets_per_match)} label="Markets per match" hint="Scored in the outcome registry" />
+        <div className="plan-strip">
+          <div className="plan-tile">
+            <span className="plan-name">Free</span>
+            <span className="plan-price">Free</span>
+            <span className="plan-desc">One headline pick per league, plus today's 3 free picks.</span>
           </div>
-        ) : (
-          <div className="state-card">
-            <p>
-              Corpus figures unavailable -- the API isn't reachable from here. The rest of this page is
-              static, so it still describes the system accurately.
-            </p>
-          </div>
-        )}
-
-        {stats && stats.league_names.length > 0 && (
-          <div className="league-chips">
-            {stats.league_names.map((l) => (
-              <span key={l} className="league-chip">
-                {l}
+          {trialDays > 0 && (
+            <div className="plan-tile featured">
+              <span className="plan-name">Free trial</span>
+              <span className="plan-price">
+                {trialDays} day{trialDays === 1 ? "" : "s"}
               </span>
-            ))}
-          </div>
-        )}
-
-        {stats && stats.matches_analyzed === 0 && (
-          <div className="unavailable-note">
-            This deployment has no match data imported yet, so the counts above are zero. Running the
-            import scripts in <code>backend/scripts</code> populates them -- the page reports what's
-            there rather than a promise of what could be.
-          </div>
-        )}
-      </section>
-
-      {/* ---------------- Measured accuracy ---------------- */}
-      <section className="landing-section accuracy-section">
-        <div className="section-head">
-          <h2>Measured, not claimed</h2>
-          <p>
-            Train, validation and test are split by date and never shuffled, so the model is scored
-            only on matches that happened strictly after everything it learned from.
-          </p>
-        </div>
-
-        {accuracy?.has_data ? (
-          <div className="accuracy-panel">
-            <div className="accuracy-headline">
-              <div>
-                <span className="accuracy-number">
-                  {accuracy.accuracy != null ? `${(accuracy.accuracy * 100).toFixed(1)}%` : "--"}
-                </span>
-                <span className="accuracy-caption">
-                  1X2 accuracy on the held-out {accuracy.split} split
-                </span>
-              </div>
-              <div className="accuracy-meta">
-                {accuracy.matches_evaluated != null && (
-                  <span>{nf.format(accuracy.matches_evaluated)} matches evaluated</span>
-                )}
-                {accuracy.model_version && <span>Model {accuracy.model_version}</span>}
-                {accuracy.computed_at && (
-                  <span>Backtested {new Date(accuracy.computed_at).toLocaleDateString()}</span>
-                )}
-              </div>
+              <span className="plan-desc">Everything members get. No card, no code.</span>
             </div>
-
-            <div className="accuracy-metrics">
-              {accuracy.log_loss != null && (
-                <div>
-                  <span className="metric-label">Log loss</span>
-                  <span className="metric-value">{accuracy.log_loss.toFixed(4)}</span>
-                  <span className="metric-hint">Lower is better; penalizes confident mistakes</span>
-                </div>
-              )}
-              {accuracy.brier_score != null && (
-                <div>
-                  <span className="metric-label">Brier score</span>
-                  <span className="metric-value">{accuracy.brier_score.toFixed(4)}</span>
-                  <span className="metric-hint">Mean squared probability error</span>
-                </div>
-              )}
-              {accuracy.leagues.length > 0 && (
-                <div>
-                  <span className="metric-label">Leagues</span>
-                  <span className="metric-value">{accuracy.leagues.length}</span>
-                  <span className="metric-hint">{accuracy.leagues.join(", ")}</span>
-                </div>
-              )}
-            </div>
-
-            <p className="accuracy-context">
-              <strong>For context:</strong> professional bookmakers, with paid data feeds and far larger
-              models, achieve roughly 53-55% on football 1X2. Treat any claim far above that -- from this
-              system or any other -- as a reason to look harder at the methodology.
-            </p>
-          </div>
-        ) : (
-          <div className="state-card">
-            <h3>No backtest recorded yet</h3>
-            <p>
-              This deployment hasn't run one, so there is no accuracy figure to show -- and a landing
-              page that invented one would be worse than an empty section. Running{" "}
-              <code>python scripts/backtest.py</code> produces accuracy, log loss, Brier score and a
-              calibration table, and this panel then fills itself in.
-            </p>
-          </div>
-        )}
-      </section>
-
-      {/* ---------------- Admin Picks track record ---------------- */}
-      <section className="landing-section accuracy-section">
-        <div className="section-head">
-          <h2>Our Admin Picks, graded on real results</h2>
-          <p>
-            A hand-picked selection of our settled Admin Picks, chosen by our team to show how they
-            actually landed -- shown below exactly as picked, teams and all, so you can see what was
-            called and what actually happened.
-          </p>
-          <p>
-            Every week the system itself publishes six standing accumulators, pooled across every
-            league it covers: Low, Medium and High risk (10 legs each, rising combined-odds bands),
-            plus three High-Risk Jackpot slips (10-20 legs, 50x+ combined odds). Generated and settled
-            the same way as everything else here, and eligible for the number below once featured.
-          </p>
-        </div>
-
-        {pickRecord?.has_data ? (
-          <>
-            <div className="accuracy-panel">
-              <div className="accuracy-headline">
-                <div>
-                  <span className="accuracy-number">{(pickRecord.hit_rate * 100).toFixed(0)}%</span>
-                  <span className="accuracy-caption">hit rate on {pickRecord.won + pickRecord.lost} decided picks</span>
-                </div>
-                <div className="accuracy-meta">
-                  <span>{pickRecord.won} won</span>
-                  <span>{pickRecord.lost} lost</span>
-                  {pickRecord.unresolved > 0 && <span>{pickRecord.unresolved} awaiting confirmation</span>}
-                </div>
-              </div>
-            </div>
-
-            <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
-              {pickRecord.picks.map((entry, i) => (
-                <div key={i} className="card card-pad">
-                  <div className="section-header" style={{ marginBottom: 6 }}>
-                    <span className="sub">
-                      {entry.kind === "admin_pick" ? "Admin Pick" : "Guda Pick"}
-                      {entry.label ? ` -- ${entry.label}` : ""}
-                      {entry.settled_at ? ` · ${new Date(entry.settled_at).toLocaleDateString()}` : ""}
-                    </span>
-                    <span className={`result-tag ${entry.result}`}>
-                      {entry.result === "won" ? "Won" : entry.result === "lost" ? "Lost" : "Confirming result"}
-                    </span>
-                  </div>
-                  <ol style={{ margin: 0, padding: 0 }}>
-                    {entry.legs.map((leg) => (
-                      <LedgerRow key={`${leg.match_id}-${leg.market}-${leg.selection}`} leg={leg} />
-                    ))}
-                  </ol>
-                </div>
-              ))}
-            </div>
-          </>
-        ) : (
-          <div className="state-card">
-            <h3>No picks have been featured yet</h3>
-            <p>Once our team features a settled pick, its result lands here.</p>
-          </div>
-        )}
-      </section>
-
-      {/* ---------------- Model stack ---------------- */}
-      <section className="landing-section">
-        <div className="section-head">
-          <h2>How a prediction gets made</h2>
-          <p>Four stages, all running locally on open-source libraries.</p>
-        </div>
-        <div className="stack-grid">
-          {MODEL_STACK.map((s) => (
-            <div key={s.step} className="stack-card">
-              <span className="stack-step">{s.step}</span>
-              <h3>{s.title}</h3>
-              <p>{s.body}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ---------------- Features ---------------- */}
-      <section className="landing-section">
-        <div className="section-head">
-          <h2>What you get inside</h2>
-        </div>
-        <div className="feature-grid">
-          {FEATURES.map((f) => (
-            <FeatureCard key={f.title} {...f} />
-          ))}
-        </div>
-      </section>
-
-      {/* ---------------- Upcoming fixtures teaser ---------------- */}
-      {fixtures.length > 0 && (
-        <section className="landing-section">
-          <div className="section-head">
-            <h2>Coverage right now</h2>
-            <p>
-              Real fixtures from the database. Selections and probabilities stay behind the login --
-              this is here to show the system is live, not to be the product.
-            </p>
-          </div>
-          <div className="fixture-teaser-list">
-            {fixtures.map((f) => (
-              <Link key={f.match_id} to={`/predict/${fixtureSlug(f)}`} className="fixture-teaser fixture-teaser-link">
-                <div className="fixture-teaser-main">
-                  <span className="fixture-teaser-teams">
-                    {f.home_team} <span className="vs-divider">v</span> {f.away_team}
-                  </span>
-                  <span className="fixture-teaser-meta">
-                    {f.league} · {new Date(f.kickoff).toLocaleString(undefined, {
-                      weekday: "short",
-                      day: "numeric",
-                      month: "short",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </span>
-                </div>
-                {f.has_prediction ? (
-                  <span className={`confidence-tag ${(f.confidence ?? "").toLowerCase()}`}>
-                    {f.confidence} confidence
-                  </span>
-                ) : (
-                  <span className="badge-neutral">Awaiting analysis</span>
-                )}
-              </Link>
-            ))}
-          </div>
-          <p className="fixture-teaser-foot">
-            Sign in to see the full probability table, the most-likely outcome and the reasoning for
-            each of these -- or <Link to="/fixtures">see every upcoming fixture</Link>.
-          </p>
-        </section>
-      )}
-
-      {/* ---------------- Access process ---------------- */}
-      <section className="landing-section access-section">
-        <div className="section-head">
-          <h2>Getting access</h2>
-          <p>No payment form lives on this platform -- that happens between you and a Super Admin.</p>
-        </div>
-
-        {price && (
-          <div className="accuracy-panel" style={{ maxWidth: 420, margin: "0 auto 28px", textAlign: "center" }}>
-            <span className="accuracy-number">{price}</span>
-            <span className="accuracy-caption">
-              Full access -- every Guda Pick, Admin Pick, and the weekly and random accumulators, across
-              every match we cover, for the code's duration.
+          )}
+          <div className="plan-tile">
+            <span className="plan-name">Full access</span>
+            <span className="plan-price">{price ?? "Ask us"}</span>
+            <span className="plan-desc">
+              {perDay ? `${perDay[0].toUpperCase()}${perDay.slice(1)}. ` : ""}Every match, every market, AI Generation and live
+              updates.
             </span>
           </div>
-        )}
-
-        <div className="access-steps">
-          <div className="access-step">
-            <span className="access-step-num">1</span>
-            <h3>Arrange payment externally</h3>
-            <p>
-              Pay through whatever business channel the administrator uses -- mobile money, bank
-              transfer, cash. Nothing here processes a card or takes a payment.
-              {price && <> Current price: <strong>{price}</strong>.</>}
-            </p>
-          </div>
-          <div className="access-step">
-            <span className="access-step-num">2</span>
-            <h3>Receive an access code</h3>
-            <p>
-              Once payment is confirmed, the Super Admin generates a unique, time-limited code and sends
-              it to you. Register and sign in any time before or after -- the account itself is free and
-              instant.
-            </p>
-          </div>
-          <div className="access-step">
-            <span className="access-step-num">3</span>
-            <h3>Redeem it</h3>
-            <p>
-              Enter the code on the Access page. It activates immediately for its stated duration --
-              dashboard, per-match analysis, live in-play updates, team pages and the AI assistant, all
-              unlocked. Access expires automatically; nothing renews itself without a new code.
-            </p>
-          </div>
         </div>
-
-        <div className="access-cta">
+        <div className="landing-cta-row" style={{ justifyContent: "center", marginTop: 16 }}>
           <Link className="btn btn-lg" to="/register">
-            Create an account
+            {trialCta}
           </Link>
-          <Link className="btn ghost btn-lg" to="/account-status">
-            Check your access status
+          <Link className="btn ghost btn-lg" to="/pricing">
+            Pricing details
           </Link>
         </div>
       </section>
@@ -842,11 +459,7 @@ export function Welcome() {
         <div className="faq-list">
           {faqs.map((f, i) => (
             <div key={f.q} className={`faq-item${openFaq === i ? " open" : ""}`}>
-              <button
-                className="faq-question"
-                onClick={() => setOpenFaq(openFaq === i ? null : i)}
-                aria-expanded={openFaq === i}
-              >
+              <button className="faq-question" onClick={() => setOpenFaq(openFaq === i ? null : i)} aria-expanded={openFaq === i}>
                 <span>{f.q}</span>
                 <span className="faq-chevron" aria-hidden>
                   {openFaq === i ? "−" : "+"}
@@ -856,20 +469,15 @@ export function Welcome() {
             </div>
           ))}
         </div>
-      </section>
-
-      {/* ---------------- Final CTA ---------------- */}
-      <section className="doc-cta">
-        <h2>Ready to see what the models say about this week's fixtures?</h2>
-        <p>Create an account, then redeem your access code the moment you have one.</p>
-        <div className="landing-cta-row">
-          <Link className="btn btn-lg" to="/register">
-            Get access
-          </Link>
-          <Link className="btn ghost btn-lg" to="/login">
-            Sign in
-          </Link>
-        </div>
+        {whatsapp && (
+          <p style={{ marginTop: 12 }}>
+            Something else?{" "}
+            <a href={whatsappLink(whatsapp, "Hi, I have a question about Socca Intelligence.")} target="_blank" rel="noreferrer noopener">
+              Ask us on WhatsApp
+            </a>
+            .
+          </p>
+        )}
       </section>
 
       {/* ---------------- Responsible use ---------------- */}
@@ -877,28 +485,19 @@ export function Welcome() {
         <div className="responsible-card">
           <h2>Before you act on any of this</h2>
           <p>
-            This system produces probabilities. It does not produce outcomes, and it will never tell you
-            something is certain. A 90% call loses about one time in ten, and those losses cluster.
-          </p>
-          <p>
-            Never stake money you need for anything else. Never raise a stake to recover a loss -- it's
-            the most reliable way a bad week becomes a serious problem. If stopping doesn't feel
-            optional, that matters more than any prediction on this site.
+            These are probabilities, not outcomes. A 90% call loses about one time in ten, and losses cluster.
+            Never stake money you need, and never raise a stake to win back a loss. 18+.
           </p>
           <p className="responsible-links">
             Free, confidential help: call Ghana's{" "}
             <a href="https://www.moh.gov.gh/mental-health-authority/" target="_blank" rel="noreferrer noopener">
               Mental Health Authority
             </a>{" "}
-            on <strong>0800 678 678</strong> — toll-free from any network here, any hour. Online,{" "}
+            on <strong>0800 678 678</strong> (toll-free, any hour), or reach{" "}
             <a href="https://www.gamblingtherapy.org" target="_blank" rel="noreferrer noopener">
               Gambling Therapy
             </a>{" "}
-            and{" "}
-            <a href="https://www.gamblersanonymous.org" target="_blank" rel="noreferrer noopener">
-              Gamblers Anonymous
-            </a>{" "}
-            both run support you can reach from Ghana.
+            online. <Link to="/responsible">More on using this responsibly</Link>
           </p>
         </div>
       </section>

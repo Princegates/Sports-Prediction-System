@@ -15,6 +15,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from app.timeutil import utcnow
 from app.db.models import Match, ModelMetric, Prediction, Team, User
 from app.main import app
 
@@ -32,7 +33,7 @@ def seeded(db_session):
     db_session.refresh(home)
     db_session.refresh(away)
 
-    now = dt.datetime.utcnow()
+    now = utcnow()
     played = Match(
         league=LEAGUE, season="2025-26", date=now - dt.timedelta(days=10),
         home_team_id=home.id, away_team_id=away.id,
@@ -174,8 +175,12 @@ def test_public_fixture_detail_expose_no_selection_or_probability(db_session, se
 
     leaked = {"global_outcome_selection", "global_outcome_probability", "home_win", "explanation"}
     assert leaked.isdisjoint(body.keys())
-    assert "Home Win" not in str(body)
-    assert "0.52" not in str(body)
+    # The one deliberate exception is a free pick, which only ever appears
+    # under its own key (see test_public_pages_api.py for when it does and
+    # doesn't). Nothing else on the page may carry the pick.
+    rest = {k: v for k, v in body.items() if k != "free_pick"}
+    assert "Home Win" not in str(rest)
+    assert "0.52" not in str(rest)
 
 
 def test_public_fixture_detail_404s_for_an_unknown_match(db_session, seeded):
@@ -194,7 +199,7 @@ def test_public_fixture_detail_404s_for_a_match_too_far_in_the_future(db_session
     away = db_session.execute(select(Team).where(Team.name == "Chelsea")).scalars().first()
     far_out = Match(
         league=LEAGUE, season="2025-26",
-        date=dt.datetime.utcnow() + dt.timedelta(days=30),
+        date=utcnow() + dt.timedelta(days=30),
         home_team_id=home.id, away_team_id=away.id, status="SCHEDULED",
     )
     db_session.add(far_out)
@@ -314,7 +319,7 @@ def test_track_record_grades_the_first_prediction_per_match(db_session, seeded):
             explanation={"positive": [], "negative": []}, model_breakdown={},
         )
 
-    now = dt.datetime.utcnow()
+    now = utcnow()
     # First (earliest) prediction correctly picks the home win that happened.
     db_session.add(make_prediction(0.60, now - dt.timedelta(days=9)))
     # A later regeneration wrongly favors away -- must NOT be the one graded.
@@ -343,7 +348,7 @@ def test_accuracy_never_reports_a_baseline_as_the_models_own(db_session, seeded)
     model's -- this pins that it never does, even when the baseline row is
     inserted after the real one."""
 
-    now = dt.datetime.utcnow()
+    now = utcnow()
     db_session.add_all([
         ModelMetric(model_version="ensemble-v1", split="test", league="English Premier League", metric_name="accuracy", metric_value=0.459, computed_at=now),
         ModelMetric(model_version="ensemble-v1", split="test", league="English Premier League", metric_name="n", metric_value=290, computed_at=now),

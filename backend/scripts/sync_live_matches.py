@@ -56,6 +56,9 @@ def main() -> None:
             # fail loudly over every five minutes.
             print("No API-Football key saved -- live sync has nothing to do.")
             return
+        if report.idle:
+            print("No tracked match is near kickoff or in play -- skipped without spending a request.")
+            return
 
         print(f"{report.considered} live fixture(s) seen worldwide")
         print(f"  updated    : {report.updated}")

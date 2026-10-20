@@ -12,6 +12,8 @@ import logging
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 
+from app.timeutil import utcnow
+
 logger = logging.getLogger(__name__)
 
 
@@ -109,6 +111,22 @@ _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     # The one showcase combo shown on the public, unauthenticated Welcome
     # page -- see AdminPick.public_teaser.
     ("admin_picks", "public_teaser", "BOOLEAN DEFAULT FALSE"),
+    # Account security and free-access gating -- see the matching User /
+    # AccessCode columns. token_version DEFAULT 0 so every session token
+    # issued before this column existed (which carries no version) still
+    # matches and nobody is signed out by the deploy.
+    ("users", "email_verified_at", "TIMESTAMP"),
+    ("users", "token_version", "INTEGER DEFAULT 0"),
+    ("users", "referral_rewarded_at", "TIMESTAMP"),
+    ("users", "paused_until", "TIMESTAMP"),
+    ("access_codes", "kind", "VARCHAR(16) DEFAULT 'issued'"),
+    # Pre-kickoff commitment to the public track record -- null on every
+    # existing row, which keeps picks featured after their result out of it.
+    ("featured_picks", "featured_public_at", "TIMESTAMP"),
+    ("admin_picks", "featured_public_at", "TIMESTAMP"),
+    # Provider id per club -- see Team.api_football_team_id. Its index is
+    # created in _index_team_provider_ids (ADD COLUMN can't add one).
+    ("teams", "api_football_team_id", "INTEGER"),
 ]
 
 
@@ -301,6 +319,62 @@ def _backfill_referral_codes(engine: Engine) -> None:
         conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_referral_code ON users (referral_code)"))
 
 
+def _backfill_access_code_kinds(engine: Engine) -> None:
+    """Classifies codes that predate AccessCode.kind. The column's DEFAULT
+    marks every existing row "issued", which is wrong for the self-issued
+    trial and referral codes -- and "issued" is what counts as a payment.
+    Their notes text is fixed by app.access, so it identifies them exactly.
+    Idempotent: only rows still marked "issued" are touched."""
+
+    inspector = inspect(engine)
+    if "access_codes" not in inspector.get_table_names():
+        return
+    with engine.begin() as conn:
+        conn.execute(text(
+            "UPDATE access_codes SET kind = 'trial' WHERE kind = 'issued' AND notes = 'Automatic first-signup trial'"
+        ))
+        conn.execute(text(
+            "UPDATE access_codes SET kind = 'referral' WHERE kind = 'issued' AND notes LIKE 'Referral bonus%'"
+        ))
+
+
+def _index_team_provider_ids(engine: Engine) -> None:
+    inspector = inspect(engine)
+    if "teams" not in inspector.get_table_names():
+        return
+    with engine.begin() as conn:
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_teams_api_football_team_id ON teams (api_football_team_id)"))
+
+
+# The one free-text price ever saved in production, typo and all. It was the
+# headline of the Pricing page; replaced once by the structured price fields
+# (see app_settings.price_display), which can't misspell anything.
+_MISTYPED_PRICE_LABEL = "GHC 20/5 days acess"
+
+
+def _structure_mistyped_price_label(engine: Engine) -> None:
+    """One-time data fix: turn that exact label into amount 20, GH₵, 5 days.
+    Only when the label is still exactly that and no structured price has
+    been set, so any later admin edit is left alone. Idempotent."""
+
+    inspector = inspect(engine)
+    if "app_settings" not in inspector.get_table_names():
+        return
+    with engine.begin() as conn:
+        label = conn.execute(text("SELECT value FROM app_settings WHERE key = 'pricing_label'")).scalar()
+        already = conn.execute(text("SELECT 1 FROM app_settings WHERE key = 'price_amount'")).first()
+        if label != _MISTYPED_PRICE_LABEL or already is not None:
+            return
+        for key, value in (("price_amount", "20"), ("price_currency", "GH₵"), ("price_days", "5")):
+            conn.execute(
+                text("INSERT INTO app_settings (key, value, updated_at) VALUES (:k, :v, :t)"),
+                # A string rather than a datetime: sqlite3's implicit datetime adapter is
+                # deprecated, and Postgres casts the literal to TIMESTAMP itself.
+                {"k": key, "v": value, "t": utcnow().isoformat(sep=" ")},
+            )
+        conn.execute(text("UPDATE app_settings SET value = '' WHERE key = 'pricing_label'"))
+
+
 def init_db(engine: Engine) -> None:
     """Bring a database up to date: create missing tables, add columns that
     existing tables are missing, and run one-time data migrations.
@@ -325,4 +399,7 @@ def init_db(engine: Engine) -> None:
     _make_booking_slips_combined_odds_nullable(engine)
     _migrate_pending_users_to_active(engine)
     _backfill_referral_codes(engine)
+    _backfill_access_code_kinds(engine)
+    _index_team_provider_ids(engine)
+    _structure_mistyped_price_label(engine)
     _enable_row_level_security(engine)

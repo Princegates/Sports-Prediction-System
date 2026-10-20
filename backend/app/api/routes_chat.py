@@ -29,7 +29,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
-from app.api.rate_limit import enforce
+from app.api.rate_limit import enforce_key
 from app.api.schemas import ChatAnswerOut, ChatMessageIn, ChatMessageOut, ChatPickOut, ChatSourceOut
 from app.assistant import engine
 from app.assistant.responder import PROBABILITY_CAVEAT, Answer
@@ -39,11 +39,10 @@ from app.db.models import ChatMessage, User
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 
-def _rate_limit(request: Request) -> None:
+def _rate_limit(user: User) -> None:
     settings = get_settings()
-    enforce(
-        request,
-        "chat",
+    enforce_key(
+        f"chat-user:{user.id}",
         settings.chat_rate_limit_messages,
         settings.chat_rate_limit_window_seconds,
     )
@@ -89,7 +88,7 @@ def send_message(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ChatAnswerOut:
-    _rate_limit(request)
+    _rate_limit(user)
     try:
         result, row = engine.answer(
             db,
@@ -117,7 +116,7 @@ def stream_message(
     inside the generator would reach the client as a truncated 200.
     """
 
-    _rate_limit(request)
+    _rate_limit(user)
     try:
         engine._validate(payload.message)
     except ValueError as exc:

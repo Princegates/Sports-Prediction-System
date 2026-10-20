@@ -51,6 +51,7 @@ import type {
   OutcomesResponse,
   Prediction,
 } from "../types";
+import { marketLabel } from "../lib/marketLabel";
 
 const TAB_NAMES = ["Overview", "AI Prediction", "Form", "H2H", "Live", "Markets", "Explanation"];
 
@@ -410,33 +411,41 @@ export function MatchDetail() {
       )}
 
       {tab === "Live" && (
-        <div className="two-col">
-          <LiveEventControls
-            matchId={match.id}
-            currentMinute={latestLive?.minute ?? 1}
-            currentHome={latestLive?.score_home ?? match.home_score ?? 0}
-            currentAway={latestLive?.score_away ?? match.away_score ?? 0}
-            onEvent={(result) => {
-              if (result.trigger_event === "goal") {
-                const prevHome = latestLive?.score_home ?? match.home_score ?? 0;
-                const prevAway = latestLive?.score_away ?? match.away_score ?? 0;
-                if (result.score_home > prevHome) setGoalTeam(match.home_team.name);
-                else if (result.score_away > prevAway) setGoalTeam(match.away_team.name);
-                setGoalTrigger((k) => k + 1);
-              }
-              setLive((prev) => [...prev, result]);
-            }}
-            canClear={user?.role === "superadmin"}
-            hasEvents={live.length > 0}
-            onCleared={(resetMatch) => {
-              setLive([]);
-              setMatch(resetMatch);
-            }}
-          />
+        <div className={user?.role === "superadmin" ? "two-col" : undefined}>
+          {/* The simulator is a Super Admin tool (the endpoint is gated the
+              same way) -- members see the real live timeline only. */}
+          {user?.role === "superadmin" && (
+            <LiveEventControls
+              matchId={match.id}
+              currentMinute={latestLive?.minute ?? 1}
+              currentHome={latestLive?.score_home ?? match.home_score ?? 0}
+              currentAway={latestLive?.score_away ?? match.away_score ?? 0}
+              onEvent={(result) => {
+                if (result.trigger_event === "goal") {
+                  const prevHome = latestLive?.score_home ?? match.home_score ?? 0;
+                  const prevAway = latestLive?.score_away ?? match.away_score ?? 0;
+                  if (result.score_home > prevHome) setGoalTeam(match.home_team.name);
+                  else if (result.score_away > prevAway) setGoalTeam(match.away_team.name);
+                  setGoalTrigger((k) => k + 1);
+                }
+                setLive((prev) => [...prev, result]);
+              }}
+              canClear
+              hasEvents={live.length > 0}
+              onCleared={(resetMatch) => {
+                setLive([]);
+                setMatch(resetMatch);
+              }}
+            />
+          )}
           <div className="card card-pad">
             <h3 style={{ marginBottom: 4, fontSize: 15 }}>Live probability timeline</h3>
             {live.length === 0 ? (
-              <p className="badge-neutral">No live events recorded yet for this match.</p>
+              <p className="badge-neutral">
+                {match.status === "FINISHED"
+                  ? "No in-play updates were recorded for this match."
+                  : "In-play probabilities appear here once the match kicks off and live data comes in."}
+              </p>
             ) : (
               <ProbabilityTimeline points={live.map((l) => ({ label: `${l.minute}'`, value: l.home_win }))} />
             )}
@@ -479,7 +488,7 @@ export function MatchDetail() {
               return (
                 <div key={m.market} style={{ marginBottom: 20 }}>
                   <div className="match-meta-row" style={{ marginBottom: 6 }}>
-                    <strong>{m.market}</strong>
+                    <strong>{marketLabel(m.market)}</strong>
                     <span className="sub" style={{ marginLeft: 8 }}>
                       {m.mutually_exclusive ? "sums to 100%" : "not mutually exclusive"}
                     </span>
@@ -500,7 +509,7 @@ export function MatchDetail() {
                                     type="checkbox"
                                     checked={checked}
                                     onChange={() => togglePick(o.market, o.selection)}
-                                    aria-label={`Use ${o.selection} (${o.market}) as this match's leg in AI Generation`}
+                                    aria-label={`Use ${o.selection} (${marketLabel(o.market)}) as this match's leg in AI Generation`}
                                   />
                                 </td>
                                 <td>

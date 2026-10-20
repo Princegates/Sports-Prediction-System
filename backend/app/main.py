@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import datetime as dt
 import logging
 import threading
 import time
@@ -7,9 +8,11 @@ import time
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api.deps import get_current_user, require_active_access
+from app.timeutil import utcnow
+from app.api.deps import require_active_access, require_not_paused
 from app.api.routes_access import router as access_router
 from app.api.routes_admin import router as admin_router
 from app.api.routes_auth import router as auth_router
@@ -21,7 +24,9 @@ from app.api.routes_public import router as public_router
 from app.api.routes_settings import router as settings_router
 from app.api.routes_teams import router as teams_router
 from app.config import get_settings
-from app.data.api_football_ingest import run_live_sync_from_settings
+from app import scheduler_lease
+from app.access_reminders import send_expiry_reminders
+from app.data.api_football_ingest import LIVE_WINDOW_BEFORE_KICKOFF, run_live_sync_from_settings
 from app.data.providers.api_football import ApiFootballError, QuotaExceeded
 from app.data.squad_ingest import run_lineup_check_from_settings
 from app.db.migrate import init_db
@@ -43,33 +48,54 @@ logger = logging.getLogger(__name__)
 LIVE_SYNC_INTERVAL_SECONDS = 300.0
 
 
-def _run_live_sync_once() -> None:
+# A quiet stretch (no tracked match near kickoff) sleeps until shortly
+# before the next one instead of waking every five minutes -- each wake is a
+# database query, and on a free Postgres that scales to zero, a query every
+# five minutes means it never gets to. Capped at an hour so fixtures
+# imported in the meantime are noticed.
+IDLE_RECHECK_MAX_SECONDS = 3600.0
+# How long a loop's lease lasts without renewal -- longer than the longest
+# sleep, so the holder keeps it across an idle hour. A clean shutdown
+# releases it at once (see lifespan); this only matters if a process dies.
+LEASE_TTL = dt.timedelta(seconds=IDLE_RECHECK_MAX_SECONDS + 600)
+# A process that finds another holding the lease checks back this often, so
+# after a deploy the new instance takes over within minutes of the old one
+# stopping.
+LEASE_RETRY_SECONDS = 300.0
+
+
+def _seconds_until_next_kickoff_window(db, lead: dt.timedelta, floor: float) -> float:
+    now = utcnow()
+    next_kickoff = db.execute(
+        select(func.min(Match.date)).where(Match.status == "SCHEDULED", Match.date > now)
+    ).scalar_one_or_none()
+    if next_kickoff is None:
+        return IDLE_RECHECK_MAX_SECONDS
+    wait = (next_kickoff - lead - now).total_seconds()
+    return min(max(wait, floor), IDLE_RECHECK_MAX_SECONDS)
+
+
+def _run_live_sync_once() -> float:
+    """One poll; returns how long to sleep before the next."""
+
     db = SessionLocal()
     try:
         report = run_live_sync_from_settings(db)
+        if report is None or report.idle:
+            return _seconds_until_next_kickoff_window(db, LIVE_WINDOW_BEFORE_KICKOFF, LIVE_SYNC_INTERVAL_SECONDS)
     except (ApiFootballError, QuotaExceeded) as exc:
         logger.warning("Live match sync skipped: %s", exc)
-        return
+        return LIVE_SYNC_INTERVAL_SECONDS
     finally:
         db.close()
 
-    if report is not None and (report.updated or report.finished or report.stuck_checked):
+    if report.updated or report.finished or report.stuck_checked:
         logger.info(
             "Live sync: %d fixture(s) seen, %d updated, %d finished (%d stuck-LIVE checked, %d resolved)",
             report.considered, report.updated, report.finished,
             report.stuck_checked, report.stuck_resolved,
         )
-
-
-async def _live_sync_loop() -> None:
-    while True:
-        try:
-            # Synchronous DB + HTTP work, off the event loop so it never
-            # blocks requests being served concurrently.
-            await asyncio.to_thread(_run_live_sync_once)
-        except Exception:  # noqa: BLE001 -- one bad poll must not kill the loop
-            logger.exception("Live match sync loop hit an unexpected error")
-        await asyncio.sleep(LIVE_SYNC_INTERVAL_SECONDS)
+    return LIVE_SYNC_INTERVAL_SECONDS
 
 
 # Official lineups land roughly 60-75 minutes before kickoff, never earlier
@@ -83,12 +109,16 @@ LINEUP_CHECK_INTERVAL_SECONDS = 300.0
 LINEUP_CHECK_WINDOW_MINUTES = 90
 
 
-def _run_lineup_check_once() -> None:
+def _run_lineup_check_once() -> float:
+    """One lineup check; returns how long to sleep before the next."""
+
     db = SessionLocal()
     try:
         run = run_lineup_check_from_settings(db, window_minutes=LINEUP_CHECK_WINDOW_MINUTES)
-        if run is None:
-            return
+        if run is None or not run.considered:
+            return _seconds_until_next_kickoff_window(
+                db, dt.timedelta(minutes=LINEUP_CHECK_WINDOW_MINUTES), LINEUP_CHECK_INTERVAL_SECONDS
+            )
         for match_id in run.newly_confirmed:
             match = db.get(Match, match_id)
             if match is None:
@@ -110,7 +140,7 @@ def _run_lineup_check_once() -> None:
                 logger.exception("Could not regenerate prediction for match %d after lineup confirmation", match_id)
     except (ApiFootballError, QuotaExceeded) as exc:
         logger.warning("Lineup check skipped: %s", exc)
-        return
+        return LINEUP_CHECK_INTERVAL_SECONDS
     finally:
         db.close()
 
@@ -119,15 +149,7 @@ def _run_lineup_check_once() -> None:
             "Lineup check: %d match(es) considered, %d prediction(s) regenerated on confirmed lineup",
             run.considered, len(run.newly_confirmed),
         )
-
-
-async def _lineup_check_loop() -> None:
-    while True:
-        try:
-            await asyncio.to_thread(_run_lineup_check_once)
-        except Exception:  # noqa: BLE001 -- one bad poll must not kill the loop
-            logger.exception("Lineup check loop hit an unexpected error")
-        await asyncio.sleep(LINEUP_CHECK_INTERVAL_SECONDS)
+    return LINEUP_CHECK_INTERVAL_SECONDS
 
 
 # "Random Daily Picks" means reshuffled daily, but GitHub Actions' scheduled
@@ -143,7 +165,7 @@ async def _lineup_check_loop() -> None:
 RANDOM_PICKS_INTERVAL_SECONDS = 6 * 3600.0
 
 
-def _run_random_daily_picks_once() -> None:
+def _run_random_daily_picks_once() -> float:
     db = SessionLocal()
     try:
         for line in generate_cadence(db, "daily"):
@@ -151,15 +173,70 @@ def _run_random_daily_picks_once() -> None:
         db.commit()
     finally:
         db.close()
+    return RANDOM_PICKS_INTERVAL_SECONDS
 
 
-async def _random_picks_loop() -> None:
+ACCESS_REMINDER_INTERVAL_SECONDS = 3600.0
+
+
+def _run_access_reminders_once() -> float:
+    db = SessionLocal()
+    try:
+        sent = send_expiry_reminders(db)
+    finally:
+        db.close()
+    if sent:
+        logger.info("Access reminders: %d sent", sent)
+    return ACCESS_REMINDER_INTERVAL_SECONDS
+
+
+def _run_if_lease_held(name: str, run_once, ttl: dt.timedelta) -> float:
+    db = SessionLocal()
+    try:
+        held = scheduler_lease.acquire(db, name, ttl)
+    finally:
+        db.close()
+    if not held:
+        return LEASE_RETRY_SECONDS
+    return run_once()
+
+
+async def _scheduled_loop(name: str, run_once, ttl: dt.timedelta, error_delay: float) -> None:
+    """Runs ``run_once`` forever, off the event loop (synchronous DB + HTTP
+    work must never block requests being served concurrently), only while
+    this process holds the loop's lease, sleeping however long each run
+    asks for."""
+
     while True:
         try:
-            await asyncio.to_thread(_run_random_daily_picks_once)
-        except Exception:  # noqa: BLE001 -- one bad draw must not kill the loop
-            logger.exception("Random daily picks loop hit an unexpected error")
-        await asyncio.sleep(RANDOM_PICKS_INTERVAL_SECONDS)
+            delay = await asyncio.to_thread(_run_if_lease_held, name, run_once, ttl)
+        except Exception:  # noqa: BLE001 -- one bad run must not kill the loop
+            logger.exception("Background loop %s hit an unexpected error", name)
+            delay = error_delay
+        await asyncio.sleep(delay)
+
+
+_LOOPS = (
+    ("live_sync", _run_live_sync_once, LEASE_TTL, LIVE_SYNC_INTERVAL_SECONDS),
+    ("lineup_check", _run_lineup_check_once, LEASE_TTL, LINEUP_CHECK_INTERVAL_SECONDS),
+    (
+        "random_daily_picks",
+        _run_random_daily_picks_once,
+        dt.timedelta(seconds=RANDOM_PICKS_INTERVAL_SECONDS + 600),
+        RANDOM_PICKS_INTERVAL_SECONDS,
+    ),
+    ("access_reminders", _run_access_reminders_once, LEASE_TTL, ACCESS_REMINDER_INTERVAL_SECONDS),
+)
+
+
+def _release_leases() -> None:
+    db = SessionLocal()
+    try:
+        scheduler_lease.release_all(db)
+    except Exception:  # noqa: BLE001 -- shutting down regardless
+        logger.warning("Could not release scheduler leases on shutdown", exc_info=True)
+    finally:
+        db.close()
 
 # Schema state, reported by /api/health.
 _DB_LOCK = threading.Lock()
@@ -211,26 +288,32 @@ def _try_init_database(attempts: int = 3, base_delay: float = 2.0) -> bool:
     return False
 
 
-_try_init_database()
-
 settings = get_settings()
 
 if settings.secret_key_is_default:
     # Session tokens are HMAC-signed with this value. Anyone who knows it can
     # mint a token for any user id, including a superadmin -- and the default
-    # is published in this repository. Loud on purpose.
+    # is published in this repository. A real database means a real
+    # deployment, so refuse outright there rather than serve forgeable
+    # sessions; a failed boot keeps the host on its last good release.
+    # Local SQLite (dev, tests, docker-compose) only gets the warning.
+    if not settings.normalized_database_url.startswith("sqlite"):
+        raise RuntimeError(
+            "SECRET_KEY is the published development default. Refusing to start against a real database: "
+            "anyone who has read this repository could forge a session for any account. Set SECRET_KEY "
+            "(Render's blueprint generates one) and redeploy."
+        )
     logger.warning(
         "SECRET_KEY is the published development default -- session tokens can be forged by anyone "
         "who has read this repository. Set SECRET_KEY in .env before exposing this API to a network."
     )
 
+_try_init_database()
+
+
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
-    tasks = [
-        asyncio.create_task(_live_sync_loop()),
-        asyncio.create_task(_lineup_check_loop()),
-        asyncio.create_task(_random_picks_loop()),
-    ]
+    tasks = [asyncio.create_task(_scheduled_loop(*loop)) for loop in _LOOPS]
     try:
         yield
     finally:
@@ -239,6 +322,9 @@ async def lifespan(app: FastAPI):
         for task in tasks:
             with contextlib.suppress(asyncio.CancelledError):
                 await task
+        # Lets a replacement instance take over the loops right away instead
+        # of waiting out LEASE_TTL.
+        await asyncio.to_thread(_release_leases)
 
 
 app = FastAPI(
@@ -251,6 +337,10 @@ app = FastAPI(
     ),
     version="0.2.0",
     lifespan=lifespan,
+    # Off in production -- see Settings.api_docs_enabled.
+    docs_url="/docs" if settings.docs_enabled else None,
+    redoc_url="/redoc" if settings.docs_enabled else None,
+    openapi_url="/openapi.json" if settings.docs_enabled else None,
 )
 
 app.add_middleware(
@@ -259,6 +349,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+PUBLIC_CACHE_CONTROL = "public, max-age=300, stale-while-revalidate=600"
 
 
 @app.middleware("http")
@@ -277,6 +370,16 @@ async def _security_headers(request: Request, call_next):
     """
 
     response = await call_next(request)
+    # Public landing-page data is the same for every visitor and changes on
+    # the scale of minutes; letting browsers (and any CDN in front) reuse it
+    # spares a free-tier backend a burst of identical requests per visitor.
+    if (
+        request.method == "GET"
+        and request.url.path.startswith("/api/public/")
+        and response.status_code == 200
+        and "cache-control" not in response.headers
+    ):
+        response.headers["Cache-Control"] = PUBLIC_CACHE_CONTROL
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
@@ -305,7 +408,7 @@ app.include_router(chat_router, dependencies=[Depends(require_active_access)])
 app.include_router(teams_router, dependencies=[Depends(require_active_access)])
 app.include_router(matches_router, dependencies=[Depends(require_active_access)])
 app.include_router(betcodes_router)
-app.include_router(predictions_router, dependencies=[Depends(get_current_user)])
+app.include_router(predictions_router, dependencies=[Depends(require_not_paused)])
 
 
 @app.exception_handler(SQLAlchemyError)
@@ -352,7 +455,7 @@ def root() -> dict:
         "service": "AI Football Prediction & Analytics System",
         "status": "ok",
         "version": app.version,
-        "docs": "/docs",
+        "docs": "/docs" if settings.docs_enabled else None,
         "health": "/api/health",
         "public_data": ["/api/public/stats", "/api/public/accuracy", "/api/public/fixtures"],
         "note": (

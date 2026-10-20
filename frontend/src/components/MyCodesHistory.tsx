@@ -37,6 +37,14 @@ export function MyCodesHistory() {
   // Only settled codes -- a still-pending one (its matches haven't finished)
   // has no result to show yet, so it's noise here rather than history.
   const settledSlips = slips?.filter((slip) => slip.result !== "pending") ?? null;
+  // A superadmin can commit a code to the public track record, but only
+  // before its first match kicks off -- picking which codes to show after
+  // their results are known would make the record a list of winners.
+  const now = Date.now();
+  const committableSlips =
+    user?.role === "superadmin"
+      ? slips?.filter((slip) => slip.result === "pending" && slip.legs.every((leg) => new Date(leg.kickoff).getTime() > now)) ?? []
+      : [];
 
   async function handlePublish(slipId: number) {
     setPublishingId(slipId);
@@ -72,6 +80,37 @@ export function MyCodesHistory() {
           {slips !== null && slips.length > 0 && settledSlips !== null && settledSlips.length === 0 && (
             <p className="sub">No settled codes yet -- results show up here once a code's matches finish.</p>
           )}
+          {committableSlips.length > 0 && (
+            <div style={{ display: "grid", gap: 10, marginBottom: 14 }}>
+              <p className="sub" style={{ margin: 0 }}>
+                Upcoming -- commit one to the public track record before kickoff. It stays there win or lose.
+              </p>
+              {committableSlips.map((slip) => (
+                <div key={slip.id} className="card card-pad">
+                  <ol style={{ margin: 0, padding: 0 }}>
+                    {slip.legs.map((leg, i) => (
+                      <LedgerRow key={`${leg.match_id}-${leg.market}-${leg.selection}`} leg={leg} index={i + 1} />
+                    ))}
+                  </ol>
+                  <div style={{ marginTop: 8 }}>
+                    {publishedIds.has(slip.id) ? (
+                      <span className="sub">Committed to the public track record.</span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn ghost"
+                        style={{ padding: "2px 8px", fontSize: 12 }}
+                        disabled={publishingId === slip.id}
+                        onClick={() => handlePublish(slip.id)}
+                      >
+                        Commit to track record
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
           {settledSlips !== null && settledSlips.length > 0 && (
             <div style={{ display: "grid", gap: 10 }}>
               {settledSlips.map((slip) => (
@@ -91,24 +130,6 @@ export function MyCodesHistory() {
                         .filter((c) => c.status === "code_ready")
                         .map((c) => `${c.name}: ${c.code}`)
                         .join(" · ")}
-                    </div>
-                  )}
-                  {user?.role === "superadmin" && (slip.result === "won" || slip.result === "lost") && (
-                    <div style={{ marginTop: 8 }}>
-                      {publishedIds.has(slip.id) ? (
-                        <span className="sub">Published to the public track record.</span>
-                      ) : (
-                        <button
-                          type="button"
-                          className="btn ghost"
-                          style={{ padding: "2px 8px", fontSize: 12 }}
-                          disabled={publishingId === slip.id}
-                          onClick={() => handlePublish(slip.id)}
-                          title="Shows this slip -- win or loss -- on the public track record page."
-                        >
-                          Publish to track record
-                        </button>
-                      )}
                     </div>
                   )}
                 </div>

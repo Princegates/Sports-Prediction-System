@@ -14,6 +14,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
+from app.timeutil import utcnow
 from app import app_settings
 from app.api import rate_limit
 from app.assistant import llm
@@ -42,7 +43,7 @@ def fixture_data(db_session):
     db_session.refresh(home)
     db_session.refresh(away)
 
-    now = dt.datetime.utcnow()
+    now = utcnow()
 
     # The upcoming fixture has to be BOTH today (the "what's on today?"
     # handler queries today 00:00 -> tomorrow 00:00) AND in the future
@@ -414,7 +415,7 @@ def test_what_changed_with_no_live_events_says_so(db_session, auth_headers, fixt
 
 
 def test_todays_card_reports_actual_fixtures(db_session, auth_headers, fixture_data):
-    now = dt.datetime.utcnow()
+    now = utcnow()
     if (now + dt.timedelta(minutes=2)).date() != now.date():
         pytest.skip("fixture kickoff crosses midnight UTC; today's-card window is untestable here")
 
@@ -465,18 +466,18 @@ def test_generate_selections_a_named_market_overrides_the_higher_probability_def
     """Regression test: a named market used to be parsed by the NLU and then
     silently dropped before it ever reached the engine, so it had zero
     effect on what got picked. Unfiltered, this fixture's moderate 52%
-    favourite clears a +3 handicap far more often than it wins outright, so
-    Handicap +3 beats Match Result (52%) on model probability alone --
+    favourite clears a +2 handicap far more often than it wins outright, so
+    a handicap beats Match Result (52%) on model probability alone --
     asking for "match result" specifically must still return the Match
     Result leg, proving the request actually reaches the engine."""
 
     unfiltered = _ask("build me an accumulator with at least 50% chance", auth_headers)
-    assert "Handicap +3" in unfiltered["text"]
+    assert "Handicap +" in unfiltered["text"]
 
     filtered = _ask("build me a match result accumulator with at least 50% chance", auth_headers)
     assert filtered["intent"] == "generate_selections"
     assert "Home Win" in filtered["text"]
-    assert "Handicap +3" not in filtered["text"]
+    assert "Handicap" not in filtered["text"]
 
 
 def test_generate_selections_a_named_league_filters_without_naming_a_team(db_session, auth_headers, fixture_data):
@@ -490,7 +491,7 @@ def test_generate_selections_a_named_league_filters_without_naming_a_team(db_ses
     db_session.refresh(home)
     db_session.refresh(away)
 
-    kickoff = dt.datetime.utcnow() + dt.timedelta(minutes=5)
+    kickoff = utcnow() + dt.timedelta(minutes=5)
     la_liga_match = Match(
         league="Spanish La Liga", season="2025-26", date=kickoff,
         home_team_id=home.id, away_team_id=away.id, status="SCHEDULED",

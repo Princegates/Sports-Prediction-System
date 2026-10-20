@@ -15,6 +15,7 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from app.timeutil import utcnow
 
 
 class Base(DeclarativeBase):
@@ -79,7 +80,33 @@ class User(Base):
     # weekly_picks_email_enabled switch that gates the feature entirely.
     notify_weekly_picks: Mapped[bool] = mapped_column(Boolean, default=True)
 
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    # Set once, when the emailed confirmation link is used (routes_auth.
+    # verify_email). The signup trial and the referee's referral bonus wait
+    # for it whenever outbound email is configured, so free access costs a
+    # real inbox rather than a made-up address. Null for accounts that
+    # predate verification -- nothing re-checks those.
+    email_verified_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # Every session token carries the value this had when it was issued,
+    # and get_current_user rejects a mismatch -- so bumping it signs the
+    # account out everywhere at once (password change or reset, suspension,
+    # "sign out other devices"). Session tokens are otherwise stateless and
+    # would stay valid for their full lifetime.
+    token_version: Mapped[int] = mapped_column(Integer, default=0)
+
+    # When this account's referrer got their bonus -- on this account's
+    # first paid code redemption, not at signup (see app.access.
+    # reward_referrer_for_first_payment). Null until then, or forever if
+    # the referrer was over their monthly cap at that point.
+    referral_rewarded_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # Self-set break from the prediction features ("Take a break" on the
+    # Profile page). Deliberately can't be lifted early by the account
+    # itself -- a pause you can cancel the moment you want back in doesn't
+    # do its job. Login still works so the account can see when it ends.
+    paused_until: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class MatchView(Base):
@@ -93,7 +120,7 @@ class MatchView(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     match_id: Mapped[int] = mapped_column(ForeignKey("matches.id"), index=True)
-    viewed_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    viewed_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
     __table_args__ = (UniqueConstraint("user_id", "match_id", name="uq_match_view_user_match"),)
 
@@ -138,7 +165,7 @@ class ChatMessage(Base):
     # distinct from rewritten, since this text was generated, not rephrased
     # from something this system already knew.
     general_chat: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
 class AuditLog(Base):
@@ -156,7 +183,7 @@ class AuditLog(Base):
     action: Mapped[str] = mapped_column(String(48), index=True)
     target_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     detail: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
 class AccessCode(Base):
@@ -198,7 +225,7 @@ class AccessCode(Base):
     assigned_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     assigned_email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
     revoked_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     revoked_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -207,6 +234,12 @@ class AccessCode(Base):
     # reference) -- stored for their bookkeeping only, never validated or
     # processed by this system.
     notes: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # "issued" (cut by a Super Admin, i.e. paid for), "trial" (the automatic
+    # signup trial) or "referral" (a referral bonus). Only an "issued"
+    # redemption counts as a payment -- see app.access.
+    # reward_referrer_for_first_payment.
+    kind: Mapped[str] = mapped_column(String(16), default="issued")
 
 
 class AccessGrant(Base):
@@ -227,13 +260,13 @@ class AccessGrant(Base):
     # stored as a status, so it can't go stale.
     status: Mapped[str] = mapped_column(String(16), default="active")
 
-    activated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    activated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
     expires_at: Mapped[dt.datetime] = mapped_column(DateTime, index=True)
 
     revoked_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     revoked_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class AccessRedemption(Base):
@@ -252,7 +285,7 @@ class AccessRedemption(Base):
     access_code_id: Mapped[int] = mapped_column(ForeignKey("access_codes.id"), index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     grant_id: Mapped[int] = mapped_column(ForeignKey("access_grants.id"))
-    redeemed_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
+    redeemed_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
 class Team(Base):
@@ -265,6 +298,12 @@ class Team(Base):
     # Free-text alias so we can match names across data sources
     # (football-data.co.uk vs TheSportsDB spell some clubs differently).
     aliases: Mapped[list[str]] = mapped_column(JSON, default=list)
+    # API-Football's own id for this club, learned the first time a fixture
+    # resolves to this row by name and authoritative from then on (see
+    # api_football_ingest.TeamIndex). Matching by name alone is what kept
+    # producing duplicated and wrongly merged clubs. Not unique: a promoted
+    # or relegated club keeps one row per league, both the same real club.
+    api_football_team_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
 
     __table_args__ = (UniqueConstraint("name", "league", name="uq_team_name_league"),)
 
@@ -403,7 +442,7 @@ class PlayerAbsence(Base):
     # shown verbatim in the explanation rather than classified, since the
     # model only needs "this player is out", not why.
     reason: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    fetched_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    fetched_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
     player: Mapped[Player] = relationship(foreign_keys=[player_id])
     team: Mapped[Team] = relationship(foreign_keys=[team_id])
@@ -426,7 +465,7 @@ class MatchLineup(Base):
     team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), index=True)
     player_id: Mapped[int] = mapped_column(ForeignKey("players.id"), index=True)
     is_starter: Mapped[bool] = mapped_column(Boolean, default=True)
-    fetched_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    fetched_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
     match: Mapped[Match] = relationship(foreign_keys=[match_id])
     team: Mapped[Team] = relationship(foreign_keys=[team_id])
@@ -458,7 +497,7 @@ class Prediction(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     match_id: Mapped[int] = mapped_column(ForeignKey("matches.id"), index=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
     model_version: Mapped[str] = mapped_column(String(32))
 
     home_win: Mapped[float] = mapped_column(Float)
@@ -492,7 +531,7 @@ class LivePrediction(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     match_id: Mapped[int] = mapped_column(ForeignKey("matches.id"), index=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
     minute: Mapped[int] = mapped_column(Integer)
     score_home: Mapped[int] = mapped_column(Integer)
     score_away: Mapped[int] = mapped_column(Integer)
@@ -508,6 +547,24 @@ class LivePrediction(Base):
     global_outcome_probability: Mapped[float] = mapped_column(Float)
 
     trigger_event: Mapped[str] = mapped_column(String(32))
+
+
+class PublicFreePickSet(Base):
+    """The three free picks currently on the public pages (see
+    routes_public.free_picks). Chosen once and kept fixed -- through kickoff
+    and full time, so visitors see them play out and win or lose -- until
+    every match in the set is over; only then is a fresh set chosen.
+
+    ``picks`` is [{kind, match_id, market, selection, label, probability,
+    kickoff}], the probability frozen at the moment of choosing like an
+    AdminPick's, so a later model refresh can't rewrite a published call.
+    """
+
+    __tablename__ = "public_free_pick_sets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    picks: Mapped[list] = mapped_column(JSON)
 
 
 class FeaturedPick(Base):
@@ -546,18 +603,20 @@ class FeaturedPick(Base):
     settled_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     note: Mapped[str | None] = mapped_column(String(280), nullable=True)
     created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
     # Self-cleaning rather than relying on an admin to remember to remove it
     # -- a couple of days past kickoff, whatever it was celebrating is over.
     expires_at: Mapped[dt.datetime] = mapped_column(DateTime, index=True)
-    # An admin's explicit choice to include this settled pick in the public
-    # track record (routes_public.admin_pick_track_record) -- False for
-    # every pick by default, including a freshly settled one; can only be
-    # set True once result has left "pending" (see routes_admin's
-    # set_featured_pick_featured_public). Curated, not automatic: the
-    # public record is now whatever an admin has chosen to show, not every
-    # settled pick unconditionally.
+    # An admin's commitment to show this pick in the public track record
+    # (routes_public.admin_pick_track_record), win or lose. Only settable
+    # while the pick is pending and before its match kicks off, and locked
+    # from kickoff on (see app.track_record) -- featuring after the result
+    # was known turned the public "hit rate" into a list of winners chosen
+    # in hindsight.
     featured_public: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    # When it was committed. Only rows with this set count publicly, which
+    # is what keeps picks featured under the old after-the-result rule out.
+    featured_public_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class AdminPick(Base):
@@ -625,12 +684,14 @@ class AdminPick(Base):
     # tier stays a single row -- one week's low-risk slip replaces last
     # week's rather than piling up a new row every run.
     source: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
     # Self-cleaning, same as FeaturedPick -- 2 days past the LATEST leg's
     # kickoff, since a combo spans several matches rather than just one.
     expires_at: Mapped[dt.datetime] = mapped_column(DateTime, index=True)
-    # Same curation flag as FeaturedPick.featured_public -- see there.
+    # Same pre-kickoff commitment as FeaturedPick.featured_public /
+    # featured_public_at -- see there. "Kickoff" here is the earliest leg's.
     featured_public: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    featured_public_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     # True for the one showcase combo shown on the public, unauthenticated
     # Welcome page (routes_public's public_teaser_pick) -- unlike every
     # other pick here, its match/market/selection are shown to everyone,
@@ -653,7 +714,7 @@ class ModelMetric(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     model_version: Mapped[str] = mapped_column(String(32), index=True)
-    computed_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    computed_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
     split: Mapped[str] = mapped_column(String(16))  # train / validation / test / forward
     league: Mapped[str] = mapped_column(String(64))
     metric_name: Mapped[str] = mapped_column(String(32))
@@ -679,7 +740,7 @@ class AppSetting(Base):
 
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[str] = mapped_column(Text)
-    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, onupdate=dt.datetime.utcnow)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
     updated_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
 
 
@@ -702,7 +763,7 @@ class MatchOdds(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     match_id: Mapped[int] = mapped_column(ForeignKey("matches.id"), index=True)
-    captured_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
+    captured_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
     bookmaker: Mapped[str] = mapped_column(String(64))
     market: Mapped[str] = mapped_column(String(64))
@@ -753,7 +814,7 @@ class BookingSlip(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
     bookmaker: Mapped[str] = mapped_column(String(64))
 
@@ -796,3 +857,22 @@ class BookingSlip(Base):
     site_codes: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     user: Mapped["User"] = relationship()
+
+
+class SchedulerLease(Base):
+    """Which process currently runs a background loop (app.main), so a
+    deploy that briefly runs the old and new instance side by side -- or
+    any future second instance -- doesn't run each loop twice: two daily
+    draws, double the API-Football requests. See app.scheduler_lease.
+
+    A row instead of a Postgres advisory lock because the connection may go
+    through a transaction-mode pooler (see db/session.py), which hands each
+    transaction a different server connection -- a session-level lock taken
+    on one would be meaningless on the next.
+    """
+
+    __tablename__ = "scheduler_leases"
+
+    name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    holder: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[dt.datetime] = mapped_column(DateTime)

@@ -67,9 +67,14 @@ export function CookiePolicy() {
         <p>
           Signing in works with a token stored in your browser and sent with each request, not a
           session cookie -- nothing the server sends ever tells your browser to set one. There is no
-          Google Analytics, Meta Pixel, or any other analytics or advertising script loaded anywhere on
-          this site, and we don't buy or sell data about visitors. There's accordingly nothing to opt
-          into or out of beyond what's below.
+          Google Analytics, Meta Pixel, or any advertising script anywhere on this site, and we don't buy
+          or sell data about visitors.
+        </p>
+        <p>
+          We do count visits with Cloudflare Web Analytics, which sets no cookies, stores nothing in your
+          browser and doesn't track you across sites or visits -- it reports page views in aggregate (which
+          pages, roughly where from, what kind of device). There's accordingly nothing to opt into or out
+          of beyond what's below.
         </p>
       </section>
 

@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from sqlalchemy import select
 
+from app.timeutil import utcnow
 from app.db.models import Match
 from app.db.migrate import init_db
 from app.db.session import SessionLocal, engine
@@ -35,7 +36,7 @@ def main() -> None:
     init_db(engine)
     db = SessionLocal()
     try:
-        now = dt.datetime.utcnow()
+        now = utcnow()
         cutoff = now + dt.timedelta(days=args.days_ahead)
         scheduled = list(
             db.execute(

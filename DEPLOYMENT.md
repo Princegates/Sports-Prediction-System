@@ -380,6 +380,19 @@ duplicate it. Everything else about email (the two behaviours below,
 `PUBLIC_SITE_URL`, the "send test email to myself" button) works identically
 regardless of which path is active.
 
+**With email and `PUBLIC_SITE_URL` both set, email also switches on:**
+
+- **Confirmation before the free trial.** New accounts get their trial (and
+  any referral bonus) only after clicking the link emailed to them, so free
+  access needs a real inbox. Turn it off under Settings → Access → "Confirm
+  email before the free trial". Without email or the site URL, the trial
+  starts at signup as before.
+- **Password reset by email** ("Forgot your password?" on the sign-in page).
+- **A reminder a day before a trial or access ends**, sent once per grant
+  by the backend itself.
+- **An alert to every Super Admin when a member reports a payment** from the
+  Access page, with the reference they gave.
+
 Two deliberate behaviours worth knowing:
 
 - **A failed send never loses the code.** Delivery is attempted after the code
@@ -393,8 +406,9 @@ Two deliberate behaviours worth knowing:
 
 1. **Set `SECRET_KEY`.** Session tokens are HMAC-signed with it and the default
    is published in this repository — anyone who has read it can mint a token for
-   any account, including a Super Admin. The API logs a warning at startup while
-   the default is in place.
+   any account, including a Super Admin. Against a real (non-SQLite) database
+   the API **refuses to start** while the default is in place; Render's
+   blueprint generates one for you.
 2. **Set `CORS_ALLOW_ORIGINS`** to your real frontend origin, not `*`.
 3. **Serve the API over HTTPS.** An HTTPS page cannot call an HTTP API; the
    browser blocks it and the site will look broken with only a console error.
@@ -406,6 +420,11 @@ Two deliberate behaviours worth knowing:
    bootstrap.
 6. **Check the model artifacts exist** on the running host. Their absence
    degrades predictions silently.
+7. **Check `CLIENT_IP_HEADER` matches your host.** Per-IP rate limits read the
+   client address from this header first (default `cf-connecting-ip`, which
+   Cloudflare sets and clients can't forge), then `X-Forwarded-For`. The
+   limits that matter most -- failed passwords per account, code redemption
+   and chat per user -- don't depend on it.
 
 ---
 

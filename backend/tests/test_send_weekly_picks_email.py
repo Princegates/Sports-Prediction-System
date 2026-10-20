@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from app.timeutil import utcnow
 from app import app_settings, mailer
 from app.db.models import AdminPick, User
 
@@ -45,7 +46,7 @@ def _configured_mailer(monkeypatch):
 def _weekly_pick(db_session, source: str, label: str, result: str = "pending") -> AdminPick:
     pick = AdminPick(
         source=source, label=label, legs=[], priced=True, result=result,
-        expires_at=dt.datetime.utcnow() + dt.timedelta(days=5),
+        expires_at=utcnow() + dt.timedelta(days=5),
     )
     db_session.add(pick)
     db_session.commit()

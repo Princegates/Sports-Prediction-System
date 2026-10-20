@@ -32,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from sqlalchemy import func, select
 
+from app.timeutil import utcnow
 from app import app_settings
 from app.data.api_football_ingest import TeamIndex, _parse_kickoff
 from app.data.providers.api_football import (
@@ -74,10 +75,10 @@ def _save_progress(db, progress: dict[str, int]) -> None:
     encoded = ",".join(f"{k}={v}" for k, v in sorted(progress.items()))
     row = db.get(AppSetting, _PROGRESS_KEY)
     if row is None:
-        db.add(AppSetting(key=_PROGRESS_KEY, value=encoded, updated_at=dt.datetime.utcnow()))
+        db.add(AppSetting(key=_PROGRESS_KEY, value=encoded, updated_at=utcnow()))
     else:
         row.value = encoded
-        row.updated_at = dt.datetime.utcnow()
+        row.updated_at = utcnow()
     db.commit()
 
 
@@ -147,7 +148,7 @@ def main() -> None:
 
         index = TeamIndex(db)
         stored_total = 0
-        captured_at = dt.datetime.utcnow()
+        captured_at = utcnow()
 
         for season in args.seasons:
             for league in args.leagues:

@@ -16,10 +16,11 @@ from __future__ import annotations
 
 import datetime as dt
 
+from app.timeutil import utcnow
 from app.db.models import AdminPick, Match, Prediction, Team
 from app.main import _run_random_daily_picks_once
 
-BASE = dt.datetime.utcnow() + dt.timedelta(hours=6)
+BASE = utcnow() + dt.timedelta(hours=6)
 
 
 def _prediction(match_id: int) -> Prediction:
@@ -66,7 +67,7 @@ def test_it_never_touches_the_weekly_cadence(db_session):
     _favorite_matches(db_session)
     weekly = AdminPick(
         source="system_random_weekly_1", legs=[], priced=False, label="Last week's draw #1",
-        expires_at=dt.datetime.utcnow() + dt.timedelta(days=5),
+        expires_at=utcnow() + dt.timedelta(days=5),
     )
     db_session.add(weekly)
     db_session.commit()

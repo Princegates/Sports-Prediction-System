@@ -5,22 +5,23 @@ thousands of password guesses a minute, which turns every weak password in the
 user table into a matter of time. A limiter is the difference between "needs a
 strong password" and "needs a strong password *and* time nobody has".
 
+**Key on identity first, IP second.** Every IP a request carries in a header
+can be forged, and Render's proxy *appends* to a client-sent
+``X-Forwarded-For`` rather than replacing it -- so a limit keyed only on the
+left-most entry was beaten by sending a different made-up address on each
+request. The limits that matter are therefore keyed on something the client
+cannot rotate for free: the account email being guessed at (login, status
+checks, password resets) or the authenticated user (code redemption, chat,
+password change). The per-IP limit stays as a second layer; ``client_ip``
+prefers ``CF-Connecting-IP`` (set by Cloudflare at the edge, which overwrites
+any client-sent value -- configurable as ``CLIENT_IP_HEADER``) before falling
+back to the forwarded chain.
+
 **What it is not:** a distributed limiter. State lives in this process's
-memory, so it resets on restart and is counted per-worker. Running four uvicorn
-workers means the effective limit is four times the configured one, and a
-horizontally scaled deployment shares nothing at all.
-
-That trade-off is deliberate at this scale -- it's a dependency-free 60 lines
-that raises the cost of brute force by orders of magnitude today, rather than a
-Redis service to stand up (and pay for) before login is protected at all. The
-upgrade path, once there's more than one worker, is to back ``_HITS`` with
-Redis and keep this interface; nothing else changes.
-
-Client identity is the peer IP, honoring ``X-Forwarded-For`` when present since
-any real deployment sits behind a proxy. That header is client-controlled and
-therefore spoofable, so an attacker who rotates it evades this. Rotating IPs
-defeats IP-based limiting in general; the point is to stop the cheap,
-single-source attack, which is the one that actually happens.
+memory, so it resets on restart and is counted per-worker. That is the right
+trade-off for the single instance this deploys as; the upgrade path, once
+there's more than one, is to back ``_HITS`` with a shared store and keep this
+interface.
 """
 
 from __future__ import annotations
@@ -31,6 +32,8 @@ from collections import defaultdict
 
 from fastapi import HTTPException, Request
 
+from app.config import get_settings
+
 # key -> list of hit timestamps within the current window
 _HITS: dict[str, list[float]] = defaultdict(list)
 _LOCK = threading.Lock()
@@ -40,14 +43,28 @@ _LOCK = threading.Lock()
 _MAX_TRACKED_KEYS = 10_000
 
 
-def client_key(request: Request, scope: str) -> str:
+def client_ip(request: Request) -> str:
+    """Best-effort client address, for the per-IP limit and the audit log.
+
+    An edge-set header wins when present (see module docstring). The
+    left-most ``X-Forwarded-For`` entry is the next best guess -- it is what
+    Render reports as the client -- but it is client-controlled, which is
+    why no limit that matters relies on this alone.
+    """
+
+    header = (get_settings().client_ip_header or "").strip().lower()
+    if header:
+        value = request.headers.get(header)
+        if value:
+            return value.split(",")[0].strip()
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
-        # Left-most entry is the original client per convention.
-        ip = forwarded.split(",")[0].strip()
-    else:
-        ip = request.client.host if request.client else "unknown"
-    return f"{scope}:{ip}"
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def client_key(request: Request, scope: str) -> str:
+    return f"{scope}:{client_ip(request)}"
 
 
 def _prune(now: float, window: float) -> None:
@@ -86,19 +103,49 @@ def check(key: str, limit: int, window_seconds: float) -> tuple[bool, float]:
         return True, 0.0
 
 
-def enforce(request: Request, scope: str, limit: int, window_seconds: float) -> None:
-    """Raise 429 if ``scope`` is over its limit for this client."""
+def peek(key: str, limit: int, window_seconds: float) -> tuple[bool, float]:
+    """Like ``check`` but records nothing -- for limits that only count
+    failures (a wrong password), checked before the attempt is judged."""
 
-    allowed, retry_after = check(client_key(request, scope), limit, window_seconds)
-    if allowed:
-        return
+    now = time.monotonic()
+    cutoff = now - window_seconds
+    with _LOCK:
+        hits = [t for t in _HITS.get(key, ()) if t > cutoff]
+    if len(hits) >= limit:
+        return False, max(0.0, window_seconds - (now - hits[0]))
+    return True, 0.0
 
+
+def _too_many(retry_after: float) -> HTTPException:
     seconds = int(retry_after) + 1
-    raise HTTPException(
+    return HTTPException(
         status_code=429,
         detail=f"Too many attempts. Try again in {seconds} second{'s' if seconds != 1 else ''}.",
         headers={"Retry-After": str(seconds)},
     )
+
+
+def enforce_key(key: str, limit: int, window_seconds: float) -> None:
+    """Raise 429 if ``key`` -- an identity, not an IP -- is over its limit."""
+
+    allowed, retry_after = check(key, limit, window_seconds)
+    if not allowed:
+        raise _too_many(retry_after)
+
+
+def enforce(request: Request, scope: str, limit: int, window_seconds: float) -> None:
+    """Raise 429 if ``scope`` is over its limit for this client's IP."""
+
+    enforce_key(client_key(request, scope), limit, window_seconds)
+
+
+def raise_if_limited(key: str, limit: int, window_seconds: float) -> None:
+    """Raise 429 if ``key`` is already over its limit, without counting this
+    request -- pair with ``check``/``enforce_key`` on the failure path."""
+
+    allowed, retry_after = peek(key, limit, window_seconds)
+    if not allowed:
+        raise _too_many(retry_after)
 
 
 def reset() -> None:

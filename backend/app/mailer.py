@@ -342,3 +342,82 @@ def password_changed_message() -> tuple[str, str]:
         "a Super Admin right away so they can secure it.\n"
     )
     return "Your password was changed", body
+
+
+def verify_email_message(link: str, trial_days: int = 0) -> tuple[str, str]:
+    """Subject and body for the confirm-your-address email sent at signup.
+
+    The free trial starts when this link is used, not at registration --
+    see routes_auth.verify_email -- so the email says so.
+    """
+
+    if trial_days:
+        days = "1 day" if trial_days == 1 else f"{trial_days} days"
+        why = f"Confirm your email to start your free {days} of full access:\n\n"
+    else:
+        why = "Confirm your email to finish setting up your account:\n\n"
+    body = (
+        "Welcome!\n\n"
+        f"{why}"
+        f"{link}\n\n"
+        "The link works for 3 days.\n\n"
+        "If you didn't create this account, you can ignore this email.\n"
+    )
+    return "Confirm your email", body
+
+
+def password_reset_message(link: str) -> tuple[str, str]:
+    """Subject and body for a password-reset link."""
+
+    body = (
+        "Someone asked to reset the password for this account.\n\n"
+        "If it was you, choose a new password here:\n\n"
+        f"{link}\n\n"
+        "The link works once, for 30 minutes.\n\n"
+        "If it wasn't you, ignore this email -- your password stays the same.\n"
+    )
+    return "Reset your password", body
+
+
+def access_ending_message(
+    hours_left: int,
+    *,
+    trial: bool,
+    site_url: str | None = None,
+    whatsapp: str | None = None,
+    price_label: str | None = None,
+) -> tuple[str, str]:
+    """Subject and body for the automatic heads-up a day before access ends
+    -- see app.access_reminders."""
+
+    where = (site_url or "").rstrip("/") or "the site"
+    what = "free trial" if trial else "access"
+    price = f" Access is {price_label}." if price_label else ""
+    contact = (
+        f"To keep going, message {format_whatsapp(whatsapp)} on WhatsApp for an access code.{price}\n\n"
+        if whatsapp
+        else f"To keep going, get an access code from the team.{price}\n\n"
+    )
+    body = (
+        f"Your {what} ends in about {hours_left} hours.\n\n"
+        "After that you'll drop to the free tier (one headline pick per league).\n"
+        "Your account, history and saved slips all stay put.\n\n"
+        f"{contact}"
+        f"Already have a code? Redeem it at {where}/app/access\n"
+    )
+    subject = "Your free trial ends tomorrow" if trial else "Your access ends tomorrow"
+    return subject, body
+
+
+def payment_reported_message(account_email: str, reference: str, site_url: str | None = None) -> tuple[str, str]:
+    """Subject and body for the Super Admin alert when an account says it
+    has paid -- see routes_access.report_payment."""
+
+    where = f"{site_url.rstrip('/')}/app/admin" if site_url else "the admin panel"
+    body = (
+        f"{account_email} says they've paid for access.\n\n"
+        f"Reference they gave: {reference}\n\n"
+        "Check it against your payment records, then issue their code from\n"
+        f"{where}\n"
+    )
+    return f"Payment reported: {account_email}", body

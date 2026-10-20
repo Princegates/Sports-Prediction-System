@@ -10,6 +10,7 @@ import datetime as dt
 
 from fastapi.testclient import TestClient
 
+from app.timeutil import utcnow
 from app.auth.passwords import hash_password
 from app.auth.tokens import create_token
 from app.config import get_settings
@@ -53,7 +54,7 @@ def test_registering_grants_immediate_access(db_session):
 
     # Roughly the default 5-day trial out, not indefinite.
     expires_at = dt.datetime.fromisoformat(body["expires_at"])
-    assert dt.timedelta(days=4, hours=23) < (expires_at - dt.datetime.utcnow()) < dt.timedelta(days=5, hours=1)
+    assert dt.timedelta(days=4, hours=23) < (expires_at - utcnow()) < dt.timedelta(days=5, hours=1)
 
 
 def test_the_trial_length_follows_the_admin_setting(db_session):
@@ -70,7 +71,7 @@ def test_the_trial_length_follows_the_admin_setting(db_session):
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
     body = client.get("/api/access/status", headers=headers).json()
     expires_at = dt.datetime.fromisoformat(body["expires_at"])
-    assert dt.timedelta(days=6, hours=23) < (expires_at - dt.datetime.utcnow()) < dt.timedelta(days=7, hours=1)
+    assert dt.timedelta(days=6, hours=23) < (expires_at - utcnow()) < dt.timedelta(days=7, hours=1)
 
 
 def test_turning_the_trial_off_leaves_new_signups_on_the_free_tier(db_session):
@@ -104,7 +105,7 @@ def test_a_lapsed_trial_reverts_to_the_free_tier_on_the_next_sign_in(db_session)
 
     user = db_session.query(User).filter_by(email="lapsed@example.com").one()
     grant = db_session.query(AccessGrant).filter_by(user_id=user.id).one()
-    grant.expires_at = dt.datetime.utcnow() - dt.timedelta(hours=1)
+    grant.expires_at = utcnow() - dt.timedelta(hours=1)
     db_session.commit()
 
     login = client.post("/api/auth/login", json={"email": "lapsed@example.com", "password": "a-good-password"})

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class TeamOut(BaseModel):
@@ -10,6 +10,9 @@ class TeamOut(BaseModel):
     name: str
     league: str
     country: str | None = None
+    # Club crest, or None until the club's API-Football id is known (see
+    # Team.api_football_team_id) -- the UI shows its initials meanwhile.
+    logo_url: str | None = None
 
 
 class MatchOut(BaseModel):
@@ -70,20 +73,28 @@ class PredictionOut(BaseModel):
     model_breakdown: dict
 
 
+# Upper bounds on free-text input. Nothing legitimate comes close; without
+# them a request could store megabytes in a name or make PBKDF2 chew on a
+# huge password.
+EMAIL_MAX = 255
+NAME_MAX = 120
+PASSWORD_MAX = 256
+
+
 class RegisterIn(BaseModel):
-    email: str
-    name: str
-    password: str
+    email: str = Field(max_length=EMAIL_MAX)
+    name: str = Field(max_length=NAME_MAX)
+    password: str = Field(max_length=PASSWORD_MAX)
     date_of_birth: dt.date
     # Another account's referral_code -- optional, and invalid rather than
     # silently ignored if it doesn't resolve, so a typo doesn't cost the
     # referee their bonus without either side knowing.
-    referral_code: str | None = None
+    referral_code: str | None = Field(default=None, max_length=32)
 
 
 class LoginIn(BaseModel):
-    email: str
-    password: str
+    email: str = Field(max_length=EMAIL_MAX)
+    password: str = Field(max_length=PASSWORD_MAX)
 
 
 class UserOut(BaseModel):
@@ -100,6 +111,11 @@ class UserOut(BaseModel):
     # app.access.ensure_referral_code. Optional only in the schema sense
     # (every real account has one by the time anything reads it back).
     referral_code: str | None = None
+    # False until the emailed link is used -- the app shows a "confirm your
+    # email to start your trial" banner while it is.
+    email_verified: bool = False
+    # Set while a self-set break (POST /api/auth/pause) is running.
+    paused_until: dt.datetime | None = None
 
 
 class PreferencesIn(BaseModel):
@@ -109,12 +125,51 @@ class PreferencesIn(BaseModel):
 
 
 class UpdateProfileIn(BaseModel):
-    name: str
+    name: str = Field(max_length=NAME_MAX)
 
 
 class ChangePasswordIn(BaseModel):
-    current_password: str
-    new_password: str
+    current_password: str = Field(max_length=PASSWORD_MAX)
+    new_password: str = Field(max_length=PASSWORD_MAX)
+
+
+class TokenIn(BaseModel):
+    token: str = Field(max_length=2048)
+
+
+class VerifyEmailOut(BaseModel):
+    message: str
+    already_verified: bool
+    access_days: int = 0
+
+
+class VerificationStatusOut(BaseModel):
+    pending: bool
+    trial_days: int = 0
+
+
+class ForgotPasswordIn(BaseModel):
+    email: str = Field(max_length=EMAIL_MAX)
+
+
+class ResetPasswordIn(BaseModel):
+    token: str = Field(max_length=2048)
+    new_password: str = Field(max_length=PASSWORD_MAX)
+
+
+class MessageOut(BaseModel):
+    message: str
+
+
+class PauseIn(BaseModel):
+    days: int
+
+
+class ReferralStatsOut(BaseModel):
+    joined: int
+    paid: int
+    bonus_days_each: int
+    enabled: bool
 
 
 class MatchHistoryOut(BaseModel):
@@ -124,7 +179,8 @@ class MatchHistoryOut(BaseModel):
 
 class AdminUserOut(UserOut):
     # "active" / "expired" / "none" -- whether this user currently holds a
-    # live access grant, and until when if so. Replaces the old
+    # live access grant, and until when if so; "unlimited" for a superadmin,
+    # who never needs one. Replaces the old
     # payment_reference/approved_by column pair now that access is a
     # redeemed-code grant rather than a one-time superadmin approval.
     access_status: str
@@ -182,6 +238,8 @@ class AdminOverviewOut(BaseModel):
 
 
 class ChatMessageIn(BaseModel):
+    # Length is checked by the assistant engine (MAX_MESSAGE_LENGTH), which
+    # answers with a readable 400 rather than a schema 422.
     message: str
     # The match the user is viewing, so follow-ups resolve without re-naming
     # the teams.
@@ -279,6 +337,64 @@ class PublicFixtureOut(BaseModel):
     away_team: str
     has_prediction: bool
     confidence: str | None = None
+    # Crests, so public fixture lists and share cards can show them --
+    # None until the club's provider id is known (see TeamOut.logo_url).
+    home_logo_url: str | None = None
+    away_logo_url: str | None = None
+
+
+class PublicResultOut(BaseModel):
+    """One past match from one side's point of view -- public facts only
+    (date, opponent, score), never a prediction."""
+
+    date: dt.datetime
+    opponent: str
+    venue: str  # "H" or "A"
+    goals_for: int
+    goals_against: int
+    result: str  # "W" / "D" / "L"
+
+
+class PublicHeadToHeadOut(BaseModel):
+    date: dt.datetime
+    league: str
+    home_team: str
+    away_team: str
+    home_score: int
+    away_score: int
+
+
+class PublicFixtureDetailOut(PublicFixtureOut):
+    """The fixture page's own payload: the list shape plus the public facts
+    that make each page genuinely about its match (recent results, past
+    meetings) rather than the same paragraph on 800 URLs."""
+
+    home_form: list[PublicResultOut] = []
+    away_form: list[PublicResultOut] = []
+    head_to_head: list[PublicHeadToHeadOut] = []
+    # Set only when this fixture is one of today's free picks (see PublicFreePickOut).
+    free_pick: "PublicFreePickOut | None" = None
+
+
+class PublicFreePickOut(BaseModel):
+    """One of today's three free picks, shown in full to everyone, logged in
+    or not: one Match Result (1X2), one Double Chance and one Over 1.5 Goals,
+    each on a different match kicking off soon, kept until all three are
+    over (see PublicFreePickSet). A deliberate marketing
+    exception to "selections stay behind the login", like the public teaser
+    -- three a day samples the product rather than replacing it."""
+
+    kind: str  # "1x2" / "double_chance" / "over_1_5"
+    fixture: PublicFixtureOut
+    market: str  # registry name, e.g. "Double Chance"
+    selection: str  # registry name, e.g. "Home/Draw"
+    label: str  # plain-English, e.g. "Arsenal or draw"
+    probability: float  # as published, frozen when the set was chosen
+    # upcoming / live / won / lost / void -- the set stays up through the
+    # matches, so its picks are seen to win or lose.
+    status: str = "upcoming"
+    home_score: int | None = None
+    away_score: int | None = None
 
 
 class ConfidenceBandRecordOut(BaseModel):
@@ -377,13 +493,19 @@ class AccessGrantOut(BaseModel):
     revoked_reason: str | None = None
 
 
+class PaymentNoticeIn(BaseModel):
+    # A mobile-money transaction ID or similar -- recorded for the admin to
+    # match against their own records, never processed here.
+    reference: str = Field(max_length=120)
+
+
 class AccessRedeemIn(BaseModel):
-    code: str
+    code: str = Field(max_length=64)
 
 
 class AccessStatusOut(BaseModel):
     has_access: bool
-    status: str  # "active" / "expired" / "none"
+    status: str  # "active" / "expired" / "none" / "unlimited" (superadmin)
     activated_at: dt.datetime | None = None
     expires_at: dt.datetime | None = None
 
@@ -401,10 +523,10 @@ class ExtendGrantIn(BaseModel):
 
 
 class LiveEventIn(BaseModel):
-    minute: int
-    score_home: int
-    score_away: int
-    trigger_event: str
+    minute: int = Field(ge=0, le=130)
+    score_home: int = Field(ge=0, le=30)
+    score_away: int = Field(ge=0, le=30)
+    trigger_event: str = Field(max_length=32)
 
 
 class LivePredictionOut(BaseModel):
@@ -513,9 +635,17 @@ class BrandingOut(BaseModel):
     default_market_tab: str
     # Whether entering a referral code at signup currently earns the bonus
     # below -- the Register page only shows the referral field and its
-    # "both of you get N days" copy when this is true.
+    # "you get N bonus days" copy when this is true.
     referral_enabled: bool
     referral_bonus_days: int
+    # Free trial on offer to a new signup, so the landing page can lead
+    # with it instead of reading like a paywall. 0 when trials are off.
+    trial_days: int = 0
+    # "about GH₵4 a day" when the price is set as amount + days (see
+    # app_settings.price_display), otherwise "".
+    price_per_day: str = ""
+    # Public WhatsApp Channel, "" when not set.
+    whatsapp_channel_url: str = ""
 
 
 # --- Outcome browser -------------------------------------------------------
@@ -641,6 +771,9 @@ class FeaturedPickOut(BaseModel):
     # An admin's choice to include this settled pick in the public track
     # record -- see FeaturedPick.featured_public.
     featured_public: bool = False
+    # Whether featured_public can still be changed (pending, before
+    # kickoff) -- see app.track_record.
+    track_record_open: bool = False
 
 
 class FeaturedPickResultIn(BaseModel):
@@ -763,6 +896,8 @@ class AdminPickOut(BaseModel):
     # An admin's choice to include this settled pick in the public track
     # record -- see AdminPick.featured_public.
     featured_public: bool = False
+    # Whether featured_public can still be changed -- see app.track_record.
+    track_record_open: bool = False
 
 
 # --- Booking codes -----------------------------------------------------
@@ -975,3 +1110,20 @@ class PublicTeaserPickOut(BaseModel):
     combined_probability: float = 0.0
     label: str | None = None
     created_at: dt.datetime | None = None
+
+
+PublicFixtureDetailOut.model_rebuild()
+
+
+class LandingOut(BaseModel):
+    """Everything the public home page reads, in one response -- it used to
+    make seven separate calls to a backend that can be asleep, so each
+    section filled in on its own schedule (or not at all) on a cold start."""
+
+    branding: BrandingOut
+    stats: PublicStatsOut
+    track_record: TrackRecordOut
+    admin_pick_record: AdminPickTrackRecordOut
+    fixtures: list[PublicFixtureOut]
+    free_picks: list[PublicFreePickOut]
+    teaser_pick: PublicTeaserPickOut

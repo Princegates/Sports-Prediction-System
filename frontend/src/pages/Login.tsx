@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Brand } from "../components/Brand";
 import { Mascot } from "../components/Mascot";
 import { PublicShell } from "../components/PublicShell";
+import { hasPendingSlip } from "../lib/pendingSlip";
 import { useAuth } from "../lib/AuthContext";
 
 export function Login() {
@@ -14,7 +15,7 @@ export function Login() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const from = (location.state as { from?: string } | null)?.from ?? "/app";
+  const from = (location.state as { from?: string } | null)?.from ?? (hasPendingSlip() ? "/app/betcodes" : "/app");
 
   // A 403 here only ever means suspended -- login itself has no other gate
   // any more, so this is a different situation from a wrong password.
@@ -46,7 +47,7 @@ export function Login() {
 
         <h1 style={{ fontSize: 20, marginBottom: 6 }}>Sign in</h1>
         <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 0, marginBottom: 20 }}>
-          Predictions unlock once you redeem an access code -- signing in doesn't need one.
+          New here? <Link to="/register">Create an account</Link> -- signing in never needs a code.
         </p>
 
         <form onSubmit={handleSubmit} className="auth-form">
@@ -70,6 +71,9 @@ export function Login() {
           <button className="btn" type="submit" disabled={busy} style={{ marginTop: 8 }}>
             {busy ? "Signing in..." : "Sign in"}
           </button>
+          <p style={{ fontSize: 13, textAlign: "center", margin: "4px 0 0" }}>
+            <Link to="/forgot-password">Forgot your password?</Link>
+          </p>
         </form>
 
         <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 20, textAlign: "center" }}>

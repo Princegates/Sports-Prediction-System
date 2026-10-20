@@ -29,7 +29,10 @@ import { StickySlipBar } from "../components/StickySlipBar";
 import { LEAGUES, useLeague } from "../components/AppShell";
 import { useAuth } from "../lib/AuthContext";
 import { useIsMobile } from "../lib/useIsMobile";
+import { takePendingSlip } from "../lib/pendingSlip";
 import type { AdminPick, BetCodePick, MarketSummary, MatchSummary, PublicTeaserPick, SuggestCriteria, SuggestedLeg, SuggestedPicks } from "../types";
+import { chanceLabel } from "../lib/odds";
+import { marketLabel } from "../lib/marketLabel";
 
 /** Plain-text description of one selected combo, meant to be pasted
  * wherever the user places bets themselves. No bookmaker code, no odds
@@ -42,7 +45,7 @@ function formatLegsForCopy(legs: SuggestedLeg[], combinedProbability: number): s
     });
     return (
       `${leg.home_team} vs ${leg.away_team} (${leg.league}, ${kickoff})\n` +
-      `${leg.market}: ${leg.selection} -- ${(leg.model_probability * 100).toFixed(0)}% probability`
+      `${marketLabel(leg.market)}: ${leg.selection} -- ${(leg.model_probability * 100).toFixed(0)}% probability`
     );
   });
   return [header, "", ...lines].join("\n\n");
@@ -81,8 +84,11 @@ const AI_PICKS_LEAGUES = [
 // page's own dropdown, grouped and searchable rather than two flat chip
 // rows capped at twelve markets total.
 const DEFAULT_MARKET_PRESET: MarketPreset = {
-  label: "Default (match result, double chance, draw no bet, O/U 1.5, handicap ±3)",
-  markets: ["Match Result", "Double Chance", "Draw No Bet", "Total Goals 1.5", "Handicap -3", "Handicap +3"],
+  label: "Default (match result, double chance, draw no bet, O/U 1.5, handicap up to 2 goals)",
+  markets: [
+    "Match Result", "Double Chance", "Draw No Bet", "Total Goals 1.5",
+    "Handicap -1", "Handicap +1", "Handicap -2", "Handicap +2",
+  ],
 };
 
 const AI_MARKET_PRESETS: MarketPreset[] = [
@@ -134,10 +140,11 @@ type RiskLevel = "low" | "medium" | "high";
  * legs isn't a separate lever the way it was when a leg count doubled as
  * "keep searching until the price target is hit" -- here it's just how
  * many of the safest qualifying matches to show). Markets aren't a risk
- * lever either: every preset below leaves `markets` empty, which the
- * engine takes as its own curated default (DEFAULT_MARKET_PRESET above) --
- * the full catalog is there to explore by hand in the Markets step, not
- * folded into a one-click preset.
+ * lever either: the presets leave `markets` empty, which the engine takes
+ * as its own curated default (DEFAULT_MARKET_PRESET above), except High
+ * risk -- every leg uses a different market, and eight legs need more than
+ * the default's five. The full catalog is there to explore by hand in the
+ * Markets step, not folded into a one-click preset.
  */
 const RISK_PRESETS: Record<
   RiskLevel,
@@ -145,7 +152,7 @@ const RISK_PRESETS: Record<
 > = {
   low: {
     label: "Low risk",
-    description: "85%+ picks only, up to 3 legs, the safest markets",
+    description: "85%+ picks only, up to 3 legs, mixed markets",
     minProbability: 0.85,
     maxLegs: 3,
     markets: [],
@@ -162,7 +169,13 @@ const RISK_PRESETS: Record<
     description: "50%+ picks, up to 8 legs",
     minProbability: 0.5,
     maxLegs: 8,
-    markets: [],
+    // Each leg uses a different market, and the default set only has five
+    // (the handicap lines count as one) -- eight legs need eight markets.
+    markets: [
+      "Match Result", "Double Chance", "Draw No Bet", "Total Goals 1.5",
+      "Handicap -1", "Handicap +1", "Handicap -2", "Handicap +2",
+      "Both Teams To Score", "Total Goals 2.5", "Total Goals 3.5",
+    ],
   },
 };
 
@@ -386,10 +399,13 @@ export function BetCodes() {
   }
 
   // A pick list handed over via navigation (Guda's "Send to AI Generation",
-  // Markets' "My picks" panel, or any future source) resolves immediately
+  // Markets' "My picks" panel, the public free picks, or any future source) resolves immediately
   // on arrival -- once per navigation, not on every re-render.
   useEffect(() => {
-    const picks = (location.state as { picks?: BetCodePick[] } | null)?.picks;
+    // ...or the public free-picks slip a visitor asked to book before they
+    // had an account (lib/pendingSlip), the first time they get here.
+    const pending = takePendingSlip();
+    const picks = (location.state as { picks?: BetCodePick[] } | null)?.picks ?? pending;
     if (!picks || picks.length === 0) return;
     setFromExternalPicks(true);
     runPreview(() => resolvePicks(picks), true);
@@ -670,8 +686,9 @@ export function BetCodes() {
           </button>
         </div>
         <p className="setting-note" style={{ marginTop: 10, marginBottom: 0 }}>
-          Fills in (and runs) the fields below -- feel free to adjust anything afterward and generate again. Random
-          slip generates straight away and ignores the fields below except league and date range.
+          Fills in (and runs) the fields below -- feel free to adjust anything afterward and generate again. Every
+          leg uses a different market. Random slip generates straight away and ignores the fields below except
+          league and date range.
         </p>
       </div>
 
@@ -950,7 +967,7 @@ export function BetCodes() {
             <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
               {editedLegs.length > 0 && (
                 <span className="meta tabular-nums" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  {(editedCombinedProbability * 100).toFixed(0)}% combined probability
+                  {(editedCombinedProbability * 100).toFixed(0)}% combined probability -- lands {chanceLabel(editedCombinedProbability)}
                   <span className={`risk-tag ${resultRiskLabel(editedCombinedProbability).tone}`}>
                     {resultRiskLabel(editedCombinedProbability).label}
                   </span>
@@ -1010,7 +1027,7 @@ export function BetCodes() {
                         </div>
                         <div className="sub">{leg.league}</div>
                       </td>
-                      <td className="sub" data-label="Market">{leg.market}</td>
+                      <td className="sub" data-label="Market">{marketLabel(leg.market)}</td>
                       <td data-label="Selection">
                         <strong>{leg.selection}</strong>
                       </td>
@@ -1108,7 +1125,7 @@ export function BetCodes() {
                 <span className="sub">
                   {pick.legs.length} leg{pick.legs.length === 1 ? "" : "s"} ·{" "}
                   {pick.priced && pick.combined_odds !== null ? `${pick.combined_odds.toFixed(2)} odds · ` : ""}
-                  {(pick.combined_probability * 100).toFixed(0)}% probability
+                  {(pick.combined_probability * 100).toFixed(0)}% probability ({chanceLabel(pick.combined_probability)})
                 </span>
                 {pick.result !== "pending" && (
                   <span className={`result-tag ${pick.result}`} style={{ marginLeft: 8 }}>
@@ -1166,16 +1183,18 @@ export function BetCodes() {
                     </button>
                   </>
                 )}
-                {pick.result !== "pending" && (
+                {pick.track_record_open ? (
                   <button
                     className="btn ghost"
                     style={{ padding: "2px 8px", fontSize: 12 }}
                     disabled={pickBusy === pick.id}
                     onClick={() => handleToggleFeaturedPublic(pick.id, !pick.featured_public)}
-                    title="Whether this settled pick shows in the public track record on the Welcome page."
+                    title="Commit this slip to the public track record on the Welcome page. From kickoff on it stays there, win or lose."
                   >
-                    {pick.featured_public ? "Unfeature from track record" : "Feature in track record"}
+                    {pick.featured_public ? "Withdraw from track record" : "Commit to track record"}
                   </button>
+                ) : (
+                  pick.featured_public && <span className="sub">In the public track record</span>
                 )}
                 {!pick.priced && (
                   <button
@@ -1227,12 +1246,14 @@ export function BetCodes() {
                   }}
                 >
                   <span className="sub">
-                    {leg.home_team} vs {leg.away_team} -- {leg.market}: {leg.selection}
+                    {leg.home_team} vs {leg.away_team} -- {marketLabel(leg.market)}: {leg.selection}
                   </span>
                   <span className="badge-neutral">{leg.decimal_odds?.toFixed(2)}</span>
                 </div>
               ))}
-              <p className="meta" style={{ marginTop: 8 }}>Combined odds: {teaserPick.combined_odds.toFixed(2)}x</p>
+              <p className="meta" style={{ marginTop: 8 }}>
+                Combined odds: {teaserPick.combined_odds.toFixed(2)}x -- lands {chanceLabel(teaserPick.combined_probability)}
+              </p>
               <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
                 <button className="btn ghost" disabled={teaserBusy} onClick={handleClearTeaser}>
                   Remove

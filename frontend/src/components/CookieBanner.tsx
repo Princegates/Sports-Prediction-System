@@ -43,12 +43,10 @@ export function CookieBanner() {
   return (
     <div className="cookie-banner" role="region" aria-label="Cookie notice">
       <p>
-        We use your browser's local storage to keep you signed in and remember things like your theme
-        and last-viewed league -- no tracking or advertising cookies. See the{" "}
-        <Link to="/cookie-policy">Cookie Policy</Link> for the full list.
+        No tracking cookies -- just what keeps you signed in. <Link to="/cookie-policy">Details</Link>
       </p>
-      <button type="button" className="btn" onClick={dismiss}>
-        Got it
+      <button type="button" className="btn ghost btn-sm" onClick={dismiss}>
+        OK
       </button>
     </div>
   );

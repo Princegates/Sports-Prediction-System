@@ -3,6 +3,9 @@ export interface Team {
   name: string;
   league: string;
   country: string | null;
+  /** Club crest, or null until the club's provider id is known -- render
+   * through TeamCrest, which falls back to initials. */
+  logo_url?: string | null;
 }
 
 export interface MatchSummary {
@@ -87,6 +90,21 @@ export interface User {
   notify_weekly_picks: boolean;
   created_at: string;
   referral_code: string | null;
+  email_verified: boolean;
+  /** Set while a self-set break is running -- predictions are hidden until then. */
+  paused_until: string | null;
+}
+
+export interface VerificationStatus {
+  pending: boolean;
+  trial_days: number;
+}
+
+export interface ReferralStats {
+  joined: number;
+  paid: number;
+  bonus_days_each: number;
+  enabled: boolean;
 }
 
 export interface MatchHistoryEntry {
@@ -95,7 +113,7 @@ export interface MatchHistoryEntry {
 }
 
 export interface AdminUser extends User {
-  access_status: "active" | "expired" | "none";
+  access_status: "active" | "expired" | "none" | "unlimited";
   access_expires_at: string | null;
 }
 
@@ -235,6 +253,68 @@ export interface PublicFixture {
   away_team: string;
   has_prediction: boolean;
   confidence: string | null;
+  home_logo_url?: string | null;
+  away_logo_url?: string | null;
+}
+
+export interface PublicResult {
+  date: string;
+  opponent: string;
+  venue: "H" | "A";
+  goals_for: number;
+  goals_against: number;
+  result: "W" | "D" | "L";
+}
+
+export interface PublicHeadToHead {
+  date: string;
+  league: string;
+  home_team: string;
+  away_team: string;
+  home_score: number;
+  away_score: number;
+}
+
+/** One of the three free picks shown in full on the public pages -- one
+ * Match Result, one Double Chance, one Over 1.5 Goals. The set stays up
+ * until all three matches are over. */
+export interface PublicFreePick {
+  kind: "1x2" | "double_chance" | "over_1_5";
+  fixture: PublicFixture;
+  market: string;
+  selection: string;
+  label: string;
+  probability: number;
+  status: "upcoming" | "live" | "won" | "lost" | "void";
+  home_score: number | null;
+  away_score: number | null;
+}
+
+export interface PublicFixtureDetail extends PublicFixture {
+  home_form: PublicResult[];
+  away_form: PublicResult[];
+  head_to_head: PublicHeadToHead[];
+  free_pick: PublicFreePick | null;
+}
+
+/** The model's own graded pre-match calls -- GET /api/public/track-record. */
+export interface TrackRecord {
+  has_data: boolean;
+  graded_predictions?: number;
+  hit_rate?: number;
+  by_confidence?: { confidence: string; graded: number; hit_rate: number }[];
+  since?: string | null;
+}
+
+/** Everything the public home page shows -- GET /api/public/landing. */
+export interface Landing {
+  branding: Branding;
+  stats: PublicStats;
+  track_record: TrackRecord;
+  admin_pick_record: AdminPickTrackRecord;
+  fixtures: PublicFixture[];
+  free_picks: PublicFreePick[];
+  teaser_pick: PublicTeaserPick;
 }
 
 export interface AccountStatus {
@@ -277,7 +357,7 @@ export interface AccessGrant {
 
 export interface AccessStatus {
   has_access: boolean;
-  status: "active" | "expired" | "none";
+  status: "active" | "expired" | "none" | "unlimited";
   activated_at: string | null;
   expires_at: string | null;
 }
@@ -329,6 +409,8 @@ export interface FeaturedPick {
   // record (see AdminPickTrackRecord) -- can only be set once result
   // leaves "pending".
   featured_public: boolean;
+  /** Whether featured_public can still change -- pending and before kickoff. */
+  track_record_open: boolean;
 }
 
 export interface AdminPickLeg {
@@ -394,6 +476,8 @@ export interface AdminPick {
   // record (see AdminPickTrackRecord) -- can only be set once result
   // leaves "pending".
   featured_public: boolean;
+  /** Whether featured_public can still change -- pending and before kickoff. */
+  track_record_open: boolean;
 }
 
 /** One settled, featured pick shown with its real teams/market/selection on
@@ -536,6 +620,11 @@ export interface Branding {
   default_market_tab: string;
   referral_enabled: boolean;
   referral_bonus_days: number;
+  /** Free trial a new signup gets; 0 when trials are off. */
+  trial_days: number;
+  /** "about GH₵4 a day" when the price is set as amount + days, else "". */
+  price_per_day?: string;
+  whatsapp_channel_url?: string;
 }
 
 // --- Outcome browser -------------------------------------------------------

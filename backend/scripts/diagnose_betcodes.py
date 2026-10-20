@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from sqlalchemy import select
 
+from app.timeutil import utcnow
 from app.betcode.selection import SlipCriteria, build_candidate_legs, select_legs
 from app.data.team_matching import name_match_score
 from app.db.models import Match, MatchOdds, Prediction, Team
@@ -42,7 +43,7 @@ def main() -> None:
 
     db = SessionLocal()
     try:
-        now = dt.datetime.utcnow()
+        now = utcnow()
         cutoff = now + dt.timedelta(days=args.days_ahead)
         print(f"Window: {now:%Y-%m-%d %H:%M} .. {cutoff:%Y-%m-%d %H:%M} UTC  (league={args.league or 'ANY'})\n")
 

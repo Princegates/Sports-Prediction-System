@@ -15,6 +15,7 @@ import datetime as dt
 
 import pytest
 
+from app.timeutil import utcnow
 from app import app_settings
 from app.data import squad_ingest
 from app.data.providers.api_football import ApiFootballClient, QuotaExceeded
@@ -319,7 +320,7 @@ class TestRunLineupCheckFromSettings:
 
     def test_checks_only_matches_within_the_window(self, db_session, clubs, monkeypatch):
         home, away = clubs
-        now = dt.datetime.utcnow()
+        now = utcnow()
         soon = Match(
             league=LEAGUE, season="2025-26", date=now + dt.timedelta(minutes=30),
             home_team_id=home.id, away_team_id=away.id, status="SCHEDULED", api_fixture_id=1,
@@ -364,7 +365,7 @@ class TestRunLineupCheckFromSettings:
                 "api_football_per_minute": 300,
             },
         )
-        fixture_match.date = dt.datetime.utcnow() + dt.timedelta(minutes=30)
+        fixture_match.date = utcnow() + dt.timedelta(minutes=30)
         db_session.commit()
         monkeypatch.setattr(
             squad_ingest,

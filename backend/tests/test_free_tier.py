@@ -9,12 +9,13 @@ import datetime as dt
 
 from fastapi.testclient import TestClient
 
+from app.timeutil import utcnow
 from app.db.models import Match, Team
 from app.prediction_models.elo import rebuild_elo_history
 
 
 def _seed_two_leagues(db_session) -> None:
-    base_date = dt.datetime.utcnow() - dt.timedelta(days=120)
+    base_date = utcnow() - dt.timedelta(days=120)
     fixtures = [(0, 1), (2, 3), (1, 2), (0, 3), (1, 3), (0, 2), (3, 1), (2, 0)]
     fixtures += [(1, 0), (3, 2), (2, 1), (3, 0), (3, 1), (2, 0), (1, 3), (0, 2)]
 
@@ -43,7 +44,7 @@ def _seed_two_leagues(db_session) -> None:
             Match(
                 league=league,
                 season="2324",
-                date=dt.datetime.utcnow() + dt.timedelta(hours=12),
+                date=utcnow() + dt.timedelta(hours=12),
                 home_team_id=teams[0].id,
                 away_team_id=teams[1].id,
                 status="SCHEDULED",

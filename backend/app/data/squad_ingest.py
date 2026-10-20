@@ -8,7 +8,7 @@ wired into the same cadence as fixtures). A confirmed starting lineup isn't
 known until roughly 60-75 minutes before kickoff, which is far too late for a
 once-a-day batch -- that half lives in the near-kickoff poll
 (``import_lineup``), called from the same in-process loop that already polls
-live scores every few minutes (see app.main._live_sync_loop).
+live scores every few minutes (see app.main._run_live_sync_once).
 
 Team identity here reuses app.data.api_football_ingest.TeamIndex -- the same
 fuzzy name matching the fixture importer already relies on, since this
@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.timeutil import utcnow
 from app.data.api_football_ingest import TeamIndex
 from app.data.providers.api_football import LEAGUE_IDS, ApiFootballClient, ApiFootballError, QuotaExceeded
 from app.data.team_matching import name_match_score
@@ -101,7 +102,7 @@ def import_injuries(
             continue
 
         team_name = team_block.get("name") or ""
-        team = index.resolve(team_name, prefer_league=league_name)
+        team = index.resolve(team_name, prefer_league=league_name, provider_id=team_block.get("id"))
         if team is None:
             report.unresolved_teams.append(team_name)
             continue
@@ -184,7 +185,7 @@ def import_lineup(db: Session, client: ApiFootballClient, match: Match) -> Lineu
     An empty response is the normal case outside the ~60-75 minute
     pre-kickoff window the provider actually publishes lineups in -- not an
     error, and nothing is stored, so the caller's own retry-on-the-next-poll
-    behavior (app.main._live_sync_loop) is what eventually catches the real
+    behavior (app.main._run_live_sync_once) is what eventually catches the real
     announcement.
     """
 
@@ -256,7 +257,7 @@ def run_lineup_check_from_settings(db: Session, *, window_minutes: int = 90) -> 
         per_minute=int(values.get("api_football_per_minute") or 300),
     )
 
-    now = dt.datetime.utcnow()
+    now = utcnow()
     window_end = now + dt.timedelta(minutes=window_minutes)
     matches = db.execute(
         select(Match).where(

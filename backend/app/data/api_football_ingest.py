@@ -28,9 +28,10 @@ import logging
 import re
 from dataclasses import dataclass, field
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
+from app.timeutil import utcnow
 from app.data.providers.api_football import ApiFootballClient, ApiFootballError, ID_TO_LEAGUE, QuotaExceeded
 from app.data.source_cleanup import fold_fixture
 from app.data.team_matching import canonical_alias, name_match_score
@@ -116,8 +117,14 @@ class TeamIndex:
         for team in self._teams:
             for alias in team.aliases or []:
                 self._by_canonical.setdefault(canonical_alias(alias), team)
+        # Provider id -> every row carrying it. Usually one; two for a club
+        # with a row in each of two divisions (see resolve).
+        self._by_provider_id: dict[int, list[Team]] = {}
+        for team in self._teams:
+            if team.api_football_team_id is not None:
+                self._by_provider_id.setdefault(team.api_football_team_id, []).append(team)
 
-    def create(self, name: str, league: str) -> Team:
+    def create(self, name: str, league: str, *, provider_id: int | None = None) -> Team:
         """Add a new club, for a domestic league importing for the first time.
 
         Never used for a European competition -- there, an unresolved name
@@ -125,11 +132,13 @@ class TeamIndex:
         starts a second history for a club that already has one.
         """
 
-        team = Team(name=name, league=league, aliases=[])
+        team = Team(name=name, league=league, aliases=[], api_football_team_id=provider_id)
         self.db.add(team)
         self.db.flush()
         self._teams.append(team)
         self._by_canonical.setdefault(canonical_alias(name), team)
+        if provider_id is not None:
+            self._by_provider_id.setdefault(provider_id, []).append(team)
         return team
 
     def nearest(self, provider_name: str) -> tuple[Team | None, float]:
@@ -169,8 +178,20 @@ class TeamIndex:
         scored.sort(key=lambda row: (-row[0], -row[1], row[2].name))
         return scored
 
-    def resolve(self, provider_name: str, *, prefer_league: str | None = None) -> Team | None:
-        """Find the domestic club row for a name as the provider spells it.
+    def resolve(
+        self, provider_name: str, *, prefer_league: str | None = None, provider_id: int | None = None
+    ) -> Team | None:
+        """Find the domestic club row for a club as the provider identifies it.
+
+        ``provider_id`` (API-Football's team id), when the caller has it,
+        is tried first and wins outright: an id doesn't have spellings. Two
+        rows sharing one id (the same club in two divisions) are settled by
+        ``prefer_league`` like a name tie; unsettled, it falls back to the
+        name below. A name match then *learns* the id onto that row -- but
+        never onto a row already carrying a different id: two provider ids
+        for one row means two real clubs that a name match has merged, so
+        that is refused (and logged) rather than written into the wrong
+        club's history.
 
         Refuses an ambiguous match -- unless ``prefer_league`` is given and
         settles it: a promoted or relegated club keeps its old division's
@@ -191,6 +212,32 @@ class TeamIndex:
         history -- the failure this whole module exists to avoid.
         """
 
+        if provider_id is not None:
+            rows = self._by_provider_id.get(provider_id, [])
+            if len(rows) == 1:
+                return rows[0]
+            if rows and prefer_league is not None:
+                same_league = [t for t in rows if t.league == prefer_league]
+                if len(same_league) == 1:
+                    return same_league[0]
+
+        team = self._resolve_by_name(provider_name, prefer_league=prefer_league)
+        if team is None or provider_id is None:
+            return team
+        if team.api_football_team_id is None:
+            team.api_football_team_id = provider_id
+            self._by_provider_id.setdefault(provider_id, []).append(team)
+            return team
+        if team.api_football_team_id != provider_id:
+            logger.warning(
+                "Club name %r matched %s (provider id %s), but the provider says id %s -- "
+                "two different clubs; skipping rather than merging their histories",
+                provider_name, team.name, team.api_football_team_id, provider_id,
+            )
+            return None
+        return team
+
+    def _resolve_by_name(self, provider_name: str, *, prefer_league: str | None = None) -> Team | None:
         candidates = self._ranked(provider_name)
         if not candidates or candidates[0][0] < _NAME_THRESHOLD:
             return None
@@ -212,6 +259,43 @@ class TeamIndex:
             )
             return None
         return team
+
+
+@dataclass
+class TeamIdBackfill:
+    learned: int = 0
+    already_known: int = 0
+    unresolved: list[str] = field(default_factory=list)
+
+
+def backfill_team_ids(db: Session, client: ApiFootballClient, *, league_id: int, season: int) -> TeamIdBackfill:
+    """Learn API-Football's team id for every club in one domestic league,
+    from a single /teams request -- the ids that crests (Team.logo_url) and
+    id-first matching (TeamIndex.resolve) both depend on, without waiting
+    for each club to turn up in a live sync or a fixture import.
+
+    Goes through the same TeamIndex.resolve as everything else, so it learns
+    an id only onto a confident name match and never onto a row that already
+    carries a different one. Never creates clubs. The caller commits.
+    """
+
+    report = TeamIdBackfill()
+    league_name = ID_TO_LEAGUE.get(league_id)
+    index = TeamIndex(db)
+    for row in client.teams(league_id=league_id, season=season):
+        info = row.get("team") or {}
+        provider_id, name = info.get("id"), info.get("name") or ""
+        if provider_id is None or not name:
+            continue
+        known = provider_id in index._by_provider_id
+        team = index.resolve(name, prefer_league=league_name, provider_id=provider_id)
+        if team is None:
+            report.unresolved.append(name)
+        elif known:
+            report.already_known += 1
+        else:
+            report.learned += 1
+    return report
 
 
 def _parse_kickoff(raw: str) -> dt.datetime:
@@ -301,15 +385,17 @@ def import_fixtures(
 
         home_name = (teams.get("home") or {}).get("name") or ""
         away_name = (teams.get("away") or {}).get("name") or ""
+        home_pid = (teams.get("home") or {}).get("id")
+        away_pid = (teams.get("away") or {}).get("id")
         prefer_league = league_name if domestic else None
-        home = index.resolve(home_name, prefer_league=prefer_league)
-        away = index.resolve(away_name, prefer_league=prefer_league)
+        home = index.resolve(home_name, prefer_league=prefer_league, provider_id=home_pid)
+        away = index.resolve(away_name, prefer_league=prefer_league, provider_id=away_pid)
 
         if domestic:
             if home is None:
-                home = index.create(home_name, league_name)
+                home = index.create(home_name, league_name, provider_id=home_pid)
             if away is None:
-                away = index.create(away_name, league_name)
+                away = index.create(away_name, league_name, provider_id=away_pid)
 
         if home is None or away is None:
             missing = [n for n, t in ((home_name, home), (away_name, away)) if t is None]
@@ -533,7 +619,7 @@ def import_odds(
             select(Match).where(Match.league == league_name, Match.api_fixture_id.is_not(None))
         ).scalars()
     }
-    captured_at = dt.datetime.utcnow()
+    captured_at = utcnow()
 
     for row in rows:
         report.considered += 1
@@ -582,6 +668,9 @@ class LiveSyncReport:
     stuck_resolved: int = 0
     skipped_no_match: list[str] = field(default_factory=list)
     requests_used: int = 0
+    # True when no tracked match was anywhere near being in play, so the
+    # poll spent nothing (see live_poll_due).
+    idle: bool = False
 
 
 # Fixture states that mean "not actually being played right now", so no
@@ -629,8 +718,8 @@ def sync_live_matches(db: Session, client: ApiFootballClient) -> LiveSyncReport:
         home_name = (teams.get("home") or {}).get("name") or ""
         away_name = (teams.get("away") or {}).get("name") or ""
         prefer_league = league_name if league_name not in EUROPEAN_COMPETITIONS else None
-        home = index.resolve(home_name, prefer_league=prefer_league)
-        away = index.resolve(away_name, prefer_league=prefer_league)
+        home = index.resolve(home_name, prefer_league=prefer_league, provider_id=(teams.get("home") or {}).get("id"))
+        away = index.resolve(away_name, prefer_league=prefer_league, provider_id=(teams.get("away") or {}).get("id"))
         if home is None or away is None:
             continue
 
@@ -682,7 +771,7 @@ def sync_live_matches(db: Session, client: ApiFootballClient) -> LiveSyncReport:
         # Stamped on every poll that still finds this fixture live, changed
         # or not -- this is what lets "genuinely live" be judged by recency
         # rather than the status column alone (see live_engine.is_genuinely_live).
-        match.live_synced_at = dt.datetime.utcnow()
+        match.live_synced_at = utcnow()
 
         if latest is not None and (latest.minute, latest.score_home, latest.score_away) == (minute, score_home, score_away):
             report.unchanged += 1
@@ -716,7 +805,7 @@ def sync_live_matches(db: Session, client: ApiFootballClient) -> LiveSyncReport:
     # history instead of tracking what's live right now.
     STUCK_KICKOFF_AGE = dt.timedelta(hours=3)
     STUCK_RECONCILE_LIMIT = 20
-    now = dt.datetime.utcnow()
+    now = utcnow()
     stuck = db.execute(
         select(Match)
         .where(Match.status == "LIVE", Match.api_fixture_id.is_not(None), Match.date <= now - STUCK_KICKOFF_AGE)
@@ -756,6 +845,42 @@ def sync_live_matches(db: Session, client: ApiFootballClient) -> LiveSyncReport:
     return report
 
 
+# How far either side of kickoff a tracked match keeps the live poll running.
+# Ten minutes early covers a slightly early start or a clock skew; three
+# hours after covers extra time, penalties and a long stoppage.
+LIVE_WINDOW_BEFORE_KICKOFF = dt.timedelta(minutes=10)
+LIVE_WINDOW_AFTER_KICKOFF = dt.timedelta(hours=3)
+
+
+def live_poll_due(db: Session, *, now: dt.datetime | None = None) -> bool:
+    """Whether any match this project tracks could be in play right now.
+
+    ``live_fixtures()`` is the whole world's live board, one request per
+    call, so polling it every five minutes around the clock cost 288
+    requests a day even on days with no tracked match on -- most of them
+    spent overnight. Only a scheduled or live match inside its kickoff
+    window, or a LIVE row the stuck-match reconciliation below still has to
+    resolve, makes a poll worth paying for.
+    """
+
+    now = now or utcnow()
+    due = db.execute(
+        select(Match.id)
+        .where(
+            or_(
+                and_(
+                    Match.status.in_(("SCHEDULED", "LIVE")),
+                    Match.date >= now - LIVE_WINDOW_AFTER_KICKOFF,
+                    Match.date <= now + LIVE_WINDOW_BEFORE_KICKOFF,
+                ),
+                and_(Match.status == "LIVE", Match.api_fixture_id.is_not(None)),
+            )
+        )
+        .limit(1)
+    ).first()
+    return due is not None
+
+
 def run_live_sync_from_settings(db: Session) -> LiveSyncReport | None:
     """Builds an ``ApiFootballClient`` from stored settings and runs one
     live-match poll -- the "given a DB session, do the current poll" shape
@@ -776,6 +901,8 @@ def run_live_sync_from_settings(db: Session) -> LiveSyncReport | None:
     key = str(values.get("api_football_key") or "")
     if not key:
         return None
+    if not live_poll_due(db):
+        return LiveSyncReport(idle=True)
 
     daily_budget = int(values.get("api_football_daily_budget") or 7500)
     client = ApiFootballClient(

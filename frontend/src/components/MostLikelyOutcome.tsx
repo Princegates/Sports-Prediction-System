@@ -1,6 +1,7 @@
 import type { GlobalOutcome } from "../types";
 import { isHotPick } from "../lib/filters";
 import { HotPickBadge } from "./HotPickBadge";
+import { marketLabel } from "../lib/marketLabel";
 
 interface Props {
   outcome: GlobalOutcome;
@@ -33,7 +34,7 @@ export function MostLikelyOutcome({ outcome, confidence, dataQuality, modelAgree
       </span>
       <div className="body">
         <div className="eyebrow">
-          Most likely outcome &middot; {outcome.market}
+          Most likely outcome &middot; {marketLabel(outcome.market)}
         </div>
         <div className="selection">
           {outcome.selection}

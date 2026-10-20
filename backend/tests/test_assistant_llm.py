@@ -84,3 +84,29 @@ def test_rewrite_and_general_question_use_different_system_prompts(db_session, m
     assert prompts[0] == llm.REWRITE_SYSTEM_PROMPT
     assert prompts[1] == llm.GENERAL_SYSTEM_PROMPT
     assert prompts[0] != prompts[1]
+
+
+def test_llm_use_is_capped_per_user_per_day(db_session, monkeypatch):
+    """Past the daily quota, answers fall back to the grounded pipeline --
+    still answered, just not by the (possibly paid) LLM."""
+
+    from app import app_settings
+    from app.assistant import engine
+    from app.auth.passwords import hash_password
+    from app.db.models import User
+
+    user = User(email="chatty@example.com", name="Chatty", password_hash=hash_password("pw-123456"), role="user", status="active")
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+
+    app_settings.set_values(db_session, {"assistant_llm_daily_per_user": 2})
+    monkeypatch.setattr(llm, "is_enabled", lambda db: True)
+    calls = []
+    monkeypatch.setattr(llm, "answer_general_question", lambda db, text: calls.append(text) or "An LLM answer.")
+    monkeypatch.setattr(llm, "rewrite", lambda db, grounded, text: calls.append(text) or "An LLM rewrite.")
+
+    results = [engine.answer(db_session, user.id, f"what is the offside rule, version {i}?")[0] for i in range(3)]
+
+    assert [r.general_chat or r.rewritten for r in results] == [True, True, False]
+    assert len(calls) == 2

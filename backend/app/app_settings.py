@@ -31,6 +31,7 @@ from typing import Any, Literal
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app.timeutil import utcnow
 from app.config import get_settings
 from app.db.models import AppSetting
 
@@ -144,6 +145,18 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 "generic \"arrange payment externally\" wording with no amount, same as before this "
                 "existed.",
                 default=""),
+    SettingSpec("price_amount", "float", "access", "Price amount",
+                "With the period below, builds the price shown everywhere -- e.g. 20 and 5 days show as "
+                "\"GH₵20 for 5 days\", plus \"about GH₵4 a day\" on the public pages. Leave 0 to use "
+                "the free-text price above instead.",
+                default=0.0, minimum=0, maximum=100000),
+    SettingSpec("price_currency", "str", "access", "Price currency symbol", default="GH₵"),
+    SettingSpec("price_days", "int", "access", "Price period (days)",
+                "How many days of access the price buys.", default=0, minimum=0, maximum=365),
+    SettingSpec("whatsapp_channel_url", "str", "access", "WhatsApp Channel link",
+                "Your public WhatsApp Channel (https://whatsapp.com/channel/...). When set, the public "
+                "pages invite visitors to follow it for daily picks.",
+                default=""),
     SettingSpec("default_code_duration_days", "int", "access", "Default code duration (days)",
                 "Pre-filled when issuing a code. You can still change it per code.",
                 default=30, minimum=1, maximum=3650),
@@ -165,7 +178,17 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 "from earning the bonus by entering one.",
                 default=True),
     SettingSpec("referral_bonus_days", "int", "access", "Referral bonus (days, each side)",
+                "The new account gets it when its free access starts; the referrer gets it when "
+                "that account first redeems a paid code.",
                 default=3, minimum=1, maximum=30),
+    SettingSpec("referral_monthly_cap", "int", "access", "Referral bonuses per referrer per 30 days",
+                "Stops one person farming bonuses from many accounts.",
+                default=5, minimum=1, maximum=100),
+    SettingSpec("email_verification_required", "bool", "access", "Confirm email before the free trial",
+                "New accounts get their trial (and any referral bonus) only after clicking the link "
+                "emailed to them. Needs outbound email and the public site URL set; without them, "
+                "the trial starts immediately as before.",
+                default=True),
     SettingSpec("contact_whatsapp", "str", "access", "WhatsApp contact for access requests",
                 "Shown wherever an account needs a Super Admin for a code -- the welcome email, "
                 "the locked-access page, and registration. Digits with country code, no spaces "
@@ -233,6 +256,11 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 secret=True, env_attr="assistant_llm_api_key"),
     SettingSpec("assistant_llm_timeout", "float", "assistant", "Request timeout (seconds)",
                 env_attr="assistant_llm_timeout", minimum=1, maximum=120),
+    SettingSpec("assistant_llm_daily_per_user", "int", "assistant", "AI replies per user per day",
+                "After this many AI-phrased or AI-generated replies in 24 hours, a user's answers come "
+                "from the built-in pipeline only. Keeps a heavy user from using up a free tier's daily "
+                "allowance for everyone, or running up a bill on a paid one.",
+                default=30, minimum=1, maximum=1000),
 
     # --- Guda Picks ----------------------------------------------------------
     SettingSpec("guda_picks_enabled", "bool", "picks", "Show Guda Picks",
@@ -310,6 +338,30 @@ def get_value(db: Session, key: str) -> Any:
         return _env_default(spec)
 
 
+def _format_amount(amount: float) -> str:
+    return f"{amount:,.0f}" if float(amount).is_integer() else f"{amount:,.2f}"
+
+
+def price_display(values: dict[str, Any]) -> tuple[str, str]:
+    """``(label, per_day)`` for the price, from ``all_values`` output.
+
+    The structured fields (amount, currency, days) win when both amount and
+    days are set -- "GH₵20 for 5 days" and "about GH₵4 a day" -- so the
+    label can't carry a typo and the per-day figure is always right.
+    Otherwise the free-text ``pricing_label`` as typed, with no per-day.
+    Both are "" when no price is configured.
+    """
+
+    amount = float(values.get("price_amount") or 0)
+    days = int(values.get("price_days") or 0)
+    if amount > 0 and days > 0:
+        currency = str(values.get("price_currency") or "")
+        label = f"{currency}{_format_amount(amount)} for {days} day{'s' if days != 1 else ''}"
+        per_day = f"about {currency}{_format_amount(round(amount / days, 2))} a day" if days > 1 else ""
+        return label, per_day
+    return str(values.get("pricing_label") or "").strip(), ""
+
+
 def all_values(db: Session) -> dict[str, Any]:
     overrides = _overrides(db)
     resolved: dict[str, Any] = {}
@@ -384,7 +436,7 @@ def set_values(db: Session, updates: dict[str, Any], *, updated_by_user_id: int 
         prepared[key] = validate(BY_KEY[key], value)
 
     changed: list[str] = []
-    now = dt.datetime.utcnow()
+    now = utcnow()
     for key, stored in prepared.items():
         row = db.get(AppSetting, key)
         if row is None:

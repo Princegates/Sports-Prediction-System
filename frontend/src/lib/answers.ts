@@ -1,4 +1,5 @@
 import type { LivePrediction, Prediction, TeamForm } from "../types";
+import { marketLabel } from "../lib/marketLabel";
 
 export interface MatchContext {
   homeTeam: string;
@@ -61,7 +62,7 @@ export function answerQuestion(question: string, ctx: MatchContext): string {
   }
 
   return (
-    `AI Assessment: ${p.global_outcome.selection} (${p.global_outcome.market}) is the single highest-probability outcome at ` +
+    `AI Assessment: ${p.global_outcome.selection} (${marketLabel(p.global_outcome.market)}) is the single highest-probability outcome at ` +
     `${(p.global_outcome.probability * 100).toFixed(0)}%, with ${p.confidence.toLowerCase()} confidence. This is a model probability, not a guarantee -- ask "why is this team favored?" or "what are the biggest risks?" for the reasoning behind it.`
   );
 }

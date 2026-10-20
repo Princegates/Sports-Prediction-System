@@ -149,7 +149,7 @@ def test_known_picks_translate_to_sportybet_ids(market, selection, expected):
     ("Handicap -1", "Home", ("14", "hcp=0:1", "1711")),
     ("Handicap -1", "Away", ("14", "hcp=0:1", "1713")),
     ("Handicap +2", "Draw", ("14", "hcp=2:0", "1712")),
-    ("Handicap +5", "Home", ("14", "hcp=5:0", "1711")),
+    ("Handicap +2", "Home", ("14", "hcp=2:0", "1711")),
     # SportyBet's own "Home No Bet"/"Away No Bet" (markets 12/13) -- the
     # voided result isn't a selection on either side.
     ("Home No Bet", "Draw", ("12", None, "776")),
@@ -161,8 +161,8 @@ def test_known_picks_translate_to_sportybet_ids(market, selection, expected):
     # registry.py's own comment on the whole-integer push problem).
     ("Asian Handicap -0.5", "Home", ("16", "hcp=-0.5", "1714")),
     ("Asian Handicap -0.5", "Away", ("16", "hcp=-0.5", "1715")),
-    ("Asian Handicap +2.5", "Home", ("16", "hcp=2.5", "1714")),
-    ("Asian Handicap +2.5", "Away", ("16", "hcp=2.5", "1715")),
+    ("Asian Handicap +1.5", "Home", ("16", "hcp=1.5", "1714")),
+    ("Asian Handicap +1.5", "Away", ("16", "hcp=1.5", "1715")),
     ("Goal Range", "0-1", ("25", "variant=sr:goal_range:7+", "sr:goal_range:7+:1342")),
     ("Goal Range", "7+", ("25", "variant=sr:goal_range:7+", "sr:goal_range:7+:1345")),
     ("Which Team To Score", "Only Home", ("30", None, "788")),

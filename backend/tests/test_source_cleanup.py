@@ -15,6 +15,7 @@ import datetime as dt
 
 import pytest
 
+from app.timeutil import utcnow
 from app.data.api_football_ingest import TeamIndex, import_fixtures
 from app.data.source_cleanup import retire_free_fixtures
 from app.db.models import AdminPick, FeaturedPick, Match, Prediction, Team
@@ -22,7 +23,7 @@ from tests.test_api_football import FakeClient
 
 PT = "Portuguese Primeira Liga"
 ES = "Spanish La Liga"
-KICKOFF = dt.datetime.utcnow().replace(microsecond=0, second=0, minute=15) + dt.timedelta(days=9)
+KICKOFF = utcnow().replace(microsecond=0, second=0, minute=15) + dt.timedelta(days=9)
 
 
 def _team(db, name, league):

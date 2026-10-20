@@ -4,6 +4,7 @@ import datetime as dt
 
 from sqlalchemy.orm import Session
 
+from app.timeutil import utcnow
 from app.access import access_code_effective_status, access_grant_effective_status, current_grant, mask_code
 from app.api.schemas import (
     AccessCodeOut,
@@ -24,12 +25,24 @@ from app.api.schemas import (
 from app.betcode.selection import Leg, risk_tier
 from app.db.models import AccessCode, AccessGrant, AdminPick, FeaturedPick, LivePrediction, Match, MatchView, Prediction, Team, User
 from app.live_engine import is_genuinely_live
+from app.track_record import commitment_open
 from app.outcomes.engine import secondary_outcomes
 from app.outcomes.registry import outcomes_from_prediction
 
 
+# API-Football serves every club's crest as a public image at a URL built
+# from its team id -- no key, and no request against the daily quota.
+TEAM_LOGO_URL = "https://media.api-sports.io/football/teams/{id}.png"
+
+
 def team_to_schema(team: Team) -> TeamOut:
-    return TeamOut(id=team.id, name=team.name, league=team.league, country=team.country)
+    return TeamOut(
+        id=team.id,
+        name=team.name,
+        league=team.league,
+        country=team.country,
+        logo_url=TEAM_LOGO_URL.format(id=team.api_football_team_id) if team.api_football_team_id else None,
+    )
 
 
 def user_to_schema(user: User) -> UserOut:
@@ -44,6 +57,8 @@ def user_to_schema(user: User) -> UserOut:
         notify_weekly_picks=user.notify_weekly_picks,
         created_at=user.created_at,
         referral_code=user.referral_code,
+        email_verified=user.email_verified_at is not None,
+        paused_until=user.paused_until,
     )
 
 
@@ -55,9 +70,13 @@ def admin_user_to_schema(user: User, db: Session) -> AdminUserOut:
     grant = current_grant(db, user)
     access_status = "none"
     access_expires_at = None
-    if grant is not None:
+    if user.role == "superadmin":
+        # Never gated on a grant (see require_active_access), so any trial or
+        # code they happen to hold is beside the point.
+        access_status = "unlimited"
+    elif grant is not None:
         access_expires_at = grant.expires_at
-        access_status = "active" if grant.expires_at > dt.datetime.utcnow() else "expired"
+        access_status = "active" if grant.expires_at > utcnow() else "expired"
 
     return AdminUserOut(
         **user_to_schema(user).model_dump(),
@@ -192,6 +211,7 @@ def featured_pick_to_schema(pick: FeaturedPick, match: Match, probability: float
         expires_at=pick.expires_at,
         locked=locked,
         featured_public=pick.featured_public,
+        track_record_open=commitment_open(pick, match.date),
     )
 
 
@@ -266,6 +286,7 @@ def admin_pick_to_schema(
         locked=locked,
         leg_count=len(legs),
         featured_public=pick.featured_public,
+        track_record_open=commitment_open(pick, min((leg.kickoff for leg in legs), default=None)),
     )
 
 

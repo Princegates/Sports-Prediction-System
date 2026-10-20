@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import datetime as dt
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.api.deps import get_db, get_match_or_404
+from app.timeutil import utcnow
+from app.api.deps import get_db, get_match_or_404, require_superadmin
 from app.api.schemas import (
     LeagueOutcomesOut,
     LiveEventIn,
@@ -18,9 +19,9 @@ from app.api.schemas import (
     PredictionOut,
 )
 from app.api.serializers import live_prediction_to_schema, match_to_schema, prediction_to_schema
-from app.db.models import LivePrediction, Match, Prediction
+from app.db.models import LivePrediction, Match, Prediction, User
 from app.features.team_stats import compute_team_form
-from app.live_engine import LIVE_STALE_AFTER, record_live_event
+from app.live_engine import LIVE_STALE_AFTER, simulate_live_event
 from app.outcomes.registry import outcomes_from_prediction
 from app.prediction_service import build_prediction_for_match
 
@@ -60,21 +61,18 @@ def list_matches(
     if league:
         stmt = stmt.where(Match.league == league)
     if days_ahead is not None:
-        now = dt.datetime.utcnow()
+        now = utcnow()
         stmt = stmt.where(Match.date >= now, Match.date <= now + dt.timedelta(days=days_ahead))
     if status:
         status = status.upper()
         if status == "LIVE":
-            # Anyone can push a simulated event from a match's own Live tab
-            # (see live_engine.record_live_event); that's a local demo, not
-            # something that should broadcast as genuinely live here. A real
-            # fixture also needs a *recent* confirmation from the sync job,
-            # so one that got stuck LIVE from a missed poll drops out on its
-            # own instead of staying wrong forever.
+            # A real fixture needs a *recent* confirmation from the sync
+            # job, so one that got stuck LIVE from a missed poll drops out on
+            # its own instead of staying wrong forever.
             stmt = stmt.where(
                 Match.status == "LIVE",
                 Match.live_synced_at.is_not(None),
-                Match.live_synced_at >= dt.datetime.utcnow() - LIVE_STALE_AFTER,
+                Match.live_synced_at >= utcnow() - LIVE_STALE_AFTER,
             )
         else:
             stmt = stmt.where(Match.status == status)
@@ -237,14 +235,23 @@ def get_match_live(match: Match = Depends(get_match_or_404), db: Session = Depen
 def post_match_live_event(
     payload: LiveEventIn,
     match: Match = Depends(get_match_or_404),
+    _admin: User = Depends(require_superadmin),
     db: Session = Depends(get_db),
 ) -> LivePredictionOut:
-    live_prediction = record_live_event(
-        db,
-        match,
-        minute=payload.minute,
-        score_home=payload.score_home,
-        score_away=payload.score_away,
-        trigger_event=payload.trigger_event,
-    )
+    """Re-project a hypothetical in-play state for this match. Nothing is
+    saved -- see live_engine.simulate_live_event for why. Superadmin only:
+    the Live pages are a livescore board for members, and the simulator is
+    an internal tool for checking how the live engine reacts."""
+
+    try:
+        live_prediction = simulate_live_event(
+            db,
+            match,
+            minute=payload.minute,
+            score_home=payload.score_home,
+            score_away=payload.score_away,
+            trigger_event=payload.trigger_event,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return live_prediction_to_schema(live_prediction)

@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
-import { Login as LoginIcon, UserFollow, Menu, Close } from "./icons";
+import { Login as LoginIcon, Menu, Close } from "./icons";
 import { useAuth } from "../lib/AuthContext";
 import { ThemeToggle } from "./ThemeToggle";
 import { usePageMeta } from "../lib/pageMeta";
@@ -33,13 +33,15 @@ const PUBLIC_NAV = [
 ];
 
 export function PublicShell({
-  children, title, description,
+  children, title, description, image,
 }: {
   children: ReactNode;
   title: string;
   description: string;
+  /** Absolute URL of this page's share image; defaults to the site card. */
+  image?: string;
 }) {
-  usePageMeta(title, description);
+  usePageMeta(title, description, image);
   const { user } = useAuth();
   const navigate = useNavigate();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -84,8 +86,10 @@ export function PublicShell({
               <button type="button" className="topbar-icon-btn" aria-label="Sign in" onClick={() => navigate("/login")}>
                 <LoginIcon size={18} />
               </button>
-              <button type="button" className="topbar-icon-btn" aria-label="Request access" onClick={() => navigate("/register")}>
-                <UserFollow size={18} />
+              {/* A labelled button, not a bare person icon: it's the one
+                  action a first-time visitor is here to take. */}
+              <button type="button" className="btn btn-sm topbar-trial-btn" onClick={() => navigate("/register")}>
+                Free trial
               </button>
             </>
           )}

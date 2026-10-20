@@ -8,7 +8,7 @@
 export function buildShareMessage(pickText: string, referralCode?: string | null): string {
   const origin = window.location.origin;
   const cta = referralCode
-    ? `Try Socca Intelligence -- sign up with my code ${referralCode} and we both get bonus days: ${origin}/register?ref=${referralCode}`
+    ? `Try Socca Intelligence -- sign up with my code ${referralCode} for bonus days on top of the free trial: ${origin}/register?ref=${referralCode}`
     : `Try Socca Intelligence: ${origin}`;
   return `${pickText}\n\n${cta}`;
 }

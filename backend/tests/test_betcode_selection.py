@@ -15,6 +15,7 @@ import pytest
 
 import random
 
+from app.timeutil import utcnow
 from app.betcode.selection import (
     SlipCriteria,
     _build_random_pool,
@@ -30,7 +31,7 @@ from app.betcode.selection import (
 )
 from app.db.models import Match, MatchOdds, Prediction, Team
 
-BASE = dt.datetime.utcnow() + dt.timedelta(hours=6)
+BASE = utcnow() + dt.timedelta(hours=6)
 
 
 def _prediction(match_id: int, *, home=0.75, draw=0.15, away=0.10, btts_yes=0.55, btts_no=0.45) -> Prediction:
@@ -891,3 +892,49 @@ def test_select_floor_leg_slip_excludes_matches_already_used(db_session):
     assert result.met_target
     assert all(leg.match_id not in first_ten for leg in result.legs)
     assert sorted(leg.decimal_odds for leg in result.legs) == sorted(odds_list[10:20])
+
+
+def test_a_ranked_slip_uses_each_market_for_one_leg(db_session):
+    """With every match a heavy favourite, one market (Draw No Bet or a wide
+    handicap) is the strongest outcome everywhere -- a plain safest-first
+    pick used to fill the whole slip with it. Each market now gives one leg;
+    the rest come from the next-safest market on other matches."""
+
+    from collections import Counter
+
+    teams = []
+    for i in range(16):
+        t = Team(name=f"Club {i}", league="English Premier League", aliases=[])
+        db_session.add(t)
+        teams.append(t)
+    db_session.commit()
+    for i in range(8):
+        m = Match(
+            league="English Premier League", season="2025-26", date=BASE + dt.timedelta(hours=i + 1),
+            home_team_id=teams[2 * i].id, away_team_id=teams[2 * i + 1].id, status="SCHEDULED",
+        )
+        db_session.add(m)
+        db_session.commit()
+        db_session.refresh(m)
+        db_session.add(_prediction(m.id, home=0.88 - i * 0.01, draw=0.08, away=0.04 + i * 0.01))
+    db_session.commit()
+
+    pick = select_legs_by_confidence(db_session, min_probability=0.5, max_legs=8)
+    families = Counter("Handicap" if leg.market.startswith("Handicap ") else leg.market for leg in pick.legs)
+    # This data only yields Match Result and Double Chance in the default
+    # set, so one of each -- not eight of whichever is strongest -- and the
+    # slip says why it's short.
+    assert families == Counter({"Double Chance": 1, "Match Result": 1})
+    assert len({leg.match_id for leg in pick.legs}) == len(pick.legs)  # still one leg per match
+    assert any("keeping each market to 1 leg" in w for w in pick.warnings)
+
+    # Choosing the markets yourself: one leg each across them.
+    chosen = select_legs_by_confidence(
+        db_session, min_probability=0.5, max_legs=2, markets=("Match Result", "Double Chance", "Both Teams To Score"),
+    )
+    assert len({leg.market for leg in chosen.legs}) == len(chosen.legs) == 2
+
+
+def test_a_single_chosen_market_still_fills_the_slip(db_session, three_matches):
+    pick = select_legs_by_confidence(db_session, min_probability=0.5, max_legs=3, markets=("Match Result",))
+    assert [leg.market for leg in pick.legs] == ["Match Result"] * 3

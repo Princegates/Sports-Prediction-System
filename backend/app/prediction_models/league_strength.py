@@ -41,6 +41,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import select
 from sqlalchemy.orm import Session, aliased
 
+from app.timeutil import utcnow
 from app.db.models import AppSetting, EloHistory, Match, Team
 from app.prediction_models.elo import EUROPEAN_COMPETITIONS, elo_diff_to_1x2
 
@@ -139,7 +140,7 @@ class LeagueStrength:
 
     def save(self, db: Session) -> None:
         row = db.get(AppSetting, SETTING_KEY)
-        now = dt.datetime.utcnow()
+        now = utcnow()
         if row is None:
             db.add(AppSetting(key=SETTING_KEY, value=self.to_json(), updated_at=now))
         else:
@@ -378,7 +379,7 @@ def fit(
         offsets=offsets,
         home_advantage=ha,
         matches=len(bridges),
-        fitted_at=dt.datetime.utcnow(),
+        fitted_at=utcnow(),
     )
 
 

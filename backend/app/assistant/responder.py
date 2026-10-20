@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
+from app.timeutil import utcnow
 from app.assistant import retrieval
 from app.assistant.nlu import Intent, ParsedQuery
 from app.assistant.retrieval import MatchCard
@@ -1081,7 +1082,7 @@ def _resolve_card(db: Session, q: ParsedQuery) -> MatchCard | None:
 
 
 def respond(db: Session, q: ParsedQuery, now: dt.datetime | None = None) -> Answer:
-    now = now or dt.datetime.utcnow()
+    now = now or utcnow()
 
     if q.intent == Intent.RESPONSIBLE_USE:
         return _responsible_use(q)

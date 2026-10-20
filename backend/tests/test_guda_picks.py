@@ -13,6 +13,7 @@ import datetime as dt
 import pytest
 from fastapi.testclient import TestClient
 
+from app.timeutil import utcnow
 from app.auth.passwords import hash_password
 from app.auth.tokens import create_token
 from app.config import get_settings
@@ -76,7 +77,7 @@ def upcoming_match(db_session):
         db_session.refresh(t)
 
     match = Match(
-        league="League One", season="2324", date=dt.datetime.utcnow() + dt.timedelta(hours=6),
+        league="League One", season="2324", date=utcnow() + dt.timedelta(hours=6),
         home_team_id=home.id, away_team_id=away.id, status="SCHEDULED",
     )
     db_session.add(match)
@@ -134,7 +135,7 @@ def test_featuring_a_match_with_no_prediction_is_rejected(db_session, admin):
     db_session.commit()
     for t in (home, away):
         db_session.refresh(t)
-    match = Match(league="League One", season="2324", date=dt.datetime.utcnow(), home_team_id=home.id, away_team_id=away.id, status="SCHEDULED")
+    match = Match(league="League One", season="2324", date=utcnow(), home_team_id=home.id, away_team_id=away.id, status="SCHEDULED")
     db_session.add(match)
     db_session.commit()
     db_session.refresh(match)
@@ -309,7 +310,7 @@ def _second_match(db, league="League Two") -> Match:
         db.refresh(t)
 
     match = Match(
-        league=league, season="2324", date=dt.datetime.utcnow() + dt.timedelta(hours=8),
+        league=league, season="2324", date=utcnow() + dt.timedelta(hours=8),
         home_team_id=home.id, away_team_id=away.id, status="SCHEDULED",
     )
     db.add(match)
@@ -377,7 +378,7 @@ def test_a_settled_pick_is_never_the_free_slot(db_session, admin, upcoming_match
 def test_an_expired_pick_is_not_returned(db_session, admin, upcoming_match, auth_headers):
     created = _feature(admin, upcoming_match.id)
     pick = db_session.get(FeaturedPick, created["id"])
-    pick.expires_at = dt.datetime.utcnow() - dt.timedelta(minutes=1)
+    pick.expires_at = utcnow() - dt.timedelta(minutes=1)
     db_session.commit()
 
     assert client.get("/api/predictions/guda-picks", headers=auth_headers).json() == []
@@ -414,7 +415,7 @@ def _finish(db, match: Match, home_score: int, away_score: int) -> None:
 def test_a_won_pick_stays_visible_past_its_expiry_with_a_frozen_result(db_session, admin, upcoming_match, auth_headers):
     created = _feature(admin, upcoming_match.id, market="Both Teams To Score", selection="Yes")
     pick = db_session.get(FeaturedPick, created["id"])
-    pick.expires_at = dt.datetime.utcnow() - dt.timedelta(days=5)
+    pick.expires_at = utcnow() - dt.timedelta(days=5)
     db_session.commit()
     _finish(db_session, upcoming_match, 2, 1)  # both teams scored -- BTTS Yes wins
 
@@ -476,9 +477,9 @@ def test_a_settled_result_is_frozen_and_never_regraded(db_session, admin, upcomi
 
 def test_public_admin_pick_track_record_includes_featured_picks(db_session, admin, upcoming_match):
     created = _feature(admin, upcoming_match.id, market="Both Teams To Score", selection="Yes")
+    _feature_public(admin, created["id"])  # committed before kickoff
     _finish(db_session, upcoming_match, 2, 1)  # won
     client.get("/api/predictions/guda-picks", headers=_headers(admin))  # settle it
-    _feature_public(admin, created["id"])
 
     response = client.get("/api/public/admin-picks-track-record")
     assert response.status_code == 200
@@ -520,23 +521,25 @@ def _feature_public(admin: User, pick_id: int, featured: bool = True):
     return response.json()
 
 
-def test_admin_can_feature_a_settled_guda_pick_in_the_public_track_record(db_session, admin, upcoming_match):
+def test_admin_can_commit_a_pending_guda_pick_before_kickoff(db_session, admin, upcoming_match):
     created = _feature(admin, upcoming_match.id, market="Both Teams To Score", selection="Yes")
-    _finish(db_session, upcoming_match, 2, 1)  # won
-    client.get("/api/predictions/guda-picks", headers=_headers(admin))  # settle it
+    assert created["track_record_open"] is True
 
     resolved = _feature_public(admin, created["id"])
     assert resolved["featured_public"] is True
 
     pick = db_session.get(FeaturedPick, created["id"])
     assert pick.featured_public is True
+    assert pick.featured_public_at is not None
 
     log = db_session.query(AuditLog).filter(AuditLog.action == "featured_pick.featured_public_set").one()
     assert log.detail == {"featured_pick_id": created["id"], "featured_public": True}
 
 
-def test_a_pending_guda_pick_cannot_be_featured(db_session, admin, upcoming_match):
+def test_a_settled_guda_pick_cannot_be_featured_after_the_fact(db_session, admin, upcoming_match):
     created = _feature(admin, upcoming_match.id, market="Both Teams To Score", selection="Yes")
+    _finish(db_session, upcoming_match, 2, 1)  # won
+    client.get("/api/predictions/guda-picks", headers=_headers(admin))  # settle it
     response = client.patch(
         f"/api/admin/featured-picks/{created['id']}/featured-public",
         json={"featured_public": True},

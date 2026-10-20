@@ -118,7 +118,17 @@ export function Register() {
             <div className="register-next-steps">
               <h3>What happens now</h3>
               <ol>
-                <li>Sign in right away -- there's no approval queue to wait on.</li>
+                {/confirmation link/i.test(done) ? (
+                  <li>
+                    Open the link we just emailed you -- your free trial starts the moment you do. You can sign in now too.
+                    <br />
+                    <strong>Can't find it?</strong> Check your spam or junk folder (and Promotions, on Gmail). If it's
+                    there, mark it "Not spam" so our next emails reach your inbox. Still nothing? Sign in and use
+                    "Resend link".
+                  </li>
+                ) : (
+                  <li>Sign in right away -- there's no approval queue to wait on.</li>
+                )}
                 <li>
                   When your trial ends, arrange payment with a Super Admin outside the platform
                   {price && <> -- access is <strong>{price}</strong></>}
@@ -159,8 +169,17 @@ export function Register() {
 
         <h1 style={{ fontSize: 20, marginBottom: 6 }}>Create an account</h1>
         <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 0, marginBottom: 20 }}>
-          Sign in right after creating your account. Predictions unlock once you redeem an access code, which
-          a Super Admin issues after confirming payment outside the platform.
+          {branding?.trial_days ? (
+            <>
+              Your first {branding.trial_days} day{branding.trial_days === 1 ? "" : "s"} of full access are free -- no card, no code.
+              After that, a Super Admin issues an access code once you've paid outside the platform.
+            </>
+          ) : (
+            <>
+              Sign in right after creating your account. Predictions unlock once you redeem an access code, which
+              a Super Admin issues after confirming payment outside the platform.
+            </>
+          )}
           {price && <> Access is <strong>{price}</strong>.</>}
         </p>
 
@@ -204,8 +223,8 @@ export function Register() {
                 />
               </label>
               <p className="setting-note" style={{ marginTop: -8 }}>
-                Got one from a friend? Enter it and you'll both get {branding.referral_bonus_days} bonus day
-                {branding.referral_bonus_days === 1 ? "" : "s"} of access.
+                Got one from a friend? Enter it for {branding.referral_bonus_days} bonus day
+                {branding.referral_bonus_days === 1 ? "" : "s"} of access on top of your free trial.
               </p>
             </>
           )}

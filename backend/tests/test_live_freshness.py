@@ -14,6 +14,7 @@ import datetime as dt
 
 from fastapi.testclient import TestClient
 
+from app.timeutil import utcnow
 from app.assistant.retrieval import live_matches
 from app.db.models import Match, Team
 from app.live_engine import LIVE_STALE_AFTER, is_genuinely_live
@@ -31,7 +32,7 @@ def _seed_match(db_session, *, status: str, live_synced_at: dt.datetime | None) 
     match = Match(
         league="League One",
         season="2324",
-        date=dt.datetime.utcnow(),
+        date=utcnow(),
         home_team_id=home.id,
         away_team_id=away.id,
         status=status,
@@ -47,7 +48,7 @@ def _seed_match(db_session, *, status: str, live_synced_at: dt.datetime | None) 
 
 
 def test_a_fresh_sync_confirmation_is_genuinely_live(db_session):
-    match = _seed_match(db_session, status="LIVE", live_synced_at=dt.datetime.utcnow())
+    match = _seed_match(db_session, status="LIVE", live_synced_at=utcnow())
     assert is_genuinely_live(match) is True
 
 
@@ -57,13 +58,13 @@ def test_a_simulated_match_with_no_sync_stamp_is_not_genuinely_live(db_session):
 
 
 def test_a_stale_sync_stamp_is_not_genuinely_live(db_session):
-    stale = dt.datetime.utcnow() - LIVE_STALE_AFTER - dt.timedelta(minutes=1)
+    stale = utcnow() - LIVE_STALE_AFTER - dt.timedelta(minutes=1)
     match = _seed_match(db_session, status="LIVE", live_synced_at=stale)
     assert is_genuinely_live(match) is False
 
 
 def test_a_scheduled_match_is_never_genuinely_live_even_with_a_stamp(db_session):
-    match = _seed_match(db_session, status="SCHEDULED", live_synced_at=dt.datetime.utcnow())
+    match = _seed_match(db_session, status="SCHEDULED", live_synced_at=utcnow())
     assert is_genuinely_live(match) is False
 
 
@@ -78,14 +79,14 @@ def test_matches_endpoint_excludes_a_simulated_match(db_session, auth_headers):
 
 
 def test_matches_endpoint_excludes_a_stale_match(db_session, auth_headers):
-    stale = dt.datetime.utcnow() - LIVE_STALE_AFTER - dt.timedelta(minutes=1)
+    stale = utcnow() - LIVE_STALE_AFTER - dt.timedelta(minutes=1)
     _seed_match(db_session, status="LIVE", live_synced_at=stale)
     response = client.get("/api/matches", params={"status": "LIVE"}, headers=auth_headers)
     assert response.json() == []
 
 
 def test_matches_endpoint_includes_a_freshly_synced_match(db_session, auth_headers):
-    match = _seed_match(db_session, status="LIVE", live_synced_at=dt.datetime.utcnow())
+    match = _seed_match(db_session, status="LIVE", live_synced_at=utcnow())
     response = client.get("/api/matches", params={"status": "LIVE"}, headers=auth_headers)
     body = response.json()
     assert len(body) == 1
@@ -121,7 +122,7 @@ def test_assistant_live_matches_excludes_a_simulated_match(db_session):
 
 
 def test_assistant_live_matches_includes_a_freshly_synced_match(db_session):
-    match = _seed_match(db_session, status="LIVE", live_synced_at=dt.datetime.utcnow())
+    match = _seed_match(db_session, status="LIVE", live_synced_at=utcnow())
     cards = live_matches(db_session)
     assert len(cards) == 1
     assert cards[0].match_id == match.id
