@@ -454,7 +454,20 @@ export function AdminUsers() {
               value={assignedEmail}
               onChange={(e) => setAssignedEmail(e.target.value)}
               placeholder="user@example.com"
+              list="member-email-options"
             />
+            {/* A dropdown of registered emails to pick from, not a hard
+                constraint -- a code is routinely generated for someone who
+                hasn't registered yet (see Pricing.tsx: pay first, register
+                whenever), so free typing still has to work for an email
+                this list doesn't have. */}
+            <datalist id="member-email-options">
+              {(users ?? []).map((u) => (
+                <option key={u.id} value={u.email}>
+                  {u.name ? `${u.name} -- ${u.email}` : u.email}
+                </option>
+              ))}
+            </datalist>
           </label>
           <label>
             Notes <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(optional -- e.g. payment reference)</span>
