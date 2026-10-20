@@ -211,18 +211,28 @@ def _try_init_database(attempts: int = 3, base_delay: float = 2.0) -> bool:
     return False
 
 
-_try_init_database()
-
 settings = get_settings()
 
 if settings.secret_key_is_default:
     # Session tokens are HMAC-signed with this value. Anyone who knows it can
     # mint a token for any user id, including a superadmin -- and the default
-    # is published in this repository. Loud on purpose.
+    # is published in this repository. A real database means a real
+    # deployment, so refuse outright there rather than serve forgeable
+    # sessions; a failed boot keeps the host on its last good release.
+    # Local SQLite (dev, tests, docker-compose) only gets the warning.
+    if not settings.normalized_database_url.startswith("sqlite"):
+        raise RuntimeError(
+            "SECRET_KEY is the published development default. Refusing to start against a real database: "
+            "anyone who has read this repository could forge a session for any account. Set SECRET_KEY "
+            "(Render's blueprint generates one) and redeploy."
+        )
     logger.warning(
         "SECRET_KEY is the published development default -- session tokens can be forged by anyone "
         "who has read this repository. Set SECRET_KEY in .env before exposing this API to a network."
     )
+
+_try_init_database()
+
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
