@@ -107,9 +107,9 @@ export function CookiePolicy() {
       <section className="doc-section">
         <h2>Links to other sites</h2>
         <p>
-          Some pages link out to places we don't control -- WhatsApp, GitHub, football-data.co.uk, and
-          the Gambling Therapy and Gamblers Anonymous support sites in the footer. Once you follow one of
-          those links you're on their site, under their own cookie and privacy policies, not ours.
+          Some pages link out to places we don't control -- WhatsApp, GitHub, and the Gambling Therapy and
+          Gamblers Anonymous support sites in the footer. Once you follow one of those links you're on
+          their site, under their own cookie and privacy policies, not ours.
         </p>
       </section>
 

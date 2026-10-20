@@ -165,7 +165,7 @@ const FAQS = [
   },
   {
     q: "Where does the data come from?",
-    a: "Fixtures, results, injuries/suspensions, confirmed lineups and bookmaker prices all come from API-Football. The free openfootball and football-data.co.uk feeds seeded this deployment's early historical seasons before that switch and aren't read day to day any more. Live shot-level in-play statistics remain a pluggable extension point rather than a shipped capability.",
+    a: "Fixtures, results, injuries/suspensions, confirmed lineups and bookmaker prices all come from commercial sports-data feeds, kept current day to day. Live shot-level in-play statistics remain a pluggable extension point rather than a shipped capability.",
   },
   {
     q: "Is the AI chat a language model?",
@@ -173,7 +173,7 @@ const FAQS = [
   },
   {
     q: "What does it cost to run?",
-    a: "The software itself is free and open-source -- Python, Node, scikit-learn, nothing proprietary. This specific deployment pairs that with a paid API-Football tier for live fixtures, odds and squad data, plus managed Postgres and hosting, so the software costs nothing but keeping it fed with live data does.",
+    a: "The software itself is free and open-source -- Python, Node, scikit-learn, nothing proprietary. This specific deployment pairs that with a paid commercial data feed for live fixtures, odds and squad data, plus managed Postgres and hosting, so the software costs nothing but keeping it fed with live data does.",
   },
 ];
 

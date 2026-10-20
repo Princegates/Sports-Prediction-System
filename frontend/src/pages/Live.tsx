@@ -71,7 +71,7 @@ export function Live() {
         <EmptyState
           icon="●"
           title="No matches are live right now."
-          hint="A real match appears here automatically within a few minutes of kickoff, once its league is tracked and an API-Football key is configured -- or push a simulated event from any match's Live tab below."
+          hint="A real match appears here automatically within a few minutes of kickoff, once its league is tracked and live data is configured -- or push a simulated event from any match's Live tab below."
         />
       )}
       {!error && liveRows !== null && liveRows.length > 0 && (

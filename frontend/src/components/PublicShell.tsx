@@ -152,16 +152,6 @@ export function PublicShell({
             <h4>Transparency</h4>
             <Link to="/how-it-works">Model methodology</Link>
             <Link to="/responsible">Responsible use</Link>
-            <a
-              href="https://github.com/openfootball/football.json"
-              target="_blank"
-              rel="noreferrer noopener"
-            >
-              Data source: openfootball
-            </a>
-            <a href="https://www.football-data.co.uk/data.php" target="_blank" rel="noreferrer noopener">
-              Data source: football-data.co.uk
-            </a>
           </div>
 
           <div className="public-footer-col">

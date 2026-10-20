@@ -65,7 +65,7 @@ export function LiveEventControls({
   return (
     <div className="card card-pad">
       <p style={{ marginTop: 0, fontSize: 13, color: "var(--text-secondary)" }}>
-        A real match syncs here automatically every few minutes when an API-Football key is configured. Push a
+        A real match syncs here automatically every few minutes when live data is configured. Push a
         simulated event below to see the live engine recalculate the Global Most-Likely Outcome for real, on any
         match, live or not.
       </p>
