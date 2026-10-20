@@ -8,7 +8,7 @@ wired into the same cadence as fixtures). A confirmed starting lineup isn't
 known until roughly 60-75 minutes before kickoff, which is far too late for a
 once-a-day batch -- that half lives in the near-kickoff poll
 (``import_lineup``), called from the same in-process loop that already polls
-live scores every few minutes (see app.main._live_sync_loop).
+live scores every few minutes (see app.main._run_live_sync_once).
 
 Team identity here reuses app.data.api_football_ingest.TeamIndex -- the same
 fuzzy name matching the fixture importer already relies on, since this
@@ -184,7 +184,7 @@ def import_lineup(db: Session, client: ApiFootballClient, match: Match) -> Lineu
     An empty response is the normal case outside the ~60-75 minute
     pre-kickoff window the provider actually publishes lineups in -- not an
     error, and nothing is stored, so the caller's own retry-on-the-next-poll
-    behavior (app.main._live_sync_loop) is what eventually catches the real
+    behavior (app.main._run_live_sync_once) is what eventually catches the real
     announcement.
     """
 

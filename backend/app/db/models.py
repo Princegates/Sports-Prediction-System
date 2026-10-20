@@ -828,3 +828,22 @@ class BookingSlip(Base):
     site_codes: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     user: Mapped["User"] = relationship()
+
+
+class SchedulerLease(Base):
+    """Which process currently runs a background loop (app.main), so a
+    deploy that briefly runs the old and new instance side by side -- or
+    any future second instance -- doesn't run each loop twice: two daily
+    draws, double the API-Football requests. See app.scheduler_lease.
+
+    A row instead of a Postgres advisory lock because the connection may go
+    through a transaction-mode pooler (see db/session.py), which hands each
+    transaction a different server connection -- a session-level lock taken
+    on one would be meaningless on the next.
+    """
+
+    __tablename__ = "scheduler_leases"
+
+    name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    holder: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[dt.datetime] = mapped_column(DateTime)

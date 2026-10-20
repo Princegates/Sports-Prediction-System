@@ -28,7 +28,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.data.providers.api_football import ApiFootballClient, ApiFootballError, ID_TO_LEAGUE, QuotaExceeded
@@ -582,6 +582,9 @@ class LiveSyncReport:
     stuck_resolved: int = 0
     skipped_no_match: list[str] = field(default_factory=list)
     requests_used: int = 0
+    # True when no tracked match was anywhere near being in play, so the
+    # poll spent nothing (see live_poll_due).
+    idle: bool = False
 
 
 # Fixture states that mean "not actually being played right now", so no
@@ -756,6 +759,42 @@ def sync_live_matches(db: Session, client: ApiFootballClient) -> LiveSyncReport:
     return report
 
 
+# How far either side of kickoff a tracked match keeps the live poll running.
+# Ten minutes early covers a slightly early start or a clock skew; three
+# hours after covers extra time, penalties and a long stoppage.
+LIVE_WINDOW_BEFORE_KICKOFF = dt.timedelta(minutes=10)
+LIVE_WINDOW_AFTER_KICKOFF = dt.timedelta(hours=3)
+
+
+def live_poll_due(db: Session, *, now: dt.datetime | None = None) -> bool:
+    """Whether any match this project tracks could be in play right now.
+
+    ``live_fixtures()`` is the whole world's live board, one request per
+    call, so polling it every five minutes around the clock cost 288
+    requests a day even on days with no tracked match on -- most of them
+    spent overnight. Only a scheduled or live match inside its kickoff
+    window, or a LIVE row the stuck-match reconciliation below still has to
+    resolve, makes a poll worth paying for.
+    """
+
+    now = now or dt.datetime.utcnow()
+    due = db.execute(
+        select(Match.id)
+        .where(
+            or_(
+                and_(
+                    Match.status.in_(("SCHEDULED", "LIVE")),
+                    Match.date >= now - LIVE_WINDOW_AFTER_KICKOFF,
+                    Match.date <= now + LIVE_WINDOW_BEFORE_KICKOFF,
+                ),
+                and_(Match.status == "LIVE", Match.api_fixture_id.is_not(None)),
+            )
+        )
+        .limit(1)
+    ).first()
+    return due is not None
+
+
 def run_live_sync_from_settings(db: Session) -> LiveSyncReport | None:
     """Builds an ``ApiFootballClient`` from stored settings and runs one
     live-match poll -- the "given a DB session, do the current poll" shape
@@ -776,6 +815,8 @@ def run_live_sync_from_settings(db: Session) -> LiveSyncReport | None:
     key = str(values.get("api_football_key") or "")
     if not key:
         return None
+    if not live_poll_due(db):
+        return LiveSyncReport(idle=True)
 
     daily_budget = int(values.get("api_football_daily_budget") or 7500)
     client = ApiFootballClient(

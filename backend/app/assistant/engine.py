@@ -13,9 +13,10 @@ from __future__ import annotations
 import datetime as dt
 from dataclasses import asdict, replace
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app import app_settings
 from app.assistant import llm, nlu, responder
 from app.assistant.responder import Answer
 from app.db.models import ChatMessage
@@ -37,22 +38,44 @@ def _validate(message: str) -> str:
     return text
 
 
+def llm_quota_left(db: Session, user_id: int, now: dt.datetime | None = None) -> bool:
+    """Whether ``user_id`` may still use the optional LLM today
+    (``assistant_llm_daily_per_user`` calls per rolling 24 hours). Past it,
+    answers come from the grounded pipeline alone -- same content, plainer
+    phrasing -- so a heavy user, or a script, can't run up a provider bill
+    or burn a free tier's shared daily allowance for everyone."""
+
+    limit = int(app_settings.get_value(db, "assistant_llm_daily_per_user") or 0)
+    now = now or dt.datetime.utcnow()
+    used = db.execute(
+        select(func.count(ChatMessage.id)).where(
+            ChatMessage.user_id == user_id,
+            ChatMessage.role == "assistant",
+            or_(ChatMessage.rewritten.is_(True), ChatMessage.general_chat.is_(True)),
+            ChatMessage.created_at >= now - dt.timedelta(hours=24),
+        )
+    ).scalar_one()
+    return used < limit
+
+
 def compose(
     db: Session,
     message: str,
     context_match_id: int | None = None,
     now: dt.datetime | None = None,
     allow_rewrite: bool = True,
+    user_id: int | None = None,
 ) -> Answer:
     """Build the answer without touching chat history. Separated from
     ``answer`` so tests (and the streaming endpoint) can exercise the
-    reasoning path without writing rows."""
+    reasoning path without writing rows. ``user_id``, when given, applies
+    that user's daily LLM quota (see ``llm_quota_left``)."""
 
     text = _validate(message)
     parsed = nlu.parse(db, text, context_match_id=context_match_id, now=now)
     result = responder.respond(db, parsed, now=now)
 
-    if allow_rewrite and llm.is_enabled(db):
+    if allow_rewrite and llm.is_enabled(db) and (user_id is None or llm_quota_left(db, user_id)):
         if result.intent == nlu.Intent.UNKNOWN:
             # Nothing grounded to rewrite -- let the LLM answer the message
             # itself rather than only ever handing back the capability menu.
@@ -112,7 +135,7 @@ def answer(
     now: dt.datetime | None = None,
 ) -> tuple[Answer, ChatMessage]:
     text = _validate(message)
-    result = compose(db, text, context_match_id=context_match_id, now=now)
+    result = compose(db, text, context_match_id=context_match_id, now=now, user_id=user_id)
     row = _persist(db, user_id, text, result, context_match_id)
     return result, row
 
@@ -130,7 +153,7 @@ def stream_answer(
     exchange in its history."""
 
     text = _validate(message)
-    result = compose(db, text, context_match_id=context_match_id, now=now)
+    result = compose(db, text, context_match_id=context_match_id, now=now, user_id=user_id)
     _persist(db, user_id, text, result, context_match_id)
 
     words = result.text.split(" ")

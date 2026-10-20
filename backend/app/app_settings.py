@@ -243,6 +243,11 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 secret=True, env_attr="assistant_llm_api_key"),
     SettingSpec("assistant_llm_timeout", "float", "assistant", "Request timeout (seconds)",
                 env_attr="assistant_llm_timeout", minimum=1, maximum=120),
+    SettingSpec("assistant_llm_daily_per_user", "int", "assistant", "AI replies per user per day",
+                "After this many AI-phrased or AI-generated replies in 24 hours, a user's answers come "
+                "from the built-in pipeline only. Keeps a heavy user from using up a free tier's daily "
+                "allowance for everyone, or running up a bill on a paid one.",
+                default=30, minimum=1, maximum=1000),
 
     # --- Guda Picks ----------------------------------------------------------
     SettingSpec("guda_picks_enabled", "bool", "picks", "Show Guda Picks",

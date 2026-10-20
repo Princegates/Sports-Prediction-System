@@ -325,7 +325,66 @@ def test_run_live_sync_from_settings_is_a_noop_with_no_key(db_session, monkeypat
     assert run_live_sync_from_settings(db_session) is None
 
 
+def _with_key(monkeypatch):
+    monkeypatch.setattr(
+        app_settings,
+        "all_values",
+        lambda db: {
+            "api_football_key": "test-key",
+            "api_football_host": "v3.football.api-sports.io",
+            "api_football_daily_budget": 7500,
+            "api_football_per_minute": 300,
+        },
+    )
+
+
+def test_run_live_sync_from_settings_skips_the_request_when_no_tracked_match_is_on(db_session, clubs, monkeypatch):
+    """The live board costs a request per poll; with nothing of ours near
+    kickoff there's nothing to learn from it."""
+
+    home, away = clubs
+    now = dt.datetime.utcnow()
+    db_session.add_all([
+        Match(league="English Premier League", season="2026", date=now + dt.timedelta(hours=5),
+              home_team_id=home.id, away_team_id=away.id, status="SCHEDULED"),
+        Match(league="English Premier League", season="2026", date=now - dt.timedelta(hours=6),
+              home_team_id=home.id, away_team_id=away.id, status="FINISHED", home_score=1, away_score=0),
+    ])
+    db_session.commit()
+    _with_key(monkeypatch)
+    clients = []
+    monkeypatch.setattr(api_football_ingest, "ApiFootballClient", lambda key, **kw: clients.append(1) or FakeClient([], **kw))
+
+    report = run_live_sync_from_settings(db_session)
+
+    assert report is not None and report.idle
+    assert report.requests_used == 0
+    assert clients == []
+
+
+@pytest.mark.parametrize(
+    "offset, status, fixture_id, due",
+    [
+        (dt.timedelta(minutes=5), "SCHEDULED", None, True),     # about to kick off
+        (dt.timedelta(minutes=-80), "LIVE", None, True),        # in play
+        (dt.timedelta(hours=-2, minutes=-50), "SCHEDULED", None, True),  # late start / extra time
+        (dt.timedelta(minutes=30), "SCHEDULED", None, False),   # not yet
+        (dt.timedelta(hours=-4), "SCHEDULED", None, False),     # long over, never synced
+        (dt.timedelta(days=-2), "LIVE", 555, True),             # stuck LIVE, still needs reconciling
+        (dt.timedelta(days=-2), "LIVE", None, False),           # stale sandbox row, nothing to reconcile
+    ],
+)
+def test_live_poll_due_window(db_session, clubs, offset, status, fixture_id, due):
+    home, away = clubs
+    now = dt.datetime(2026, 10, 20, 15, 0)
+    db_session.add(Match(league="English Premier League", season="2026", date=now + offset,
+                         home_team_id=home.id, away_team_id=away.id, status=status, api_fixture_id=fixture_id))
+    db_session.commit()
+    assert api_football_ingest.live_poll_due(db_session, now=now) is due
+
+
 def test_run_live_sync_from_settings_builds_a_client_and_syncs(db_session, scheduled_match, monkeypatch):
+    monkeypatch.setattr(api_football_ingest, "live_poll_due", lambda db, now=None: True)
     monkeypatch.setattr(
         app_settings,
         "all_values",
