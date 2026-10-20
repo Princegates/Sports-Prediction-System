@@ -65,6 +65,17 @@ const LEAGUES = [
   "Welsh Premier League",
 ];
 
+// The 8 biggest domestic leagues this deployment tracks plus the
+// Champions League -- the same leading slice LEAGUES above already orders
+// first, before it drops into continental competitions and the smaller
+// leagues beyond them. Markets and Predictions default to just these on
+// first load (and whenever nothing else is explicitly picked) instead of
+// every league this deployment tracks -- loading matches and outcomes
+// across 54 leagues by default made the initial load slow for no benefit
+// most visits never needed; "All leagues" is one click away in the
+// picker's own presets.
+const TOP_LEAGUES = LEAGUES.slice(0, 9);
+
 const LEAGUE_STORAGE_KEY = "app_league";
 
 /** The topbar league selector survives a reload -- otherwise every visit
@@ -285,4 +296,4 @@ export function AppShell() {
   );
 }
 
-export { LEAGUES };
+export { LEAGUES, TOP_LEAGUES };

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { fetchMostLikelyAcrossLeagues } from "../api";
-import { LEAGUES } from "../components/AppShell";
+import { LEAGUES, TOP_LEAGUES } from "../components/AppShell";
 import { CopyButton } from "../components/CopyButton";
 import { DateStrip, localDayKey } from "../components/DateStrip";
 import { describeLeagues, LeaguePicker } from "../components/LeaguePicker";
@@ -51,6 +51,11 @@ const PAGE_SIZE = 10;
 // exact thing the Markets page's "stacking multiplies risk" note warns
 // against. Every row here stands alone.
 const LEAGUES_STORAGE_KEY = "predictions_selected_leagues";
+
+const LEAGUE_PRESETS = [
+  { label: "Top 9", keys: TOP_LEAGUES },
+  { label: "All leagues", keys: LEAGUES },
+];
 
 /** This browser's last league pick -- a convenience only, so it's fine for
  * it to come back empty ("all leagues") if it's missing, unreadable
@@ -146,7 +151,12 @@ export function Predictions() {
     // the time of writing, up from 9) and is the same connection-pool-
     // pressure pattern that previously took the backend down via
     // Dashboard's per-match version of the same bug.
-    const leaguesToFetch = selectedLeagues.length === 0 ? LEAGUES : selectedLeagues;
+    //
+    // Nothing picked defaults to TOP_LEAGUES (the 9 biggest), not every
+    // league this deployment tracks -- "All leagues" is one click away in
+    // the picker's own presets below, for whoever actually wants the full
+    // 54-league fetch.
+    const leaguesToFetch = selectedLeagues.length === 0 ? TOP_LEAGUES : selectedLeagues;
     fetchMostLikelyAcrossLeagues(leaguesToFetch, HORIZON_DAYS, 80)
       .then((predictions) => {
         if (cancelled) return;
@@ -351,7 +361,13 @@ export function Predictions() {
       </p>
 
       <div className="filter-bar" style={{ marginBottom: 10 }}>
-        <LeaguePicker leagues={LEAGUES} selected={selectedLeagues} onChange={setSelectedLeagues} />
+        <LeaguePicker
+          leagues={LEAGUES}
+          selected={selectedLeagues}
+          onChange={setSelectedLeagues}
+          presets={LEAGUE_PRESETS}
+          emptyLabel="Top 9 (default)"
+        />
       </div>
 
       <div className="filter-bar" style={{ marginBottom: 20 }}>

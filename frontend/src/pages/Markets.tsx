@@ -11,7 +11,7 @@ import { MarketPicker, type MarketPreset } from "../components/MarketPicker";
 import { SiteCodes } from "../components/SiteCodes";
 import { StickySlipBar } from "../components/StickySlipBar";
 import { dateKeyFromIso, FixtureCalendar } from "../components/FixtureCalendar";
-import { LEAGUES } from "../components/AppShell";
+import { LEAGUES, TOP_LEAGUES } from "../components/AppShell";
 import { formatPicksForCopy, readStoredPicks, storePicks } from "../lib/myPicks";
 import { isHotPick } from "../lib/filters";
 import { useAuth } from "../lib/AuthContext";
@@ -86,6 +86,11 @@ const QUICK_PICKS: MarketPreset[] = [
   { label: "Goal lines", markets: ["Total Goals 1.5", "Total Goals 2.5", "Total Goals 3.5"] },
   { label: "Half-time", markets: ["HT Result", "HT Total Goals 0.5", "HT Total Goals 1.5"] },
   { label: "Corners", markets: ["Most Corners", "Total Corners 9.5"] },
+];
+
+const LEAGUE_PRESETS = [
+  { label: "Top 9", keys: TOP_LEAGUES },
+  { label: "All leagues", keys: LEAGUES },
 ];
 
 const SELECTION_STORAGE_KEY = "market_selection";
@@ -235,6 +240,14 @@ export function Markets() {
     setSelectedLeaguesState(next);
     storeLeagues(next);
   }
+  // Nothing picked defaults to TOP_LEAGUES (the 9 biggest), not every
+  // league this deployment tracks -- loading matches and outcomes across
+  // 54 leagues on first visit was slow for no benefit most visits never
+  // needed. "All leagues" is one click away in the picker's own presets.
+  const leaguesToFetch = useMemo(
+    () => (selectedLeagues.length === 0 ? TOP_LEAGUES : selectedLeagues),
+    [selectedLeagues],
+  );
 
   const [stored] = useState(readStoredSelection);
   const [selectedMarkets, setSelectedMarkets] = useState<string[]>(stored?.markets ?? MARKET_PRESETS[0].markets);
@@ -256,13 +269,13 @@ export function Markets() {
   // just for the calendar's dots, never rendered as rows itself.
   useEffect(() => {
     let cancelled = false;
-    fetchMatchesForLeagues(selectedLeagues, { status: "SCHEDULED", days_ahead: CALENDAR_DAYS_AHEAD })
+    fetchMatchesForLeagues(leaguesToFetch, { status: "SCHEDULED", days_ahead: CALENDAR_DAYS_AHEAD })
       .then((m) => !cancelled && setCalendarMatches(m))
       .catch(() => !cancelled && setCalendarMatches([]));
     return () => {
       cancelled = true;
     };
-  }, [selectedLeagues]);
+  }, [leaguesToFetch]);
 
   // A picked calendar date overrides the day-range chips: just enough
   // days_ahead to include that date, then the coupon views below filter
@@ -312,13 +325,13 @@ export function Markets() {
   const [catalog, setCatalog] = useState<MarketSummary[]>([]);
   useEffect(() => {
     let cancelled = false;
-    fetchOutcomesForLeagues(selectedLeagues, { days_ahead: 21, limit_per_league: 1 })
+    fetchOutcomesForLeagues(leaguesToFetch, { days_ahead: 21, limit_per_league: 1 })
       .then((d) => !cancelled && setCatalog(d.markets))
       .catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [selectedLeagues]);
+  }, [leaguesToFetch]);
 
   // A remembered or default market this league has no prices for right now
   // still gets a row in the dropdown, so it can be unticked.
@@ -398,7 +411,7 @@ export function Markets() {
     let cancelled = false;
     setGridData(null);
     setGridError(null);
-    fetchOutcomesForLeagues(selectedLeagues, {
+    fetchOutcomesForLeagues(leaguesToFetch, {
       market: selectedMarkets, days_ahead: effectiveDays,
       min_probability: 0, limit_per_league: 500,
     })
@@ -407,7 +420,7 @@ export function Markets() {
     return () => {
       cancelled = true;
     };
-  }, [view, selectedMarkets, selectedLeagues, effectiveDays]);
+  }, [view, selectedMarkets, leaguesToFetch, effectiveDays]);
 
   // One block of columns per ticked market, in the dropdown's order, each
   // with its selections in the order the model lists them.
@@ -454,7 +467,7 @@ export function Markets() {
     let cancelled = false;
     setOtherData(null);
     setOtherError(null);
-    fetchOutcomesForLeagues(selectedLeagues, {
+    fetchOutcomesForLeagues(leaguesToFetch, {
       market: selectedMarkets.length ? selectedMarkets : undefined,
       days_ahead: effectiveDays, min_probability: otherFloor, confidence: otherConfidence || undefined,
     })
@@ -463,7 +476,7 @@ export function Markets() {
     return () => {
       cancelled = true;
     };
-  }, [view, selectedLeagues, selectedMarkets, effectiveDays, otherFloor, otherConfidence]);
+  }, [view, leaguesToFetch, selectedMarkets, effectiveDays, otherFloor, otherConfidence]);
 
   const singleMarket =
     selectedMarkets.length === 1 ? catalog.find((m) => m.market === selectedMarkets[0]) : undefined;
@@ -484,7 +497,13 @@ export function Markets() {
       </div>
 
       <div className="filter-bar" style={{ marginBottom: 10 }}>
-        <LeaguePicker leagues={LEAGUES} selected={selectedLeagues} onChange={setSelectedLeagues} />
+        <LeaguePicker
+          leagues={LEAGUES}
+          selected={selectedLeagues}
+          onChange={setSelectedLeagues}
+          presets={LEAGUE_PRESETS}
+          emptyLabel="Top 9 (default)"
+        />
         <MarketPicker
           markets={pickerMarkets}
           selected={selectedMarkets}
