@@ -75,7 +75,8 @@ DEFAULT_DAYS_AHEAD = 7
 # probability" comparison against every other market every time and be
 # worthless as a recommendation. This specific set is a product choice
 # (fixed 2026-10, "AI Picks" should only ever lean on these): the handicap
-# lines are ±3 specifically, not the full ±1..±5 range the registry offers.
+# lines are ±1 and ±2 -- the registry offers nothing wider (see its
+# HANDICAP_LINES).
 # An unusual market is still reachable -- just by asking for it explicitly
 # via criteria.markets, the same as any other specific choice.
 DEFAULT_MARKETS = (
@@ -83,16 +84,18 @@ DEFAULT_MARKETS = (
     "Double Chance",
     "Draw No Bet",
     "Total Goals 1.5",
-    "Handicap -3",
-    "Handicap +3",
+    "Handicap -1",
+    "Handicap +1",
+    "Handicap -2",
+    "Handicap +2",
 )
 
-# A ranked slip takes at most this many legs from any one market (see
-# _per_market_cap), so "the safest legs" doesn't mean the same market eight
-# times over -- Handicap +3 in particular clears almost any floor on almost
-# every match. Handicap lines count as one market for this: "+3 Home" and
-# "-3 Away" are the same bet shape from either side.
-MAX_LEGS_PER_MARKET = 2
+# A ranked slip uses each market for one leg only (see _per_market_cap), so
+# "the safest legs" doesn't mean the same market eight times over --
+# Handicap +3 in particular clears almost any floor on almost every match.
+# Handicap lines count as one market for this: "+3 Home" and "-3 Away" are
+# the same bet shape from either side.
+MAX_LEGS_PER_MARKET = 1
 
 
 def _market_family(market: str) -> str:
@@ -100,11 +103,14 @@ def _market_family(market: str) -> str:
 
 
 def _per_market_cap(max_legs: int, markets: tuple[str, ...]) -> int:
-    """MAX_LEGS_PER_MARKET, unless the markets asked for are too few to fill
-    max_legs that way -- someone who picks just Over 1.5 still gets a full
-    slip of it."""
+    """MAX_LEGS_PER_MARKET -- one leg per market -- for the default market
+    set, even if that means fewer legs than asked. Only someone who chose
+    their own markets, too few to fill max_legs one each, gets them
+    repeated: picking just Over 1.5 still gives a full slip of it."""
 
-    families = {_market_family(m) for m in markets} or {""}
+    if not markets:
+        return MAX_LEGS_PER_MARKET
+    families = {_market_family(m) for m in markets}
     return max(MAX_LEGS_PER_MARKET, math.ceil(max_legs / len(families)))
 
 
@@ -932,8 +938,8 @@ def select_legs_by_confidence(
 ) -> ConfidencePick:
     """The no-odds sibling of select_legs: picks up to max_legs matches,
     safest (highest model probability) first, each clearing min_probability
-    in a wanted market, and no more than _per_market_cap legs from any one
-    market so a slip mixes markets. No price is required and there is no target to
+    in a wanted market, with each market used for one leg only (see
+    _per_market_cap) so a slip mixes markets. No price is required and there is no target to
     reach -- the result is meant to be booked directly with a betting site
     (app.betcode.sites), which prices the slip itself, rather than combined
     toward a target price the way select_legs's accumulator is.
@@ -949,7 +955,7 @@ def select_legs_by_confidence(
         date_from=date_from, date_to=date_to, exclude_match_ids=exclude_match_ids,
     )
     candidates = [max(legs, key=lambda leg: leg.model_probability) for legs in pool.values()]
-    cap = _per_market_cap(max_legs, markets or DEFAULT_MARKETS)
+    cap = _per_market_cap(max_legs, markets)
 
     # Safest first, one leg per match, at most `cap` legs per market.
     options = sorted(
@@ -984,7 +990,7 @@ def select_legs_by_confidence(
         if len(chosen) < max_legs:
             warnings.append(
                 f"{len(candidates)} matches qualify, but only {len(chosen)} legs fit while keeping each market "
-                f"to {cap} leg{'s' if cap != 1 else ''} -- add markets or lower the accuracy floor for more."
+                f"to {cap} leg{'s' if cap != 1 else ''} -- choose more markets or lower the accuracy floor for more."
             )
         else:
             warnings.append(

@@ -96,11 +96,12 @@ _TEAM_GOAL_LINES = ("0.5", "1.5", "2.5", "3.5", "4.5")
 # Half-goal lines only (see matrix_derived_outcomes' own Asian Handicap
 # section for why: a half-integer margin can never land exactly on 0, so
 # there's no push/void case a whole-integer line would need). Capped at
-# 3.5 -- the deepest real line genuinely observed on SportyBet's own
-# market 16 in either direction (Real Madrid vs Sevilla/Bayern Munich vs
-# RB Leipzig for -3.5; Betis vs Barcelona/Freiburg vs Bayern Munich for
-# +3.5); nothing seen quoting 4.5.
-_ASIAN_HANDICAP_LINES = (0.5, 1.5, 2.5, 3.5)
+# 1.5: no handicap wider than two goals is offered (product rule, 2026-10;
+# see HANDICAP_LINES), though SportyBet's market 16 quotes up to 3.5.
+_ASIAN_HANDICAP_LINES = (0.5, 1.5)
+# The 3-way Handicap lines offered -- see the Handicap block below. Shared
+# with the SportyBet connector so the two can't drift apart.
+HANDICAP_LINES = (-2, -1, 1, 2)
 
 _RESULT_SHORT = {"Home": "1", "Draw": "X", "Away": "2"}
 _RESULT_PHRASE = {
@@ -205,7 +206,10 @@ def matrix_derived_outcomes(lambda_home: float, lambda_away: float, matches_avai
     # Only full-time is offered -- unlike Draw No Bet and Winning Margin
     # above, bookmakers essentially never quote a half-time handicap, so
     # there's no real-world line to mirror into ht_matrix_derived_outcomes.
-    for line in (-5, -4, -3, -2, -1, 1, 2, 3, 4, 5):
+    # Two goals either way at most (product rule, 2026-10): a wider line is
+    # close to a certainty that pays next to nothing, and kept crowding out
+    # real picks.
+    for line in HANDICAP_LINES:
         bucket = {"Home": 0.0, "Draw": 0.0, "Away": 0.0}
         for h in range(max_goals + 1):
             for a in range(max_goals + 1):

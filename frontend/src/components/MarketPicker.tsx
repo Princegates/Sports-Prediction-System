@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { MultiSelectPicker, type PickerPreset } from "./MultiSelectPicker";
 import type { MarketSummary } from "../types";
+import { marketLabel } from "../lib/marketLabel";
 
 /** The Markets page's market dropdown, built on the generic MultiSelectPicker
  * -- every market the system prices, any number of them ticked at once. */
@@ -46,7 +47,7 @@ export function MarketPicker({
   markets, selected, onChange, presets = [], emptyLabel = "Choose markets", loading = false,
 }: Props) {
   const items = useMemo(
-    () => markets.map((m) => ({ key: m.market, label: m.market, group: categoryOf(m.market) })),
+    () => markets.map((m) => ({ key: m.market, label: marketLabel(m.market), group: categoryOf(m.market) })),
     [markets],
   );
   const pickerPresets: PickerPreset[] = useMemo(() => presets.map((p) => ({ label: p.label, keys: p.markets })), [presets]);

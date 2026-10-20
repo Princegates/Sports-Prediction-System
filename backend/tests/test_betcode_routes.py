@@ -83,7 +83,7 @@ def test_suggest_requires_active_access(headers_no_access):
 def test_suggest_honors_an_explicit_market_outside_the_default_six(auth_headers, upcoming_match):
     """The bug this fixed: an explicitly requested market used to be
     silently narrowed back to DEFAULT_MARKETS (Match Result, Double Chance,
-    Draw No Bet, Total Goals 1.5, Handicap -3/+3) if it wasn't one of those
+    Draw No Bet, Total Goals 1.5, Handicap ±1/±2) if it wasn't one of those
     six -- so asking for Both Teams To Score (not in that list) used to
     come back as a Match Result leg instead. The Markets picker now offers
     the full catalog, and an explicit, deliberate choice from it should be

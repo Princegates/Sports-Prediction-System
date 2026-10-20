@@ -51,6 +51,7 @@ import type {
   OutcomesResponse,
   Prediction,
 } from "../types";
+import { marketLabel } from "../lib/marketLabel";
 
 const TAB_NAMES = ["Overview", "AI Prediction", "Form", "H2H", "Live", "Markets", "Explanation"];
 
@@ -487,7 +488,7 @@ export function MatchDetail() {
               return (
                 <div key={m.market} style={{ marginBottom: 20 }}>
                   <div className="match-meta-row" style={{ marginBottom: 6 }}>
-                    <strong>{m.market}</strong>
+                    <strong>{marketLabel(m.market)}</strong>
                     <span className="sub" style={{ marginLeft: 8 }}>
                       {m.mutually_exclusive ? "sums to 100%" : "not mutually exclusive"}
                     </span>
@@ -508,7 +509,7 @@ export function MatchDetail() {
                                     type="checkbox"
                                     checked={checked}
                                     onChange={() => togglePick(o.market, o.selection)}
-                                    aria-label={`Use ${o.selection} (${o.market}) as this match's leg in AI Generation`}
+                                    aria-label={`Use ${o.selection} (${marketLabel(o.market)}) as this match's leg in AI Generation`}
                                   />
                                 </td>
                                 <td>

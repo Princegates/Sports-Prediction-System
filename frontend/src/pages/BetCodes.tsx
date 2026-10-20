@@ -32,6 +32,7 @@ import { useIsMobile } from "../lib/useIsMobile";
 import { takePendingSlip } from "../lib/pendingSlip";
 import type { AdminPick, BetCodePick, MarketSummary, MatchSummary, PublicTeaserPick, SuggestCriteria, SuggestedLeg, SuggestedPicks } from "../types";
 import { chanceLabel } from "../lib/odds";
+import { marketLabel } from "../lib/marketLabel";
 
 /** Plain-text description of one selected combo, meant to be pasted
  * wherever the user places bets themselves. No bookmaker code, no odds
@@ -44,7 +45,7 @@ function formatLegsForCopy(legs: SuggestedLeg[], combinedProbability: number): s
     });
     return (
       `${leg.home_team} vs ${leg.away_team} (${leg.league}, ${kickoff})\n` +
-      `${leg.market}: ${leg.selection} -- ${(leg.model_probability * 100).toFixed(0)}% probability`
+      `${marketLabel(leg.market)}: ${leg.selection} -- ${(leg.model_probability * 100).toFixed(0)}% probability`
     );
   });
   return [header, "", ...lines].join("\n\n");
@@ -83,8 +84,11 @@ const AI_PICKS_LEAGUES = [
 // page's own dropdown, grouped and searchable rather than two flat chip
 // rows capped at twelve markets total.
 const DEFAULT_MARKET_PRESET: MarketPreset = {
-  label: "Default (match result, double chance, draw no bet, O/U 1.5, handicap ±3)",
-  markets: ["Match Result", "Double Chance", "Draw No Bet", "Total Goals 1.5", "Handicap -3", "Handicap +3"],
+  label: "Default (match result, double chance, draw no bet, O/U 1.5, handicap up to 2 goals)",
+  markets: [
+    "Match Result", "Double Chance", "Draw No Bet", "Total Goals 1.5",
+    "Handicap -1", "Handicap +1", "Handicap -2", "Handicap +2",
+  ],
 };
 
 const AI_MARKET_PRESETS: MarketPreset[] = [
@@ -136,10 +140,11 @@ type RiskLevel = "low" | "medium" | "high";
  * legs isn't a separate lever the way it was when a leg count doubled as
  * "keep searching until the price target is hit" -- here it's just how
  * many of the safest qualifying matches to show). Markets aren't a risk
- * lever either: every preset below leaves `markets` empty, which the
- * engine takes as its own curated default (DEFAULT_MARKET_PRESET above) --
- * the full catalog is there to explore by hand in the Markets step, not
- * folded into a one-click preset.
+ * lever either: the presets leave `markets` empty, which the engine takes
+ * as its own curated default (DEFAULT_MARKET_PRESET above), except High
+ * risk -- every leg uses a different market, and eight legs need more than
+ * the default's five. The full catalog is there to explore by hand in the
+ * Markets step, not folded into a one-click preset.
  */
 const RISK_PRESETS: Record<
   RiskLevel,
@@ -164,7 +169,13 @@ const RISK_PRESETS: Record<
     description: "50%+ picks, up to 8 legs",
     minProbability: 0.5,
     maxLegs: 8,
-    markets: [],
+    // Each leg uses a different market, and the default set only has five
+    // (the handicap lines count as one) -- eight legs need eight markets.
+    markets: [
+      "Match Result", "Double Chance", "Draw No Bet", "Total Goals 1.5",
+      "Handicap -1", "Handicap +1", "Handicap -2", "Handicap +2",
+      "Both Teams To Score", "Total Goals 2.5", "Total Goals 3.5",
+    ],
   },
 };
 
@@ -675,9 +686,9 @@ export function BetCodes() {
           </button>
         </div>
         <p className="setting-note" style={{ marginTop: 10, marginBottom: 0 }}>
-          Fills in (and runs) the fields below -- feel free to adjust anything afterward and generate again. Slips mix
-          markets: no more than 2 legs from any one market. Random slip generates straight away and ignores the
-          fields below except league and date range.
+          Fills in (and runs) the fields below -- feel free to adjust anything afterward and generate again. Every
+          leg uses a different market. Random slip generates straight away and ignores the fields below except
+          league and date range.
         </p>
       </div>
 
@@ -1016,7 +1027,7 @@ export function BetCodes() {
                         </div>
                         <div className="sub">{leg.league}</div>
                       </td>
-                      <td className="sub" data-label="Market">{leg.market}</td>
+                      <td className="sub" data-label="Market">{marketLabel(leg.market)}</td>
                       <td data-label="Selection">
                         <strong>{leg.selection}</strong>
                       </td>
@@ -1235,7 +1246,7 @@ export function BetCodes() {
                   }}
                 >
                   <span className="sub">
-                    {leg.home_team} vs {leg.away_team} -- {leg.market}: {leg.selection}
+                    {leg.home_team} vs {leg.away_team} -- {marketLabel(leg.market)}: {leg.selection}
                   </span>
                   <span className="badge-neutral">{leg.decimal_odds?.toFixed(2)}</span>
                 </div>

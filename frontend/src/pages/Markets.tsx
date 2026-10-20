@@ -16,6 +16,7 @@ import { formatPicksForCopy, readStoredPicks, storePicks } from "../lib/myPicks"
 import { isHotPick } from "../lib/filters";
 import { useAuth } from "../lib/AuthContext";
 import type { BettingOutcome, MarketSummary, MatchSummary, OutcomesResponse } from "../types";
+import { marketLabel } from "../lib/marketLabel";
 
 /**
  * Every available betting outcome, grouped by league -- laid out as a
@@ -620,7 +621,7 @@ export function Markets() {
                               </th>
                               {gridMarkets.map((g) => (
                                 <th key={g.market} colSpan={g.columns.length} className="market-head">
-                                  {g.market}
+                                  {marketLabel(g.market)}
                                 </th>
                               ))}
                             </tr>
@@ -662,7 +663,7 @@ export function Markets() {
                                               type="button"
                                               className={`odds-cell${tops.has(key) ? " ai-top" : ""}${isPicked ? " picked" : ""}`}
                                               onClick={() => togglePick(o)}
-                                              title={`${o.market}: ${o.selection} -- ${o.definition} AI probability ${(o.probability * 100).toFixed(0)}%${isHotPick(o.probability, o.data_quality_score, o.model_agreement_score) ? " -- high confidence" : ""}`}
+                                              title={`${marketLabel(o.market)}: ${o.selection} -- ${o.definition} AI probability ${(o.probability * 100).toFixed(0)}%${isHotPick(o.probability, o.data_quality_score, o.model_agreement_score) ? " -- high confidence" : ""}`}
                                             >
                                               {(o.probability * 100).toFixed(0)}%
                                               {isHotPick(o.probability, o.data_quality_score, o.model_agreement_score) && (
@@ -706,7 +707,7 @@ export function Markets() {
                             </div>
                             {gridMarkets.map((g) => (
                               <div className="coupon-mobile-market" key={g.market}>
-                                <div className="coupon-mobile-market-label">{g.market}</div>
+                                <div className="coupon-mobile-market-label">{marketLabel(g.market)}</div>
                                 <div className="coupon-mobile-odds-row">
                                   {g.columns.map((c) => {
                                     const key = cellKey(c.market, c.selection);
@@ -718,7 +719,7 @@ export function Markets() {
                                         type="button"
                                         className={`odds-cell coupon-mobile-odds-btn${tops.has(key) ? " ai-top" : ""}${isPicked ? " picked" : ""}`}
                                         onClick={() => togglePick(o)}
-                                        title={`${o.market}: ${o.selection} -- ${o.definition} AI probability ${(o.probability * 100).toFixed(0)}%${isHotPick(o.probability, o.data_quality_score, o.model_agreement_score) ? " -- high confidence" : ""}`}
+                                        title={`${marketLabel(o.market)}: ${o.selection} -- ${o.definition} AI probability ${(o.probability * 100).toFixed(0)}%${isHotPick(o.probability, o.data_quality_score, o.model_agreement_score) ? " -- high confidence" : ""}`}
                                       >
                                         <span className="coupon-mobile-odds-label">{c.header}</span>
                                         <span className="coupon-mobile-odds-value">
@@ -772,7 +773,7 @@ export function Markets() {
 
           {singleMarket && (
             <p className="setting-note" style={{ marginBottom: 18 }}>
-              <strong>{singleMarket.market}</strong> — {singleMarket.selections.join(" · ")}.{" "}
+              <strong>{marketLabel(singleMarket.market)}</strong> — {singleMarket.selections.join(" · ")}.{" "}
               {singleMarket.mutually_exclusive
                 ? "Exactly one of these happens, so their probabilities add up to 100%."
                 : "These are not alternatives to each other — only one exact score can happen, and most matches land on none of the ones listed."}
@@ -824,7 +825,7 @@ export function Markets() {
                                 {o.home_team} vs {o.away_team}
                               </div>
                             </td>
-                            <td className="sub" data-label="Market">{o.market}</td>
+                            <td className="sub" data-label="Market">{marketLabel(o.market)}</td>
                             <td data-label="Selection">
                               <strong>{o.selection}</strong>
                               {isHotPick(o.probability, o.data_quality_score, o.model_agreement_score) && (
@@ -852,7 +853,7 @@ export function Markets() {
                                 style={{ padding: "2px 8px", fontSize: 12 }}
                                 title={
                                   picked && !isThisOne
-                                    ? `Replaces your ${picked.market}: ${picked.selection} pick for this match`
+                                    ? `Replaces your ${marketLabel(picked.market)}: ${picked.selection} pick for this match`
                                     : undefined
                                 }
                                 onClick={(e) => {
@@ -916,7 +917,7 @@ export function Markets() {
                       </div>
                       <div className="sub">{o.league}</div>
                     </td>
-                    <td className="sub" data-label="Market">{o.market}</td>
+                    <td className="sub" data-label="Market">{marketLabel(o.market)}</td>
                     <td data-label="Selection">
                       <strong>{o.selection}</strong>
                       {isHotPick(o.probability, o.data_quality_score, o.model_agreement_score) && (

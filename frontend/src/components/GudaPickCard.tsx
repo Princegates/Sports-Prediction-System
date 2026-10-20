@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import type { FeaturedPick } from "../types";
 import { useTilt } from "../lib/useTilt";
 import { ProbabilityBar } from "./ProbabilityBar";
+import { marketLabel } from "../lib/marketLabel";
 
 const RESULT_LABELS: Record<"won" | "lost" | "unresolved", string> = {
   won: "Won",
@@ -69,7 +70,7 @@ export function GudaPickCard({
           {pick.result !== "pending" && (
             <span className={`result-tag ${pick.result}`}>{RESULT_LABELS[pick.result]}</span>
           )}
-          <span className="badge-neutral">{pick.market}</span>
+          <span className="badge-neutral">{marketLabel(pick.market)}</span>
         </span>
       </div>
 

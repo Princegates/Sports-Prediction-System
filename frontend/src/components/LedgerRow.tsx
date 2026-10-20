@@ -1,3 +1,5 @@
+import { marketLabel } from "../lib/marketLabel";
+
 /**
  * One leg of a settled (or settling) slip: fixture, market, and an explicit
  * status pill -- including "Pending" when the leg hasn't finished yet.
@@ -52,7 +54,7 @@ export function LedgerRow({ leg, index }: { leg: LedgerLegLike; index?: number }
           <span className={`result-tag ${status}`}>{RESULT_LABELS[status]}</span>
         </div>
         <div className="ledger-row-meta">
-          {leg.market}: {leg.selection}
+          {marketLabel(leg.market)}: {leg.selection}
           {meta ? ` · ${meta}` : ""}
         </div>
       </div>

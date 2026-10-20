@@ -17,6 +17,7 @@ import { isHotPick } from "../lib/filters";
 import { buildShareMessage } from "../lib/shareText";
 import { useAuth } from "../lib/AuthContext";
 import type { BetCodePick, MatchSummary, Prediction } from "../types";
+import { marketLabel } from "../lib/marketLabel";
 
 interface Row {
   prediction: Prediction;
@@ -315,12 +316,12 @@ export function Predictions() {
                     </div>
                     {own && (
                       <div className="own-pick">
-                        Your pick: {own.selection} ({own.market}) — {(own.probability * 100).toFixed(0)}%
+                        Your pick: {own.selection} ({marketLabel(own.market)}) — {(own.probability * 100).toFixed(0)}%
                       </div>
                     )}
                     {prediction.also_likely.map((o) => (
                       <div className="sub" key={`${o.market}-${o.selection}`}>
-                        {o.selection} ({o.market}) — {(o.probability * 100).toFixed(0)}%
+                        {o.selection} ({marketLabel(o.market)}) — {(o.probability * 100).toFixed(0)}%
                         {isHotPick(o.probability, prediction.data_quality_score, prediction.model_agreement_score) && (
                           <span style={{ marginLeft: 4 }}>
                             <HotPickBadge compact />

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { fetchMatchOutcomes } from "../api";
 import type { BettingOutcome, OutcomesResponse } from "../types";
+import { marketLabel } from "../lib/marketLabel";
 
 /** The markets most people bet, shown first; everything else is one click
  * away under "Show every market". */
@@ -85,7 +86,7 @@ export function MatchMarketsPanel({
       </p>
       {markets.map((market) => (
         <div key={market} className="markets-panel-market">
-          <span className="markets-panel-name">{market}</span>
+          <span className="markets-panel-name">{marketLabel(market)}</span>
           <div className="markets-panel-options">
             {[...(byMarket.get(market) ?? [])]
               .sort((a, b) => b.probability - a.probability)

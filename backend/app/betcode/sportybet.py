@@ -41,6 +41,7 @@ import requests
 from app.betcode.selection import Leg
 from app.betcode.sites import BookingCodeError, ConnectorResult
 from app.data.team_matching import name_match_score
+from app.outcomes.registry import _ASIAN_HANDICAP_LINES, HANDICAP_LINES
 
 logger = logging.getLogger(__name__)
 
@@ -160,7 +161,7 @@ def _build_markets() -> dict[tuple[str, str], Selection]:
     # the same way. The three outcome ids are fixed across every line and
     # every match, the same pattern Over/Under's "12"/"13" already use here.
     handicap_outcomes = {"Home": "1711", "Draw": "1712", "Away": "1713"}
-    for n in range(1, 6):
+    for n in sorted({abs(line) for line in HANDICAP_LINES}):
         add(f"Handicap -{n}", "14", f"hcp=0:{n}", handicap_outcomes)
         add(f"Handicap +{n}", "14", f"hcp={n}:0", handicap_outcomes)
     # SportyBet's own "Handicap" market 16 -- distinct from market 14
@@ -173,8 +174,7 @@ def _build_markets() -> dict[tuple[str, str], Selection]:
     # float already renders them the way the site's specifier does
     # ("hcp=-0.5", "hcp=0.5", no "+" on the positive side).
     asian_handicap_outcomes = {"Home": "1714", "Away": "1715"}
-    for eighths in range(1, 8, 2):  # 0.5, 1.5, 2.5, 3.5
-        line = eighths / 2.0
+    for line in _ASIAN_HANDICAP_LINES:
         add(f"Asian Handicap -{line:.1f}", "16", f"hcp={-line}", asian_handicap_outcomes)
         add(f"Asian Handicap +{line:.1f}", "16", f"hcp={line}", asian_handicap_outcomes)
     add("Total Goals Odd/Even", "26", None, odd_even)

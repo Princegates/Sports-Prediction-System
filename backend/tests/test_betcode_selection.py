@@ -894,11 +894,11 @@ def test_select_floor_leg_slip_excludes_matches_already_used(db_session):
     assert sorted(leg.decimal_odds for leg in result.legs) == sorted(odds_list[10:20])
 
 
-def test_a_ranked_slip_mixes_markets_two_legs_per_market_at_most(db_session):
+def test_a_ranked_slip_uses_each_market_for_one_leg(db_session):
     """With every match a heavy favourite, one market (Draw No Bet or a wide
     handicap) is the strongest outcome everywhere -- a plain safest-first
-    pick used to fill the whole slip with it. Each market now gives at most
-    two legs; the rest come from the next-safest market on other matches."""
+    pick used to fill the whole slip with it. Each market now gives one leg;
+    the rest come from the next-safest market on other matches."""
 
     from collections import Counter
 
@@ -922,10 +922,17 @@ def test_a_ranked_slip_mixes_markets_two_legs_per_market_at_most(db_session):
     pick = select_legs_by_confidence(db_session, min_probability=0.5, max_legs=8)
     families = Counter("Handicap" if leg.market.startswith("Handicap ") else leg.market for leg in pick.legs)
     # This data only yields Match Result and Double Chance in the default
-    # set, so two of each -- not eight of whichever is strongest.
-    assert families == Counter({"Double Chance": 2, "Match Result": 2})
+    # set, so one of each -- not eight of whichever is strongest -- and the
+    # slip says why it's short.
+    assert families == Counter({"Double Chance": 1, "Match Result": 1})
     assert len({leg.match_id for leg in pick.legs}) == len(pick.legs)  # still one leg per match
-    assert any("keeping each market to 2 legs" in w for w in pick.warnings)
+    assert any("keeping each market to 1 leg" in w for w in pick.warnings)
+
+    # Choosing the markets yourself: one leg each across them.
+    chosen = select_legs_by_confidence(
+        db_session, min_probability=0.5, max_legs=2, markets=("Match Result", "Double Chance", "Both Teams To Score"),
+    )
+    assert len({leg.market for leg in chosen.legs}) == len(chosen.legs) == 2
 
 
 def test_a_single_chosen_market_still_fills_the_slip(db_session, three_matches):

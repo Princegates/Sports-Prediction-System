@@ -1,4 +1,5 @@
 import type { BettingOutcome } from "../types";
+import { marketLabel } from "../lib/marketLabel";
 
 const STORAGE_KEY = "market_picks";
 
@@ -49,7 +50,7 @@ export function formatPicksForCopy(picks: BettingOutcome[]): string {
     });
     return (
       `${o.home_team} vs ${o.away_team} (${o.league}, ${kickoff})\n` +
-      `${o.market}: ${o.selection} -- ${(o.probability * 100).toFixed(0)}% probability`
+      `${marketLabel(o.market)}: ${o.selection} -- ${(o.probability * 100).toFixed(0)}% probability`
     );
   });
   return [header, "", ...lines].join("\n\n");
