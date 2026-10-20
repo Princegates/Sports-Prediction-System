@@ -116,6 +116,11 @@ Connect the repo at [dash.cloudflare.com](https://dash.cloudflare.com) → Worke
 `VITE_API_URL` is **baked in at build time**, not read at runtime — if you change
 it you must trigger a rebuild, or the site will keep calling the old address.
 
+**Node 20 or newer is required** (React Router 7 needs it). `frontend/.nvmrc`
+pins Node 22, and Cloudflare Pages reads it from the root directory
+automatically. If the project has a `NODE_VERSION` environment variable set,
+that overrides the file, so make sure it is `20` or higher, or delete it.
+
 `frontend/public/_redirects` is already in the repo and handles SPA routing.
 Without it every deep link (`/how-it-works`, a shared match URL) 404s on refresh.
 
@@ -520,6 +525,7 @@ python -c "from app.config import get_settings; from sqlalchemy import create_en
    - Root directory: `frontend`
 4. Under **Environment variables**, add
    `VITE_API_URL` = your Render URL from step 2 (no trailing slash).
+   Don't set `NODE_VERSION` below 20: `frontend/.nvmrc` already pins Node 22.
 5. Save and deploy. Note your URL: `https://something.pages.dev`.
 
 ### 5. Close the loop (2 min)
