@@ -277,6 +277,57 @@ def test_feature_all_markets_fills_up_to_max_legs_not_just_one_per_market(db_ses
     assert len({leg["match_id"] for leg in legs}) == 4  # one leg per match, still
 
 
+def test_suggest_exclude_match_ids_surfaces_a_different_match(db_session, auth_headers):
+    """The bug Refresh fixed: safest-first search is deterministic, so
+    running the exact same criteria again always landed on the identical
+    match. exclude_match_ids -- what AI Generation's Refresh button sends
+    back -- lets the same criteria surface the next-safest match instead."""
+
+    home1 = Team(name="Arsenal", league="English Premier League", aliases=[])
+    away1 = Team(name="Chelsea", league="English Premier League", aliases=[])
+    home2 = Team(name="Liverpool", league="English Premier League", aliases=[])
+    away2 = Team(name="Everton", league="English Premier League", aliases=[])
+    db_session.add_all([home1, away1, home2, away2])
+    db_session.commit()
+    for t in (home1, away1, home2, away2):
+        db_session.refresh(t)
+
+    strongest = Match(
+        league="English Premier League", season="2025-26", date=BASE + dt.timedelta(days=1),
+        home_team_id=home1.id, away_team_id=away1.id, status="SCHEDULED",
+    )
+    runner_up = Match(
+        league="English Premier League", season="2025-26", date=BASE + dt.timedelta(days=1),
+        home_team_id=home2.id, away_team_id=away2.id, status="SCHEDULED",
+    )
+    db_session.add_all([strongest, runner_up])
+    db_session.commit()
+    for m in (strongest, runner_up):
+        db_session.refresh(m)
+    db_session.add(_prediction(strongest.id, home=0.85))
+    db_session.add(_prediction(runner_up.id, home=0.75))
+    db_session.commit()
+
+    criteria = {"min_probability": 0.5, "markets": ["Match Result"], "max_legs": 1}
+
+    first = client.post("/api/betcodes/suggest", json=criteria, headers=auth_headers)
+    assert first.status_code == 200, first.text
+    first_legs = first.json()["legs"]
+    assert len(first_legs) == 1
+    assert first_legs[0]["match_id"] == strongest.id  # the safer of the two, as expected
+
+    same_again = client.post("/api/betcodes/suggest", json=criteria, headers=auth_headers)
+    assert same_again.json()["legs"][0]["match_id"] == strongest.id  # deterministic: identical result
+
+    refreshed = client.post(
+        "/api/betcodes/suggest", json={**criteria, "exclude_match_ids": [strongest.id]}, headers=auth_headers,
+    )
+    assert refreshed.status_code == 200, refreshed.text
+    refreshed_legs = refreshed.json()["legs"]
+    assert len(refreshed_legs) == 1
+    assert refreshed_legs[0]["match_id"] == runner_up.id  # the one Refresh should surface instead
+
+
 def test_suggest_returns_no_priced_fields(auth_headers, upcoming_match):
     response = client.post("/api/betcodes/suggest", json={"min_probability": 0.5}, headers=auth_headers)
     assert response.status_code == 200, response.text

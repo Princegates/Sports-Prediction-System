@@ -279,6 +279,14 @@ export function BetCodes() {
   // this, alongside activeRisk, to re-run the exact same search rather
   // than guessing which one is active.
   const [lastRunWasRandom, setLastRunWasRandom] = useState(false);
+  // Every match_id the visible preview already has a leg from, across
+  // however many times Refresh has been clicked in a row -- sent back as
+  // exclude_match_ids so a Refresh search genuinely explores the rest of
+  // the candidate pool instead of landing on the identical, deterministic
+  // result safest-first search always gives for unchanged criteria over
+  // unchanged data. A fresh Generate/preset/Random run (not a Refresh)
+  // starts this over rather than adding to it -- see runPreview.
+  const [excludedMatchIds, setExcludedMatchIds] = useState<number[]>([]);
   // Legs manually removed from the current preview, keyed the same way a
   // leg is (match_id|market|selection) -- cleared to empty every time
   // `preview` itself is replaced (see runPreview and handleEditPick, the
@@ -355,13 +363,20 @@ export function BetCodes() {
     };
   }
 
-  async function runPreview(fetchPreview: () => Promise<SuggestedPicks>) {
+  // `resetExclusions` true for a fresh Generate/preset/Random run (starts
+  // excludedMatchIds over from just this result), false for a Refresh
+  // (adds this result's matches on top of whatever was already excluded,
+  // so the next Refresh keeps exploring forward instead of circling back).
+  async function runPreview(fetchPreview: () => Promise<SuggestedPicks>, resetExclusions: boolean) {
     setPreviewing(true);
     setPreviewError(null);
     setEditingPickId(null); // a fresh search is never mid-edit of an existing pick
     try {
-      setPreview(await fetchPreview());
+      const result = await fetchPreview();
+      setPreview(result);
       setRemovedLegKeys(new Set());
+      const newIds = result.legs.map((l) => l.match_id);
+      setExcludedMatchIds((prev) => (resetExclusions ? newIds : [...new Set([...prev, ...newIds])]));
     } catch (e) {
       setPreview(null);
       setPreviewError(String(e instanceof Error ? e.message : e));
@@ -377,20 +392,24 @@ export function BetCodes() {
     const picks = (location.state as { picks?: BetCodePick[] } | null)?.picks;
     if (!picks || picks.length === 0) return;
     setFromExternalPicks(true);
-    runPreview(() => resolvePicks(picks));
+    runPreview(() => resolvePicks(picks), true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.state]);
 
-  function handlePreview() {
+  // `exclude` is only ever non-empty when Refresh calls this -- a plain
+  // click (every other call site) passes none, which is also what decides
+  // runPreview's own reset-vs-accumulate behavior below.
+  function handlePreview(exclude: number[] = []) {
     setFromExternalPicks(false);
     setLastRunWasRandom(false);
-    return runPreview(() => suggestPicks(criteria()));
+    return runPreview(() => suggestPicks(criteria({ exclude_match_ids: exclude })), exclude.length === 0);
   }
 
   // Fills in the preset's values (so the form reflects what actually ran,
   // and stays tweakable afterward) and generates immediately -- one click
-  // for "just get me a low-risk slip" rather than four.
-  function runPreset(risk: RiskLevel) {
+  // for "just get me a low-risk slip" rather than four. `exclude`: see
+  // handlePreview above.
+  function runPreset(risk: RiskLevel, exclude: number[] = []) {
     const p = RISK_PRESETS[risk];
     setMaxLegs(p.maxLegs);
     setMinProbability(p.minProbability);
@@ -399,34 +418,46 @@ export function BetCodes() {
     setActiveRisk(risk);
     setFromExternalPicks(false);
     setLastRunWasRandom(false);
-    return runPreview(() =>
-      suggestPicks(
-        criteria({ max_legs: p.maxLegs, min_probability: p.minProbability, markets: p.markets, feature_all_markets: false }),
-      ),
+    return runPreview(
+      () =>
+        suggestPicks(
+          criteria({
+            max_legs: p.maxLegs, min_probability: p.minProbability, markets: p.markets,
+            feature_all_markets: false, exclude_match_ids: exclude,
+          }),
+        ),
+      exclude.length === 0,
     );
   }
 
   // Not a risk preset -- a random 10-20 leg draw from the same candidate
   // pool, in place of the form's confidence-ranked search entirely.
-  function runRandomSlip() {
+  // `exclude`: see handlePreview above.
+  function runRandomSlip(exclude: number[] = []) {
     setActiveRisk(null);
     setFromExternalPicks(false);
     setLastRunWasRandom(true);
-    return runPreview(() =>
-      suggestRandomPicks({ leagues: selectedLeagues, days_ahead: daysAhead, date_from: selectedDate, date_to: selectedDate }),
+    return runPreview(
+      () =>
+        suggestRandomPicks({
+          leagues: selectedLeagues, days_ahead: daysAhead, date_from: selectedDate, date_to: selectedDate,
+          exclude_match_ids: exclude,
+        }),
+      exclude.length === 0,
     );
   }
 
   // Re-runs whichever search produced the current preview, with the same
-  // criteria still sitting in the form -- a random draw comes back
-  // different every time by design; a risk preset or the custom-criteria
-  // form comes back the same unless the underlying data moved (a new
-  // prediction landed, odds changed) since the last run, which is still a
-  // legitimate reason to want another look without re-entering everything.
+  // criteria still sitting in the form, excluding every match already
+  // shown so far this refresh chain -- a random draw already varies on its
+  // own and gets this as a further guarantee; a risk preset or the
+  // custom-criteria form would otherwise come back with the identical
+  // result every time, since safest-first search is deterministic over
+  // unchanged data.
   function handleRefresh() {
-    if (activeRisk) return runPreset(activeRisk);
-    if (lastRunWasRandom) return runRandomSlip();
-    return handlePreview();
+    if (activeRisk) return runPreset(activeRisk, excludedMatchIds);
+    if (lastRunWasRandom) return runRandomSlip(excludedMatchIds);
+    return handlePreview(excludedMatchIds);
   }
 
   // Drops one leg from the current preview -- client-side only, no new
@@ -631,7 +662,7 @@ export function BetCodes() {
           <button
             type="button"
             className="risk-preset-card random"
-            onClick={runRandomSlip}
+            onClick={() => runRandomSlip()}
             disabled={previewing}
           >
             <span className="risk-preset-label">Random slip</span>
@@ -880,7 +911,7 @@ export function BetCodes() {
               Next →
             </button>
           ) : (
-            <button className="btn" onClick={handlePreview} disabled={previewing}>
+            <button className="btn" onClick={() => handlePreview()} disabled={previewing}>
               {previewing ? "Finding selections…" : "Generate selections"}
             </button>
           )}

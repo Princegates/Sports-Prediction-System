@@ -604,6 +604,11 @@ export interface SuggestCriteria {
    * specifically to see all of them on the slip. Only meaningful with a
    * non-empty `markets`. */
   feature_all_markets?: boolean;
+  /** Matches to leave out of the search -- Refresh sends back whatever the
+   * previous search returned, so running the exact same criteria again
+   * surfaces a genuinely different combination instead of the identical,
+   * deterministic result safest-first search always lands on otherwise. */
+  exclude_match_ids?: number[];
 }
 
 /** What POST /api/betcodes/suggest-random searches with -- min_legs/max_legs
@@ -619,6 +624,7 @@ export interface SuggestRandomCriteria {
   days_ahead?: number;
   date_from?: string | null;
   date_to?: string | null;
+  exclude_match_ids?: number[];
 }
 
 export interface SuggestedLeg {

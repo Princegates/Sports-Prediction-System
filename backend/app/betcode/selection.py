@@ -817,6 +817,7 @@ def build_confidence_candidates(
     days_ahead: int = DEFAULT_DAYS_AHEAD,
     date_from: dt.date | None = None,
     date_to: dt.date | None = None,
+    exclude_match_ids: frozenset[int] = frozenset(),
 ) -> list[Leg]:
     """Every match whose current prediction clears min_probability in a
     wanted market -- same matching as build_candidate_legs (one leg per
@@ -830,6 +831,15 @@ def build_confidence_candidates(
     ``date_from``/``date_to`` (see _match_window) take over from
     ``days_ahead`` when given -- a calendar pick is more specific than a
     rolling window, not an addition to it.
+
+    ``exclude_match_ids`` drops matches a caller already has legs from --
+    AI Generation's own Refresh button sends back whatever the previous
+    search returned, so running the exact same criteria again surfaces a
+    genuinely different combination (the next-safest matches the earlier
+    run didn't already use) instead of the identical, deterministic result
+    safest-first search always lands on for unchanged criteria over
+    unchanged data. Same idea select_floor_leg_slip already uses to keep
+    several slips built in one run from duplicating each other.
     """
 
     start, end = _match_window(days_ahead, date_from, date_to)
@@ -843,6 +853,8 @@ def build_confidence_candidates(
         match_query = match_query.where(Match.league.in_(leagues))
     elif league:
         match_query = match_query.where(Match.league == league)
+    if exclude_match_ids:
+        match_query = match_query.where(Match.id.notin_(exclude_match_ids))
     matches = list(db.execute(match_query).scalars())
     if not matches:
         return []
@@ -892,6 +904,7 @@ def select_legs_by_confidence(
     days_ahead: int = DEFAULT_DAYS_AHEAD,
     date_from: dt.date | None = None,
     date_to: dt.date | None = None,
+    exclude_match_ids: frozenset[int] = frozenset(),
 ) -> ConfidencePick:
     """The no-odds sibling of select_legs: picks up to max_legs matches,
     safest (highest model probability) first, each clearing min_probability
@@ -899,11 +912,13 @@ def select_legs_by_confidence(
     reach -- the result is meant to be booked directly with a betting site
     (app.betcode.sites), which prices the slip itself, rather than combined
     toward a target price the way select_legs's accumulator is.
+
+    See build_confidence_candidates for what ``exclude_match_ids`` is for.
     """
 
     candidates = build_confidence_candidates(
         db, min_probability=min_probability, markets=markets, leagues=leagues, league=league, days_ahead=days_ahead,
-        date_from=date_from, date_to=date_to,
+        date_from=date_from, date_to=date_to, exclude_match_ids=exclude_match_ids,
     )
     candidates.sort(key=lambda leg: -leg.model_probability)
     chosen = candidates[:max_legs]
@@ -949,6 +964,7 @@ def select_legs_featuring_every_market(
     days_ahead: int = DEFAULT_DAYS_AHEAD,
     date_from: dt.date | None = None,
     date_to: dt.date | None = None,
+    exclude_match_ids: frozenset[int] = frozenset(),
 ) -> ConfidencePick:
     """select_legs_by_confidence collapses each match to its single
     strongest qualifying outcome, regardless of which wanted market that
@@ -991,11 +1007,12 @@ def select_legs_featuring_every_market(
         return select_legs_by_confidence(
             db, min_probability=min_probability, max_legs=max_legs, markets=markets,
             leagues=leagues, league=league, days_ahead=days_ahead, date_from=date_from, date_to=date_to,
+            exclude_match_ids=exclude_match_ids,
         )
 
     pool = _build_random_pool(
         db, min_probability=min_probability, markets=markets, leagues=leagues, league=league,
-        days_ahead=days_ahead, date_from=date_from, date_to=date_to,
+        days_ahead=days_ahead, date_from=date_from, date_to=date_to, exclude_match_ids=exclude_match_ids,
     )
 
     legs_by_market: dict[str, list[Leg]] = {}
@@ -1103,6 +1120,7 @@ def _build_random_pool(
     days_ahead: int,
     date_from: dt.date | None = None,
     date_to: dt.date | None = None,
+    exclude_match_ids: frozenset[int] = frozenset(),
 ) -> dict[int, list[Leg]]:
     """Like build_confidence_candidates, but keyed by match_id with every
     qualifying *market* kept, not collapsed to the single strongest one.
@@ -1144,6 +1162,8 @@ def _build_random_pool(
         match_query = match_query.where(Match.league.in_(leagues))
     elif league:
         match_query = match_query.where(Match.league == league)
+    if exclude_match_ids:
+        match_query = match_query.where(Match.id.notin_(exclude_match_ids))
     matches = list(db.execute(match_query).scalars())
     if not matches:
         return {}
@@ -1204,6 +1224,7 @@ def select_random_legs(
     days_ahead: int = DEFAULT_DAYS_AHEAD,
     date_from: dt.date | None = None,
     date_to: dt.date | None = None,
+    exclude_match_ids: frozenset[int] = frozenset(),
     rng: random.Random | None = None,
 ) -> ConfidencePick:
     """select_legs_by_confidence's random sibling: the same qualifying
@@ -1226,7 +1247,7 @@ def select_random_legs(
     rng = rng or random.Random()
     pool = _build_random_pool(
         db, min_probability=min_probability, markets=markets, leagues=leagues, league=league, days_ahead=days_ahead,
-        date_from=date_from, date_to=date_to,
+        date_from=date_from, date_to=date_to, exclude_match_ids=exclude_match_ids,
     )
 
     if not pool:

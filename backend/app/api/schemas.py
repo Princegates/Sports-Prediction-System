@@ -809,6 +809,12 @@ class SuggestCriteriaIn(BaseModel):
     # all of them on the slip. See
     # app.betcode.selection.select_legs_featuring_every_market.
     feature_all_markets: bool = False
+    # Matches to leave out of the search -- AI Generation's Refresh button
+    # sends back whatever the previous search returned, so running the
+    # exact same criteria again surfaces a genuinely different combination
+    # instead of the identical, deterministic result safest-first search
+    # always lands on for unchanged criteria over unchanged data.
+    exclude_match_ids: list[int] = []
 
 
 class SuggestRandomCriteriaIn(BaseModel):
@@ -828,6 +834,11 @@ class SuggestRandomCriteriaIn(BaseModel):
     days_ahead: int = 7
     date_from: dt.date | None = None
     date_to: dt.date | None = None
+    # See SuggestCriteriaIn's own field -- threaded through here too so
+    # Refresh works the same way for a random draw (already varies on its
+    # own, but this still keeps it from re-surfacing a match the visible
+    # slip already has a leg from).
+    exclude_match_ids: list[int] = []
 
 
 class ResolvePicksIn(BaseModel):
