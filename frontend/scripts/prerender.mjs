@@ -16,14 +16,15 @@
  * still hydrates and takes over normally for an actual visitor; this only
  * changes what's there before JS runs.
  *
- * Deliberately scoped to the fixed static routes (ROUTES below), not the
- * hundreds of /predict/:slugId fixture-preview pages the sitemap also
- * lists: those change too often and there are too many to prerender in a
- * frontend build without blowing past Cloudflare Pages' build-time
- * budget. They're unchanged by this script -- still client-rendered,
- * same as every route not in ROUTES, falling back to the prerendered "/"
- * page's shell via _redirects (dist/index.html) until their own JS takes
- * over, same as any SPA fallback.
+ * Covers the fixed static routes (ROUTES below) plus the /predict/:slugId
+ * preview pages for the next few days' fixtures only (upcomingFixtureRoutes
+ * -- at most MAX_FIXTURE_PAGES), not the hundreds the sitemap lists: those
+ * nearest fixtures are the ones people are searching for right now, and a
+ * bounded handful keeps the build inside Cloudflare Pages' time budget.
+ * Every other fixture page stays client-rendered, falling back to the
+ * prerendered "/" page's shell via _redirects (dist/index.html) until its
+ * own JS takes over, same as any SPA fallback. A deploy each day (the
+ * scheduled refresh) keeps the prerendered set current.
  *
  * Each route gets a bounded, best-effort wait for the page's own data
  * fetches (not an unbounded networkidle): if the backend happens to be
@@ -60,6 +61,47 @@ const DIST = path.join(__dirname, "..", "dist");
 // Mirrors backend/scripts/generate_sitemap.py's STATIC_URLS -- the fixed
 // public marketing pages, not the generated fixture-preview URLs.
 const ROUTES = ["/", "/how-it-works", "/pricing", "/fixtures", "/responsible", "/cookie-policy", "/login", "/register"];
+
+// Fixture preview pages prerendered per build -- see the header comment.
+const FIXTURE_DAYS_AHEAD = 3;
+const MAX_FIXTURE_PAGES = 20;
+
+// Mirrors src/lib/slug.ts's fixtureSlug, so prerendered paths are exactly
+// the URLs the app links to.
+function slugifyWord(s) {
+  return s
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function fixtureSlug(f) {
+  const teams = `${slugifyWord(f.home_team)}-vs-${slugifyWord(f.away_team)}`;
+  return teams ? `${f.match_id}-${teams}` : String(f.match_id);
+}
+
+/** /predict/... routes for the next few days' fixtures, read from the
+ * public API at build time. Best-effort like everything here: no API URL,
+ * a cold or unreachable backend, or a bad response just means no fixture
+ * pages this build. */
+async function upcomingFixtureRoutes() {
+  const api = (process.env.VITE_API_URL || "").replace(/\/+$/, "");
+  if (!api) return [];
+  try {
+    const response = await fetch(
+      `${api}/api/public/fixtures?days_ahead=${FIXTURE_DAYS_AHEAD}&limit=${MAX_FIXTURE_PAGES}`,
+      { signal: AbortSignal.timeout(60_000) },
+    );
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const fixtures = await response.json();
+    return fixtures.map((f) => `/predict/${fixtureSlug(f)}`);
+  } catch (err) {
+    console.warn(`prerender: couldn't list upcoming fixtures (${err instanceof Error ? err.message : err}) -- skipping fixture pages`);
+    return [];
+  }
+}
 
 const CONTENT_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -140,7 +182,8 @@ async function main() {
 
   try {
     const page = await browser.newPage();
-    for (const route of ROUTES) {
+    const routes = [...ROUTES, ...(await upcomingFixtureRoutes())];
+    for (const route of routes) {
       try {
         await page.goto(`http://127.0.0.1:${port}${route}`, { waitUntil: "load", timeout: 20_000 });
         // Best-effort settle for the route's own data fetch -- bounded, so
