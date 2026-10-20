@@ -3786,8 +3786,10 @@ table.admin-table {
 .landing-hero-visual::after {
   content: "";
   position: absolute;
-  top: -22px;
-  right: -6px;
+  /* Inside the frame: .landing-hero clips its overflow, and at -22px the
+     ball was cut in half at the top of the hero. */
+  top: 4px;
+  right: 4px;
   width: 56px;
   height: 56px;
   border-radius: 50%;
@@ -5549,30 +5551,33 @@ table.admin-table {
    COOKIE NOTICE
    ========================================================================== */
 
+/* A slim strip, not a card: the site sets no tracking cookies, so this is
+   a notice rather than a consent prompt, and it used to cover about a fifth
+   of a phone's first screen on every public page. */
 .cookie-banner {
   position: fixed;
-  left: 16px;
-  right: 16px;
-  bottom: 16px;
+  left: 12px;
+  right: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
   z-index: 9000;
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 14px;
-  max-width: 640px;
+  gap: 10px;
+  max-width: 520px;
   margin: 0 auto;
-  padding: 16px 20px;
+  padding: 8px 8px 8px 14px;
   background: var(--bg-surface-2);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+  border-radius: var(--radius-pill);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
 }
 
 .cookie-banner p {
-  flex: 1 1 320px;
+  flex: 1 1 auto;
+  min-width: 0;
   margin: 0;
-  font-size: 13px;
-  line-height: 1.55;
+  font-size: 12.5px;
+  line-height: 1.4;
   color: var(--text-secondary);
 }
 
@@ -5843,4 +5848,156 @@ table.admin-table {
     flex-wrap: nowrap;
     overflow-x: auto;
   }
+}
+
+/* ==========================================================================
+   PUBLIC HOME (pages/Welcome.tsx): free pick, proof bars, plan strip
+   ========================================================================== */
+.crest-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.fixture-teaser-teams .vs-divider {
+  margin: 0 6px;
+}
+
+.potd {
+  max-width: 640px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-color: var(--accent);
+}
+.potd-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.potd-match {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+.potd-call {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+}
+.potd-selection {
+  font-size: 1.05rem;
+}
+.potd-prob {
+  font-family: var(--font-data);
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.proof-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 720px;
+}
+.proof-bar {
+  display: grid;
+  grid-template-columns: 9.5rem minmax(0, 1fr) 8.5rem;
+  align-items: center;
+  gap: 12px;
+}
+.proof-bar-label {
+  font-weight: 600;
+}
+.proof-bar-track {
+  height: 12px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface-2);
+  overflow: hidden;
+}
+.proof-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--text-muted);
+}
+.proof-bar-fill.high {
+  background: var(--good);
+}
+.proof-bar-fill.medium {
+  background: var(--warning, #d4a017);
+}
+.proof-bar-value {
+  font-family: var(--font-data);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.plan-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+}
+.plan-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+.plan-tile.featured {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.plan-name {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.plan-price {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+.plan-desc {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 560px) {
+  .proof-bar {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .proof-bar-track {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .potd-match {
+    font-size: 1.15rem;
+  }
+}
+
+.topbar-trial-btn {
+  white-space: nowrap;
 }

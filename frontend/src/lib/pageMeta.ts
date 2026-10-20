@@ -43,13 +43,37 @@ function upsertCanonicalLink(pathname: string): void {
  * attach to. Each of the indexed public pages (see public/sitemap.xml)
  * calls this with its own specific copy via PublicShell; everything under
  * /app/* is disallowed in robots.txt and doesn't need one. */
-export function usePageMeta(title: string, description: string): void {
+/** Open Graph / Twitter card tags -- what WhatsApp, X and others show
+ * for a shared link. They used to stay at index.html's home-page values on
+ * every page, so a shared fixture link previewed as the generic home card.
+ * Prerendering serializes whatever these are set to, so the static HTML a
+ * link-preview bot fetches carries the page's own values. */
+function upsertMetaProperty(attr: "property" | "name", key: string, content: string): void {
+  let tag = document.querySelector(`meta[${attr}="${key}"]`);
+  if (!tag) {
+    tag = document.createElement("meta");
+    tag.setAttribute(attr, key);
+    document.head.appendChild(tag);
+  }
+  tag.setAttribute("content", content);
+}
+
+export function usePageMeta(title: string, description: string, image?: string): void {
   useEffect(() => {
     pageTitleActive = true;
     document.title = title;
     upsertMetaDescription(description);
     upsertCanonicalLink(window.location.pathname);
-  }, [title, description]);
+    const url = `https://soccaintel.com${window.location.pathname}`;
+    upsertMetaProperty("property", "og:title", title);
+    upsertMetaProperty("property", "og:description", description);
+    upsertMetaProperty("property", "og:url", url);
+    upsertMetaProperty("name", "twitter:title", title);
+    upsertMetaProperty("name", "twitter:description", description);
+    const img = image ?? "https://soccaintel.com/og-image.png";
+    upsertMetaProperty("property", "og:image", img);
+    upsertMetaProperty("name", "twitter:image", img);
+  }, [title, description, image]);
 }
 
 const STRUCTURED_DATA_ID = "page-structured-data";

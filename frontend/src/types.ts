@@ -253,6 +253,62 @@ export interface PublicFixture {
   away_team: string;
   has_prediction: boolean;
   confidence: string | null;
+  home_logo_url?: string | null;
+  away_logo_url?: string | null;
+}
+
+export interface PublicResult {
+  date: string;
+  opponent: string;
+  venue: "H" | "A";
+  goals_for: number;
+  goals_against: number;
+  result: "W" | "D" | "L";
+}
+
+export interface PublicHeadToHead {
+  date: string;
+  league: string;
+  home_team: string;
+  away_team: string;
+  home_score: number;
+  away_score: number;
+}
+
+/** The one prediction shown in full on the public pages each day. */
+export interface PickOfTheDay {
+  has_data: boolean;
+  fixture: PublicFixture | null;
+  market: string | null;
+  selection: string | null;
+  probability: number | null;
+}
+
+export interface PublicFixtureDetail extends PublicFixture {
+  home_form: PublicResult[];
+  away_form: PublicResult[];
+  head_to_head: PublicHeadToHead[];
+  pick_of_the_day: PickOfTheDay | null;
+}
+
+/** The model's own graded pre-match calls -- GET /api/public/track-record. */
+export interface TrackRecord {
+  has_data: boolean;
+  graded_predictions?: number;
+  hit_rate?: number;
+  by_confidence?: { confidence: string; graded: number; hit_rate: number }[];
+  since?: string | null;
+}
+
+/** Everything the public home page shows -- GET /api/public/landing. */
+export interface Landing {
+  branding: Branding;
+  stats: PublicStats;
+  track_record: TrackRecord;
+  admin_pick_record: AdminPickTrackRecord;
+  fixtures: PublicFixture[];
+  pick_of_the_day: PickOfTheDay;
+  teaser_pick: PublicTeaserPick;
 }
 
 export interface AccountStatus {
@@ -560,6 +616,9 @@ export interface Branding {
   referral_bonus_days: number;
   /** Free trial a new signup gets; 0 when trials are off. */
   trial_days: number;
+  /** "about GH₵4 a day" when the price is set as amount + days, else "". */
+  price_per_day?: string;
+  whatsapp_channel_url?: string;
 }
 
 // --- Outcome browser -------------------------------------------------------

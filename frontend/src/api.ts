@@ -43,6 +43,9 @@ import type {
   User,
   ReferralStats,
   VerificationStatus,
+  Landing,
+  PickOfTheDay,
+  PublicFixtureDetail,
 } from "./types";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -188,7 +191,20 @@ export function fetchPublicFixtures(daysAhead = 5, limit = 6): Promise<PublicFix
  * the URL). Throws (via `get`'s normal error path) on a 404, same as any
  * other missing resource -- the page calling this is responsible for
  * showing a "not found" state rather than this function inventing one. */
-export function fetchPublicFixture(matchId: number): Promise<PublicFixture> {
+export function fetchLanding(): Promise<Landing> {
+  return get("/api/public/landing");
+}
+
+export function fetchPickOfTheDay(): Promise<PickOfTheDay> {
+  return get("/api/public/pick-of-the-day");
+}
+
+export function fetchLeagueFixtures(league: string, daysAhead = 7, limit = 60): Promise<PublicFixture[]> {
+  const params = new URLSearchParams({ league, days_ahead: String(daysAhead), limit: String(limit) });
+  return get(`/api/public/fixtures?${params.toString()}`);
+}
+
+export function fetchPublicFixture(matchId: number): Promise<PublicFixtureDetail> {
   return get(`/api/public/fixtures/${matchId}`);
 }
 
