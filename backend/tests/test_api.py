@@ -2,6 +2,7 @@ import datetime as dt
 
 from fastapi.testclient import TestClient
 
+from app.timeutil import utcnow
 from app.db.models import Match, Team
 from app.prediction_models.elo import rebuild_elo_history
 
@@ -159,7 +160,7 @@ def test_list_matches_days_ahead_bounds_the_window(db_session, auth_headers):
 
     from app.main import app
 
-    base = dt.datetime.utcnow()
+    base = utcnow()
     home = Team(name="Near FC", league="Window League")
     away = Team(name="Far FC", league="Window League")
     db_session.add_all([home, away])

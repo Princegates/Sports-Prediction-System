@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.timeutil import utcnow
 from app.access import (
     AccessCodeError,
     current_grant,
@@ -311,7 +312,7 @@ def verify_email(payload: TokenIn, db: Session = Depends(get_db)) -> VerifyEmail
     if user.email_verified_at is not None:
         return VerifyEmailOut(message="Your email is already confirmed.", already_verified=True)
 
-    user.email_verified_at = dt.datetime.utcnow()
+    user.email_verified_at = utcnow()
     db.add(AuditLog(actor_user_id=user.id, actor_email=user.email, action="account.email_verified", target_user_id=user.id))
     db.commit()
 
@@ -457,7 +458,7 @@ def account_status(payload: LoginIn, request: Request, db: Session = Depends(get
         )
 
     grant = current_grant(db, user)
-    if grant is not None and grant.expires_at > dt.datetime.utcnow():
+    if grant is not None and grant.expires_at > utcnow():
         return AccountStatusOut(
             status="active",
             message=f"Your access is active until {grant.expires_at:%Y-%m-%d}.",
@@ -617,7 +618,7 @@ def reset_password(payload: ResetPasswordIn, db: Session = Depends(get_db)) -> M
     _set_password(db, user, payload.new_password, action="account.password_reset")
     # A working reset link proves the inbox, so it counts as confirmation.
     if user.email_verified_at is None:
-        user.email_verified_at = dt.datetime.utcnow()
+        user.email_verified_at = utcnow()
         db.commit()
     return MessageOut(message="Password updated. Sign in with your new password.")
 
@@ -643,7 +644,7 @@ def pause_account(payload: PauseIn, user: User = Depends(get_current_user), db: 
 
     if payload.days not in PAUSE_CHOICES_DAYS:
         raise HTTPException(status_code=400, detail=f"Choose one of {', '.join(map(str, PAUSE_CHOICES_DAYS))} days.")
-    until = dt.datetime.utcnow() + dt.timedelta(days=payload.days)
+    until = utcnow() + dt.timedelta(days=payload.days)
     if user.paused_until is None or until > user.paused_until:
         user.paused_until = until
     db.add(AuditLog(actor_user_id=user.id, actor_email=user.email, action="account.paused", target_user_id=user.id,
@@ -677,7 +678,7 @@ def record_match_view(match_id: int, user: User = Depends(get_current_user), db:
     if view is None:
         db.add(MatchView(user_id=user.id, match_id=match_id))
     else:
-        view.viewed_at = dt.datetime.utcnow()
+        view.viewed_at = utcnow()
     db.commit()
 
 

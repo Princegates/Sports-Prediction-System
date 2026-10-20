@@ -15,9 +15,10 @@ from pathlib import Path
 
 import pytest
 
+from app.timeutil import utcnow
 from app.db.models import AdminPick, Match, Prediction, Team
 
-BASE = dt.datetime.utcnow() + dt.timedelta(hours=6)
+BASE = utcnow() + dt.timedelta(hours=6)
 
 
 @pytest.fixture()
@@ -127,7 +128,7 @@ def test_regeneration_removes_stale_rows_left_by_a_previous_higher_count(db_sess
     for n in (3, 4, 5):
         db_session.add(AdminPick(
             source=f"system_random_daily_{n}", legs=[], priced=False, label=f"Random Daily Pick #{n}",
-            expires_at=dt.datetime.utcnow() + dt.timedelta(days=2),
+            expires_at=utcnow() + dt.timedelta(days=2),
         ))
     db_session.commit()
 
@@ -166,7 +167,7 @@ def test_admin_authored_and_other_cadence_picks_are_never_touched(db_session, sc
     )
     weekly_pick = AdminPick(
         source="system_random_weekly_1", legs=[], priced=False, label="Last week's draw #1",
-        expires_at=dt.datetime.utcnow() + dt.timedelta(days=5),
+        expires_at=utcnow() + dt.timedelta(days=5),
     )
     db_session.add_all([admin_pick, weekly_pick])
     db_session.commit()
@@ -191,7 +192,7 @@ def test_too_few_qualifying_matches_leaves_previous_rows_alone(db_session, scrip
 
     stale = AdminPick(
         source="system_random_daily_1", legs=[], priced=False, label="Yesterday's draw #1",
-        expires_at=dt.datetime.utcnow() + dt.timedelta(days=2),
+        expires_at=utcnow() + dt.timedelta(days=2),
     )
     db_session.add(stale)
     db_session.commit()

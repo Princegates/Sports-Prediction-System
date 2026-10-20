@@ -8,6 +8,7 @@ import datetime as dt
 
 import pytest
 
+from app.timeutil import utcnow
 from app import main, scheduler_lease
 from app.db.models import Match, Team
 
@@ -22,7 +23,7 @@ def teams(db_session):
 
 def _fixture(db_session, teams, kickoff_in: dt.timedelta, status: str = "SCHEDULED") -> None:
     home, away = teams
-    db_session.add(Match(league="L", season="2526", date=dt.datetime.utcnow() + kickoff_in,
+    db_session.add(Match(league="L", season="2526", date=utcnow() + kickoff_in,
                          home_team_id=home.id, away_team_id=away.id, status=status))
     db_session.commit()
 

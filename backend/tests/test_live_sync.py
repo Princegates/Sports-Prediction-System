@@ -16,6 +16,7 @@ import datetime as dt
 
 import pytest
 
+from app.timeutil import utcnow
 from app import app_settings
 from app.data import api_football_ingest
 from app.data.api_football_ingest import run_live_sync_from_settings, sync_live_matches
@@ -78,7 +79,7 @@ def scheduled_match(db_session, clubs):
 
 
 def test_matches_a_live_fixture_and_records_a_projection(db_session, scheduled_match):
-    before = dt.datetime.utcnow()
+    before = utcnow()
     client = FakeClient([_live_row()])
     report = sync_live_matches(db_session, client)
 
@@ -236,7 +237,7 @@ def stuck_live_match(db_session, clubs):
     step)."""
 
     home, away = clubs
-    kickoff = dt.datetime.utcnow() - dt.timedelta(hours=5)
+    kickoff = utcnow() - dt.timedelta(hours=5)
     match = Match(
         league="English Premier League", season="2026", date=kickoff,
         home_team_id=home.id, away_team_id=away.id, status="LIVE",
@@ -285,7 +286,7 @@ def test_a_recent_kickoff_is_not_treated_as_stuck(db_session, clubs):
     not including it this one poll is not evidence it finished."""
 
     home, away = clubs
-    kickoff = dt.datetime.utcnow() - dt.timedelta(minutes=45)
+    kickoff = utcnow() - dt.timedelta(minutes=45)
     match = Match(
         league="English Premier League", season="2026", date=kickoff,
         home_team_id=home.id, away_team_id=away.id, status="LIVE",
@@ -343,7 +344,7 @@ def test_run_live_sync_from_settings_skips_the_request_when_no_tracked_match_is_
     kickoff there's nothing to learn from it."""
 
     home, away = clubs
-    now = dt.datetime.utcnow()
+    now = utcnow()
     db_session.add_all([
         Match(league="English Premier League", season="2026", date=now + dt.timedelta(hours=5),
               home_team_id=home.id, away_team_id=away.id, status="SCHEDULED"),

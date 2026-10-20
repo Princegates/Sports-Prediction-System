@@ -14,6 +14,7 @@ import datetime as dt
 import pytest
 from fastapi.testclient import TestClient
 
+from app.timeutil import utcnow
 from app.auth.passwords import hash_password
 from app.auth.tokens import create_token
 from app.config import get_settings
@@ -76,7 +77,7 @@ def _match_with_odds(db, name_prefix: str, league="League One", **prediction_kwa
         db.refresh(t)
 
     match = Match(
-        league=league, season="2324", date=dt.datetime.utcnow() + dt.timedelta(hours=6),
+        league=league, season="2324", date=utcnow() + dt.timedelta(hours=6),
         home_team_id=home.id, away_team_id=away.id, status="SCHEDULED",
     )
     db.add(match)
@@ -127,7 +128,7 @@ def _match_without_odds(db, name_prefix: str, league="League One", **prediction_
         db.refresh(t)
 
     match = Match(
-        league=league, season="2324", date=dt.datetime.utcnow() + dt.timedelta(hours=6),
+        league=league, season="2324", date=utcnow() + dt.timedelta(hours=6),
         home_team_id=home.id, away_team_id=away.id, status="SCHEDULED",
     )
     db.add(match)
@@ -195,7 +196,7 @@ def test_a_leg_with_no_stored_price_is_rejected(db_session, admin):
     db_session.commit()
     for t in (home, away):
         db_session.refresh(t)
-    match = Match(league="League One", season="2324", date=dt.datetime.utcnow(), home_team_id=home.id, away_team_id=away.id, status="SCHEDULED")
+    match = Match(league="League One", season="2324", date=utcnow(), home_team_id=home.id, away_team_id=away.id, status="SCHEDULED")
     db_session.add(match)
     db_session.commit()
     db_session.refresh(match)
@@ -390,7 +391,7 @@ def test_admin_picks_still_shows_to_accounts_with_access_when_free_tier_is_restr
 def test_an_expired_admin_pick_is_not_returned(db_session, admin, two_matches, auth_headers):
     created = _create(admin, _legs(two_matches))
     pick = db_session.get(AdminPick, created["id"])
-    pick.expires_at = dt.datetime.utcnow() - dt.timedelta(minutes=1)
+    pick.expires_at = utcnow() - dt.timedelta(minutes=1)
     db_session.commit()
 
     assert client.get("/api/predictions/admin-picks", headers=auth_headers).json() == []
@@ -567,7 +568,7 @@ def _finish(db, match: Match, home_score: int, away_score: int) -> None:
 def test_a_won_pick_is_shown_past_its_expiry_with_a_frozen_result(db_session, admin, two_matches, auth_headers):
     created = _create(admin, _legs(two_matches))
     pick = db_session.get(AdminPick, created["id"])
-    pick.expires_at = dt.datetime.utcnow() - dt.timedelta(days=5)
+    pick.expires_at = utcnow() - dt.timedelta(days=5)
     db_session.commit()
     for match in two_matches:
         _finish(db_session, match, 2, 0)  # Home Win, as every leg picked

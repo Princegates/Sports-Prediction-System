@@ -13,6 +13,7 @@ import datetime as dt
 import pytest
 from fastapi.testclient import TestClient
 
+from app.timeutil import utcnow
 from app.auth.passwords import hash_password
 from app.auth.tokens import create_token
 from app.config import get_settings
@@ -76,7 +77,7 @@ def upcoming_match(db_session):
         db_session.refresh(t)
 
     match = Match(
-        league="League One", season="2324", date=dt.datetime.utcnow() + dt.timedelta(hours=6),
+        league="League One", season="2324", date=utcnow() + dt.timedelta(hours=6),
         home_team_id=home.id, away_team_id=away.id, status="SCHEDULED",
     )
     db_session.add(match)
@@ -134,7 +135,7 @@ def test_featuring_a_match_with_no_prediction_is_rejected(db_session, admin):
     db_session.commit()
     for t in (home, away):
         db_session.refresh(t)
-    match = Match(league="League One", season="2324", date=dt.datetime.utcnow(), home_team_id=home.id, away_team_id=away.id, status="SCHEDULED")
+    match = Match(league="League One", season="2324", date=utcnow(), home_team_id=home.id, away_team_id=away.id, status="SCHEDULED")
     db_session.add(match)
     db_session.commit()
     db_session.refresh(match)
@@ -309,7 +310,7 @@ def _second_match(db, league="League Two") -> Match:
         db.refresh(t)
 
     match = Match(
-        league=league, season="2324", date=dt.datetime.utcnow() + dt.timedelta(hours=8),
+        league=league, season="2324", date=utcnow() + dt.timedelta(hours=8),
         home_team_id=home.id, away_team_id=away.id, status="SCHEDULED",
     )
     db.add(match)
@@ -377,7 +378,7 @@ def test_a_settled_pick_is_never_the_free_slot(db_session, admin, upcoming_match
 def test_an_expired_pick_is_not_returned(db_session, admin, upcoming_match, auth_headers):
     created = _feature(admin, upcoming_match.id)
     pick = db_session.get(FeaturedPick, created["id"])
-    pick.expires_at = dt.datetime.utcnow() - dt.timedelta(minutes=1)
+    pick.expires_at = utcnow() - dt.timedelta(minutes=1)
     db_session.commit()
 
     assert client.get("/api/predictions/guda-picks", headers=auth_headers).json() == []
@@ -414,7 +415,7 @@ def _finish(db, match: Match, home_score: int, away_score: int) -> None:
 def test_a_won_pick_stays_visible_past_its_expiry_with_a_frozen_result(db_session, admin, upcoming_match, auth_headers):
     created = _feature(admin, upcoming_match.id, market="Both Teams To Score", selection="Yes")
     pick = db_session.get(FeaturedPick, created["id"])
-    pick.expires_at = dt.datetime.utcnow() - dt.timedelta(days=5)
+    pick.expires_at = utcnow() - dt.timedelta(days=5)
     db_session.commit()
     _finish(db_session, upcoming_match, 2, 1)  # both teams scored -- BTTS Yes wins
 

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
+from app.timeutil import utcnow
 from app.access import (
     AccessCodeError,
     access_code_effective_status,
@@ -88,7 +89,7 @@ def overview(db: Session = Depends(get_db)) -> AdminOverviewOut:
             stmt = stmt.where(getattr(User, column) == value)
         return db.execute(stmt).scalar() or 0
 
-    now = dt.datetime.utcnow()
+    now = utcnow()
     active_users = count_users(status="active")
     active_grants = db.execute(
         select(func.count(func.distinct(AccessGrant.user_id))).where(
@@ -612,7 +613,7 @@ def set_featured_pick_result(
         raise HTTPException(status_code=400, detail="result must be one of pending, won, lost, unresolved")
 
     pick.result = payload.result
-    pick.settled_at = None if payload.result == "pending" else dt.datetime.utcnow()
+    pick.settled_at = None if payload.result == "pending" else utcnow()
     _record(db, admin, "featured_pick.result_set", detail={"featured_pick_id": pick_id, "result": payload.result})
     db.commit()
 
@@ -871,7 +872,7 @@ def set_admin_pick_result(
         raise HTTPException(status_code=400, detail="result must be one of pending, won, lost, unresolved")
 
     pick.result = payload.result
-    pick.settled_at = None if payload.result == "pending" else dt.datetime.utcnow()
+    pick.settled_at = None if payload.result == "pending" else utcnow()
     if payload.result == "pending":
         pick.leg_results = None
     _record(db, admin, "admin_pick.result_set", detail={"admin_pick_id": pick_id, "result": payload.result})
@@ -981,7 +982,7 @@ def promote_pick_to_public_teaser(
     # instant it's created: resolve_public_teaser_pick reads it right back
     # as has_data=False, with no error anywhere to explain why. Reject it
     # here instead, so the admin sees exactly which leg is the problem.
-    now = dt.datetime.utcnow()
+    now = utcnow()
     started = next((leg for leg in legs if leg.kickoff <= now), None)
     if started is not None:
         raise HTTPException(
@@ -1045,7 +1046,7 @@ def promote_booking_slip_to_track_record(
     if settle_booking_slip(db, slip):
         db.commit()
 
-    now = dt.datetime.utcnow()
+    now = utcnow()
     kickoffs = [dt.datetime.fromisoformat(leg["kickoff"]) for leg in slip.legs]
     # The live fixture date wins over the one frozen on the slip, in case
     # the match was rescheduled earlier.

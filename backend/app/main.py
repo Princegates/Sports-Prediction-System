@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.timeutil import utcnow
 from app.api.deps import require_active_access, require_not_paused
 from app.api.routes_access import router as access_router
 from app.api.routes_admin import router as admin_router
@@ -64,7 +65,7 @@ LEASE_RETRY_SECONDS = 300.0
 
 
 def _seconds_until_next_kickoff_window(db, lead: dt.timedelta, floor: float) -> float:
-    now = dt.datetime.utcnow()
+    now = utcnow()
     next_kickoff = db.execute(
         select(func.min(Match.date)).where(Match.status == "SCHEDULED", Match.date > now)
     ).scalar_one_or_none()

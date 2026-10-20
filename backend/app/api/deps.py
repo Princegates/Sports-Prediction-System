@@ -5,6 +5,7 @@ import datetime as dt
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
+from app.timeutil import utcnow
 from app.access import current_grant
 from app.auth.tokens import create_token, verify_token
 from app.config import get_settings
@@ -98,7 +99,7 @@ def require_not_paused(user: User = Depends(get_current_user)) -> User:
     self-set pause too -- a break that left the free picks showing wouldn't
     be one."""
 
-    _raise_if_paused(user, dt.datetime.utcnow())
+    _raise_if_paused(user, utcnow())
     return user
 
 
@@ -110,7 +111,7 @@ def require_active_access(user: User = Depends(get_current_user), db: Session = 
     if user.role == "superadmin":
         return user
 
-    now = dt.datetime.utcnow()
+    now = utcnow()
     _raise_if_paused(user, now)
 
     grant = current_grant(db, user)

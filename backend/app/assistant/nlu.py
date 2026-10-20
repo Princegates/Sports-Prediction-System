@@ -27,6 +27,7 @@ from enum import Enum
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.timeutil import utcnow
 from app.data.team_matching import normalize_team_name
 from app.db.models import Team
 
@@ -483,7 +484,7 @@ def parse(
     context_match_id: int | None = None,
     now: dt.datetime | None = None,
 ) -> ParsedQuery:
-    now = now or dt.datetime.utcnow()
+    now = now or utcnow()
     text = message.lower().strip()
 
     teams = resolve_teams(db, text)

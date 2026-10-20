@@ -16,6 +16,7 @@ import datetime as dt
 
 from sqlalchemy.orm import Session
 
+from app.timeutil import utcnow
 from app.db.models import LivePrediction, Match
 from app.outcomes.engine import select_global_most_likely
 from app.outcomes.registry import build_outcome_registry
@@ -49,7 +50,7 @@ def is_genuinely_live(match: Match, *, now: dt.datetime | None = None) -> bool:
 
     if match.status != "LIVE" or match.live_synced_at is None:
         return False
-    now = now or dt.datetime.utcnow()
+    now = now or utcnow()
     return now - match.live_synced_at <= LIVE_STALE_AFTER
 
 # Heuristic multipliers applied to a team's remaining-goal expectancy after a
@@ -224,7 +225,7 @@ def simulate_live_event(
     """
 
     live_prediction = _build_live_prediction(db, match, minute, score_home, score_away, trigger_event)
-    live_prediction.created_at = dt.datetime.utcnow()
+    live_prediction.created_at = utcnow()
     return live_prediction
 
 

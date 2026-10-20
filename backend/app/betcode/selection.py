@@ -57,6 +57,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.timeutil import utcnow
 from app.db.models import Match, MatchOdds, Prediction
 from app.outcomes.registry import Outcome, find_outcome, outcomes_from_prediction
 
@@ -267,7 +268,7 @@ def build_candidate_legs(db: Session, criteria: SlipCriteria) -> list[Leg]:
     this project has captured one from.
     """
 
-    now = dt.datetime.utcnow()
+    now = utcnow()
     cutoff = now + dt.timedelta(days=criteria.days_ahead)
 
     match_query = (
@@ -788,7 +789,7 @@ def _match_window(
     days_ahead one.
     """
 
-    now = dt.datetime.utcnow()
+    now = utcnow()
     if date_from or date_to:
         start = max(now, dt.datetime.combine(date_from or date_to, dt.time.min))
         end = dt.datetime.combine(date_to or date_from, dt.time.max)

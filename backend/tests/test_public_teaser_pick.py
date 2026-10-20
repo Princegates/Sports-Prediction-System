@@ -17,6 +17,7 @@ import datetime as dt
 import pytest
 from fastapi.testclient import TestClient
 
+from app.timeutil import utcnow
 from app.auth.passwords import hash_password
 from app.auth.tokens import create_token
 from app.config import get_settings
@@ -81,7 +82,7 @@ def _scheduled_match_with_odds(db, name_prefix: str, *, home=0.70, decimal_odds=
         db.refresh(t)
 
     match = Match(
-        league="League One", season="2324", date=dt.datetime.utcnow() + dt.timedelta(hours=6),
+        league="League One", season="2324", date=utcnow() + dt.timedelta(hours=6),
         home_team_id=home_team.id, away_team_id=away_team.id, status="SCHEDULED",
     )
     db.add(match)
@@ -113,7 +114,7 @@ def _kicked_off_match_with_odds(db, name_prefix: str, *, home=0.70, decimal_odds
         db.refresh(t)
 
     match = Match(
-        league="League One", season="2324", date=dt.datetime.utcnow() - dt.timedelta(minutes=20),
+        league="League One", season="2324", date=utcnow() - dt.timedelta(minutes=20),
         home_team_id=home_team.id, away_team_id=away_team.id, status="LIVE",
     )
     db.add(match)
@@ -303,7 +304,7 @@ def test_admin_preview_matches_the_public_endpoint(db_session, admin, priced_mat
 def test_a_teaser_past_its_first_legs_kickoff_goes_stale(db_session, admin, priced_matches):
     _set_teaser(admin, priced_matches[:2])
     pick = db_session.query(AdminPick).filter(AdminPick.public_teaser.is_(True)).one()
-    pick.expires_at = dt.datetime.utcnow() - dt.timedelta(minutes=1)
+    pick.expires_at = utcnow() - dt.timedelta(minutes=1)
     db_session.commit()
 
     response = client.get("/api/public/teaser-pick")

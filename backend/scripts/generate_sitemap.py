@@ -35,6 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from sqlalchemy import select
 
+from app.timeutil import utcnow
 from app.api.routes_public import MAX_PUBLIC_FIXTURE_DAYS_AHEAD
 from app.db.migrate import init_db
 from app.db.models import Match
@@ -116,7 +117,7 @@ def main() -> None:
     init_db(engine)
     db = SessionLocal()
     try:
-        now = dt.datetime.utcnow()
+        now = utcnow()
         matches = db.execute(
             select(Match)
             .where(Match.date >= now, Match.date < now + dt.timedelta(days=MAX_PUBLIC_FIXTURE_DAYS_AHEAD))

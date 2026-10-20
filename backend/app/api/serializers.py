@@ -4,6 +4,7 @@ import datetime as dt
 
 from sqlalchemy.orm import Session
 
+from app.timeutil import utcnow
 from app.access import access_code_effective_status, access_grant_effective_status, current_grant, mask_code
 from app.api.schemas import (
     AccessCodeOut,
@@ -60,7 +61,7 @@ def admin_user_to_schema(user: User, db: Session) -> AdminUserOut:
     access_expires_at = None
     if grant is not None:
         access_expires_at = grant.expires_at
-        access_status = "active" if grant.expires_at > dt.datetime.utcnow() else "expired"
+        access_status = "active" if grant.expires_at > utcnow() else "expired"
 
     return AdminUserOut(
         **user_to_schema(user).model_dump(),

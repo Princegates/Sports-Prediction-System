@@ -31,6 +31,7 @@ from typing import Any, Literal
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app.timeutil import utcnow
 from app.config import get_settings
 from app.db.models import AppSetting
 
@@ -399,7 +400,7 @@ def set_values(db: Session, updates: dict[str, Any], *, updated_by_user_id: int 
         prepared[key] = validate(BY_KEY[key], value)
 
     changed: list[str] = []
-    now = dt.datetime.utcnow()
+    now = utcnow()
     for key, stored in prepared.items():
         row = db.get(AppSetting, key)
         if row is None:

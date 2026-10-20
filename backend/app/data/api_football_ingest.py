@@ -31,6 +31,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
+from app.timeutil import utcnow
 from app.data.providers.api_football import ApiFootballClient, ApiFootballError, ID_TO_LEAGUE, QuotaExceeded
 from app.data.source_cleanup import fold_fixture
 from app.data.team_matching import canonical_alias, name_match_score
@@ -533,7 +534,7 @@ def import_odds(
             select(Match).where(Match.league == league_name, Match.api_fixture_id.is_not(None))
         ).scalars()
     }
-    captured_at = dt.datetime.utcnow()
+    captured_at = utcnow()
 
     for row in rows:
         report.considered += 1
@@ -685,7 +686,7 @@ def sync_live_matches(db: Session, client: ApiFootballClient) -> LiveSyncReport:
         # Stamped on every poll that still finds this fixture live, changed
         # or not -- this is what lets "genuinely live" be judged by recency
         # rather than the status column alone (see live_engine.is_genuinely_live).
-        match.live_synced_at = dt.datetime.utcnow()
+        match.live_synced_at = utcnow()
 
         if latest is not None and (latest.minute, latest.score_home, latest.score_away) == (minute, score_home, score_away):
             report.unchanged += 1
@@ -719,7 +720,7 @@ def sync_live_matches(db: Session, client: ApiFootballClient) -> LiveSyncReport:
     # history instead of tracking what's live right now.
     STUCK_KICKOFF_AGE = dt.timedelta(hours=3)
     STUCK_RECONCILE_LIMIT = 20
-    now = dt.datetime.utcnow()
+    now = utcnow()
     stuck = db.execute(
         select(Match)
         .where(Match.status == "LIVE", Match.api_fixture_id.is_not(None), Match.date <= now - STUCK_KICKOFF_AGE)
@@ -777,7 +778,7 @@ def live_poll_due(db: Session, *, now: dt.datetime | None = None) -> bool:
     resolve, makes a poll worth paying for.
     """
 
-    now = now or dt.datetime.utcnow()
+    now = now or utcnow()
     due = db.execute(
         select(Match.id)
         .where(

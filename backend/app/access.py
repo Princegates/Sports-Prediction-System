@@ -19,6 +19,7 @@ import secrets
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
+from app.timeutil import utcnow
 from app import app_settings
 from app.db.models import AccessCode, AccessGrant, AccessRedemption, AuditLog, User
 
@@ -65,7 +66,7 @@ def access_code_effective_status(code: AccessCode) -> str:
 
     if code.status == "revoked":
         return "revoked"
-    if code.code_expires_at is not None and dt.datetime.utcnow() > code.code_expires_at:
+    if code.code_expires_at is not None and utcnow() > code.code_expires_at:
         return "expired"
     if code.redemption_count >= code.redemption_limit:
         return "exhausted"
@@ -75,7 +76,7 @@ def access_code_effective_status(code: AccessCode) -> str:
 def access_grant_effective_status(grant: AccessGrant) -> str:
     if grant.status == "revoked":
         return "revoked"
-    if grant.expires_at <= dt.datetime.utcnow():
+    if grant.expires_at <= utcnow():
         return "expired"
     return "active"
 
@@ -116,7 +117,7 @@ def create_access_code(
 
     code_expires_at = None
     if code_expires_in_days is not None:
-        code_expires_at = dt.datetime.utcnow() + dt.timedelta(days=code_expires_in_days)
+        code_expires_at = utcnow() + dt.timedelta(days=code_expires_in_days)
 
     # 33^12 possibilities -- a collision is astronomically unlikely, but a
     # silent one would let one buyer's code redeem into a stranger's slot, so
@@ -166,7 +167,7 @@ def revoke_access_code(db: Session, admin: User, access_code: AccessCode, reason
         raise AccessCodeError("This code is already revoked.")
 
     access_code.status = "revoked"
-    access_code.revoked_at = dt.datetime.utcnow()
+    access_code.revoked_at = utcnow()
     access_code.revoked_reason = reason
 
     db.add(
@@ -194,7 +195,7 @@ def extend_grant(db: Session, admin: User, user: User, additional_days: int) -> 
     if grant is None:
         raise AccessCodeError("This user has no grant to extend -- generate an access code for them instead.")
 
-    now = dt.datetime.utcnow()
+    now = utcnow()
     base = grant.expires_at if grant.expires_at > now else now
     grant.expires_at = base + dt.timedelta(days=additional_days)
 
@@ -218,7 +219,7 @@ def revoke_current_grant(db: Session, admin: User, user: User, reason: str | Non
         raise AccessCodeError("This user has no active grant to revoke.")
 
     grant.status = "revoked"
-    grant.revoked_at = dt.datetime.utcnow()
+    grant.revoked_at = utcnow()
     grant.revoked_reason = reason
 
     db.add(
@@ -305,7 +306,7 @@ def redeem_access_code(db: Session, user: User, raw_code: str) -> AccessGrant:
         _log_redeem_failure(db, user, "code doesn't exist")
         raise AccessCodeError("That code doesn't exist.")
 
-    now = dt.datetime.utcnow()
+    now = utcnow()
 
     if code.status == "revoked":
         _log_redeem_failure(db, user, "revoked", code)
@@ -468,7 +469,7 @@ def reward_referrer_for_first_payment(db: Session, referee: User) -> bool:
     if referrer is None or referrer.status == "suspended":
         return False
 
-    now = dt.datetime.utcnow()
+    now = utcnow()
     cap = int(app_settings.get_value(db, "referral_monthly_cap") or 0)
     rewarded_recently = db.execute(
         select(func.count(User.id)).where(

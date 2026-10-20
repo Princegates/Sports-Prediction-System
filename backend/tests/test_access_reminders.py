@@ -7,6 +7,7 @@ import datetime as dt
 import pytest
 from fastapi.testclient import TestClient
 
+from app.timeutil import utcnow
 from app import mailer
 from app.access import create_access_code, redeem_access_code
 from app.access_reminders import send_expiry_reminders
@@ -40,7 +41,7 @@ def _user(db, email: str, role: str = "user") -> User:
 def _grant(db, user: User, *, kind: str, started_hours_ago: float, ends_in_hours: float) -> AccessGrant:
     code = create_access_code(db, user, duration_days=1, assigned_user_id=user.id, kind=kind)
     grant = redeem_access_code(db, user, code.code)
-    now = dt.datetime.utcnow()
+    now = utcnow()
     grant.activated_at = now - dt.timedelta(hours=started_hours_ago)
     grant.expires_at = now + dt.timedelta(hours=ends_in_hours)
     db.commit()

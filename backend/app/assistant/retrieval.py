@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app.timeutil import utcnow
 from app.db.models import LivePrediction, Match, ModelMetric, Prediction, Team
 from app.features.team_stats import TeamForm, compute_team_form
 from app.live_engine import LIVE_STALE_AFTER
@@ -161,7 +162,7 @@ def find_match_for_teams(
     """The fixture between these two teams the user most likely means: the
     next scheduled one, or failing that the most recently played one."""
 
-    now = now or dt.datetime.utcnow()
+    now = now or utcnow()
     pairing = or_(
         (Match.home_team_id == team_a.id) & (Match.away_team_id == team_b.id),
         (Match.home_team_id == team_b.id) & (Match.away_team_id == team_a.id),
@@ -269,12 +270,12 @@ def ranked_predictions(
 
 
 def team_form(db: Session, team: Team, as_of: dt.datetime | None = None) -> TeamForm:
-    as_of = as_of or dt.datetime.utcnow()
+    as_of = as_of or utcnow()
     return compute_team_form(db, team.id, as_of, team.league)
 
 
 def next_fixture_for_team(db: Session, team: Team, now: dt.datetime | None = None) -> MatchCard | None:
-    now = now or dt.datetime.utcnow()
+    now = now or utcnow()
     match = db.execute(
         select(Match)
         .where(or_(Match.home_team_id == team.id, Match.away_team_id == team.id), Match.date >= now)
@@ -314,7 +315,7 @@ def live_matches(db: Session, limit: int = 8) -> list[MatchCard]:
     # by the old Live-tab sandbox). Only a *recent* confirmation from the
     # real sync job counts here, the same gate /api/matches?status=LIVE
     # applies (see live_engine.is_genuinely_live).
-    cutoff = dt.datetime.utcnow() - LIVE_STALE_AFTER
+    cutoff = utcnow() - LIVE_STALE_AFTER
     matches = db.execute(
         select(Match)
         .where(Match.status == "LIVE", Match.live_synced_at.is_not(None), Match.live_synced_at >= cutoff)
@@ -495,7 +496,7 @@ def coverage_counts(db: Session) -> dict[str, int]:
     """Corpus size figures, used by both the assistant and the public
     landing page so the two can never quote different totals."""
 
-    now = dt.datetime.utcnow()
+    now = utcnow()
     return {
         "teams": db.execute(select(func.count()).select_from(Team)).scalar() or 0,
         "leagues": db.execute(select(func.count(func.distinct(Match.league)))).scalar() or 0,

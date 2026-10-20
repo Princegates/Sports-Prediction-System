@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.timeutil import utcnow
 from app import app_settings, mailer
 from app.api.deps import get_db, require_superadmin
 from app.api.schemas import (
@@ -169,7 +170,7 @@ def system_status(db: Session = Depends(get_db)) -> SystemStatusOut:
 
     latest_match = db.execute(select(func.max(Match.date))).scalar()
     latest_prediction = db.execute(select(func.max(Prediction.created_at))).scalar()
-    now = dt.datetime.utcnow()
+    now = utcnow()
 
     models = sorted(p.name for p in MODEL_DIR.glob("ml_model_*.joblib")) if MODEL_DIR.exists() else []
     calibrators = len(list(MODEL_DIR.glob("calibrator_*.joblib"))) if MODEL_DIR.exists() else 0

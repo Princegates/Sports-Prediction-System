@@ -14,6 +14,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
+from app.timeutil import utcnow
 from app import app_settings
 from app.api import rate_limit
 from app.assistant import llm
@@ -42,7 +43,7 @@ def fixture_data(db_session):
     db_session.refresh(home)
     db_session.refresh(away)
 
-    now = dt.datetime.utcnow()
+    now = utcnow()
 
     # The upcoming fixture has to be BOTH today (the "what's on today?"
     # handler queries today 00:00 -> tomorrow 00:00) AND in the future
@@ -414,7 +415,7 @@ def test_what_changed_with_no_live_events_says_so(db_session, auth_headers, fixt
 
 
 def test_todays_card_reports_actual_fixtures(db_session, auth_headers, fixture_data):
-    now = dt.datetime.utcnow()
+    now = utcnow()
     if (now + dt.timedelta(minutes=2)).date() != now.date():
         pytest.skip("fixture kickoff crosses midnight UTC; today's-card window is untestable here")
 
@@ -490,7 +491,7 @@ def test_generate_selections_a_named_league_filters_without_naming_a_team(db_ses
     db_session.refresh(home)
     db_session.refresh(away)
 
-    kickoff = dt.datetime.utcnow() + dt.timedelta(minutes=5)
+    kickoff = utcnow() + dt.timedelta(minutes=5)
     la_liga_match = Match(
         league="Spanish La Liga", season="2025-26", date=kickoff,
         home_team_id=home.id, away_team_id=away.id, status="SCHEDULED",

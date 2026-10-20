@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
+from app.timeutil import utcnow
 from app.api.deps import get_db, get_match_or_404
 from app.api.schemas import (
     LeagueOutcomesOut,
@@ -60,7 +61,7 @@ def list_matches(
     if league:
         stmt = stmt.where(Match.league == league)
     if days_ahead is not None:
-        now = dt.datetime.utcnow()
+        now = utcnow()
         stmt = stmt.where(Match.date >= now, Match.date <= now + dt.timedelta(days=days_ahead))
     if status:
         status = status.upper()
@@ -71,7 +72,7 @@ def list_matches(
             stmt = stmt.where(
                 Match.status == "LIVE",
                 Match.live_synced_at.is_not(None),
-                Match.live_synced_at >= dt.datetime.utcnow() - LIVE_STALE_AFTER,
+                Match.live_synced_at >= utcnow() - LIVE_STALE_AFTER,
             )
         else:
             stmt = stmt.where(Match.status == status)

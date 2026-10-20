@@ -29,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from sqlalchemy import select
 
+from app.timeutil import utcnow
 from app.betcode.selection import DEFAULT_MARKETS, build_confidence_candidates
 from app.db.models import Match, Prediction
 from app.db.session import SessionLocal
@@ -46,7 +47,7 @@ def main() -> None:
 
     db = SessionLocal()
     try:
-        now = dt.datetime.utcnow()
+        now = utcnow()
         cutoff = now + dt.timedelta(days=args.days_ahead)
         print(f"Window: {now:%Y-%m-%d %H:%M} .. {cutoff:%Y-%m-%d %H:%M} UTC  (league={args.league or 'ANY'})")
         print(f"DEFAULT_MARKETS = {DEFAULT_MARKETS}\n")

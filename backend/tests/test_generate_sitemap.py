@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from app.timeutil import utcnow
 from app.db.models import Match, Team
 
 LEAGUE = "English Premier League"
@@ -39,7 +40,7 @@ def test_fixture_slug_is_lowercase_hyphenated_and_strips_accents(script, db_sess
     import datetime as dt
 
     match = Match(
-        league=LEAGUE, season="2025-26", date=dt.datetime.utcnow() + dt.timedelta(days=1),
+        league=LEAGUE, season="2025-26", date=utcnow() + dt.timedelta(days=1),
         home_team_id=home.id, away_team_id=away.id, status="SCHEDULED",
     )
     db_session.add(match)
@@ -94,15 +95,15 @@ def test_main_writes_a_url_for_each_upcoming_fixture(script, db_session, tmp_pat
     home = _team(db_session, "Arsenal")
     away = _team(db_session, "Chelsea")
     upcoming = Match(
-        league=LEAGUE, season="2025-26", date=dt.datetime.utcnow() + dt.timedelta(days=2),
+        league=LEAGUE, season="2025-26", date=utcnow() + dt.timedelta(days=2),
         home_team_id=home.id, away_team_id=away.id, status="SCHEDULED",
     )
     too_far = Match(
-        league=LEAGUE, season="2025-26", date=dt.datetime.utcnow() + dt.timedelta(days=30),
+        league=LEAGUE, season="2025-26", date=utcnow() + dt.timedelta(days=30),
         home_team_id=home.id, away_team_id=away.id, status="SCHEDULED",
     )
     played = Match(
-        league=LEAGUE, season="2025-26", date=dt.datetime.utcnow() - dt.timedelta(days=2),
+        league=LEAGUE, season="2025-26", date=utcnow() - dt.timedelta(days=2),
         home_team_id=home.id, away_team_id=away.id, status="FINISHED",
         home_score=1, away_score=0,
     )

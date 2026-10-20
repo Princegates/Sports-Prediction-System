@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.timeutil import utcnow
 from app import mailer
 from app.access import AccessCodeError, current_grant, redeem_access_code
 from app.api.deps import get_current_user, get_db
@@ -55,7 +56,7 @@ def access_status(user: User = Depends(get_current_user), db: Session = Depends(
     if grant is None:
         return AccessStatusOut(has_access=False, status="none")
 
-    has_access = grant.expires_at > dt.datetime.utcnow()
+    has_access = grant.expires_at > utcnow()
     return AccessStatusOut(
         has_access=has_access,
         status="active" if has_access else "expired",

@@ -22,6 +22,7 @@ import argparse
 
 from sqlalchemy import select
 
+from app.timeutil import utcnow
 from app import app_settings
 from app.betcode.selection import price_legs, resolve_legs_unpriced
 from app.db.models import AdminPick, Match, Prediction
@@ -38,7 +39,7 @@ def main() -> None:
 
     db = SessionLocal()
     try:
-        now = dt.datetime.utcnow()
+        now = utcnow()
         values = app_settings.all_values(db)
         print(f"admin_picks_enabled = {values.get('admin_picks_enabled', True)!r}")
         print(f"admin_picks_free_tier_visible = {values.get('admin_picks_free_tier_visible', True)!r}\n")

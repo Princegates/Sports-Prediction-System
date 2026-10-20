@@ -13,6 +13,7 @@ import datetime as dt
 import pytest
 from fastapi.testclient import TestClient
 
+from app.timeutil import utcnow
 from app.auth.passwords import hash_password
 from app.auth.tokens import create_token
 from app.config import get_settings
@@ -61,7 +62,7 @@ def _scheduled_match(db, name_prefix: str) -> Match:
         db.refresh(t)
 
     match = Match(
-        league="League One", season="2324", date=dt.datetime.utcnow() + dt.timedelta(hours=6),
+        league="League One", season="2324", date=utcnow() + dt.timedelta(hours=6),
         home_team_id=home_team.id, away_team_id=away_team.id, status="SCHEDULED",
     )
     db.add(match)
@@ -184,7 +185,7 @@ def test_promote_rejects_a_slip_whose_result_is_already_known(db_session, admin,
 
 
 def test_promote_rejects_a_slip_once_its_first_match_has_kicked_off(db_session, admin, two_matches):
-    two_matches[0].date = dt.datetime.utcnow() - dt.timedelta(minutes=5)
+    two_matches[0].date = utcnow() - dt.timedelta(minutes=5)
     db_session.commit()
     slip = _make_slip(db_session, admin, two_matches)
 

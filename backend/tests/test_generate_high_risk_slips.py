@@ -16,9 +16,10 @@ from pathlib import Path
 
 import pytest
 
+from app.timeutil import utcnow
 from app.db.models import AdminPick, Match, MatchOdds, Prediction, Team
 
-BASE = dt.datetime.utcnow() + dt.timedelta(hours=6)
+BASE = utcnow() + dt.timedelta(hours=6)
 
 # 60 matches on a wide, evenly-stepped odds ladder: enough for three
 # non-overlapping 10-to-20-leg slips (up to 60 legs total) each able to
@@ -130,7 +131,7 @@ def test_a_slip_that_cannot_be_filled_leaves_its_previous_row_alone(db_session, 
 
     stale = AdminPick(
         source="system_weekly_jackpot_3", legs=[], priced=True, label="Last week's jackpot #3",
-        expires_at=dt.datetime.utcnow() + dt.timedelta(days=5),
+        expires_at=utcnow() + dt.timedelta(days=5),
     )
     db_session.add(stale)
     db_session.commit()

@@ -24,6 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
+from app.timeutil import utcnow
 from app.api.deps import get_db
 from app.api.schemas import (
     AdminPickLegOut,
@@ -321,7 +322,7 @@ def resolve_public_teaser_pick(db: Session) -> PublicTeaserPickOut:
     # promote_pick_to_public_teaser) -- once that's passed, the combo is no
     # longer "upcoming" even if its odds/prediction rows still happen to
     # resolve for a little while after.
-    if pick.expires_at <= dt.datetime.utcnow():
+    if pick.expires_at <= utcnow():
         return PublicTeaserPickOut(has_data=False)
 
     refs = [(leg["match_id"], leg["market"], leg["selection"]) for leg in pick.legs]
@@ -388,7 +389,7 @@ def public_fixtures(days_ahead: int = 3, limit: int = 6, db: Session = Depends(g
 
     days_ahead = max(0, min(days_ahead, MAX_PUBLIC_FIXTURE_DAYS_AHEAD))
     limit = max(1, min(limit, 20))
-    now = dt.datetime.utcnow()
+    now = utcnow()
 
     rows = db.execute(
         select(Match).where(Match.date >= now, Match.date < now + dt.timedelta(days=days_ahead))
@@ -414,7 +415,7 @@ def public_fixture_detail(match_id: int, db: Session = Depends(get_db)) -> Publi
     """
 
     match = db.get(Match, match_id)
-    now = dt.datetime.utcnow()
+    now = utcnow()
     if match is None or not (now <= match.date < now + dt.timedelta(days=MAX_PUBLIC_FIXTURE_DAYS_AHEAD)):
         raise HTTPException(status_code=404, detail="Fixture not found")
     return _public_fixture_out(db, match)

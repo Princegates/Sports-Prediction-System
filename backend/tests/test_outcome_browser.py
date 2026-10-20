@@ -19,13 +19,14 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import event
 
+from app.timeutil import utcnow
 from app.db.models import Match, Prediction, Team
 from app.db.session import engine
 from app.main import app
 
 client = TestClient(app)
 
-BASE = dt.datetime.utcnow()
+BASE = utcnow()
 
 
 def _prediction(match_id: int, *, home=0.55, draw=0.25, away=0.20, dq=1.0, confidence="HIGH") -> Prediction:

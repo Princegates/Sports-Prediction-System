@@ -13,6 +13,7 @@ import datetime as dt
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.timeutil import utcnow
 from app import app_settings, mailer
 from app.db.models import AccessCode, AccessGrant, AuditLog, User
 
@@ -32,7 +33,7 @@ def send_expiry_reminders(db: Session, *, now: dt.datetime | None = None) -> int
 
     if not mailer.is_configured(db):
         return 0
-    now = now or dt.datetime.utcnow()
+    now = now or utcnow()
 
     rows = db.execute(
         select(AccessGrant, User, AccessCode)

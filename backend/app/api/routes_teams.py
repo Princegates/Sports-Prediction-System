@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
+from app.timeutil import utcnow
 from app.api.deps import get_db, get_team_or_404
 from app.api.schemas import TeamOut
 from app.api.serializers import team_to_schema
@@ -33,7 +34,7 @@ def get_team_form(team: Team = Depends(get_team_or_404), db: Session = Depends(g
     leakage-free window logic the prediction engine uses (just anchored to
     the current moment instead of a specific match's kickoff)."""
 
-    form = compute_team_form(db, team.id, dt.datetime.utcnow(), team.league)
+    form = compute_team_form(db, team.id, utcnow(), team.league)
     return vars(form)
 
 

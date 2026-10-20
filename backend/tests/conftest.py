@@ -12,6 +12,7 @@ os.environ["DATABASE_URL"] = f"sqlite:///{_tmp_dir}/test.db"
 
 import pytest
 
+from app.timeutil import utcnow
 from app.api import rate_limit
 from app.auth.passwords import hash_password
 from app.auth.tokens import create_token
@@ -63,7 +64,7 @@ def grant_active_access(db_session, user: User, days: int = 30) -> AccessGrant:
     db_session.commit()
     db_session.refresh(code)
 
-    grant = AccessGrant(user_id=user.id, access_code_id=code.id, expires_at=dt.datetime.utcnow() + dt.timedelta(days=days))
+    grant = AccessGrant(user_id=user.id, access_code_id=code.id, expires_at=utcnow() + dt.timedelta(days=days))
     db_session.add(grant)
     db_session.commit()
     db_session.refresh(grant)

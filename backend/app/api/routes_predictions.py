@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
+from app.timeutil import utcnow
 from app import app_settings
 from app.access import current_grant
 from app.api.deps import get_current_user, get_db, require_active_access
@@ -75,7 +76,7 @@ def predictions_today(league: str | None = None, date: dt.date | None = None, db
     one-parameter addition; the default with no ``date`` is unchanged.
     """
 
-    day = date or dt.datetime.utcnow().date()
+    day = date or utcnow().date()
     start = dt.datetime.combine(day, dt.time.min)
     end = start + dt.timedelta(days=1)
 
@@ -102,7 +103,7 @@ def predictions_live(db: Session = Depends(get_db)) -> list[PredictionOut]:
     stmt = select(Match).where(
         Match.status == "LIVE",
         Match.live_synced_at.is_not(None),
-        Match.live_synced_at >= dt.datetime.utcnow() - LIVE_STALE_AFTER,
+        Match.live_synced_at >= utcnow() - LIVE_STALE_AFTER,
     )
     matches = db.execute(stmt).scalars().all()
     predictions = _build_all(db, matches)
@@ -116,7 +117,7 @@ def predictions_high_confidence(
     days_ahead: int = Query(default=3, ge=0, le=14),
     db: Session = Depends(get_db),
 ) -> list[PredictionOut]:
-    start = dt.datetime.utcnow()
+    start = utcnow()
     end = start + dt.timedelta(days=days_ahead)
 
     stmt = select(Match).where(Match.date >= start, Match.date < end)
@@ -158,7 +159,7 @@ def predictions_most_likely(
     again. Ignored when ``league`` is also given.
     """
 
-    start = dt.datetime.utcnow()
+    start = utcnow()
     end = start + dt.timedelta(days=days_ahead)
 
     stmt = select(Match).where(Match.date >= start, Match.date < end)
@@ -238,7 +239,7 @@ def browse_outcomes(
     routes_matches.py's days_ahead bound).
     """
 
-    now = dt.datetime.utcnow()
+    now = utcnow()
     cutoff = now + dt.timedelta(days=days_ahead)
 
     match_query = (
@@ -381,7 +382,7 @@ def free_picks(db: Session = Depends(get_db)) -> list[FreePickOut]:
     dependency at the router mount is all this route gets, by design.
     """
 
-    now = dt.datetime.utcnow()
+    now = utcnow()
     cutoff = now + dt.timedelta(days=3)
 
     matches = db.execute(
@@ -431,7 +432,7 @@ def _viewer_has_premium(db: Session, user: User) -> bool:
     if user.role == "superadmin":
         return True
     grant = current_grant(db, user)
-    return grant is not None and grant.expires_at > dt.datetime.utcnow()
+    return grant is not None and grant.expires_at > utcnow()
 
 
 @router.get("/guda-picks", response_model=list[FeaturedPickOut])
@@ -462,7 +463,7 @@ def guda_picks(user: User = Depends(get_current_user), db: Session = Depends(get
     if not viewer_has_premium and not values.get("guda_picks_free_tier_visible", True):
         return []
 
-    now = dt.datetime.utcnow()
+    now = utcnow()
     recent_cutoff = now - dt.timedelta(days=14)
     picks = db.execute(
         select(FeaturedPick)
@@ -526,7 +527,7 @@ def _has_free_guda_pick(db: Session, values: dict) -> bool:
     if not values.get("guda_picks_enabled", True) or not values.get("guda_picks_free_tier_visible", True):
         return False
 
-    now = dt.datetime.utcnow()
+    now = utcnow()
     picks = db.execute(
         select(FeaturedPick).where(FeaturedPick.result == "pending", FeaturedPick.expires_at > now)
         .order_by(FeaturedPick.created_at.desc())
@@ -588,7 +589,7 @@ def admin_picks(user: User = Depends(get_current_user), db: Session = Depends(ge
 
     free_slot_used = not viewer_has_premium and _has_free_guda_pick(db, values)
 
-    now = dt.datetime.utcnow()
+    now = utcnow()
     recent_cutoff = now - dt.timedelta(days=14)
     # Candidates include every still-pending pick regardless of expiry, not
     # just unexpired/recently-settled ones -- otherwise a pick whose matches

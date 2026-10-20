@@ -15,6 +15,7 @@ from collections.abc import Iterable
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.timeutil import utcnow
 from app.db.models import AdminPick, FeaturedPick, Match
 
 
@@ -35,7 +36,7 @@ def commitment_open(pick: AdminPick | FeaturedPick, kickoff: dt.datetime | None,
     """Whether the pick can still be added to, or taken out of, the public
     record: still pending, and its first match hasn't started."""
 
-    now = now or dt.datetime.utcnow()
+    now = now or utcnow()
     return pick.result == "pending" and kickoff is not None and kickoff > now
 
 
@@ -43,7 +44,7 @@ def set_featured(db: Session, pick: AdminPick | FeaturedPick, featured: bool, *,
     """Apply an admin's feature/unfeature, or raise ``ValueError`` with the
     reason it's no longer allowed."""
 
-    now = now or dt.datetime.utcnow()
+    now = now or utcnow()
     if pick.featured_public == featured:
         return
     if not commitment_open(pick, first_kickoff(db, pick_match_ids(pick)), now):

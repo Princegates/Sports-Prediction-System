@@ -38,6 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from sqlalchemy import exists, select
 
+from app.timeutil import utcnow
 from app import app_settings, mailer
 from app.db.migrate import init_db
 from app.db.models import AccessGrant, User
@@ -62,7 +63,7 @@ def main() -> None:
             print("Email isn't configured (Settings -> Email) -- nothing sent.")
             return
 
-        now = dt.datetime.utcnow()
+        now = utcnow()
         has_live_grant = exists().where(
             AccessGrant.user_id == User.id, AccessGrant.status == "active", AccessGrant.expires_at > now
         )

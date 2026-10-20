@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.timeutil import utcnow
 from app.data.api_football_ingest import TeamIndex
 from app.data.providers.api_football import LEAGUE_IDS, ApiFootballClient, ApiFootballError, QuotaExceeded
 from app.data.team_matching import name_match_score
@@ -256,7 +257,7 @@ def run_lineup_check_from_settings(db: Session, *, window_minutes: int = 90) -> 
         per_minute=int(values.get("api_football_per_minute") or 300),
     )
 
-    now = dt.datetime.utcnow()
+    now = utcnow()
     window_end = now + dt.timedelta(minutes=window_minutes)
     matches = db.execute(
         select(Match).where(

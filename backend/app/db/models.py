@@ -15,6 +15,7 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from app.timeutil import utcnow
 
 
 class Base(DeclarativeBase):
@@ -105,7 +106,7 @@ class User(Base):
     # do its job. Login still works so the account can see when it ends.
     paused_until: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class MatchView(Base):
@@ -119,7 +120,7 @@ class MatchView(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     match_id: Mapped[int] = mapped_column(ForeignKey("matches.id"), index=True)
-    viewed_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    viewed_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
     __table_args__ = (UniqueConstraint("user_id", "match_id", name="uq_match_view_user_match"),)
 
@@ -164,7 +165,7 @@ class ChatMessage(Base):
     # distinct from rewritten, since this text was generated, not rephrased
     # from something this system already knew.
     general_chat: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
 class AuditLog(Base):
@@ -182,7 +183,7 @@ class AuditLog(Base):
     action: Mapped[str] = mapped_column(String(48), index=True)
     target_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     detail: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
 class AccessCode(Base):
@@ -224,7 +225,7 @@ class AccessCode(Base):
     assigned_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     assigned_email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
     revoked_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     revoked_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -259,13 +260,13 @@ class AccessGrant(Base):
     # stored as a status, so it can't go stale.
     status: Mapped[str] = mapped_column(String(16), default="active")
 
-    activated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    activated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
     expires_at: Mapped[dt.datetime] = mapped_column(DateTime, index=True)
 
     revoked_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     revoked_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class AccessRedemption(Base):
@@ -284,7 +285,7 @@ class AccessRedemption(Base):
     access_code_id: Mapped[int] = mapped_column(ForeignKey("access_codes.id"), index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     grant_id: Mapped[int] = mapped_column(ForeignKey("access_grants.id"))
-    redeemed_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
+    redeemed_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
 class Team(Base):
@@ -435,7 +436,7 @@ class PlayerAbsence(Base):
     # shown verbatim in the explanation rather than classified, since the
     # model only needs "this player is out", not why.
     reason: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    fetched_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    fetched_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
     player: Mapped[Player] = relationship(foreign_keys=[player_id])
     team: Mapped[Team] = relationship(foreign_keys=[team_id])
@@ -458,7 +459,7 @@ class MatchLineup(Base):
     team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), index=True)
     player_id: Mapped[int] = mapped_column(ForeignKey("players.id"), index=True)
     is_starter: Mapped[bool] = mapped_column(Boolean, default=True)
-    fetched_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    fetched_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
     match: Mapped[Match] = relationship(foreign_keys=[match_id])
     team: Mapped[Team] = relationship(foreign_keys=[team_id])
@@ -490,7 +491,7 @@ class Prediction(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     match_id: Mapped[int] = mapped_column(ForeignKey("matches.id"), index=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
     model_version: Mapped[str] = mapped_column(String(32))
 
     home_win: Mapped[float] = mapped_column(Float)
@@ -524,7 +525,7 @@ class LivePrediction(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     match_id: Mapped[int] = mapped_column(ForeignKey("matches.id"), index=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
     minute: Mapped[int] = mapped_column(Integer)
     score_home: Mapped[int] = mapped_column(Integer)
     score_away: Mapped[int] = mapped_column(Integer)
@@ -578,7 +579,7 @@ class FeaturedPick(Base):
     settled_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     note: Mapped[str | None] = mapped_column(String(280), nullable=True)
     created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
     # Self-cleaning rather than relying on an admin to remember to remove it
     # -- a couple of days past kickoff, whatever it was celebrating is over.
     expires_at: Mapped[dt.datetime] = mapped_column(DateTime, index=True)
@@ -659,7 +660,7 @@ class AdminPick(Base):
     # tier stays a single row -- one week's low-risk slip replaces last
     # week's rather than piling up a new row every run.
     source: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
     # Self-cleaning, same as FeaturedPick -- 2 days past the LATEST leg's
     # kickoff, since a combo spans several matches rather than just one.
     expires_at: Mapped[dt.datetime] = mapped_column(DateTime, index=True)
@@ -689,7 +690,7 @@ class ModelMetric(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     model_version: Mapped[str] = mapped_column(String(32), index=True)
-    computed_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    computed_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
     split: Mapped[str] = mapped_column(String(16))  # train / validation / test / forward
     league: Mapped[str] = mapped_column(String(64))
     metric_name: Mapped[str] = mapped_column(String(32))
@@ -715,7 +716,7 @@ class AppSetting(Base):
 
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[str] = mapped_column(Text)
-    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, onupdate=dt.datetime.utcnow)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
     updated_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
 
 
@@ -738,7 +739,7 @@ class MatchOdds(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     match_id: Mapped[int] = mapped_column(ForeignKey("matches.id"), index=True)
-    captured_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
+    captured_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
     bookmaker: Mapped[str] = mapped_column(String(64))
     market: Mapped[str] = mapped_column(String(64))
@@ -789,7 +790,7 @@ class BookingSlip(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
     bookmaker: Mapped[str] = mapped_column(String(64))
 

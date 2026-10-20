@@ -10,11 +10,12 @@ import datetime as dt
 import pytest
 from fastapi.testclient import TestClient
 
+from app.timeutil import utcnow
 from app.db.models import Match, MatchOdds, Prediction, Team
 from app.main import app
 
 client = TestClient(app)
-BASE = dt.datetime.utcnow() + dt.timedelta(hours=6)
+BASE = utcnow() + dt.timedelta(hours=6)
 
 
 def _prediction(match_id: int, home=0.85) -> Prediction:

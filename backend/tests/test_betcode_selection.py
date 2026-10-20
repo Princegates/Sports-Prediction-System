@@ -15,6 +15,7 @@ import pytest
 
 import random
 
+from app.timeutil import utcnow
 from app.betcode.selection import (
     SlipCriteria,
     _build_random_pool,
@@ -30,7 +31,7 @@ from app.betcode.selection import (
 )
 from app.db.models import Match, MatchOdds, Prediction, Team
 
-BASE = dt.datetime.utcnow() + dt.timedelta(hours=6)
+BASE = utcnow() + dt.timedelta(hours=6)
 
 
 def _prediction(match_id: int, *, home=0.75, draw=0.15, away=0.10, btts_yes=0.55, btts_no=0.45) -> Prediction:

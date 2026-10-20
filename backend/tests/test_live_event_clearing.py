@@ -12,6 +12,7 @@ import datetime as dt
 import pytest
 from fastapi.testclient import TestClient
 
+from app.timeutil import utcnow
 from app.auth.passwords import hash_password
 from app.auth.tokens import create_token
 from app.config import get_settings
@@ -53,7 +54,7 @@ def _seed_scheduled_match(db_session) -> Match:
     match = Match(
         league="League One",
         season="2324",
-        date=dt.datetime.utcnow() + dt.timedelta(hours=6),
+        date=utcnow() + dt.timedelta(hours=6),
         home_team_id=home.id,
         away_team_id=away.id,
         status="SCHEDULED",

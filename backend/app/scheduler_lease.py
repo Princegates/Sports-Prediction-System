@@ -16,6 +16,7 @@ from sqlalchemy import delete, or_, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.timeutil import utcnow
 from app.db.models import SchedulerLease
 
 # Identifies this process for the life of the import.
@@ -27,7 +28,7 @@ def acquire(db: Session, name: str, ttl: dt.timedelta, *, holder: str = PROCESS_
     holder now has it. Atomic: the conditional UPDATE (or the primary-key
     INSERT for a lease that doesn't exist yet) lets exactly one caller win."""
 
-    now = now or dt.datetime.utcnow()
+    now = now or utcnow()
     expires_at = now + ttl
     result = db.execute(
         update(SchedulerLease)

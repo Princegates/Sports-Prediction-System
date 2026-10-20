@@ -16,6 +16,7 @@ from dataclasses import asdict, replace
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app.timeutil import utcnow
 from app import app_settings
 from app.assistant import llm, nlu, responder
 from app.assistant.responder import Answer
@@ -46,7 +47,7 @@ def llm_quota_left(db: Session, user_id: int, now: dt.datetime | None = None) ->
     or burn a free tier's shared daily allowance for everyone."""
 
     limit = int(app_settings.get_value(db, "assistant_llm_daily_per_user") or 0)
-    now = now or dt.datetime.utcnow()
+    now = now or utcnow()
     used = db.execute(
         select(func.count(ChatMessage.id)).where(
             ChatMessage.user_id == user_id,

@@ -22,6 +22,7 @@ import datetime as dt
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.timeutil import utcnow
 from app.betcode.selection import Leg
 from app.db.models import AdminPick, BookingSlip, FeaturedPick, Match
 from app.outcomes.grading import grade_outcome
@@ -94,7 +95,7 @@ def _settle(db: Session, pick: AdminPick | BookingSlip) -> bool:
 
     pick.leg_results = leg_results
     pick.result = overall
-    pick.settled_at = dt.datetime.utcnow()
+    pick.settled_at = utcnow()
     return True
 
 
@@ -128,7 +129,7 @@ def settle_featured_pick(db: Session, pick: FeaturedPick) -> bool:
         ht_away_score=match.ht_away_score,
     )
     pick.result = RESULT_WON if verdict is True else RESULT_LOST if verdict is False else RESULT_UNRESOLVED
-    pick.settled_at = dt.datetime.utcnow()
+    pick.settled_at = utcnow()
     return True
 
 
