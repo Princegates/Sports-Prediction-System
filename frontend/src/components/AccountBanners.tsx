@@ -47,7 +47,7 @@ export function AccountBanners() {
           <span>
             <strong>Confirm your email to start your free trial.</strong>{" "}
             {verification.trial_days > 0 && <>You get {verification.trial_days} days of full access. </>}
-            We sent a link to {user?.email}.
+            We sent a link to {user?.email} -- if it's not in your inbox, check your spam or junk folder.
           </span>
           {resend === "sent" ? (
             <span className="account-banner-note">Sent -- check your inbox and spam folder.</span>

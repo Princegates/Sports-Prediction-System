@@ -119,7 +119,13 @@ export function Register() {
               <h3>What happens now</h3>
               <ol>
                 {/confirmation link/i.test(done) ? (
-                  <li>Open the link we just emailed you -- your free trial starts the moment you do. You can sign in now too.</li>
+                  <li>
+                    Open the link we just emailed you -- your free trial starts the moment you do. You can sign in now too.
+                    <br />
+                    <strong>Can't find it?</strong> Check your spam or junk folder (and Promotions, on Gmail). If it's
+                    there, mark it "Not spam" so our next emails reach your inbox. Still nothing? Sign in and use
+                    "Resend link".
+                  </li>
                 ) : (
                   <li>Sign in right away -- there's no approval queue to wait on.</li>
                 )}

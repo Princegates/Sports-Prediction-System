@@ -201,6 +201,7 @@ def register(payload: RegisterIn, request: Request, db: Session = Depends(get_db
             if trial_days
             else f"Account created. Check {email} for a confirmation link to finish setting it up."
         )
+        message += " Not in your inbox after a few minutes? Check your spam or junk folder."
         return RegisterOut(message=message, user=user_to_schema(user))
 
     # No way to send a confirmation link (outbound email or the public site

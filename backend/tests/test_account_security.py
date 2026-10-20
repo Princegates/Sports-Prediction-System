@@ -96,6 +96,7 @@ def _admin(db) -> dict:
 def test_trial_waits_for_email_confirmation_when_mail_is_configured(db_session, outbox):
     body = _register("new@example.com")
     assert "confirmation link" in body["message"]
+    assert "spam" in body["message"]
     assert body["user"]["email_verified"] is False
     assert _active_grant(db_session, "new@example.com") is None
     assert outbox[-1][1] == "Confirm your email"
