@@ -53,7 +53,7 @@ iptables rules that silently drop traffic otherwise — this is the single most
 common thing people get stuck on).
 
 ```bash
-sudo apt update && sudo apt install -y python3-venv git nginx
+sudo apt update && sudo apt install -y python3-venv git nginx certbot python3-certbot-nginx
 git clone https://github.com/Princegates/Sports-Prediction-System.git
 cd Sports-Prediction-System/backend
 
@@ -70,7 +70,25 @@ SUPERADMIN_EMAIL=you@example.com SUPERADMIN_PASSWORD='pick-something-strong' \
   python scripts/bootstrap.py
 ```
 
-Run it under systemd so it survives reboots:
+**Already on a paid, hosted Postgres (Supabase, Neon, ...) with real data in
+it?** Skip `bootstrap.py` above entirely -- it seeds an empty database, and
+running it against one that already has members and history is not what you
+want. Instead just point `.env`'s `DATABASE_URL` at your existing database and
+start the service; `app.main`'s own startup migration brings the schema
+up to date without touching existing rows. Use the **pooler** connection
+string, not the direct one -- Supabase's is the one on port 6543
+(`db.<project>.pooler.supabase.com:6543`, not `:5432`) -- `app/db/session.py`
+detects the pooler port automatically and sizes the connection pool for it
+(`pool_size=10, max_overflow=10`). That sizing is *per process*: with the
+multi-worker uvicorn command below, each worker gets its own pool, so N
+workers can open up to `N * 20` connections to the pooler under load --
+comfortably inside what a paid Supabase pooler multiplexes down to the real
+Postgres instance, but worth knowing before you pick a worker count on a
+smaller Supabase compute add-on.
+
+Run it under systemd so it survives reboots. `--workers` matters here --
+the bare single-process command this file showed before left the whole API
+serialized behind one Python process; Always Free's 2 OCPUs are worth using:
 
 ```ini
 # /etc/systemd/system/predictions.service
@@ -82,7 +100,11 @@ After=network.target
 User=ubuntu
 WorkingDirectory=/home/ubuntu/Sports-Prediction-System/backend
 EnvironmentFile=/home/ubuntu/Sports-Prediction-System/backend/.env
-ExecStart=/home/ubuntu/Sports-Prediction-System/backend/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+# 2 OCPUs -> 4 workers (2x cores): headroom for FastAPI's own per-worker
+# threadpool to cover blocking DB calls without over-committing 12 GB RAM.
+# Raise it if `htop` shows CPU to spare under real load; each extra worker
+# also opens its own DB pool (see the Supabase note above).
+ExecStart=/home/ubuntu/Sports-Prediction-System/backend/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
 Restart=always
 
 [Install]
@@ -93,12 +115,45 @@ WantedBy=multi-user.target
 sudo systemctl enable --now predictions
 ```
 
-Put nginx in front with a free Let's Encrypt certificate (`sudo certbot --nginx`)
-so the API is served over HTTPS — browsers block a plain-HTTP API called from an
-HTTPS site, so this isn't optional.
+Put nginx in front so the API is served over HTTPS -- browsers block a
+plain-HTTP API called from an HTTPS site, so this isn't optional. Create the
+reverse-proxy config first, since `certbot --nginx` edits an existing server
+block rather than inventing one:
 
-**Keep SQLite.** At this scale it's faster than a network database and needs no
-second service. Back it up with a cron job: `sqlite3 sports_prediction.db ".backup /home/ubuntu/backup.db"`.
+```nginx
+# /etc/nginx/sites-available/predictions
+server {
+    listen 80;
+    server_name api.yourdomain.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+```bash
+sudo ln -s /etc/nginx/sites-available/predictions /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d api.yourdomain.com   # fetches the cert and rewrites this
+                                              # block for HTTPS + auto-renewal
+```
+
+Certbot's own systemd timer renews the certificate unattended from here --
+`systemctl list-timers | grep certbot` confirms it's scheduled; nothing further
+to run by hand.
+
+**Already on a hosted Postgres?** You're done with this section -- skip
+"Keep SQLite" below, it's for a from-scratch setup with no external database.
+
+**Keep SQLite** (only if you didn't already point `DATABASE_URL` at a hosted
+Postgres above). At this scale it's faster than a network database and needs
+no second service. Back it up with a cron job:
+`sqlite3 sports_prediction.db ".backup /home/ubuntu/backup.db"`.
 
 ### 2. Frontend on Cloudflare Pages
 
