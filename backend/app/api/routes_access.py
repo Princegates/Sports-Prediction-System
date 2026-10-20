@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.access import AccessCodeError, current_grant, redeem_access_code
 from app.api.deps import get_current_user, get_db
-from app.api.rate_limit import enforce
+from app.api.rate_limit import enforce_key
 from app.api.schemas import AccessGrantOut, AccessRedeemIn, AccessStatusOut
 from app.api.serializers import access_grant_to_schema
 from app.config import get_settings
@@ -32,9 +32,10 @@ def redeem(
     db: Session = Depends(get_db),
 ) -> AccessGrantOut:
     settings = get_settings()
-    enforce(
-        request,
-        "access_redeem",
+    # Keyed on the account, which can't be rotated for free the way a
+    # forwarded IP header can.
+    enforce_key(
+        f"access_redeem-user:{user.id}",
         settings.access_redeem_rate_limit_attempts,
         settings.access_redeem_rate_limit_window_seconds,
     )

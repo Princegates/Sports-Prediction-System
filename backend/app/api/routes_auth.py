@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 from app.access import AccessCodeError, current_grant, ensure_referral_code, grant_referral_bonus, issue_signup_trial
 from app import app_settings, mailer
 from app.api.deps import get_current_user, get_db
-from app.api.rate_limit import enforce
+from app.api import rate_limit
+from app.api.rate_limit import enforce, enforce_key
 from app.api.schemas import (
     AccountStatusOut,
     ChangePasswordIn,
@@ -32,16 +33,28 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 def _client_ip(request: Request) -> str | None:
-    """Same precedence as rate_limit.client_key -- the left-most
-    X-Forwarded-For entry when present (any real deployment sits behind a
-    proxy), falling back to the direct peer. Client-controlled and therefore
-    spoofable like any IP in a header, but still the useful signal for
-    spotting where a run of failed logins is coming from."""
+    """Where a request says it came from, for the audit log -- see
+    rate_limit.client_ip for which header wins and why it's best-effort."""
 
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else None
+    ip = rate_limit.client_ip(request)
+    return None if ip == "unknown" else ip
+
+
+def _account_key(scope: str, email: str) -> str:
+    return f"{scope}-account:{email}"
+
+
+# Verified against when the email has no account, so a miss costs the same
+# PBKDF2 work as a wrong password and response time can't be used to tell
+# registered addresses from unregistered ones.
+_DUMMY_PASSWORD_HASH = hash_password("timing-equalizer-not-a-real-password")
+
+
+def _password_matches(user: User | None, password: str) -> bool:
+    if user is None:
+        verify_password(password, _DUMMY_PASSWORD_HASH)
+        return False
+    return verify_password(password, user.password_hash)
 
 
 MINIMUM_AGE_YEARS = 18
@@ -73,6 +86,9 @@ def register(payload: RegisterIn, request: Request, db: Session = Depends(get_db
         settings.register_rate_limit_attempts,
         settings.register_rate_limit_window_seconds,
     )
+    # Per-IP counting can be evaded by forging forwarding headers, so total
+    # sign-ups are capped as well (see rate_limit's module docstring).
+    enforce_key("register-global", settings.register_global_limit, settings.register_global_window_seconds)
 
     # Checked after the rate limit so hammering a closed form is still
     # throttled, and before anything is written.
@@ -216,10 +232,18 @@ def login(payload: LoginIn, request: Request, db: Session = Depends(get_db)) -> 
     )
 
     email = payload.email.strip().lower()
+    # Counted per account, not just per IP, so spreading guesses across
+    # forged addresses gets nowhere. Only failures count -- checked here,
+    # recorded below.
+    account_key = _account_key("login", email)
+    rate_limit.raise_if_limited(
+        account_key, settings.login_account_failure_limit, settings.login_account_failure_window_seconds
+    )
     user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
     ip = _client_ip(request)
 
-    if user is None or not verify_password(payload.password, user.password_hash):
+    if not _password_matches(user, payload.password):
+        rate_limit.check(account_key, settings.login_account_failure_limit, settings.login_account_failure_window_seconds)
         db.add(
             AuditLog(
                 actor_user_id=user.id if user else None,
@@ -280,9 +304,16 @@ def account_status(payload: LoginIn, request: Request, db: Session = Depends(get
     )
 
     email = payload.email.strip().lower()
+    # Same account-level failure counter as login: this endpoint checks a
+    # password too, so it must not be a side door around that limit.
+    account_key = _account_key("login", email)
+    rate_limit.raise_if_limited(
+        account_key, settings.login_account_failure_limit, settings.login_account_failure_window_seconds
+    )
     user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
 
-    if user is None or not verify_password(payload.password, user.password_hash):
+    if not _password_matches(user, payload.password):
+        rate_limit.check(account_key, settings.login_account_failure_limit, settings.login_account_failure_window_seconds)
         return AccountStatusOut(status="no_access", message=NO_ACCESS_MESSAGE)
 
     if user.status == "suspended":
@@ -362,9 +393,8 @@ def change_password(
     attacker who only has the token still needs the password."""
 
     settings = get_settings()
-    enforce(
-        request,
-        "password_change",
+    enforce_key(
+        f"password_change-user:{user.id}",
         settings.password_change_rate_limit_attempts,
         settings.password_change_rate_limit_window_seconds,
     )

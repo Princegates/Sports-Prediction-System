@@ -42,13 +42,26 @@ class Settings(BaseSettings):
     # name its own origins here.
     cors_allow_origins: str = "*"
 
-    # Brute-force protection on the credential endpoints, counted per client
-    # IP in-process (see app/api/rate_limit.py for why that's the right
-    # trade-off at this scale and when it stops being one).
+    # Brute-force protection on the credential endpoints, counted in-process
+    # (see app/api/rate_limit.py for why the limits that matter are keyed on
+    # the account rather than an IP, and when in-process stops being enough).
     login_rate_limit_attempts: int = 10
     login_rate_limit_window_seconds: int = 300
+    # Failed passwords against one account, from anywhere. A deliberate
+    # trade-off: someone hammering a victim's email can lock that account
+    # out of password login for this window, which is far better than
+    # letting them guess at it without limit.
+    login_account_failure_limit: int = 10
+    login_account_failure_window_seconds: int = 900
     register_rate_limit_attempts: int = 5
     register_rate_limit_window_seconds: int = 3600
+    # Sign-ups across every client combined -- the backstop when per-IP
+    # counting is evaded. Generous on purpose; raise it before a campaign.
+    register_global_limit: int = 120
+    register_global_window_seconds: int = 3600
+    # Header an edge proxy sets to the real client IP, overwriting any value
+    # the client sent (Cloudflare's CF-Connecting-IP). Blank to skip it.
+    client_ip_header: str = "cf-connecting-ip"
     chat_rate_limit_messages: int = 40
     chat_rate_limit_window_seconds: int = 300
     access_redeem_rate_limit_attempts: int = 10
