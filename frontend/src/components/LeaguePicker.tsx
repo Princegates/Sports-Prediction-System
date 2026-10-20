@@ -19,6 +19,7 @@ const MAIN_LEAGUES = new Set([
   "Turkish Süper Lig",
   "UEFA Champions League",
   "UEFA Europa League",
+  "English Championship",
 ]);
 
 const GROUP_ORDER = ["Main leagues", "Other leagues"];

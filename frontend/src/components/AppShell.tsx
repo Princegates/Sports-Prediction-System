@@ -19,6 +19,7 @@ const LEAGUES = [
   "Turkish Süper Lig",
   "UEFA Champions League",
   "UEFA Europa League",
+  "English Championship",
   "Albanian Superliga",
   "Andorran Primera Divisió",
   "Armenian Premier League",
