@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchPublicFixtures } from "../api";
+import { fetchPublicFixtures, fetchPublicStats } from "../api";
+import { FixtureTeaserRow } from "../components/FixtureTeaserRow";
 import { PublicShell } from "../components/PublicShell";
-import { fixtureSlug } from "../lib/slug";
+import { leagueSlug } from "../lib/slug";
 import type { PublicFixture } from "../types";
 
 /**
@@ -16,11 +17,15 @@ import type { PublicFixture } from "../types";
  */
 export function Fixtures() {
   const [fixtures, setFixtures] = useState<PublicFixture[] | null>(null);
+  const [leagues, setLeagues] = useState<string[]>([]);
 
   useEffect(() => {
     fetchPublicFixtures(14, 20)
       .then(setFixtures)
       .catch(() => setFixtures([]));
+    fetchPublicStats()
+      .then((s) => setLeagues(s.league_names))
+      .catch(() => setLeagues([]));
   }, []);
 
   return (
@@ -50,34 +55,27 @@ export function Fixtures() {
         {fixtures !== null && fixtures.length > 0 && (
           <div className="fixture-teaser-list">
             {fixtures.map((f) => (
-              <Link key={f.match_id} to={`/predict/${fixtureSlug(f)}`} className="fixture-teaser fixture-teaser-link">
-                <div className="fixture-teaser-main">
-                  <span className="fixture-teaser-teams">
-                    {f.home_team} <span className="vs-divider">v</span> {f.away_team}
-                  </span>
-                  <span className="fixture-teaser-meta">
-                    {f.league} ·{" "}
-                    {new Date(f.kickoff).toLocaleString(undefined, {
-                      weekday: "short",
-                      day: "numeric",
-                      month: "short",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </span>
-                </div>
-                {f.has_prediction ? (
-                  <span className={`confidence-tag ${(f.confidence ?? "").toLowerCase()}`}>
-                    {f.confidence} confidence
-                  </span>
-                ) : (
-                  <span className="badge-neutral">Awaiting analysis</span>
-                )}
-              </Link>
+              <FixtureTeaserRow key={f.match_id} fixture={f} />
             ))}
           </div>
         )}
       </section>
+
+      {leagues.length > 0 && (
+        <section className="landing-section">
+          <div className="section-head">
+            <h2>Predictions by league</h2>
+            <p>Every upcoming fixture in one competition, on its own page.</p>
+          </div>
+          <div className="league-links">
+            {leagues.map((l) => (
+              <Link key={l} to={`/predictions/${leagueSlug(l)}`} className="filter-chip">
+                {l}
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
     </PublicShell>
   );
 }

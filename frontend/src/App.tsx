@@ -21,6 +21,7 @@ const ForgotPassword = lazy(() => import("./pages/ForgotPassword").then((m) => (
 const FixturePreview = lazy(() => import("./pages/FixturePreview").then((m) => ({ default: m.FixturePreview })));
 const Fixtures = lazy(() => import("./pages/Fixtures").then((m) => ({ default: m.Fixtures })));
 const HowItWorks = lazy(() => import("./pages/HowItWorks").then((m) => ({ default: m.HowItWorks })));
+const LeaguePredictions = lazy(() => import("./pages/LeaguePredictions").then((m) => ({ default: m.LeaguePredictions })));
 const Live = lazy(() => import("./pages/Live").then((m) => ({ default: m.Live })));
 const Login = lazy(() => import("./pages/Login").then((m) => ({ default: m.Login })));
 const Markets = lazy(() => import("./pages/Markets").then((m) => ({ default: m.Markets })));
@@ -76,6 +77,7 @@ export default function App() {
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/fixtures" element={<Fixtures />} />
         <Route path="/predict/:slugId" element={<FixturePreview />} />
+        <Route path="/predictions/:leagueSlug" element={<LeaguePredictions />} />
         <Route path="/responsible" element={<Responsible />} />
         <Route path="/cookie-policy" element={<CookiePolicy />} />
         <Route path="/account-status" element={<AccountStatus />} />

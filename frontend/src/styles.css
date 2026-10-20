@@ -6001,3 +6001,93 @@ table.admin-table {
 .topbar-trial-btn {
   white-space: nowrap;
 }
+
+/* ==========================================================================
+   FIXTURE PAGE + LEAGUE HUBS (pages/FixturePreview.tsx, LeaguePredictions.tsx)
+   ========================================================================== */
+.breadcrumbs {
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding-top: var(--space-4);
+}
+.breadcrumbs a {
+  color: inherit;
+}
+.fixture-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.fixture-title .crest-name {
+  gap: 10px;
+}
+.form-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+.form-column {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.form-chips {
+  display: flex;
+  gap: 6px;
+}
+.form-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--text-muted);
+}
+.form-chip.w {
+  background: var(--good);
+}
+.form-chip.l {
+  background: var(--critical);
+}
+.form-results {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+}
+.h2h-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 720px;
+}
+.h2h-row {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: baseline;
+  font-size: 14px;
+}
+.h2h-score {
+  font-variant-numeric: tabular-nums;
+  margin: 0 4px;
+}
+.league-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+@media (max-width: 560px) {
+  .h2h-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+}

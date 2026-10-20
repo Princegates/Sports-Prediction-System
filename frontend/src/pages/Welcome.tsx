@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchLanding } from "../api";
+import { FixtureTeaserRow } from "../components/FixtureTeaserRow";
 import { Mascot } from "../components/Mascot";
 import { PublicShell } from "../components/PublicShell";
 import { TeamCrest } from "../components/TeamCrest";
@@ -9,7 +10,7 @@ import { fixtureSlug } from "../lib/slug";
 import { usePageStructuredData } from "../lib/pageMeta";
 import { useTilt } from "../lib/useTilt";
 import { whatsappLink } from "../lib/whatsapp";
-import type { Landing, PublicFixture, TrackRecord } from "../types";
+import type { Landing, TrackRecord } from "../types";
 
 /**
  * Public landing page.
@@ -81,34 +82,6 @@ function band(record: TrackRecord, key: string) {
 
 function kickoffLabel(iso: string): string {
   return new Date(iso).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false });
-}
-
-function FixtureRow({ fixture }: { fixture: PublicFixture }) {
-  return (
-    <Link to={`/predict/${fixtureSlug(fixture)}`} className="fixture-teaser fixture-teaser-link">
-      <div className="fixture-teaser-main">
-        <span className="fixture-teaser-teams">
-          <span className="crest-name">
-            <TeamCrest name={fixture.home_team} logoUrl={fixture.home_logo_url} size={18} />
-            {fixture.home_team}
-          </span>
-          <span className="vs-divider">v</span>
-          <span className="crest-name">
-            <TeamCrest name={fixture.away_team} logoUrl={fixture.away_logo_url} size={18} />
-            {fixture.away_team}
-          </span>
-        </span>
-        <span className="fixture-teaser-meta">
-          {fixture.league} · {kickoffLabel(fixture.kickoff)}
-        </span>
-      </div>
-      {fixture.has_prediction ? (
-        <span className={`confidence-tag ${(fixture.confidence ?? "").toLowerCase()}`}>{fixture.confidence} confidence</span>
-      ) : (
-        <span className="badge-neutral">Awaiting analysis</span>
-      )}
-    </Link>
-  );
 }
 
 export function Welcome() {
@@ -332,7 +305,7 @@ export function Welcome() {
         {fixtures.length > 0 ? (
           <div className="fixture-teaser-list">
             {fixtures.map((f) => (
-              <FixtureRow key={f.match_id} fixture={f} />
+              <FixtureTeaserRow key={f.match_id} fixture={f} />
             ))}
           </div>
         ) : (

@@ -120,3 +120,21 @@ def test_main_writes_a_url_for_each_upcoming_fixture(script, db_session, tmp_pat
     # neither belongs in a sitemap meant only for currently-previewable fixtures.
     assert f"/predict/{too_far.id}-" not in content
     assert f"/predict/{played.id}-" not in content
+    # The league hub is listed because the league has a fixture in the window.
+    assert "<loc>https://soccaintel.com/predictions/english-premier-league</loc>" in content
+
+
+def test_render_sitemap_includes_each_league_hub(script):
+    xml = script.render_sitemap([], ["la-liga", "serie-a"])
+    assert "<loc>https://soccaintel.com/predictions/la-liga</loc>" in xml
+    assert "<loc>https://soccaintel.com/predictions/serie-a</loc>" in xml
+
+
+def test_main_leaves_out_hubs_for_leagues_without_upcoming_fixtures(script, db_session, tmp_path, monkeypatch):
+    target = tmp_path / "sitemap.xml"
+    monkeypatch.setattr(script, "SITEMAP_PATH", target)
+
+    sys.argv = ["generate_sitemap.py"]
+    script.main()
+
+    assert "/predictions/" not in target.read_text()
