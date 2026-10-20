@@ -495,6 +495,14 @@ body[data-accent="denim"] { --accent: #3b6ea5; }
   .topbar-brand-full { display: none; }
   .topbar-brand-short { display: inline; }
   .topbar-league-select { width: 44px; padding: 0 4px; text-align: center; }
+  // MobileBottomNav duplicates every one of these six destinations with
+  // room for an icon and a full label -- this horizontally-scrolling pill
+  // row, squeezed in beside the brand, league select and icon cluster in a
+  // 56px-tall bar, was redundant and cramped rather than actually useful
+  // here. .topbar-spacer (flex: 1) still does its job of pushing the
+  // league select/icons to the right edge with this hidden -- it isn't
+  // specific to sitting next to the tab row.
+  .topbar-tabs { display: none; }
 }
 
 // --- Public nav (horizontal links, no pill tabs -- fewer items, plainer) ---
