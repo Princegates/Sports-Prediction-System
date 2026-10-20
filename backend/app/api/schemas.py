@@ -70,20 +70,28 @@ class PredictionOut(BaseModel):
     model_breakdown: dict
 
 
+# Upper bounds on free-text input. Nothing legitimate comes close; without
+# them a request could store megabytes in a name or make PBKDF2 chew on a
+# huge password.
+EMAIL_MAX = 255
+NAME_MAX = 120
+PASSWORD_MAX = 256
+
+
 class RegisterIn(BaseModel):
-    email: str
-    name: str
-    password: str
+    email: str = Field(max_length=EMAIL_MAX)
+    name: str = Field(max_length=NAME_MAX)
+    password: str = Field(max_length=PASSWORD_MAX)
     date_of_birth: dt.date
     # Another account's referral_code -- optional, and invalid rather than
     # silently ignored if it doesn't resolve, so a typo doesn't cost the
     # referee their bonus without either side knowing.
-    referral_code: str | None = None
+    referral_code: str | None = Field(default=None, max_length=32)
 
 
 class LoginIn(BaseModel):
-    email: str
-    password: str
+    email: str = Field(max_length=EMAIL_MAX)
+    password: str = Field(max_length=PASSWORD_MAX)
 
 
 class UserOut(BaseModel):
@@ -100,6 +108,11 @@ class UserOut(BaseModel):
     # app.access.ensure_referral_code. Optional only in the schema sense
     # (every real account has one by the time anything reads it back).
     referral_code: str | None = None
+    # False until the emailed link is used -- the app shows a "confirm your
+    # email to start your trial" banner while it is.
+    email_verified: bool = False
+    # Set while a self-set break (POST /api/auth/pause) is running.
+    paused_until: dt.datetime | None = None
 
 
 class PreferencesIn(BaseModel):
@@ -109,12 +122,51 @@ class PreferencesIn(BaseModel):
 
 
 class UpdateProfileIn(BaseModel):
-    name: str
+    name: str = Field(max_length=NAME_MAX)
 
 
 class ChangePasswordIn(BaseModel):
-    current_password: str
-    new_password: str
+    current_password: str = Field(max_length=PASSWORD_MAX)
+    new_password: str = Field(max_length=PASSWORD_MAX)
+
+
+class TokenIn(BaseModel):
+    token: str = Field(max_length=2048)
+
+
+class VerifyEmailOut(BaseModel):
+    message: str
+    already_verified: bool
+    access_days: int = 0
+
+
+class VerificationStatusOut(BaseModel):
+    pending: bool
+    trial_days: int = 0
+
+
+class ForgotPasswordIn(BaseModel):
+    email: str = Field(max_length=EMAIL_MAX)
+
+
+class ResetPasswordIn(BaseModel):
+    token: str = Field(max_length=2048)
+    new_password: str = Field(max_length=PASSWORD_MAX)
+
+
+class MessageOut(BaseModel):
+    message: str
+
+
+class PauseIn(BaseModel):
+    days: int
+
+
+class ReferralStatsOut(BaseModel):
+    joined: int
+    paid: int
+    bonus_days_each: int
+    enabled: bool
 
 
 class MatchHistoryOut(BaseModel):
@@ -182,6 +234,8 @@ class AdminOverviewOut(BaseModel):
 
 
 class ChatMessageIn(BaseModel):
+    # Length is checked by the assistant engine (MAX_MESSAGE_LENGTH), which
+    # answers with a readable 400 rather than a schema 422.
     message: str
     # The match the user is viewing, so follow-ups resolve without re-naming
     # the teams.
@@ -378,7 +432,7 @@ class AccessGrantOut(BaseModel):
 
 
 class AccessRedeemIn(BaseModel):
-    code: str
+    code: str = Field(max_length=64)
 
 
 class AccessStatusOut(BaseModel):
@@ -513,7 +567,7 @@ class BrandingOut(BaseModel):
     default_market_tab: str
     # Whether entering a referral code at signup currently earns the bonus
     # below -- the Register page only shows the referral field and its
-    # "both of you get N days" copy when this is true.
+    # "you get N bonus days" copy when this is true.
     referral_enabled: bool
     referral_bonus_days: int
 

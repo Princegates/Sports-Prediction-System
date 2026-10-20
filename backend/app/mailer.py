@@ -342,3 +342,60 @@ def password_changed_message() -> tuple[str, str]:
         "a Super Admin right away so they can secure it.\n"
     )
     return "Your password was changed", body
+
+
+def verify_email_message(link: str, trial_days: int = 0) -> tuple[str, str]:
+    """Subject and body for the confirm-your-address email sent at signup.
+
+    The free trial starts when this link is used, not at registration --
+    see routes_auth.verify_email -- so the email says so.
+    """
+
+    if trial_days:
+        days = "1 day" if trial_days == 1 else f"{trial_days} days"
+        why = f"Confirm your email to start your free {days} of full access:\n\n"
+    else:
+        why = "Confirm your email to finish setting up your account:\n\n"
+    body = (
+        "Welcome!\n\n"
+        f"{why}"
+        f"{link}\n\n"
+        "The link works for 3 days.\n\n"
+        "If you didn't create this account, you can ignore this email.\n"
+    )
+    return "Confirm your email", body
+
+
+def password_reset_message(link: str) -> tuple[str, str]:
+    """Subject and body for a password-reset link."""
+
+    body = (
+        "Someone asked to reset the password for this account.\n\n"
+        "If it was you, choose a new password here:\n\n"
+        f"{link}\n\n"
+        "The link works once, for 30 minutes.\n\n"
+        "If it wasn't you, ignore this email -- your password stays the same.\n"
+    )
+    return "Reset your password", body
+
+
+def trial_ending_message(
+    hours_left: int, site_url: str | None = None, whatsapp: str | None = None, price_label: str | None = None
+) -> tuple[str, str]:
+    """Subject and body for the automatic heads-up before a trial ends."""
+
+    where = site_url or "the site"
+    price = f" Access is {price_label}." if price_label else ""
+    contact = (
+        f"To keep going, message {format_whatsapp(whatsapp)} on WhatsApp for an access code.{price}\n\n"
+        if whatsapp
+        else f"To keep going, redeem an access code at {where}.{price}\n\n"
+    )
+    body = (
+        f"Your free trial ends in about {hours_left} hours.\n\n"
+        "After that you'll drop to the free tier (one headline pick per league).\n"
+        "Your account, history and saved slips all stay put.\n\n"
+        f"{contact}"
+        f"Already have a code? Redeem it at {where}/app/access\n"
+    )
+    return "Your free trial ends soon", body

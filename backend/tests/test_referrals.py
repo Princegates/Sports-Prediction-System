@@ -1,6 +1,7 @@
-"""Referral program: every account gets its own code, and entering someone
-else's at signup gives both sides a bonus stacked on top of whatever access
-they already have -- see app.access.grant_referral_bonus.
+"""Referral program: every account gets its own code. Entering someone
+else's at signup gives the new account a bonus when its free access starts;
+the referrer's bonus waits for that account's first paid code (see
+app.access.reward_referrer_for_first_payment and test_referral_rewards.py).
 """
 
 from __future__ import annotations
@@ -50,7 +51,7 @@ def test_every_new_account_gets_its_own_referral_code(db_session):
     assert len(body["user"]["referral_code"]) == 7
 
 
-def test_registering_with_a_valid_referral_code_bonuses_both_sides(db_session):
+def test_registering_with_a_valid_referral_code_bonuses_the_new_account_only(db_session):
     referrer_body = _register("referrer@example.com")
     referrer_code = referrer_body["user"]["referral_code"]
 
@@ -61,10 +62,14 @@ def test_registering_with_a_valid_referral_code_bonuses_both_sides(db_session):
     referee = db_session.query(User).filter(User.email == "referee@example.com").one()
     assert referee.referred_by_user_id == referrer.id
 
-    entry = db_session.query(AuditLog).filter(AuditLog.action == "referral.bonus_granted").one()
+    entry = db_session.query(AuditLog).filter(AuditLog.action == "referral.referee_bonus_granted").one()
     assert entry.target_user_id == referrer.id
     assert entry.actor_user_id == referee.id
     assert entry.detail["bonus_days"] == 3  # default referral_bonus_days
+
+    # The referrer's half waits for the referee's first payment.
+    assert db_session.query(AuditLog).filter(AuditLog.action == "referral.bonus_granted").count() == 0
+    assert referee.referral_rewarded_at is None
 
 
 def test_referral_code_is_case_and_whitespace_insensitive(db_session):
@@ -102,7 +107,7 @@ def test_disabling_referrals_ignores_a_provided_code_without_erroring(db_session
 
     referee_body = _register("disabled-program-referee@example.com", referral_code=referrer_code)
     assert "bonus" not in referee_body["message"].lower()
-    assert db_session.query(AuditLog).filter(AuditLog.action == "referral.bonus_granted").count() == 0
+    assert db_session.query(AuditLog).filter(AuditLog.action.like("referral.%")).count() == 0
 
 
 def test_blank_referral_code_is_the_same_as_none(db_session):

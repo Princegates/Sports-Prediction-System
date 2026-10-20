@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Search, UserAvatar, SettingsIcon, Locked, UserFollow } from "./icons";
 import { SearchCommand } from "./SearchCommand";
+import { AccountBanners } from "./AccountBanners";
 import { ChatDock } from "./ChatDock";
 import { MobileBottomNav } from "./MobileBottomNav";
 import { ThemeToggle } from "./ThemeToggle";
@@ -281,6 +282,7 @@ export function AppShell() {
       </header>
 
       <main id="main-content" className="app-content">
+        <AccountBanners />
         <Outlet />
       </main>
 

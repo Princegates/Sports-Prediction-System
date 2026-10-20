@@ -5601,3 +5601,30 @@ table.admin-table {
 .cookie-banner .btn {
   flex-shrink: 0;
 }
+
+/* Account-level notices above every app page (components/AccountBanners). */
+.account-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--text-primary);
+  font-size: 13.5px;
+}
+.account-banner > span:first-child {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.account-banner-note {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+.btn.btn-sm {
+  padding: 6px 12px;
+  font-size: 12.5px;
+}

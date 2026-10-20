@@ -109,6 +109,15 @@ _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     # The one showcase combo shown on the public, unauthenticated Welcome
     # page -- see AdminPick.public_teaser.
     ("admin_picks", "public_teaser", "BOOLEAN DEFAULT FALSE"),
+    # Account security and free-access gating -- see the matching User /
+    # AccessCode columns. token_version DEFAULT 0 so every session token
+    # issued before this column existed (which carries no version) still
+    # matches and nobody is signed out by the deploy.
+    ("users", "email_verified_at", "TIMESTAMP"),
+    ("users", "token_version", "INTEGER DEFAULT 0"),
+    ("users", "referral_rewarded_at", "TIMESTAMP"),
+    ("users", "paused_until", "TIMESTAMP"),
+    ("access_codes", "kind", "VARCHAR(16) DEFAULT 'issued'"),
 ]
 
 
@@ -301,6 +310,25 @@ def _backfill_referral_codes(engine: Engine) -> None:
         conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_referral_code ON users (referral_code)"))
 
 
+def _backfill_access_code_kinds(engine: Engine) -> None:
+    """Classifies codes that predate AccessCode.kind. The column's DEFAULT
+    marks every existing row "issued", which is wrong for the self-issued
+    trial and referral codes -- and "issued" is what counts as a payment.
+    Their notes text is fixed by app.access, so it identifies them exactly.
+    Idempotent: only rows still marked "issued" are touched."""
+
+    inspector = inspect(engine)
+    if "access_codes" not in inspector.get_table_names():
+        return
+    with engine.begin() as conn:
+        conn.execute(text(
+            "UPDATE access_codes SET kind = 'trial' WHERE kind = 'issued' AND notes = 'Automatic first-signup trial'"
+        ))
+        conn.execute(text(
+            "UPDATE access_codes SET kind = 'referral' WHERE kind = 'issued' AND notes LIKE 'Referral bonus%'"
+        ))
+
+
 def init_db(engine: Engine) -> None:
     """Bring a database up to date: create missing tables, add columns that
     existing tables are missing, and run one-time data migrations.
@@ -325,4 +353,5 @@ def init_db(engine: Engine) -> None:
     _make_booking_slips_combined_odds_nullable(engine)
     _migrate_pending_users_to_active(engine)
     _backfill_referral_codes(engine)
+    _backfill_access_code_kinds(engine)
     _enable_row_level_security(engine)

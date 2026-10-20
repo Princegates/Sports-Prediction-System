@@ -87,6 +87,21 @@ export interface User {
   notify_weekly_picks: boolean;
   created_at: string;
   referral_code: string | null;
+  email_verified: boolean;
+  /** Set while a self-set break is running -- predictions are hidden until then. */
+  paused_until: string | null;
+}
+
+export interface VerificationStatus {
+  pending: boolean;
+  trial_days: number;
+}
+
+export interface ReferralStats {
+  joined: number;
+  paid: number;
+  bonus_days_each: number;
+  enabled: boolean;
 }
 
 export interface MatchHistoryEntry {

@@ -118,7 +118,11 @@ export function Register() {
             <div className="register-next-steps">
               <h3>What happens now</h3>
               <ol>
-                <li>Sign in right away -- there's no approval queue to wait on.</li>
+                {/confirmation link/i.test(done) ? (
+                  <li>Open the link we just emailed you -- your free trial starts the moment you do. You can sign in now too.</li>
+                ) : (
+                  <li>Sign in right away -- there's no approval queue to wait on.</li>
+                )}
                 <li>
                   When your trial ends, arrange payment with a Super Admin outside the platform
                   {price && <> -- access is <strong>{price}</strong></>}
@@ -204,8 +208,8 @@ export function Register() {
                 />
               </label>
               <p className="setting-note" style={{ marginTop: -8 }}>
-                Got one from a friend? Enter it and you'll both get {branding.referral_bonus_days} bonus day
-                {branding.referral_bonus_days === 1 ? "" : "s"} of access.
+                Got one from a friend? Enter it for {branding.referral_bonus_days} bonus day
+                {branding.referral_bonus_days === 1 ? "" : "s"} of access on top of your free trial.
               </p>
             </>
           )}

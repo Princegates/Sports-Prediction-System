@@ -11,7 +11,7 @@ import {
   updatePreferences as apiUpdatePreferences,
   updateProfile as apiUpdateProfile,
 } from "../api";
-import type { AccessStatus, User } from "../types";
+import type { AccessStatus, TokenResponse, User } from "../types";
 
 // The backend's free-tier host sleeps after ~15 minutes idle and can take
 // 50+ seconds to wake (see render.yaml) -- sometimes refusing connections
@@ -34,6 +34,11 @@ interface AuthContextValue {
   logout: () => void;
   updateProfile: (name: string) => Promise<void>;
   updatePreferences: (payload: { notify_weekly_picks?: boolean }) => Promise<void>;
+  /** Store a fresh session from an endpoint that rotated it (password
+   * change, "sign out other devices") -- the old token stops working. */
+  adoptSession: (session: TokenResponse) => void;
+  /** Replace the cached user with a copy the server just returned. */
+  setCurrentUser: (user: User) => void;
 }
 
 const AuthContext = createContext<AuthContextValue>({
@@ -46,6 +51,8 @@ const AuthContext = createContext<AuthContextValue>({
   logout: () => {},
   updateProfile: async () => {},
   updatePreferences: async () => {},
+  adoptSession: () => {},
+  setCurrentUser: () => {},
 });
 
 export function useAuth() {
@@ -161,6 +168,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(updated);
   }, []);
 
+  const adoptSession = useCallback((session: TokenResponse) => {
+    storeToken(session.access_token);
+    setUser(session.user);
+  }, []);
+
   const value = useMemo(
     () => ({
       user,
@@ -172,8 +184,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       updateProfile,
       updatePreferences,
+      adoptSession,
+      setCurrentUser: setUser,
     }),
-    [user, loading, accessStatus, accessLoading, refreshAccessStatus, login, logout, updateProfile, updatePreferences],
+    [user, loading, accessStatus, accessLoading, refreshAccessStatus, login, logout, updateProfile, updatePreferences, adoptSession],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

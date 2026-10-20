@@ -50,3 +50,31 @@ def verify_token(token: str, secret: str) -> dict[str, Any] | None:
     if payload.get("exp", 0) < time.time():
         return None
     return payload
+
+
+# Single-purpose tokens (email confirmation, password reset) share the
+# signing key with session tokens, so each carries a "purpose" claim and
+# get_current_user refuses any token that has one -- an emailed link can
+# never be replayed as a login, and a session token can never confirm an
+# email or reset a password.
+VERIFY_EMAIL = "verify_email"
+RESET_PASSWORD = "reset_password"
+
+
+def create_purpose_token(purpose: str, payload: dict[str, Any], secret: str, ttl_seconds: int) -> str:
+    return create_token({**payload, "purpose": purpose}, secret, ttl_seconds)
+
+
+def verify_purpose_token(token: str, purpose: str, secret: str) -> dict[str, Any] | None:
+    payload = verify_token(token, secret)
+    if payload is None or payload.get("purpose") != purpose:
+        return None
+    return payload
+
+
+def password_fingerprint(password_hash: str) -> str:
+    """A short digest of the stored hash, embedded in a reset token so the
+    token dies the moment the password changes -- which is what makes a
+    stateless reset link single-use."""
+
+    return hashlib.sha256(password_hash.encode("utf-8")).hexdigest()[:16]

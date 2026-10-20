@@ -165,7 +165,17 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 "from earning the bonus by entering one.",
                 default=True),
     SettingSpec("referral_bonus_days", "int", "access", "Referral bonus (days, each side)",
+                "The new account gets it when its free access starts; the referrer gets it when "
+                "that account first redeems a paid code.",
                 default=3, minimum=1, maximum=30),
+    SettingSpec("referral_monthly_cap", "int", "access", "Referral bonuses per referrer per 30 days",
+                "Stops one person farming bonuses from many accounts.",
+                default=5, minimum=1, maximum=100),
+    SettingSpec("email_verification_required", "bool", "access", "Confirm email before the free trial",
+                "New accounts get their trial (and any referral bonus) only after clicking the link "
+                "emailed to them. Needs outbound email and the public site URL set; without them, "
+                "the trial starts immediately as before.",
+                default=True),
     SettingSpec("contact_whatsapp", "str", "access", "WhatsApp contact for access requests",
                 "Shown wherever an account needs a Super Admin for a code -- the welcome email, "
                 "the locked-access page, and registration. Digits with country code, no spaces "

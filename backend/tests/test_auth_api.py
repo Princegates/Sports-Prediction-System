@@ -422,7 +422,12 @@ def test_change_password_succeeds_and_old_password_stops_working(db_session, aut
         json={"current_password": "test-password-123", "new_password": "a-new-good-password"},
         headers=auth_headers,
     )
-    assert response.status_code == 204
+    assert response.status_code == 200
+    # The session that made the change gets a fresh token; the old one --
+    # and every other session the account had -- is signed out.
+    assert client.get("/api/auth/me", headers=auth_headers).status_code == 401
+    fresh = {"Authorization": f"Bearer {response.json()['access_token']}"}
+    assert client.get("/api/auth/me", headers=fresh).status_code == 200
 
     old_login = client.post(
         "/api/auth/login", json={"email": "test-user@example.com", "password": "test-password-123"}
@@ -454,7 +459,7 @@ def test_change_password_sends_a_security_notice_when_mail_is_configured(db_sess
         headers=auth_headers,
     )
 
-    assert response.status_code == 204
+    assert response.status_code == 200
     assert sent == [("test-user@example.com", "Your password was changed")]
 
 

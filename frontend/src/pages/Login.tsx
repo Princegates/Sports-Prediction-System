@@ -70,6 +70,9 @@ export function Login() {
           <button className="btn" type="submit" disabled={busy} style={{ marginTop: 8 }}>
             {busy ? "Signing in..." : "Sign in"}
           </button>
+          <p style={{ fontSize: 13, textAlign: "center", margin: "4px 0 0" }}>
+            <Link to="/forgot-password">Forgot your password?</Link>
+          </p>
         </form>
 
         <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 20, textAlign: "center" }}>

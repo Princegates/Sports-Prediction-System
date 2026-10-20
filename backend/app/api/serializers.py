@@ -44,6 +44,8 @@ def user_to_schema(user: User) -> UserOut:
         notify_weekly_picks=user.notify_weekly_picks,
         created_at=user.created_at,
         referral_code=user.referral_code,
+        email_verified=user.email_verified_at is not None,
+        paused_until=user.paused_until,
     )
 
 

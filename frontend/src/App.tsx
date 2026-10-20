@@ -17,6 +17,7 @@ const AIPicks = lazy(() => import("./pages/AIPicks").then((m) => ({ default: m.A
 const BetCodes = lazy(() => import("./pages/BetCodes").then((m) => ({ default: m.BetCodes })));
 const CookiePolicy = lazy(() => import("./pages/CookiePolicy").then((m) => ({ default: m.CookiePolicy })));
 const Dashboard = lazy(() => import("./pages/Dashboard").then((m) => ({ default: m.Dashboard })));
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword").then((m) => ({ default: m.ForgotPassword })));
 const FixturePreview = lazy(() => import("./pages/FixturePreview").then((m) => ({ default: m.FixturePreview })));
 const Fixtures = lazy(() => import("./pages/Fixtures").then((m) => ({ default: m.Fixtures })));
 const HowItWorks = lazy(() => import("./pages/HowItWorks").then((m) => ({ default: m.HowItWorks })));
@@ -28,9 +29,11 @@ const Predictions = lazy(() => import("./pages/Predictions").then((m) => ({ defa
 const Pricing = lazy(() => import("./pages/Pricing").then((m) => ({ default: m.Pricing })));
 const Profile = lazy(() => import("./pages/Profile").then((m) => ({ default: m.Profile })));
 const Register = lazy(() => import("./pages/Register").then((m) => ({ default: m.Register })));
+const ResetPassword = lazy(() => import("./pages/ResetPassword").then((m) => ({ default: m.ResetPassword })));
 const Responsible = lazy(() => import("./pages/Responsible").then((m) => ({ default: m.Responsible })));
 const Settings = lazy(() => import("./pages/Settings").then((m) => ({ default: m.Settings })));
 const TeamPage = lazy(() => import("./pages/TeamPage").then((m) => ({ default: m.TeamPage })));
+const VerifyEmail = lazy(() => import("./pages/VerifyEmail").then((m) => ({ default: m.VerifyEmail })));
 const Welcome = lazy(() => import("./pages/Welcome").then((m) => ({ default: m.Welcome })));
 
 function RouteFallback() {
@@ -78,6 +81,9 @@ export default function App() {
         <Route path="/account-status" element={<AccountStatus />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/verify-email" element={<VerifyEmail />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
 
         {/* ---- The product ---- */}
         <Route element={<RequireAuth />}>

@@ -16,9 +16,10 @@ from __future__ import annotations
 import datetime as dt
 import secrets
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
+from app import app_settings
 from app.db.models import AccessCode, AccessGrant, AccessRedemption, AuditLog, User
 
 # Excludes 0/O and 1/I -- a code is read off a screenshot or typed from a
@@ -106,6 +107,7 @@ def create_access_code(
     assigned_user_id: int | None = None,
     assigned_email: str | None = None,
     notes: str | None = None,
+    kind: str = "issued",
 ) -> AccessCode:
     if duration_days <= 0:
         raise AccessCodeError("Duration must be at least 1 day.")
@@ -135,6 +137,7 @@ def create_access_code(
         assigned_email=(assigned_email.strip().lower() or None) if assigned_email else None,
         created_by_user_id=admin.id,
         notes=notes,
+        kind=kind,
     )
     db.add(access_code)
     db.flush()
@@ -257,6 +260,7 @@ def issue_signup_trial(db: Session, user: User, *, duration_days: int) -> Access
         assigned_user_id=user.id,
         assigned_email=user.email,
         notes="Automatic first-signup trial",
+        kind="trial",
     )
     return redeem_access_code(db, user, code.code)
 
@@ -359,6 +363,9 @@ def redeem_access_code(db: Session, user: User, raw_code: str) -> AccessGrant:
     )
     db.commit()
     db.refresh(grant)
+
+    if code.kind == "issued":
+        reward_referrer_for_first_payment(db, user)
     return grant
 
 
@@ -394,28 +401,102 @@ def ensure_referral_code(db: Session, user: User) -> str:
     return candidate
 
 
-def grant_referral_bonus(db: Session, *, referrer: User, referee: User, bonus_days: int) -> None:
-    """Both sides of a successful referral get ``bonus_days`` added to their
-    access -- the referrer for bringing someone in, the referee for using
-    their code. Goes through the same create-then-redeem path as
-    ``issue_signup_trial``, so it stacks on whatever each account already
-    has (see ``redeem_access_code``'s own stacking logic) rather than
-    overwriting it: the referrer doesn't lose unused time, and the
-    referee's bonus lands right on top of the signup trial they just got.
+def _grant_bonus_days(db: Session, beneficiary: User, *, bonus_days: int, role: str) -> None:
+    """Adds ``bonus_days`` to ``beneficiary``'s access through the same
+    create-then-redeem path as ``issue_signup_trial``, so it stacks on
+    whatever the account already has (see ``redeem_access_code``'s own
+    stacking logic) rather than overwriting it."""
+
+    code = create_access_code(
+        db,
+        beneficiary,
+        duration_days=bonus_days,
+        redemption_limit=1,
+        assigned_user_id=beneficiary.id,
+        assigned_email=beneficiary.email,
+        notes=f"Referral bonus ({role})",
+        kind="referral",
+    )
+    redeem_access_code(db, beneficiary, code.code)
+
+
+def grant_referee_bonus(db: Session, *, referee: User, referrer: User, bonus_days: int) -> None:
+    """The new account's half of a referral: ``bonus_days`` on top of its
+    trial, granted when its free access starts (email confirmed). The
+    referrer's half waits for this account's first payment -- see
+    ``reward_referrer_for_first_payment``."""
+
+    _grant_bonus_days(db, referee, bonus_days=bonus_days, role="referee")
+    db.add(
+        AuditLog(
+            actor_user_id=referee.id,
+            actor_email=referee.email,
+            action="referral.referee_bonus_granted",
+            target_user_id=referrer.id,
+            detail={"bonus_days": bonus_days, "referrer_email": referrer.email, "referee_email": referee.email},
+        )
+    )
+    db.commit()
+
+
+def reward_referrer_for_first_payment(db: Session, referee: User) -> bool:
+    """Pays the referrer's bonus the first time a referred account redeems a
+    paid ("issued") code. Returns whether a bonus was granted.
+
+    The bonus used to land at signup, for both sides, with no limit -- so
+    one person could register throwaway accounts with their own code and
+    never pay. Tying it to the referee's first payment rewards bringing in
+    a customer, not an email address, and the monthly cap
+    (``referral_monthly_cap``) bounds it even then. Runs once per referee:
+    a capped or skipped first payment is final, later ones never retry.
     """
 
-    for beneficiary, role in ((referrer, "referrer"), (referee, "referee")):
-        code = create_access_code(
-            db,
-            beneficiary,
-            duration_days=bonus_days,
-            redemption_limit=1,
-            assigned_user_id=beneficiary.id,
-            assigned_email=beneficiary.email,
-            notes=f"Referral bonus ({role})",
-        )
-        redeem_access_code(db, beneficiary, code.code)
+    if referee.referred_by_user_id is None or referee.referral_rewarded_at is not None:
+        return False
+    if not app_settings.get_value(db, "referral_enabled"):
+        return False
 
+    paid_redemptions = db.execute(
+        select(func.count(AccessRedemption.id))
+        .join(AccessCode, AccessCode.id == AccessRedemption.access_code_id)
+        .where(AccessRedemption.user_id == referee.id, AccessCode.kind == "issued")
+    ).scalar_one()
+    if paid_redemptions != 1:
+        return False
+
+    referrer = db.get(User, referee.referred_by_user_id)
+    if referrer is None or referrer.status == "suspended":
+        return False
+
+    now = dt.datetime.utcnow()
+    cap = int(app_settings.get_value(db, "referral_monthly_cap") or 0)
+    rewarded_recently = db.execute(
+        select(func.count(User.id)).where(
+            User.referred_by_user_id == referrer.id,
+            User.referral_rewarded_at.is_not(None),
+            User.referral_rewarded_at >= now - dt.timedelta(days=30),
+        )
+    ).scalar_one()
+    if rewarded_recently >= cap:
+        db.add(
+            AuditLog(
+                actor_user_id=referee.id,
+                actor_email=referee.email,
+                action="referral.bonus_capped",
+                target_user_id=referrer.id,
+                detail={"cap": cap, "referrer_email": referrer.email, "referee_email": referee.email},
+            )
+        )
+        db.commit()
+        return False
+
+    bonus_days = int(app_settings.get_value(db, "referral_bonus_days") or 0)
+    if bonus_days <= 0:
+        return False
+
+    referee.referral_rewarded_at = now
+    db.commit()
+    _grant_bonus_days(db, referrer, bonus_days=bonus_days, role="referrer")
     db.add(
         AuditLog(
             actor_user_id=referee.id,
@@ -426,3 +507,14 @@ def grant_referral_bonus(db: Session, *, referrer: User, referee: User, bonus_da
         )
     )
     db.commit()
+    return True
+
+
+def referral_stats(db: Session, user: User) -> dict[str, int]:
+    """How this account's referrals are doing, for the Profile page."""
+
+    joined = db.execute(select(func.count(User.id)).where(User.referred_by_user_id == user.id)).scalar_one()
+    paid = db.execute(
+        select(func.count(User.id)).where(User.referred_by_user_id == user.id, User.referral_rewarded_at.is_not(None))
+    ).scalar_one()
+    return {"joined": int(joined), "paid": int(paid)}

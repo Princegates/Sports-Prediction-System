@@ -185,6 +185,9 @@ def suspend_user(user_id: int, admin: User = Depends(require_superadmin), db: Se
     target = _get_target_user(user_id, db)
     previous_status = target.status
     target.status = "suspended"
+    # Also revokes every session it holds, so reinstating later doesn't
+    # quietly revive tokens issued before the suspension.
+    target.token_version = (target.token_version or 0) + 1
     _record(db, admin, "user.suspended", target, {"from_status": previous_status})
     db.commit()
     db.refresh(target)

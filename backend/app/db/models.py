@@ -79,6 +79,32 @@ class User(Base):
     # weekly_picks_email_enabled switch that gates the feature entirely.
     notify_weekly_picks: Mapped[bool] = mapped_column(Boolean, default=True)
 
+    # Set once, when the emailed confirmation link is used (routes_auth.
+    # verify_email). The signup trial and the referee's referral bonus wait
+    # for it whenever outbound email is configured, so free access costs a
+    # real inbox rather than a made-up address. Null for accounts that
+    # predate verification -- nothing re-checks those.
+    email_verified_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # Every session token carries the value this had when it was issued,
+    # and get_current_user rejects a mismatch -- so bumping it signs the
+    # account out everywhere at once (password change or reset, suspension,
+    # "sign out other devices"). Session tokens are otherwise stateless and
+    # would stay valid for their full lifetime.
+    token_version: Mapped[int] = mapped_column(Integer, default=0)
+
+    # When this account's referrer got their bonus -- on this account's
+    # first paid code redemption, not at signup (see app.access.
+    # reward_referrer_for_first_payment). Null until then, or forever if
+    # the referrer was over their monthly cap at that point.
+    referral_rewarded_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # Self-set break from the prediction features ("Take a break" on the
+    # Profile page). Deliberately can't be lifted early by the account
+    # itself -- a pause you can cancel the moment you want back in doesn't
+    # do its job. Login still works so the account can see when it ends.
+    paused_until: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
 
 
@@ -207,6 +233,12 @@ class AccessCode(Base):
     # reference) -- stored for their bookkeeping only, never validated or
     # processed by this system.
     notes: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # "issued" (cut by a Super Admin, i.e. paid for), "trial" (the automatic
+    # signup trial) or "referral" (a referral bonus). Only an "issued"
+    # redemption counts as a payment -- see app.access.
+    # reward_referrer_for_first_payment.
+    kind: Mapped[str] = mapped_column(String(16), default="issued")
 
 
 class AccessGrant(Base):

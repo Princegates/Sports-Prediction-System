@@ -6,7 +6,7 @@ from fastapi import Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
 from app.access import current_grant
-from app.auth.tokens import verify_token
+from app.auth.tokens import create_token, verify_token
 from app.config import get_settings
 from app.db.models import Match, Team, User
 from app.db.session import get_db
@@ -18,6 +18,8 @@ __all__ = [
     "get_current_user",
     "require_superadmin",
     "require_active_access",
+    "require_not_paused",
+    "issue_session_token",
 ]
 
 
@@ -48,20 +50,55 @@ def get_current_user(authorization: str | None = Header(default=None), db: Sessi
 
     token = authorization.removeprefix("Bearer ").strip()
     payload = verify_token(token, get_settings().secret_key)
-    if payload is None:
+    # A purpose claim marks an emailed link (confirm email, reset password),
+    # never a session -- see auth/tokens.py.
+    if payload is None or payload.get("purpose") is not None:
         raise HTTPException(status_code=401, detail="Invalid or expired session")
 
     user = db.get(User, payload.get("user_id"))
     if user is None:
         raise HTTPException(status_code=401, detail="Account no longer exists")
+    # Tokens issued before token_version existed carry no "tv" and read as
+    # 0, matching every account that has never bumped it.
+    if int(payload.get("tv", 0)) != (user.token_version or 0):
+        raise HTTPException(status_code=401, detail="This session has been signed out. Please sign in again.")
     if user.status == "suspended":
         raise HTTPException(status_code=403, detail="Account is suspended")
     return user
 
 
+def issue_session_token(user: User) -> str:
+    """A session token for ``user``, stamped with its current token_version
+    so bumping that version revokes it."""
+
+    settings = get_settings()
+    return create_token(
+        {"user_id": user.id, "role": user.role, "tv": user.token_version or 0},
+        settings.secret_key,
+        settings.session_ttl_seconds,
+    )
+
+
 def require_superadmin(user: User = Depends(get_current_user)) -> User:
     if user.role != "superadmin":
         raise HTTPException(status_code=403, detail="Superadmin access required")
+    return user
+
+
+def _raise_if_paused(user: User, now: dt.datetime) -> None:
+    if user.paused_until is not None and user.paused_until > now:
+        raise HTTPException(
+            status_code=403,
+            detail=f"You've paused predictions until {user.paused_until:%d %b %Y, %H:%M} UTC. They'll be back then.",
+        )
+
+
+def require_not_paused(user: User = Depends(get_current_user)) -> User:
+    """Login-level routes that still serve picks (the free tier) honour a
+    self-set pause too -- a break that left the free picks showing wouldn't
+    be one."""
+
+    _raise_if_paused(user, dt.datetime.utcnow())
     return user
 
 
@@ -73,7 +110,10 @@ def require_active_access(user: User = Depends(get_current_user), db: Session = 
     if user.role == "superadmin":
         return user
 
+    now = dt.datetime.utcnow()
+    _raise_if_paused(user, now)
+
     grant = current_grant(db, user)
-    if grant is None or grant.expires_at <= dt.datetime.utcnow():
+    if grant is None or grant.expires_at <= now:
         raise HTTPException(status_code=403, detail="Your access has expired. Redeem a code to continue.")
     return user
