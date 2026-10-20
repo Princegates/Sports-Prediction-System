@@ -892,3 +892,42 @@ def test_select_floor_leg_slip_excludes_matches_already_used(db_session):
     assert result.met_target
     assert all(leg.match_id not in first_ten for leg in result.legs)
     assert sorted(leg.decimal_odds for leg in result.legs) == sorted(odds_list[10:20])
+
+
+def test_a_ranked_slip_mixes_markets_two_legs_per_market_at_most(db_session):
+    """With every match a heavy favourite, one market (Draw No Bet or a wide
+    handicap) is the strongest outcome everywhere -- a plain safest-first
+    pick used to fill the whole slip with it. Each market now gives at most
+    two legs; the rest come from the next-safest market on other matches."""
+
+    from collections import Counter
+
+    teams = []
+    for i in range(16):
+        t = Team(name=f"Club {i}", league="English Premier League", aliases=[])
+        db_session.add(t)
+        teams.append(t)
+    db_session.commit()
+    for i in range(8):
+        m = Match(
+            league="English Premier League", season="2025-26", date=BASE + dt.timedelta(hours=i + 1),
+            home_team_id=teams[2 * i].id, away_team_id=teams[2 * i + 1].id, status="SCHEDULED",
+        )
+        db_session.add(m)
+        db_session.commit()
+        db_session.refresh(m)
+        db_session.add(_prediction(m.id, home=0.88 - i * 0.01, draw=0.08, away=0.04 + i * 0.01))
+    db_session.commit()
+
+    pick = select_legs_by_confidence(db_session, min_probability=0.5, max_legs=8)
+    families = Counter("Handicap" if leg.market.startswith("Handicap ") else leg.market for leg in pick.legs)
+    # This data only yields Match Result and Double Chance in the default
+    # set, so two of each -- not eight of whichever is strongest.
+    assert families == Counter({"Double Chance": 2, "Match Result": 2})
+    assert len({leg.match_id for leg in pick.legs}) == len(pick.legs)  # still one leg per match
+    assert any("keeping each market to 2 legs" in w for w in pick.warnings)
+
+
+def test_a_single_chosen_market_still_fills_the_slip(db_session, three_matches):
+    pick = select_legs_by_confidence(db_session, min_probability=0.5, max_legs=3, markets=("Match Result",))
+    assert [leg.market for leg in pick.legs] == ["Match Result"] * 3

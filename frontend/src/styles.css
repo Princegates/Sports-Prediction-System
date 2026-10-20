@@ -5934,7 +5934,7 @@ table.admin-table {
   text-transform: uppercase;
   padding: 2px 8px;
   border-radius: 999px;
-  border: 1px solid var(--border-subtle, currentColor);
+  border: 1px solid var(--border);
 }
 .free-slip-status.won {
   color: var(--good);
@@ -6170,4 +6170,77 @@ table.admin-table {
 }
 .admin-delete-btn:hover:not(:disabled) {
   background: var(--critical-soft);
+}
+
+/* Predictions: a match's own "All markets" panel, for picking an outcome
+   other than the AI's (components/MatchMarketsPanel.tsx). */
+.markets-toggle {
+  margin-top: 6px;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.own-pick {
+  margin: 2px 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+.markets-panel-row > td {
+  background: var(--bg-surface-2);
+}
+.markets-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 0 8px;
+}
+.markets-panel-market {
+  display: grid;
+  grid-template-columns: 170px 1fr;
+  gap: 8px;
+  align-items: start;
+}
+.markets-panel-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding-top: 6px;
+}
+.markets-panel-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.markets-panel-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.markets-panel-option:hover {
+  border-color: var(--accent);
+}
+.markets-panel-option.chosen {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+@media (max-width: 560px) {
+  .markets-panel-market {
+    grid-template-columns: 1fr;
+  }
+}
+.markets-panel > .btn {
+  align-self: flex-start;
 }

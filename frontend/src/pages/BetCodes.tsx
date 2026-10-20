@@ -147,7 +147,7 @@ const RISK_PRESETS: Record<
 > = {
   low: {
     label: "Low risk",
-    description: "85%+ picks only, up to 3 legs, the safest markets",
+    description: "85%+ picks only, up to 3 legs, mixed markets",
     minProbability: 0.85,
     maxLegs: 3,
     markets: [],
@@ -675,8 +675,9 @@ export function BetCodes() {
           </button>
         </div>
         <p className="setting-note" style={{ marginTop: 10, marginBottom: 0 }}>
-          Fills in (and runs) the fields below -- feel free to adjust anything afterward and generate again. Random
-          slip generates straight away and ignores the fields below except league and date range.
+          Fills in (and runs) the fields below -- feel free to adjust anything afterward and generate again. Slips mix
+          markets: no more than 2 legs from any one market. Random slip generates straight away and ignores the
+          fields below except league and date range.
         </p>
       </div>
 

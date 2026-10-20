@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { fetchMostLikelyAcrossLeagues } from "../api";
 import { LEAGUES, TOP_LEAGUES } from "../components/AppShell";
@@ -9,6 +9,7 @@ import { ConfidenceTag } from "../components/MostLikelyOutcome";
 import { ErrorState } from "../components/ErrorState";
 import { EmptyState } from "../components/EmptyState";
 import { HotPickBadge } from "../components/HotPickBadge";
+import { type ChosenOutcome, MatchMarketsPanel } from "../components/MatchMarketsPanel";
 import { ShareButton } from "../components/ShareButton";
 import { formatSelections } from "../lib/copySelections";
 import { downloadCsv, toCsv } from "../lib/csvExport";
@@ -108,7 +109,23 @@ export function Predictions() {
   // looked back up in `rows` at send time) so a selection survives a filter
   // change even if the row briefly drops out of `visible`.
   const [selected, setSelected] = useState<Map<number, Row>>(new Map());
+  // A member's own outcome for a match, picked from its "All markets" panel
+  // in place of the AI's -- what that match sends to AI Generation.
+  const [choices, setChoices] = useState<Map<number, ChosenOutcome>>(new Map());
+  const [openMarkets, setOpenMarkets] = useState<number | null>(null);
   const navigate = useNavigate();
+
+  function chooseOutcome(row: Row, outcome: ChosenOutcome | null) {
+    const id = row.prediction.match_id;
+    setChoices((prev) => {
+      const next = new Map(prev);
+      if (outcome) next.set(id, outcome);
+      else next.delete(id);
+      return next;
+    });
+    // Picking an outcome is choosing the match too.
+    if (outcome) setSelected((prev) => (prev.has(id) ? prev : new Map(prev).set(id, row)));
+  }
 
   function toggleSelected(row: Row) {
     setSelected((prev) => {
@@ -132,11 +149,14 @@ export function Predictions() {
   }
 
   function sendSelectedToGeneration() {
-    const picks: BetCodePick[] = [...selected.values()].map((r) => ({
-      match_id: r.prediction.match_id,
-      market: r.prediction.global_outcome.market,
-      selection: r.prediction.global_outcome.selection,
-    }));
+    const picks: BetCodePick[] = [...selected.values()].map((r) => {
+      const own = choices.get(r.prediction.match_id);
+      return {
+        match_id: r.prediction.match_id,
+        market: own?.market ?? r.prediction.global_outcome.market,
+        selection: own?.selection ?? r.prediction.global_outcome.selection,
+      };
+    });
     navigate("/app/betcodes", { state: { picks } });
   }
 
@@ -265,8 +285,11 @@ export function Predictions() {
           <tbody>
             {rowsToShow.map((row) => {
               const { prediction, match } = row;
+              const own = choices.get(prediction.match_id);
+              const marketsOpen = openMarkets === prediction.match_id;
               return (
-                <tr key={prediction.match_id} onClick={() => navigate(`/app/match/${prediction.match_id}`)}>
+                <Fragment key={prediction.match_id}>
+                <tr onClick={() => navigate(`/app/match/${prediction.match_id}`)}>
                   <td className="predictions-select-col" onClick={(e) => e.stopPropagation()}>
                     <input
                       type="checkbox"
@@ -290,6 +313,11 @@ export function Predictions() {
                         </span>
                       )}
                     </div>
+                    {own && (
+                      <div className="own-pick">
+                        Your pick: {own.selection} ({own.market}) — {(own.probability * 100).toFixed(0)}%
+                      </div>
+                    )}
                     {prediction.also_likely.map((o) => (
                       <div className="sub" key={`${o.market}-${o.selection}`}>
                         {o.selection} ({o.market}) — {(o.probability * 100).toFixed(0)}%
@@ -300,6 +328,17 @@ export function Predictions() {
                         )}
                       </div>
                     ))}
+                    <button
+                      type="button"
+                      className="markets-toggle"
+                      aria-expanded={marketsOpen}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOpenMarkets(marketsOpen ? null : prediction.match_id);
+                      }}
+                    >
+                      {marketsOpen ? "Hide markets ▴" : "All markets ▾"}
+                    </button>
                   </td>
                   <td className="tabular-nums" data-label="Probability">{(prediction.global_outcome.probability * 100).toFixed(0)}%</td>
                   <td data-label="Confidence">
@@ -308,6 +347,18 @@ export function Predictions() {
                   <td data-label="Kickoff">{new Date(match.date).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
                   <td data-label="Status">{match.status}</td>
                 </tr>
+                {marketsOpen && (
+                  <tr className="markets-panel-row">
+                    <td colSpan={7}>
+                      <MatchMarketsPanel
+                        matchId={prediction.match_id}
+                        chosen={own ?? null}
+                        onChoose={(o) => chooseOutcome(row, o)}
+                      />
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               );
             })}
           </tbody>
