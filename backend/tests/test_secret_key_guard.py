@@ -33,3 +33,11 @@ def test_default_key_only_warns_on_local_sqlite(tmp_path):
     result = _import_app(f"sqlite:///{tmp_path}/dev.db", DEFAULT_KEY)
     assert result.returncode == 0, result.stderr
     assert "published development default" in result.stderr
+
+
+def test_api_docs_are_off_against_a_real_database_and_on_locally(tmp_path):
+    from app.config import Settings
+
+    assert Settings(database_url=f"sqlite:///{tmp_path}/x.db").docs_enabled is True
+    assert Settings(database_url="postgresql://u:p@h/db").docs_enabled is False
+    assert Settings(database_url="postgresql://u:p@h/db", api_docs_enabled=True).docs_enabled is True

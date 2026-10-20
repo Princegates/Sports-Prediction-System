@@ -159,6 +159,17 @@ class Settings(BaseSettings):
             return ["*"]
         return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
+    # Swagger UI (/docs) and the OpenAPI schema. None means "on for local
+    # SQLite development, off against a real database": in production they
+    # hand anyone a complete map of every endpoint, admin ones included.
+    api_docs_enabled: bool | None = None
+
+    @property
+    def docs_enabled(self) -> bool:
+        if self.api_docs_enabled is not None:
+            return self.api_docs_enabled
+        return self.normalized_database_url.startswith("sqlite")
+
     @property
     def secret_key_is_default(self) -> bool:
         return self.secret_key == "dev-secret-change-me-in-production"

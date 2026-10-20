@@ -192,10 +192,15 @@ async function main() {
         await page.waitForLoadState("networkidle", { timeout: 8_000 }).catch(() => {});
         const html = await page.content();
 
-        const outDir = route === "/" ? DIST : path.join(DIST, route.slice(1));
-        await mkdir(outDir, { recursive: true });
-        await writeFile(path.join(outDir, "index.html"), html);
-        console.log(`prerender: ${route} -> ${path.relative(DIST, path.join(outDir, "index.html")) || "index.html"}`);
+        // "/pricing" -> pricing.html, not pricing/index.html: Cloudflare
+        // Pages serves a directory index only at "/pricing/" and 308s the
+        // bare path there, so every sitemap URL, internal link and canonical
+        // tag (all slash-less) pointed at a redirect. A same-named .html
+        // file is served at "/pricing" itself.
+        const outFile = route === "/" ? path.join(DIST, "index.html") : path.join(DIST, `${route.slice(1)}.html`);
+        await mkdir(path.dirname(outFile), { recursive: true });
+        await writeFile(outFile, html);
+        console.log(`prerender: ${route} -> ${path.relative(DIST, outFile)}`);
       } catch (err) {
         console.warn(`prerender: ${route} failed, leaving its build output as-is -- ${err instanceof Error ? err.message : err}`);
       }

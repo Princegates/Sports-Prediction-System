@@ -337,6 +337,10 @@ app = FastAPI(
     ),
     version="0.2.0",
     lifespan=lifespan,
+    # Off in production -- see Settings.api_docs_enabled.
+    docs_url="/docs" if settings.docs_enabled else None,
+    redoc_url="/redoc" if settings.docs_enabled else None,
+    openapi_url="/openapi.json" if settings.docs_enabled else None,
 )
 
 app.add_middleware(
@@ -438,7 +442,7 @@ def root() -> dict:
         "service": "AI Football Prediction & Analytics System",
         "status": "ok",
         "version": app.version,
-        "docs": "/docs",
+        "docs": "/docs" if settings.docs_enabled else None,
         "health": "/api/health",
         "public_data": ["/api/public/stats", "/api/public/accuracy", "/api/public/fixtures"],
         "note": (
