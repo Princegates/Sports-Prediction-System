@@ -5744,9 +5744,39 @@ table.admin-table {
   line-height: 1.25;
 }
 .ls-team {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.ls-team-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* Rows are 20px crests; keep the score column lined up with them. */
+.ls-score > span {
+  line-height: 20px;
+}
+.ls-teams,
+.ls-score {
+  gap: 6px;
+}
+
+/* Club crest or its lettered fallback (components/TeamCrest). */
+.team-crest {
+  flex: none;
+  object-fit: contain;
+}
+.team-crest-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
 }
 .ls-team.won,
 .ls-score .won {

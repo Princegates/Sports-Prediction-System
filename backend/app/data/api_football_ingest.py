@@ -261,6 +261,43 @@ class TeamIndex:
         return team
 
 
+@dataclass
+class TeamIdBackfill:
+    learned: int = 0
+    already_known: int = 0
+    unresolved: list[str] = field(default_factory=list)
+
+
+def backfill_team_ids(db: Session, client: ApiFootballClient, *, league_id: int, season: int) -> TeamIdBackfill:
+    """Learn API-Football's team id for every club in one domestic league,
+    from a single /teams request -- the ids that crests (Team.logo_url) and
+    id-first matching (TeamIndex.resolve) both depend on, without waiting
+    for each club to turn up in a live sync or a fixture import.
+
+    Goes through the same TeamIndex.resolve as everything else, so it learns
+    an id only onto a confident name match and never onto a row that already
+    carries a different one. Never creates clubs. The caller commits.
+    """
+
+    report = TeamIdBackfill()
+    league_name = ID_TO_LEAGUE.get(league_id)
+    index = TeamIndex(db)
+    for row in client.teams(league_id=league_id, season=season):
+        info = row.get("team") or {}
+        provider_id, name = info.get("id"), info.get("name") or ""
+        if provider_id is None or not name:
+            continue
+        known = provider_id in index._by_provider_id
+        team = index.resolve(name, prefer_league=league_name, provider_id=provider_id)
+        if team is None:
+            report.unresolved.append(name)
+        elif known:
+            report.already_known += 1
+        else:
+            report.learned += 1
+    return report
+
+
 def _parse_kickoff(raw: str) -> dt.datetime:
     # The provider sends ISO 8601 with an offset; everything stored here is
     # naive UTC, so convert rather than truncate.

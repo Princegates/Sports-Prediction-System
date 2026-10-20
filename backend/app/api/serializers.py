@@ -30,8 +30,19 @@ from app.outcomes.engine import secondary_outcomes
 from app.outcomes.registry import outcomes_from_prediction
 
 
+# API-Football serves every club's crest as a public image at a URL built
+# from its team id -- no key, and no request against the daily quota.
+TEAM_LOGO_URL = "https://media.api-sports.io/football/teams/{id}.png"
+
+
 def team_to_schema(team: Team) -> TeamOut:
-    return TeamOut(id=team.id, name=team.name, league=team.league, country=team.country)
+    return TeamOut(
+        id=team.id,
+        name=team.name,
+        league=team.league,
+        country=team.country,
+        logo_url=TEAM_LOGO_URL.format(id=team.api_football_team_id) if team.api_football_team_id else None,
+    )
 
 
 def user_to_schema(user: User) -> UserOut:

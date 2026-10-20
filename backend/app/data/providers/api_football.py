@@ -237,6 +237,13 @@ class ApiFootballClient:
         rows = self.get("status")
         return rows if isinstance(rows, dict) else (rows[0] if rows else {})
 
+    def teams(self, *, league_id: int, season: int) -> list[dict]:
+        """Every club in one league-season -- one request. Each row carries
+        ``team.id`` and ``team.name`` (and the crest URL, which this project
+        derives from the id instead of storing)."""
+
+        return self.get("teams", {"league": league_id, "season": season})
+
     def fixtures(
         self,
         *,

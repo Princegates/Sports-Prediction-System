@@ -2,6 +2,9 @@
 # this file's rules on every response with no build step, which is why it
 # lives in public/ rather than being generated.
 #
+# img-src also names media.api-sports.io: team crests are loaded straight
+# from the data provider's public image CDN (see serializers.team_to_schema).
+#
 # connect-src and img-src name *.onrender.com because that's where the
 # backend actually lives (DEPLOYMENT.md's own "note the service URL" step
 # hands out a random onrender.com subdomain, not a fixed one) -- if the API
@@ -34,4 +37,4 @@
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
   Strict-Transport-Security: max-age=31536000; includeSubDomains
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://*.onrender.com; connect-src 'self' https://*.onrender.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://*.onrender.com https://media.api-sports.io; connect-src 'self' https://*.onrender.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'

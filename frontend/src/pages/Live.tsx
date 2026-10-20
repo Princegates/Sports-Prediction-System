@@ -4,6 +4,7 @@ import { fetchLive, fetchMatches } from "../api";
 import { leagueLabel, useLeague } from "../components/AppShell";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
+import { TeamCrest } from "../components/TeamCrest";
 import { useAuth } from "../lib/AuthContext";
 import type { LivePrediction, MatchSummary } from "../types";
 
@@ -99,8 +100,14 @@ function MatchRow({ match, live }: { match: MatchSummary; live: LivePrediction |
     <Link to={`/app/match/${match.id}${k === "live" ? "?tab=Live" : ""}`} className={`ls-row${k === "live" ? " is-live" : ""}`}>
       <StatusCell match={match} minute={live?.minute} />
       <span className="ls-teams">
-        <span className={`ls-team${homeWon ? " won" : ""}`}>{match.home_team.name}</span>
-        <span className={`ls-team${awayWon ? " won" : ""}`}>{match.away_team.name}</span>
+        <span className={`ls-team${homeWon ? " won" : ""}`}>
+          <TeamCrest name={match.home_team.name} logoUrl={match.home_team.logo_url} />
+          <span className="ls-team-name">{match.home_team.name}</span>
+        </span>
+        <span className={`ls-team${awayWon ? " won" : ""}`}>
+          <TeamCrest name={match.away_team.name} logoUrl={match.away_team.logo_url} />
+          <span className="ls-team-name">{match.away_team.name}</span>
+        </span>
       </span>
       {k === "live" && live && (
         <span className="ls-model" title="The model's most likely outcome right now, recalculated from the live score">

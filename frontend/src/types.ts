@@ -3,6 +3,9 @@ export interface Team {
   name: string;
   league: string;
   country: string | null;
+  /** Club crest, or null until the club's provider id is known -- render
+   * through TeamCrest, which falls back to initials. */
+  logo_url?: string | null;
 }
 
 export interface MatchSummary {

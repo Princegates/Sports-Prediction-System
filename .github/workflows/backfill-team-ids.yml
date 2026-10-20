@@ -1,0 +1,58 @@
+# Learns API-Football's id for every club (one request per league), which is
+# what team crests on the Live scores page are built from. Run once; clubs
+# also pick their id up on their own as live syncs and imports see them.
+name: Backfill team ids (crests)
+
+on:
+  workflow_dispatch:
+    inputs:
+      season:
+        description: "Season (the year it starts). Blank = current season."
+        required: false
+        default: ""
+      max_requests:
+        description: "Hard ceiling for this run (one request per league)"
+        required: false
+        default: "100"
+      dry_run:
+        description: "Print the plan and spend nothing"
+        required: false
+        default: "no"
+        type: choice
+        options: ["no", "yes"]
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Check DATABASE_URL
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python scripts/check_database_url.py
+
+      - name: Backfill
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SEASON: ${{ inputs.season }}
+          MAX_REQUESTS: ${{ inputs.max_requests }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          FLAGS=(--max-requests "$MAX_REQUESTS")
+          [ -n "$SEASON" ] && FLAGS+=(--season "$SEASON")
+          [ "$DRY_RUN" = "yes" ] && FLAGS+=(--dry-run)
+          python scripts/backfill_team_ids.py "${FLAGS[@]}"

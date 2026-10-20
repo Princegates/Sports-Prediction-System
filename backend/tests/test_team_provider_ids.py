@@ -67,3 +67,45 @@ def test_created_clubs_carry_their_id(db_session):
     team = index.create("Brand New FC", "English Premier League", provider_id=777)
     assert team.api_football_team_id == 777
     assert index.resolve("Totally different spelling", provider_id=777) == team
+
+
+# --- Crests and the one-request-per-league backfill --------------------------
+
+
+class _TeamsClient:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def teams(self, *, league_id, season):
+        return self.rows
+
+
+def test_backfill_learns_ids_without_creating_or_overwriting(db_session):
+    from app.data.api_football_ingest import backfill_team_ids
+    from app.data.providers.api_football import LEAGUE_IDS
+
+    arsenal = _team(db_session, "Arsenal FC")
+    chelsea = _team(db_session, "Chelsea FC", provider_id=49)
+    rows = [
+        {"team": {"id": 42, "name": "Arsenal"}},
+        {"team": {"id": 49, "name": "Chelsea"}},
+        {"team": {"id": 999, "name": "Some Club We Don't Track"}},
+    ]
+
+    report = backfill_team_ids(db_session, _TeamsClient(rows), league_id=LEAGUE_IDS["English Premier League"], season=2026)
+    db_session.commit()
+
+    assert (report.learned, report.already_known, report.unresolved) == (1, 1, ["Some Club We Don't Track"])
+    db_session.refresh(arsenal)
+    assert arsenal.api_football_team_id == 42
+    assert chelsea.api_football_team_id == 49
+    assert db_session.query(Team).count() == 2
+
+
+def test_team_schema_carries_a_crest_only_once_the_id_is_known(db_session):
+    from app.api.serializers import team_to_schema
+
+    known = _team(db_session, "Arsenal FC", provider_id=42)
+    unknown = _team(db_session, "Chelsea FC")
+    assert team_to_schema(known).logo_url == "https://media.api-sports.io/football/teams/42.png"
+    assert team_to_schema(unknown).logo_url is None

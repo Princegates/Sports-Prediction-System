@@ -10,6 +10,9 @@ class TeamOut(BaseModel):
     name: str
     league: str
     country: str | None = None
+    # Club crest, or None until the club's API-Football id is known (see
+    # Team.api_football_team_id) -- the UI shows its initials meanwhile.
+    logo_url: str | None = None
 
 
 class MatchOut(BaseModel):
