@@ -273,6 +273,12 @@ export function BetCodes() {
   // (or another page) rather than the criteria form below -- changes the
   // result card's framing, not how it's resolved.
   const [fromExternalPicks, setFromExternalPicks] = useState(false);
+  // Which search produced the current preview -- activeRisk alone can't
+  // tell a custom-criteria run apart from a random draw, since both leave
+  // it null (every form control already clears it on touch). Refresh reads
+  // this, alongside activeRisk, to re-run the exact same search rather
+  // than guessing which one is active.
+  const [lastRunWasRandom, setLastRunWasRandom] = useState(false);
   // Legs manually removed from the current preview, keyed the same way a
   // leg is (match_id|market|selection) -- cleared to empty every time
   // `preview` itself is replaced (see runPreview and handleEditPick, the
@@ -377,6 +383,7 @@ export function BetCodes() {
 
   function handlePreview() {
     setFromExternalPicks(false);
+    setLastRunWasRandom(false);
     return runPreview(() => suggestPicks(criteria()));
   }
 
@@ -391,6 +398,7 @@ export function BetCodes() {
     setFeatureAllMarkets(false);
     setActiveRisk(risk);
     setFromExternalPicks(false);
+    setLastRunWasRandom(false);
     return runPreview(() =>
       suggestPicks(
         criteria({ max_legs: p.maxLegs, min_probability: p.minProbability, markets: p.markets, feature_all_markets: false }),
@@ -403,9 +411,22 @@ export function BetCodes() {
   function runRandomSlip() {
     setActiveRisk(null);
     setFromExternalPicks(false);
+    setLastRunWasRandom(true);
     return runPreview(() =>
       suggestRandomPicks({ leagues: selectedLeagues, days_ahead: daysAhead, date_from: selectedDate, date_to: selectedDate }),
     );
+  }
+
+  // Re-runs whichever search produced the current preview, with the same
+  // criteria still sitting in the form -- a random draw comes back
+  // different every time by design; a risk preset or the custom-criteria
+  // form comes back the same unless the underlying data moved (a new
+  // prediction landed, odds changed) since the last run, which is still a
+  // legitimate reason to want another look without re-entering everything.
+  function handleRefresh() {
+    if (activeRisk) return runPreset(activeRisk);
+    if (lastRunWasRandom) return runRandomSlip();
+    return handlePreview();
   }
 
   // Drops one leg from the current preview -- client-side only, no new
@@ -895,14 +916,32 @@ export function BetCodes() {
               {editedLegs.length} leg{editedLegs.length === 1 ? "" : "s"}
               {editedLegs.length !== preview.legs.length ? ` -- edited from ${preview.legs.length}` : ""}
             </h3>
-            {editedLegs.length > 0 && (
-              <span className="meta tabular-nums" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                {(editedCombinedProbability * 100).toFixed(0)}% combined probability
-                <span className={`risk-tag ${resultRiskLabel(editedCombinedProbability).tone}`}>
-                  {resultRiskLabel(editedCombinedProbability).label}
+            <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {editedLegs.length > 0 && (
+                <span className="meta tabular-nums" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  {(editedCombinedProbability * 100).toFixed(0)}% combined probability
+                  <span className={`risk-tag ${resultRiskLabel(editedCombinedProbability).tone}`}>
+                    {resultRiskLabel(editedCombinedProbability).label}
+                  </span>
                 </span>
-              </span>
-            )}
+              )}
+              {!fromExternalPicks && editingPickId === null && (
+                <button
+                  type="button"
+                  className="btn ghost"
+                  style={{ padding: "4px 10px", fontSize: 12.5 }}
+                  onClick={handleRefresh}
+                  disabled={previewing}
+                  title={
+                    lastRunWasRandom
+                      ? "Draw a new random slip with the same criteria"
+                      : "Run the same criteria again"
+                  }
+                >
+                  {previewing ? "Generating…" : "↻ Refresh"}
+                </button>
+              )}
+            </span>
           </div>
 
           {editedLegs.length === 0 ? (
