@@ -495,6 +495,11 @@ body[data-accent="denim"] { --accent: #3b6ea5; }
   .topbar-brand-full { display: none; }
   .topbar-brand-short { display: inline; }
   .topbar-league-select { width: 44px; padding: 0 4px; text-align: center; }
+  // 36px (the desktop size) is just under the usual 44px comfortable-tap
+  // minimum, and on a phone this is one of only a few icon buttons left in
+  // the topbar (the tab row above is hidden here) -- room enough to grow it
+  // without crowding anything else out.
+  .topbar-icon-btn { width: 44px; height: 44px; }
   // MobileBottomNav duplicates every one of these six destinations with
   // room for an icon and a full label -- this horizontally-scrolling pill
   // row, squeezed in beside the brand, league select and icon cluster in a
