@@ -1007,7 +1007,7 @@ export function BetCodes() {
             <>
               <p className="scroll-hint cards-on-mobile-hint">Swipe to see every column →</p>
               <div className="predictions-table-wrapper">
-              <table className="predictions-table wide cards-on-mobile">
+              <table className="predictions-table wide linear-on-mobile">
                 <thead>
                   <tr>
                     <th>Match</th>
@@ -1026,6 +1026,20 @@ export function BetCodes() {
                           {leg.home_team} vs {leg.away_team}
                         </div>
                         <div className="sub">{leg.league}</div>
+                        {/* Folds Market/Selection/Probability/Kickoff into one
+                            flowing line for the phone layout below -- a linear
+                            row, not four separately labeled blocks the way
+                            .cards-on-mobile stacks them. Hidden on desktop,
+                            which already shows these as their own columns. */}
+                        <div className="sub leg-mobile-meta">
+                          {marketLabel(leg.market)}: {leg.selection} · {(leg.model_probability * 100).toFixed(0)}% ·{" "}
+                          {new Date(leg.kickoff).toLocaleString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </div>
                       </td>
                       <td className="sub" data-label="Market">{marketLabel(leg.market)}</td>
                       <td data-label="Selection">

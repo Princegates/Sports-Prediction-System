@@ -1712,6 +1712,14 @@ table.predictions-table.wide {
   font-size: 11.5px;
 }
 
+/* BetCodes.tsx's AI Generation result table only -- the phone-width line
+   that folds Market/Selection/Probability/Kickoff together (see
+   .linear-on-mobile below). Desktop already shows those as their own
+   columns, so this stays hidden until the phone breakpoint turns it on. */
+.leg-mobile-meta {
+  display: none;
+}
+
 .predictions-table th.predictions-select-col,
 .predictions-table td.predictions-select-col {
   width: 1%;
@@ -1977,6 +1985,74 @@ table.predictions-table.odds-grid .match-col .sub {
 
   .cards-on-mobile-hint {
     display: none;
+  }
+
+  /* AI Generation's own result table (BetCodes.tsx) -- a genuinely linear
+     row (team names, then one flowing line of market/selection/probability/
+     kickoff) instead of .cards-on-mobile's four separately labeled blocks
+     per leg, which made a 9-leg slip a long scroll of bulky cards. */
+  table.predictions-table.linear-on-mobile {
+    min-width: 0;
+  }
+
+  table.predictions-table.linear-on-mobile thead {
+    display: none;
+  }
+
+  table.predictions-table.linear-on-mobile,
+  table.predictions-table.linear-on-mobile tbody {
+    display: block;
+    width: 100% !important;
+  }
+
+  table.predictions-table.linear-on-mobile tr {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+    width: 100%;
+  }
+
+  table.predictions-table.linear-on-mobile tr:last-child {
+    border-bottom: none;
+  }
+
+  /* Folded into the Match cell's own .leg-mobile-meta line instead -- see
+     the comment above and in BetCodes.tsx's own JSX. */
+  table.predictions-table.linear-on-mobile td[data-label="Market"],
+  table.predictions-table.linear-on-mobile td[data-label="Selection"],
+  table.predictions-table.linear-on-mobile td[data-label="Probability"],
+  table.predictions-table.linear-on-mobile td[data-label="Kickoff"] {
+    display: none;
+  }
+
+  table.predictions-table.linear-on-mobile td[data-label="Match"] {
+    display: block;
+    flex: 1 1 auto;
+    min-width: 0;
+    width: auto !important;
+    padding: 0;
+    border-bottom: none;
+  }
+
+  table.predictions-table.linear-on-mobile td[data-label="Match"] .match-cell {
+    /* Wraps rather than truncating -- which match this is matters more than
+       saving a line, and a long pairing is rare enough not to cost much. */
+    overflow-wrap: break-word;
+  }
+
+  table.predictions-table.linear-on-mobile td[data-label=""] {
+    display: block;
+    flex: 0 0 auto;
+    width: auto !important;
+    padding: 0;
+    border-bottom: none;
+  }
+
+  .leg-mobile-meta {
+    display: block;
   }
 
   /* Stands in for the hidden <thead>'s select-all checkbox -- see
