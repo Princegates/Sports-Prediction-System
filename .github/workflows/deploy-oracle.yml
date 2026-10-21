@@ -52,9 +52,20 @@ jobs:
             source .venv/bin/activate
             pip install -r requirements.txt
             sudo systemctl restart predictions
-            # Give it a moment, then confirm it actually came back up rather
-            # than silently reporting "deployed" with a dead service.
-            sleep 3
-            sudo systemctl is-active --quiet predictions
-            curl -fsS --max-time 10 http://localhost:8000/api/health
+            # systemd reports a Type=simple service "active" as soon as the
+            # process forks, not once it's actually ready -- 4 workers
+            # cold-starting (reloading scipy/pandas/sklearn, connecting to
+            # Supabase from scratch) routinely takes longer than that. Poll
+            # instead of a single fixed sleep, so a slightly slow start
+            # doesn't fail the deploy outright.
+            for i in $(seq 1 30); do
+              if curl -fsS --max-time 2 http://localhost:8000/api/health > /dev/null 2>&1; then
+                echo "Healthy after ${i}s"
+                exit 0
+              fi
+              sleep 1
+            done
+            echo "Service did not become healthy within 30s"
+            sudo systemctl status predictions --no-pager || true
+            exit 1
           REMOTE
