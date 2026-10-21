@@ -15,6 +15,7 @@ import {
   revealAccessCode,
   revokeAccessCode,
   revokeUserAccess,
+  setUserAIGenerationLimit,
   suspendUser,
 } from "../api";
 import { useAuth } from "../lib/AuthContext";
@@ -235,6 +236,23 @@ export function AdminUsers() {
     await withBusy(id, () => revokeUserAccess(id));
   }
 
+  async function handleSetAIGenerationLimit(u: AdminUser) {
+    const raw = window.prompt(
+      "AI Generation runs per day for this account (including Refresh). Leave blank to use the " +
+        "site-wide default (Settings -> Booking codes).",
+      u.ai_generation_daily_limit_override === null ? "" : String(u.ai_generation_daily_limit_override),
+    );
+    if (raw === null) return;
+    const trimmed = raw.trim();
+    if (trimmed === "") {
+      await withBusy(u.id, () => setUserAIGenerationLimit(u.id, null));
+      return;
+    }
+    const limit = Number(trimmed);
+    if (!Number.isFinite(limit) || limit < 0) return;
+    await withBusy(u.id, () => setUserAIGenerationLimit(u.id, Math.floor(limit)));
+  }
+
   if (error && users === null) return <ErrorState message={error} onRetry={load} />;
 
   return (
@@ -333,6 +351,11 @@ export function AdminUsers() {
                         {new Date(u.access_expires_at).toLocaleDateString()}
                       </div>
                     )}
+                    {u.ai_generation_daily_limit_override !== null && (
+                      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>
+                        {u.ai_generation_daily_limit_override}/day AI Generation
+                      </div>
+                    )}
                   </td>
                   <td>{new Date(u.created_at).toLocaleDateString()}</td>
                   <td>
@@ -345,6 +368,11 @@ export function AdminUsers() {
                       {u.access_status !== "none" && u.access_status !== "unlimited" && (
                         <button className="btn ghost" disabled={busy} onClick={() => handleRevokeAccess(u.id)}>
                           Revoke access
+                        </button>
+                      )}
+                      {u.role !== "superadmin" && (
+                        <button className="btn ghost" disabled={busy} onClick={() => handleSetAIGenerationLimit(u)}>
+                          AI limit
                         </button>
                       )}
                       {u.status === "suspended" && (

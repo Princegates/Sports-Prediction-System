@@ -82,6 +82,7 @@ def admin_user_to_schema(user: User, db: Session) -> AdminUserOut:
         **user_to_schema(user).model_dump(),
         access_status=access_status,
         access_expires_at=access_expires_at,
+        ai_generation_daily_limit_override=user.daily_ai_generation_limit_override,
     )
 
 

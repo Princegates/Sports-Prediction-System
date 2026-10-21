@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import ai_generation_quota
 from app.api.deps import get_db, require_active_access
 from app.api.schemas import (
     BettingSiteOut,
@@ -102,10 +103,27 @@ def _ai_picks_markets(requested: tuple[str, ...]) -> tuple[str, ...]:
     return requested or DEFAULT_MARKETS
 
 
+def _ensure_ai_generation_quota(db: Session, user: User) -> None:
+    """Shared by /suggest and /suggest-random -- the Refresh button on AI
+    Generation hits /suggest again with exclude_match_ids set, so it must
+    count the same way a fresh search does."""
+
+    if not ai_generation_quota.has_quota_left(db, user):
+        limit = ai_generation_quota.daily_limit(db, user)
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"You've used your {limit} AI Generation run{'s' if limit != 1 else ''} for today -- "
+                "it resets on a rolling 24-hour basis. Contact a Super Admin for a higher daily limit."
+            ),
+        )
+
+
 @router.post("/suggest", response_model=SuggestedPicksOut)
 def suggest(
     payload: SuggestCriteriaIn, db: Session = Depends(get_db), user: User = Depends(require_active_access)
 ) -> SuggestedPicksOut:
+    _ensure_ai_generation_quota(db, user)
     engine = select_legs_featuring_every_market if payload.feature_all_markets else select_legs_by_confidence
     pick: ConfidencePick = engine(
         db,
@@ -119,6 +137,7 @@ def suggest(
         exclude_match_ids=frozenset(payload.exclude_match_ids),
         user_salt=user.id,
     )
+    ai_generation_quota.record_generation(db, user)
     return SuggestedPicksOut(
         legs=_picked_legs_to_out(pick.legs),
         combined_probability=pick.combined_probability,
@@ -128,13 +147,18 @@ def suggest(
 
 
 @router.post("/suggest-random", response_model=SuggestedPicksOut)
-def suggest_random(payload: SuggestRandomCriteriaIn, db: Session = Depends(get_db)) -> SuggestedPicksOut:
+def suggest_random(
+    payload: SuggestRandomCriteriaIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_active_access),
+) -> SuggestedPicksOut:
     """A member's own random draw -- the same real-match candidate pool
     /suggest searches (the accuracy floor, one leg per match), picked in
     random order instead of safest-first, landing on a slip somewhere
     between min_legs and max_legs rather than one fixed count. Same preview
     contract as /suggest: book the result with POST /picks."""
 
+    _ensure_ai_generation_quota(db, user)
     min_legs = max(MIN_RANDOM_LEGS, min(payload.min_legs, MAX_RANDOM_LEGS))
     max_legs = max(min_legs, min(payload.max_legs, MAX_RANDOM_LEGS))
     pick: ConfidencePick = select_random_legs(
@@ -149,6 +173,7 @@ def suggest_random(payload: SuggestRandomCriteriaIn, db: Session = Depends(get_d
         date_to=payload.date_to,
         exclude_match_ids=frozenset(payload.exclude_match_ids),
     )
+    ai_generation_quota.record_generation(db, user)
     return SuggestedPicksOut(
         legs=_picked_legs_to_out(pick.legs),
         combined_probability=pick.combined_probability,

@@ -115,6 +115,8 @@ export interface MatchHistoryEntry {
 export interface AdminUser extends User {
   access_status: "active" | "expired" | "none" | "unlimited";
   access_expires_at: string | null;
+  // null = this account uses the global ai_generation_daily_limit setting.
+  ai_generation_daily_limit_override: number | null;
 }
 
 export interface TokenResponse {

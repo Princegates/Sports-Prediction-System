@@ -185,6 +185,9 @@ class AdminUserOut(UserOut):
     # redeemed-code grant rather than a one-time superadmin approval.
     access_status: str
     access_expires_at: dt.datetime | None = None
+    # None means this account uses the global ai_generation_daily_limit
+    # setting -- see User.daily_ai_generation_limit_override.
+    ai_generation_daily_limit_override: int | None = None
 
 
 class TokenOut(BaseModel):
@@ -520,6 +523,13 @@ class RevokeGrantIn(BaseModel):
 
 class ExtendGrantIn(BaseModel):
     additional_days: int
+
+
+class SetAIGenerationLimitIn(BaseModel):
+    """None clears the override, falling back to the global
+    ai_generation_daily_limit setting."""
+
+    daily_limit: int | None = None
 
 
 class LiveEventIn(BaseModel):

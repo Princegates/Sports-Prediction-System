@@ -391,6 +391,67 @@ def test_suggest_with_no_qualifying_match_explains_why(auth_headers, db_session)
     assert "clears" in body["warnings"][0].lower()
 
 
+# --- AI Generation daily quota ---------------------------------------------
+
+
+def test_suggest_is_blocked_once_the_daily_quota_is_used_up(db_session, auth_headers, upcoming_match):
+    from app import app_settings
+
+    app_settings.set_values(db_session, {"ai_generation_daily_limit": 1})
+
+    first = client.post("/api/betcodes/suggest", json={"min_probability": 0.5}, headers=auth_headers)
+    assert first.status_code == 200, first.text
+
+    second = client.post("/api/betcodes/suggest", json={"min_probability": 0.5}, headers=auth_headers)
+    assert second.status_code == 429
+    assert "today" in second.json()["detail"].lower()
+
+
+def test_suggest_random_is_blocked_once_the_daily_quota_is_used_up(db_session, auth_headers, many_matches):
+    from app import app_settings
+
+    app_settings.set_values(db_session, {"ai_generation_daily_limit": 1})
+
+    first = client.post("/api/betcodes/suggest-random", json={}, headers=auth_headers)
+    assert first.status_code == 200, first.text
+
+    second = client.post("/api/betcodes/suggest-random", json={}, headers=auth_headers)
+    assert second.status_code == 429
+
+
+def test_refresh_counts_against_the_same_quota_as_a_fresh_search(db_session, auth_headers, upcoming_match):
+    """The Refresh button is just /suggest again with exclude_match_ids set
+    -- it must not get its own, separate budget."""
+
+    from app import app_settings
+
+    app_settings.set_values(db_session, {"ai_generation_daily_limit": 1})
+
+    first = client.post("/api/betcodes/suggest", json={"min_probability": 0.5}, headers=auth_headers)
+    assert first.status_code == 200, first.text
+
+    refreshed = client.post(
+        "/api/betcodes/suggest",
+        json={"min_probability": 0.5, "exclude_match_ids": [upcoming_match.id]},
+        headers=auth_headers,
+    )
+    assert refreshed.status_code == 429
+
+
+def test_a_per_user_override_lifts_the_global_quota(db_session, auth_headers, upcoming_match):
+    from app import app_settings
+    from app.db.models import User
+
+    app_settings.set_values(db_session, {"ai_generation_daily_limit": 1})
+    user = db_session.query(User).filter(User.email == "test-user@example.com").one()
+    user.daily_ai_generation_limit_override = 5
+    db_session.commit()
+
+    for _ in range(3):
+        response = client.post("/api/betcodes/suggest", json={"min_probability": 0.5}, headers=auth_headers)
+        assert response.status_code == 200, response.text
+
+
 # --- /suggest-random ------------------------------------------------------------
 
 

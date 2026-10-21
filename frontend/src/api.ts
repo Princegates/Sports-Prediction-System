@@ -649,6 +649,10 @@ export function revokeUserAccess(userId: number, reason?: string): Promise<Admin
   return post(`/api/admin/users/${userId}/access/revoke`, { reason });
 }
 
+export function setUserAIGenerationLimit(userId: number, dailyLimit: number | null): Promise<AdminUser> {
+  return post(`/api/admin/users/${userId}/ai-generation-limit`, { daily_limit: dailyLimit });
+}
+
 // --- Predictions / matches / teams --------------------------------------
 
 /** A single day's fixtures with predictions already attached, built in one

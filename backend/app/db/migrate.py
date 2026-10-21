@@ -127,6 +127,9 @@ _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     # Provider id per club -- see Team.api_football_team_id. Its index is
     # created in _index_team_provider_ids (ADD COLUMN can't add one).
     ("teams", "api_football_team_id", "INTEGER"),
+    # Per-user override of the global ai_generation_daily_limit setting --
+    # see User.daily_ai_generation_limit_override / app.ai_generation_quota.
+    ("users", "daily_ai_generation_limit_override", "INTEGER"),
 ]
 
 

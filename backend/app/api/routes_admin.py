@@ -39,6 +39,7 @@ from app.api.schemas import (
     PublicTeaserPickOut,
     RevokeCodeIn,
     RevokeGrantIn,
+    SetAIGenerationLimitIn,
 )
 from app.api.routes_public import resolve_public_teaser_pick
 from app.api.serializers import access_code_to_schema, admin_pick_to_schema, admin_user_to_schema, featured_pick_to_schema, match_to_schema
@@ -451,6 +452,28 @@ def revoke_user_access(
         revoke_current_grant(db, admin, target, payload.reason)
     except AccessCodeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return admin_user_to_schema(target, db)
+
+
+@router.post("/users/{user_id}/ai-generation-limit", response_model=AdminUserOut)
+def set_user_ai_generation_limit(
+    user_id: int,
+    payload: SetAIGenerationLimitIn,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> AdminUserOut:
+    """Overrides the global AI Generation daily cap (Settings -> Booking
+    codes) for one account -- for a member who's paid for more access.
+    ``daily_limit: null`` clears the override, falling back to the global
+    setting again."""
+
+    target = _get_target_user(user_id, db)
+    if payload.daily_limit is not None and payload.daily_limit < 0:
+        raise HTTPException(status_code=400, detail="Daily limit must be 0 or more.")
+    target.daily_ai_generation_limit_override = payload.daily_limit
+    _record(db, admin, "user.ai_generation_limit_set", target, {"daily_limit": payload.daily_limit})
+    db.commit()
+    db.refresh(target)
     return admin_user_to_schema(target, db)
 
 

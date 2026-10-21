@@ -84,6 +84,48 @@ def test_superadmin_access_is_unlimited_whatever_grant_they_hold(db_session, adm
     assert revoke.status_code == 400
 
 
+def test_admin_can_set_and_clear_a_users_ai_generation_limit(db_session, admin):
+    from app.db.models import User
+
+    member = _make_user(db_session, "member@example.com")
+    headers = _headers(admin)
+
+    set_response = client.post(
+        f"/api/admin/users/{member.id}/ai-generation-limit", json={"daily_limit": 100}, headers=headers,
+    )
+    assert set_response.status_code == 200, set_response.text
+    assert set_response.json()["ai_generation_daily_limit_override"] == 100
+
+    db_session.refresh(member)
+    assert member.daily_ai_generation_limit_override == 100
+
+    clear_response = client.post(
+        f"/api/admin/users/{member.id}/ai-generation-limit", json={"daily_limit": None}, headers=headers,
+    )
+    assert clear_response.status_code == 200, clear_response.text
+    assert clear_response.json()["ai_generation_daily_limit_override"] is None
+
+    entries = db_session.query(AuditLog).filter(AuditLog.action == "user.ai_generation_limit_set").all()
+    assert len(entries) == 2
+    assert entries[0].target_user_id == member.id
+
+
+def test_ai_generation_limit_rejects_a_negative_value(db_session, admin):
+    member = _make_user(db_session, "neg@example.com")
+    response = client.post(
+        f"/api/admin/users/{member.id}/ai-generation-limit", json={"daily_limit": -1}, headers=_headers(admin),
+    )
+    assert response.status_code == 400
+
+
+def test_ai_generation_limit_requires_superadmin(db_session, admin):
+    member = _make_user(db_session, "plain-member@example.com")
+    response = client.post(
+        f"/api/admin/users/{member.id}/ai-generation-limit", json={"daily_limit": 10}, headers=_headers(member),
+    )
+    assert response.status_code == 403
+
+
 def test_overview_requires_superadmin(db_session, admin):
     plain = _make_user(db_session, "plain@example.com")
     assert client.get("/api/admin/overview", headers=_headers(plain)).status_code == 403

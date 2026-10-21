@@ -106,7 +106,28 @@ class User(Base):
     # do its job. Login still works so the account can see when it ends.
     paused_until: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
+    # Overrides the global ai_generation_daily_limit setting (app_settings)
+    # for this account alone -- for a member who pays extra for more AI
+    # Generation calls per day. Null means "use the global default"; a
+    # superadmin is never limited regardless (see app.ai_generation_quota).
+    daily_ai_generation_limit_override: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class AIGenerationLog(Base):
+    """One row per call to /api/betcodes/suggest or /suggest-random that
+    actually ran the selection engine -- the ledger app.ai_generation_quota
+    counts against each account's daily cap. Deliberately separate from
+    BookingSlip: most AI Generation calls are previews a member never books,
+    and the quota is about engine calls, not booked codes.
+    """
+
+    __tablename__ = "ai_generation_log"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
 class MatchView(Base):
