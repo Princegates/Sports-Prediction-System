@@ -66,6 +66,7 @@ def fixture_slug(match: Match) -> str:
 STATIC_URLS = [
     ("/", "daily", "1.0"),
     ("/how-it-works", "monthly", "0.8"),
+    ("/try-ai-generation", "monthly", "0.8"),
     ("/pricing", "monthly", "0.8"),
     ("/fixtures", "daily", "0.9"),
     ("/responsible", "yearly", "0.5"),

@@ -34,6 +34,7 @@ const ResetPassword = lazy(() => import("./pages/ResetPassword").then((m) => ({ 
 const Responsible = lazy(() => import("./pages/Responsible").then((m) => ({ default: m.Responsible })));
 const Settings = lazy(() => import("./pages/Settings").then((m) => ({ default: m.Settings })));
 const TeamPage = lazy(() => import("./pages/TeamPage").then((m) => ({ default: m.TeamPage })));
+const TryAIGeneration = lazy(() => import("./pages/TryAIGeneration").then((m) => ({ default: m.TryAIGeneration })));
 const VerifyEmail = lazy(() => import("./pages/VerifyEmail").then((m) => ({ default: m.VerifyEmail })));
 const Welcome = lazy(() => import("./pages/Welcome").then((m) => ({ default: m.Welcome })));
 
@@ -76,6 +77,7 @@ export default function App() {
         <Route path="/how-it-works" element={<HowItWorks />} />
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/fixtures" element={<Fixtures />} />
+        <Route path="/try-ai-generation" element={<TryAIGeneration />} />
         <Route path="/predict/:slugId" element={<FixturePreview />} />
         <Route path="/predictions/:leagueSlug" element={<LeaguePredictions />} />
         <Route path="/responsible" element={<Responsible />} />

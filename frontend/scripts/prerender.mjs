@@ -61,7 +61,10 @@ const DIST = path.join(__dirname, "..", "dist");
 
 // Mirrors backend/scripts/generate_sitemap.py's STATIC_URLS -- the fixed
 // public marketing pages, not the generated fixture-preview URLs.
-const ROUTES = ["/", "/how-it-works", "/pricing", "/fixtures", "/responsible", "/cookie-policy", "/login", "/register"];
+const ROUTES = [
+  "/", "/how-it-works", "/try-ai-generation", "/pricing", "/fixtures", "/responsible", "/cookie-policy",
+  "/login", "/register",
+];
 
 // Fixture preview pages prerendered per build -- see the header comment.
 const FIXTURE_DAYS_AHEAD = 3;

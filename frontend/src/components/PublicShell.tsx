@@ -27,6 +27,7 @@ import { usePageMeta } from "../lib/pageMeta";
 const PUBLIC_NAV = [
   { to: "/", label: "Home" },
   { to: "/how-it-works", label: "How it works" },
+  { to: "/try-ai-generation", label: "Try AI Generation" },
   { to: "/pricing", label: "Pricing" },
   { to: "/fixtures", label: "Fixtures" },
   { to: "/responsible", label: "Responsible use" },
