@@ -23,9 +23,11 @@ const DAYS: { key: Day; label: string; offset: number }[] = [
   { key: "tomorrow", label: "Tomorrow", offset: 1 },
 ];
 
-// The backend re-syncs live matches every 5 minutes; checking every minute
-// means a new goal shows up within a minute of the server knowing about it.
-const REFRESH_MS = 60_000;
+// The backend re-syncs live matches every 60s (app.main.LIVE_SYNC_INTERVAL_
+// SECONDS); checking every 20s means a new goal shows up within well under
+// one backend cycle of the server knowing about it, rather than risking
+// almost a full cycle's wait if this polled at the same cadence.
+const REFRESH_MS = 20_000;
 
 /** YYYY-MM-DD for a day relative to today -- the /api/matches `date` filter. */
 function isoDay(offset: number): string {

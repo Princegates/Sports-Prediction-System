@@ -46,7 +46,18 @@ logger = logging.getLogger(__name__)
 # web process that is already running continuously can just do this
 # itself, so live scores no longer depend on GitHub's scheduler at all;
 # the workflow stays only as a manual (workflow_dispatch) fallback.
-LIVE_SYNC_INTERVAL_SECONDS = 300.0
+#
+# 60s, not 300s: one poll is one API-Football request regardless of how
+# many matches are live (see run_live_sync_from_settings), and the
+# provider's own budget tracking (app.data.providers.api_football.Quota)
+# already backs this off gracefully -- raising QuotaExceeded before a
+# request that would overspend, caught just below -- rather than erroring
+# out, so there's no real downside to polling as often as the frontend's
+# own refresh cadence (Live.tsx's REFRESH_MS) can actually show. A free-tier
+# key (100 requests/day) would burn through its whole daily budget in
+# under two hours at this cadence -- lower this back down, or lower
+# API_FOOTBALL_DAILY_BUDGET/PER_MINUTE to match, if not on a paid plan.
+LIVE_SYNC_INTERVAL_SECONDS = 60.0
 
 
 # A quiet stretch (no tracked match near kickoff) sleeps until shortly
