@@ -103,7 +103,9 @@ def _ai_picks_markets(requested: tuple[str, ...]) -> tuple[str, ...]:
 
 
 @router.post("/suggest", response_model=SuggestedPicksOut)
-def suggest(payload: SuggestCriteriaIn, db: Session = Depends(get_db)) -> SuggestedPicksOut:
+def suggest(
+    payload: SuggestCriteriaIn, db: Session = Depends(get_db), user: User = Depends(require_active_access)
+) -> SuggestedPicksOut:
     engine = select_legs_featuring_every_market if payload.feature_all_markets else select_legs_by_confidence
     pick: ConfidencePick = engine(
         db,
@@ -115,6 +117,7 @@ def suggest(payload: SuggestCriteriaIn, db: Session = Depends(get_db)) -> Sugges
         date_from=payload.date_from,
         date_to=payload.date_to,
         exclude_match_ids=frozenset(payload.exclude_match_ids),
+        user_salt=user.id,
     )
     return SuggestedPicksOut(
         legs=_picked_legs_to_out(pick.legs),

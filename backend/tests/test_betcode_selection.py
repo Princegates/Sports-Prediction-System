@@ -17,6 +17,7 @@ import random
 
 from app.timeutil import utcnow
 from app.betcode.selection import (
+    MAX_USER_JITTER,
     SlipCriteria,
     _build_random_pool,
     build_candidate_legs,
@@ -26,6 +27,7 @@ from app.betcode.selection import (
     select_floor_leg_slip,
     select_legs,
     select_legs_by_confidence,
+    select_legs_featuring_every_market,
     select_random_legs,
     select_ranged_leg_slip,
 )
@@ -938,3 +940,106 @@ def test_a_ranked_slip_uses_each_market_for_one_leg(db_session):
 def test_a_single_chosen_market_still_fills_the_slip(db_session, three_matches):
     pick = select_legs_by_confidence(db_session, min_probability=0.5, max_legs=3, markets=("Match Result",))
     assert [leg.market for leg in pick.legs] == ["Match Result"] * 3
+
+
+# --- per-user jitter: different members don't all land on the same slip ----
+
+
+@pytest.fixture()
+def closely_matched_matches(db_session):
+    """Five matches whose Home Win probabilities sit within MAX_USER_JITTER
+    of each other -- close enough that _user_jitter can plausibly reorder
+    them for at least some user_salt, unlike three_matches's own 0.90/0.85/
+    0.80 spread, which is wider than any jitter should ever cross."""
+
+    made = {}
+    for name in ["A1", "A2", "B1", "B2", "C1", "C2", "D1", "D2", "E1", "E2"]:
+        team = Team(name=name, league="English Premier League", aliases=[])
+        db_session.add(team)
+        made[name] = team
+    db_session.commit()
+    for t in made.values():
+        db_session.refresh(t)
+
+    pairs = [("A1", "A2", 0.700), ("B1", "B2", 0.705), ("C1", "C2", 0.710), ("D1", "D2", 0.695), ("E1", "E2", 0.715)]
+    matches = []
+    for i, (home, away, prob) in enumerate(pairs):
+        m = Match(
+            league="English Premier League", season="2025-26", date=BASE + dt.timedelta(days=i + 1),
+            home_team_id=made[home].id, away_team_id=made[away].id, status="SCHEDULED",
+        )
+        db_session.add(m)
+        matches.append(m)
+    db_session.commit()
+    for m, (_, _, prob) in zip(matches, pairs):
+        db_session.refresh(m)
+        db_session.add(_prediction(m.id, home=prob, draw=(1 - prob) * 0.6, away=(1 - prob) * 0.4))
+    db_session.commit()
+    return matches
+
+
+def test_no_user_salt_keeps_the_exact_legacy_safest_first_order(db_session, closely_matched_matches):
+    """None (no authenticated caller threaded through) must reproduce the
+    pre-jitter ranking exactly -- the default stays the plain probability
+    sort, unchanged."""
+
+    pick = select_legs_by_confidence(db_session, min_probability=0.5, max_legs=5)
+    probs = [leg.model_probability for leg in pick.legs]
+    assert probs == sorted(probs, reverse=True)
+
+
+def test_different_members_can_land_on_a_different_top_leg(db_session, closely_matched_matches):
+    """Two different members asking for the exact same criteria must not be
+    guaranteed the identical slip -- the whole point of user_salt. Tried
+    across enough distinct salts that this is a statement about the
+    mechanism, not a flake: hashlib.sha256 is deterministic, so if any
+    salt in a reasonably large sample reorders the top leg, the mechanism
+    demonstrably works."""
+
+    tops = set()
+    for user_id in range(1, 30):
+        pick = select_legs_by_confidence(db_session, min_probability=0.5, max_legs=1, user_salt=user_id)
+        tops.add(pick.legs[0].match_id)
+    assert len(tops) > 1, "every one of 29 different members landed on the identical top leg"
+
+
+def test_the_same_member_gets_the_same_slip_every_time(db_session, closely_matched_matches):
+    """Jitter is deterministic per (user, leg) -- generating twice without
+    clicking Refresh must not itself be a second source of randomness."""
+
+    first = select_legs_by_confidence(db_session, min_probability=0.5, max_legs=5, user_salt=42)
+    second = select_legs_by_confidence(db_session, min_probability=0.5, max_legs=5, user_salt=42)
+    assert [leg.match_id for leg in first.legs] == [leg.match_id for leg in second.legs]
+
+
+def test_jitter_never_promotes_a_much_weaker_leg_above_a_much_stronger_one(db_session, three_matches):
+    """three_matches's own 0.90/0.85/0.80 Home Win spread is wider than
+    MAX_USER_JITTER on both sides, so restricted to just that market the top
+    leg must stay on the strongest match (Arsenal vs Chelsea) for every
+    user_salt -- jitter reorders near-ties, it never overrides a real
+    quality gap. (Left to the default market set, Double Chance's own
+    derived probabilities for these three matches -- 0.96/0.94/0.92 --
+    happen to compress to within jitter range of each other; that is
+    jitter correctly doing its job on a genuine near-tie, not a bug, and
+    is exactly what test_different_members_can_land_on_a_different_top_leg
+    covers on purpose -- not what this test is isolating.)"""
+
+    strongest_match_id = three_matches[0].id
+    for user_id in range(1, 15):
+        pick = select_legs_by_confidence(
+            db_session, min_probability=0.5, max_legs=1, markets=("Match Result",), user_salt=user_id,
+        )
+        assert pick.legs[0].match_id == strongest_match_id
+
+
+def test_jitter_also_varies_feature_every_market_s_choice_of_match(db_session, closely_matched_matches):
+    """select_legs_featuring_every_market's own per-market ranking goes
+    through the same _user_jitter -- not just select_legs_by_confidence's."""
+
+    tops = set()
+    for user_id in range(1, 30):
+        pick = select_legs_featuring_every_market(
+            db_session, min_probability=0.5, max_legs=1, markets=("Match Result",), user_salt=user_id,
+        )
+        tops.add(pick.legs[0].match_id)
+    assert len(tops) > 1, "every one of 29 different members featured the identical match"

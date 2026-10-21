@@ -51,6 +51,7 @@ market is still reachable by asking for it explicitly.
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import math
 import random
 from collections import Counter
@@ -96,6 +97,41 @@ DEFAULT_MARKETS = (
 # Handicap lines count as one market for this: "+3 Home" and "-3 Away" are
 # the same bet shape from either side.
 MAX_LEGS_PER_MARKET = 1
+
+# How far a leg's probability can be nudged, for ranking purposes only, by
+# _user_jitter below. Two different members asking for the same criteria
+# otherwise land on the literal same slip every time -- select_legs_by_
+# confidence and select_legs_featuring_every_market are both safest-first
+# and fully deterministic, so there is nothing to make the second member's
+# result differ from the first's. Bounded well under any real gap between
+# genuinely different-quality legs (qualifying legs are rarely within two
+# points of each other purely by coincidence, and when several are, they
+# were already close enough that ranking between them is closer to noise
+# than signal) -- this only ever reorders legs that were already roughly
+# tied, never trades a meaningfully safer leg for a riskier one to produce
+# variety. Not (re)tuned against real history the way DECAY_HALF_LIFE_DAYS
+# or SHRINKAGE_MATCHES were; it only needs to be small relative to typical
+# probability gaps; there's no "correct" value to fit.
+MAX_USER_JITTER = 0.02
+
+
+def _user_jitter(user_salt: int | None, match_id: int, market: str, selection: str) -> float:
+    """A small, deterministic-per-(user, leg) nudge to a leg's rank.
+
+    Deterministic so the same member generating the same criteria twice in
+    a row (without clicking Refresh) gets the same slip both times -- this
+    is about *different members* diverging, not about a single member's
+    result becoming unstable. ``user_salt`` is typically the member's own
+    account id; ``None`` (an unauthenticated caller, or one that simply
+    doesn't thread a user through) disables jitter entirely, preserving the
+    exact legacy ranking.
+    """
+
+    if user_salt is None:
+        return 0.0
+    digest = hashlib.sha256(f"{user_salt}:{match_id}:{market}:{selection}".encode()).digest()
+    unit = int.from_bytes(digest[:4], "big") / 0xFFFFFFFF  # [0.0, 1.0]
+    return (unit * 2.0 - 1.0) * MAX_USER_JITTER
 
 
 def _market_family(market: str) -> str:
@@ -935,6 +971,7 @@ def select_legs_by_confidence(
     date_from: dt.date | None = None,
     date_to: dt.date | None = None,
     exclude_match_ids: frozenset[int] = frozenset(),
+    user_salt: int | None = None,
 ) -> ConfidencePick:
     """The no-odds sibling of select_legs: picks up to max_legs matches,
     safest (highest model probability) first, each clearing min_probability
@@ -945,6 +982,7 @@ def select_legs_by_confidence(
     toward a target price the way select_legs's accumulator is.
 
     See build_confidence_candidates for what ``exclude_match_ids`` is for.
+    ``user_salt`` is passed straight to _user_jitter -- see there for why.
     """
 
     # Every qualifying market per match (its strongest selection in each),
@@ -957,10 +995,17 @@ def select_legs_by_confidence(
     candidates = [max(legs, key=lambda leg: leg.model_probability) for legs in pool.values()]
     cap = _per_market_cap(max_legs, markets)
 
-    # Safest first, one leg per match, at most `cap` legs per market.
+    # Safest first, one leg per match, at most `cap` legs per market. The
+    # jitter term only ever reorders legs within MAX_USER_JITTER of each
+    # other -- see _user_jitter -- so this stays "safest first" in
+    # substance while letting two members land on different legs among
+    # ones that were already close to tied.
     options = sorted(
         (leg for legs in pool.values() for leg in legs),
-        key=lambda leg: (-leg.model_probability, leg.kickoff, leg.match_id, leg.market),
+        key=lambda leg: (
+            -(leg.model_probability + _user_jitter(user_salt, leg.match_id, leg.market, leg.selection)),
+            leg.kickoff, leg.match_id, leg.market,
+        ),
     )
     chosen: list[Leg] = []
     used_matches: set[int] = set()
@@ -1024,6 +1069,7 @@ def select_legs_featuring_every_market(
     date_from: dt.date | None = None,
     date_to: dt.date | None = None,
     exclude_match_ids: frozenset[int] = frozenset(),
+    user_salt: int | None = None,
 ) -> ConfidencePick:
     """select_legs_by_confidence collapses each match to its single
     strongest qualifying outcome, regardless of which wanted market that
@@ -1066,7 +1112,7 @@ def select_legs_featuring_every_market(
         return select_legs_by_confidence(
             db, min_probability=min_probability, max_legs=max_legs, markets=markets,
             leagues=leagues, league=league, days_ahead=days_ahead, date_from=date_from, date_to=date_to,
-            exclude_match_ids=exclude_match_ids,
+            exclude_match_ids=exclude_match_ids, user_salt=user_salt,
         )
 
     pool = _build_random_pool(
@@ -1078,8 +1124,11 @@ def select_legs_featuring_every_market(
     for match_legs in pool.values():
         for leg in match_legs:
             legs_by_market.setdefault(leg.market, []).append(leg)
+    # Jittered the same way select_legs_by_confidence's own ranking is --
+    # see _user_jitter -- so two members featuring the same markets don't
+    # both land on the identical match for each one.
     for legs in legs_by_market.values():
-        legs.sort(key=lambda l: -l.model_probability)
+        legs.sort(key=lambda l: -(l.model_probability + _user_jitter(user_salt, l.match_id, l.market, l.selection)))
 
     ranked = sorted(
         (m for m in markets if m in legs_by_market),
