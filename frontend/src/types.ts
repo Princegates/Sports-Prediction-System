@@ -308,6 +308,19 @@ export interface TrackRecord {
   since?: string | null;
 }
 
+/** A screenshot of a won slip, posted by an admin. */
+export interface WinningSlip {
+  id: number;
+  caption: string;
+  won_on: string | null;
+  /** Relative to the API -- see apiUrl(). */
+  image_path: string;
+  width: number | null;
+  height: number | null;
+  published: boolean;
+  created_at: string;
+}
+
 /** Everything the public home page shows -- GET /api/public/landing. */
 export interface Landing {
   branding: Branding;
@@ -316,6 +329,7 @@ export interface Landing {
   admin_pick_record: AdminPickTrackRecord;
   fixtures: PublicFixture[];
   free_picks: PublicFreePick[];
+  winning_slips: WinningSlip[];
   teaser_pick: PublicTeaserPick;
 }
 

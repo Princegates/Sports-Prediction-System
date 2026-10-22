@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { fetchLanding } from "../api";
 import { FixtureTeaserRow } from "../components/FixtureTeaserRow";
 import { FreePicksSlip } from "../components/FreePicksSlip";
+import { WinningSlipsGallery } from "../components/WinningSlipsGallery";
 import { Mascot } from "../components/Mascot";
 import { PublicShell } from "../components/PublicShell";
 import { usePageStructuredData } from "../lib/pageMeta";
@@ -77,6 +78,7 @@ export function Welcome() {
   const record = landing?.track_record ?? null;
   const stats = landing?.stats ?? null;
   const freePicks = landing?.free_picks ?? [];
+  const winningSlips = landing?.winning_slips ?? [];
   const adminRecord = landing?.admin_pick_record?.has_data && landing.admin_pick_record.settled_count >= 5 ? landing.admin_pick_record : null;
   const fixtures = landing?.fixtures ?? [];
   const price = branding?.pricing_label || null;
@@ -140,7 +142,7 @@ export function Welcome() {
       {landing && <div hidden id="landing-data" data-json={JSON.stringify(landing)} />}
 
       {/* ---------------- Hero ---------------- */}
-      <section className="landing-hero">
+      <section className="landing-hero" id="track-record">
         <div className="landing-hero-copy">
           <span className="eyebrow">Football &amp; Soccer Predictions</span>
           <h1>
@@ -229,6 +231,13 @@ export function Welcome() {
               </a>
             </p>
           )}
+        </section>
+      )}
+
+      {/* ---------------- Winning slips (posted by the team) ---------------- */}
+      {winningSlips.length > 0 && (
+        <section className="landing-section">
+          <WinningSlipsGallery slips={winningSlips} />
         </section>
       )}
 

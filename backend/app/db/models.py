@@ -10,6 +10,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -586,6 +587,28 @@ class PublicFreePickSet(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
     picks: Mapped[list] = mapped_column(JSON)
+
+
+class WinningSlip(Base):
+    """A screenshot of a won SportyBet slip, posted by an admin and shown on
+    the public home page and the member Dashboard (routes_public
+    .winning_slips). The image lives in the database itself -- a few hundred
+    KB each after the browser shrinks it (lib/imageResize.ts) -- so it
+    survives redeploys on hosts with no persistent disk. Never edited in
+    place, which is what lets its URL be cached forever."""
+
+    __tablename__ = "winning_slips"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    image: Mapped[bytes] = mapped_column(LargeBinary)
+    content_type: Mapped[str] = mapped_column(String(32))
+    width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    caption: Mapped[str] = mapped_column(String(200), default="")
+    won_on: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+    published: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
 class FeaturedPick(Base):

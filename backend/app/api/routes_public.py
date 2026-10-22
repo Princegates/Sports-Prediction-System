@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -35,6 +35,7 @@ from app.api.schemas import (
     LandingOut,
     NoticeOut,
     PublicFreePickOut,
+    WinningSlipOut,
     PublicAccuracyOut,
     PublicFixtureDetailOut,
     PublicFixtureOut,
@@ -49,7 +50,8 @@ from app import app_settings
 from app.api.serializers import TEAM_LOGO_URL, public_teaser_pick_to_schema
 from app.assistant import retrieval
 from app.betcode.selection import Leg, price_legs
-from app.db.models import AdminPick, FeaturedPick, Match, Prediction, PublicFreePickSet, User
+from app.db.models import AdminPick, FeaturedPick, Match, Prediction, PublicFreePickSet, User, WinningSlip
+from app.winning_slips import winning_slip_to_schema
 from app.outcomes.grading import grade_outcome
 from app.outcomes.registry import full_registry_market_count
 from app.pick_settlement import frozen_admin_pick_legs, settle_admin_pick, settle_featured_pick
@@ -686,6 +688,42 @@ def public_free_picks(db: Session = Depends(get_db)) -> list[PublicFreePickOut]:
     return free_picks(db)
 
 
+# How many winning slips the public pages show, newest first.
+WINNING_SLIPS_SHOWN = 12
+
+
+def winning_slips(db: Session, limit: int = WINNING_SLIPS_SHOWN) -> list[WinningSlipOut]:
+    """The published screenshots of won slips (see models.WinningSlip),
+    newest first -- the image bytes stay behind their own URL."""
+
+    rows = db.execute(
+        select(WinningSlip)
+        .where(WinningSlip.published.is_(True))
+        .order_by(WinningSlip.created_at.desc(), WinningSlip.id.desc())
+        .limit(limit)
+    ).scalars()
+    return [winning_slip_to_schema(s) for s in rows]
+
+
+@router.get("/winning-slips", response_model=list[WinningSlipOut])
+def public_winning_slips(limit: int = WINNING_SLIPS_SHOWN, db: Session = Depends(get_db)) -> list[WinningSlipOut]:
+    return winning_slips(db, max(1, min(limit, 48)))
+
+
+@router.get("/winning-slips/{slip_id}/image")
+def public_winning_slip_image(slip_id: int, db: Session = Depends(get_db)) -> Response:
+    slip = db.get(WinningSlip, slip_id)
+    if slip is None or not slip.published:
+        raise HTTPException(status_code=404, detail="Image not found")
+    # A slip's image never changes (it's deleted and re-posted instead), so
+    # browsers and any CDN can keep it for good.
+    return Response(
+        content=slip.image,
+        media_type=slip.content_type,
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
+
+
 @router.get("/landing", response_model=LandingOut)
 def public_landing(db: Session = Depends(get_db)) -> LandingOut:
     """Everything the public home page shows, in one call -- see LandingOut."""
@@ -697,5 +735,6 @@ def public_landing(db: Session = Depends(get_db)) -> LandingOut:
         admin_pick_record=admin_pick_track_record(db),
         fixtures=_upcoming_fixtures(db, days_ahead=2, limit=6, best_first=True),
         free_picks=free_picks(db),
+        winning_slips=winning_slips(db),
         teaser_pick=public_teaser_pick(db),
     )

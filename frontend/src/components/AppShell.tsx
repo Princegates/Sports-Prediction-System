@@ -271,6 +271,9 @@ export function AppShell() {
                     <button type="button" className="account-menu-item" onClick={() => navigate("/app/admin/settings")}>
                       <SettingsIcon size={16} /> Settings
                     </button>
+                    <button type="button" className="account-menu-item" onClick={() => navigate("/app/admin/winning-slips")}>
+                      <SettingsIcon size={16} /> Winning slips
+                    </button>
                   </>
                 )}
                 <button type="button" className="account-menu-item" onClick={handleLogout}>

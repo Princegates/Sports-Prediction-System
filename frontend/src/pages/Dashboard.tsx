@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchFreePicks, fetchMostLikely, fetchTodaysPredictions } from "../api";
+import { fetchFreePicks, fetchMostLikely, fetchTodaysPredictions, fetchWinningSlips } from "../api";
 import { leagueLabel, useLeague } from "../components/AppShell";
 import { CardGridSkeleton } from "../components/LoadingSkeleton";
 import { EmptyState } from "../components/EmptyState";
@@ -12,7 +12,8 @@ import { SearchCommand } from "../components/SearchCommand";
 import { LEAGUES } from "../components/AppShell";
 import { useAuth } from "../lib/AuthContext";
 import { isHighConfidence, dateOffset } from "../lib/filters";
-import type { FreePick, MatchSummary, Prediction } from "../types";
+import type { FreePick, MatchSummary, Prediction, WinningSlip } from "../types";
+import { WinningSlipsGallery } from "../components/WinningSlipsGallery";
 
 interface Row {
   prediction: Prediction;
@@ -91,6 +92,12 @@ export function Dashboard() {
 
   const [freePicks, setFreePicks] = useState<FreePick[] | null>(null);
   const [freeError, setFreeError] = useState<string | null>(null);
+  const [winningSlips, setWinningSlips] = useState<WinningSlip[]>([]);
+
+  // Posted by an admin; a failed load just leaves the section out.
+  useEffect(() => {
+    fetchWinningSlips().then(setWinningSlips).catch(() => {});
+  }, []);
 
   useEffect(() => {
     try {
@@ -195,6 +202,12 @@ export function Dashboard() {
           </>
         )}
       </section>
+
+      {winningSlips.length > 0 && (
+        <section className="dashboard-wins">
+          <WinningSlipsGallery slips={winningSlips} />
+        </section>
+      )}
 
       {/* Neither branch below can render yet without knowing hasAccess --
           without this, every visit shows a blank gap under the hero for

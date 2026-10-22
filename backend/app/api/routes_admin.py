@@ -39,6 +39,9 @@ from app.api.schemas import (
     PublicTeaserPickOut,
     RevokeCodeIn,
     RevokeGrantIn,
+    WinningSlipIn,
+    WinningSlipOut,
+    WinningSlipUpdateIn,
     SetAIGenerationLimitIn,
 )
 from app.api.routes_public import resolve_public_teaser_pick
@@ -46,7 +49,8 @@ from app.api.serializers import access_code_to_schema, admin_pick_to_schema, adm
 from app.betcode.selection import price_legs, resolve_legs_unpriced
 from app.config import get_settings
 from app import mailer, track_record
-from app.db.models import AccessCode, AccessGrant, AdminPick, AuditLog, BookingSlip, ChatMessage, FeaturedPick, LivePrediction, Match, Prediction, User
+from app.db.models import AccessCode, AccessGrant, AdminPick, AuditLog, BookingSlip, ChatMessage, FeaturedPick, LivePrediction, Match, Prediction, User, WinningSlip
+from app.winning_slips import WinningSlipImageError, decode_image, winning_slip_to_schema
 from app.outcomes.registry import find_outcome
 from app.pick_settlement import frozen_admin_pick_legs, settle_admin_pick, settle_booking_slip, settle_featured_pick
 
@@ -234,6 +238,69 @@ def delete_user(user_id: int, admin: User = Depends(require_superadmin), db: Ses
     except AccountDeletionError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return MessageOut(message="Account deleted.")
+
+
+# --- Winning slips (screenshots of won bets) ---------------------------------
+
+
+@router.get("/winning-slips", response_model=list[WinningSlipOut])
+def list_winning_slips(db: Session = Depends(get_db)) -> list[WinningSlipOut]:
+    rows = db.execute(select(WinningSlip).order_by(WinningSlip.created_at.desc(), WinningSlip.id.desc())).scalars()
+    return [winning_slip_to_schema(s) for s in rows]
+
+
+@router.post("/winning-slips", response_model=WinningSlipOut)
+def create_winning_slip(
+    payload: WinningSlipIn, admin: User = Depends(require_superadmin), db: Session = Depends(get_db)
+) -> WinningSlipOut:
+    try:
+        image, content_type = decode_image(payload.image_data)
+    except WinningSlipImageError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    slip = WinningSlip(
+        image=image, content_type=content_type, width=payload.width, height=payload.height,
+        caption=payload.caption.strip(), won_on=payload.won_on, published=True, created_by_user_id=admin.id,
+    )
+    db.add(slip)
+    db.flush()
+    _record(db, admin, "winning_slip.posted", None, {"winning_slip_id": slip.id, "bytes": len(image)})
+    db.commit()
+    db.refresh(slip)
+    return winning_slip_to_schema(slip)
+
+
+def _get_winning_slip(slip_id: int, db: Session) -> WinningSlip:
+    slip = db.get(WinningSlip, slip_id)
+    if slip is None:
+        raise HTTPException(status_code=404, detail="Winning slip not found")
+    return slip
+
+
+@router.patch("/winning-slips/{slip_id}", response_model=WinningSlipOut)
+def update_winning_slip(
+    slip_id: int, payload: WinningSlipUpdateIn, admin: User = Depends(require_superadmin), db: Session = Depends(get_db)
+) -> WinningSlipOut:
+    slip = _get_winning_slip(slip_id, db)
+    changes = payload.model_dump(exclude_unset=True)
+    if "caption" in changes and changes["caption"] is not None:
+        slip.caption = changes["caption"].strip()
+    if "won_on" in changes:
+        slip.won_on = changes["won_on"]
+    if changes.get("published") is not None:
+        slip.published = changes["published"]
+    _record(db, admin, "winning_slip.updated", None, {"winning_slip_id": slip.id, **{k: str(v) for k, v in changes.items()}})
+    db.commit()
+    db.refresh(slip)
+    return winning_slip_to_schema(slip)
+
+
+@router.delete("/winning-slips/{slip_id}", response_model=MessageOut)
+def delete_winning_slip(slip_id: int, admin: User = Depends(require_superadmin), db: Session = Depends(get_db)) -> MessageOut:
+    slip = _get_winning_slip(slip_id, db)
+    db.delete(slip)
+    _record(db, admin, "winning_slip.removed", None, {"winning_slip_id": slip_id})
+    db.commit()
+    return MessageOut(message="Removed.")
 
 
 @router.post("/users/{user_id}/promote", response_model=AdminUserOut)

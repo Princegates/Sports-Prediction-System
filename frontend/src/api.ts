@@ -46,9 +46,16 @@ import type {
   Landing,
   PublicFreePick,
   PublicFixtureDetail,
+  WinningSlip,
 } from "./types";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+
+/** An API path as a full URL -- for things the browser loads itself, like
+ * an <img>, rather than through request(). */
+export function apiUrl(path: string): string {
+  return `${API_URL}${path}`;
+}
 export const TOKEN_STORAGE_KEY = "auth_token";
 
 export function getStoredToken(): string | null {
@@ -191,6 +198,36 @@ export function fetchPublicFixtures(daysAhead = 5, limit = 6): Promise<PublicFix
  * the URL). Throws (via `get`'s normal error path) on a 404, same as any
  * other missing resource -- the page calling this is responsible for
  * showing a "not found" state rather than this function inventing one. */
+export function fetchWinningSlips(): Promise<WinningSlip[]> {
+  return get("/api/public/winning-slips");
+}
+
+export function fetchAdminWinningSlips(): Promise<WinningSlip[]> {
+  return get("/api/admin/winning-slips");
+}
+
+export function postWinningSlip(body: {
+  image_data: string;
+  caption: string;
+  won_on: string | null;
+  width: number;
+  height: number;
+}): Promise<WinningSlip> {
+  // An image upload is bigger than anything else this client sends.
+  return post("/api/admin/winning-slips", body, 60_000);
+}
+
+export function updateWinningSlip(
+  id: number,
+  body: { caption?: string; won_on?: string | null; published?: boolean },
+): Promise<WinningSlip> {
+  return patch(`/api/admin/winning-slips/${id}`, body);
+}
+
+export function deleteWinningSlip(id: number): Promise<{ message: string }> {
+  return del(`/api/admin/winning-slips/${id}`);
+}
+
 export function fetchLanding(): Promise<Landing> {
   return get("/api/public/landing");
 }

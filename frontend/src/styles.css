@@ -6320,3 +6320,126 @@ table.admin-table {
 .markets-panel > .btn {
   align-self: flex-start;
 }
+
+/* Winning slips gallery (components/WinningSlipsGallery.tsx) and its admin
+   page (pages/AdminWinningSlips.tsx). */
+.wins-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: var(--space-3, 12px);
+}
+.wins-head h2 {
+  margin: 0;
+}
+.wins-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+.wins-thumb {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 10px);
+  background: var(--bg-surface);
+  overflow: hidden;
+  cursor: zoom-in;
+  text-align: left;
+  font: inherit;
+  color: var(--text-primary);
+}
+.wins-thumb img {
+  width: 100%;
+  height: 220px;
+  object-fit: cover;
+  object-position: top;
+  display: block;
+}
+.wins-caption {
+  padding: 0 10px 10px;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+.wins-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.8);
+  cursor: zoom-out;
+}
+.wins-lightbox figure {
+  margin: 0;
+  max-width: min(560px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  cursor: default;
+}
+.wins-lightbox img {
+  max-width: 100%;
+  max-height: calc(100vh - 140px);
+  border-radius: var(--radius-sm, 10px);
+}
+.wins-lightbox figcaption {
+  color: #fff;
+  font-size: 0.9rem;
+  text-align: center;
+}
+.dashboard-wins {
+  margin: var(--space-5, 24px) 0;
+}
+.wins-admin-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 520px;
+  margin: 16px 0;
+}
+.wins-admin-preview {
+  max-width: 200px;
+  max-height: 300px;
+  border-radius: var(--radius-sm, 10px);
+  border: 1px solid var(--border);
+}
+.wins-admin-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+.wins-admin-item {
+  display: flex;
+  gap: 12px;
+  padding: 10px;
+}
+.wins-admin-item img,
+.wins-admin-hidden {
+  width: 90px;
+  height: 140px;
+  object-fit: cover;
+  object-position: top;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.wins-admin-hidden {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-surface-2);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+.wins-admin-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}

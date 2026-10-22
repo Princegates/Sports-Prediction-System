@@ -13,6 +13,7 @@ const Access = lazy(() => import("./pages/Access").then((m) => ({ default: m.Acc
 const AccountStatus = lazy(() => import("./pages/AccountStatus").then((m) => ({ default: m.AccountStatus })));
 const ActivityLog = lazy(() => import("./pages/ActivityLog").then((m) => ({ default: m.ActivityLog })));
 const AdminUsers = lazy(() => import("./pages/AdminUsers").then((m) => ({ default: m.AdminUsers })));
+const AdminWinningSlips = lazy(() => import("./pages/AdminWinningSlips").then((m) => ({ default: m.AdminWinningSlips })));
 const AIPicks = lazy(() => import("./pages/AIPicks").then((m) => ({ default: m.AIPicks })));
 const BetCodes = lazy(() => import("./pages/BetCodes").then((m) => ({ default: m.BetCodes })));
 const CookiePolicy = lazy(() => import("./pages/CookiePolicy").then((m) => ({ default: m.CookiePolicy })));
@@ -110,6 +111,7 @@ export default function App() {
               <Route path="admin" element={<AdminUsers />} />
               <Route path="admin/activity-log" element={<ActivityLog />} />
               <Route path="admin/settings" element={<Settings />} />
+              <Route path="admin/winning-slips" element={<AdminWinningSlips />} />
             </Route>
           </Route>
         </Route>

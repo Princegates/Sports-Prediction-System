@@ -1125,6 +1125,34 @@ class PublicTeaserPickOut(BaseModel):
 PublicFixtureDetailOut.model_rebuild()
 
 
+class WinningSlipIn(BaseModel):
+    # The image as a data URL or bare base64 -- JPEG, PNG or WebP, at most
+    # MAX_WINNING_SLIP_BYTES once decoded (routes_admin checks both).
+    image_data: str = Field(max_length=4_000_000)
+    caption: str = Field(default="", max_length=200)
+    won_on: dt.date | None = None
+    width: int | None = Field(default=None, ge=1, le=10_000)
+    height: int | None = Field(default=None, ge=1, le=10_000)
+
+
+class WinningSlipUpdateIn(BaseModel):
+    caption: str | None = Field(default=None, max_length=200)
+    won_on: dt.date | None = None
+    published: bool | None = None
+
+
+class WinningSlipOut(BaseModel):
+    id: int
+    caption: str
+    won_on: dt.date | None = None
+    # Relative to the API (GET /api/public/winning-slips/{id}/image).
+    image_path: str
+    width: int | None = None
+    height: int | None = None
+    published: bool
+    created_at: dt.datetime
+
+
 class LandingOut(BaseModel):
     """Everything the public home page reads, in one response -- it used to
     make seven separate calls to a backend that can be asleep, so each
@@ -1136,4 +1164,5 @@ class LandingOut(BaseModel):
     admin_pick_record: AdminPickTrackRecordOut
     fixtures: list[PublicFixtureOut]
     free_picks: list[PublicFreePickOut]
+    winning_slips: list[WinningSlipOut] = []
     teaser_pick: PublicTeaserPickOut

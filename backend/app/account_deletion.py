@@ -9,7 +9,8 @@ person stay, but stop pointing at them:
   code would otherwise become redeemable by anyone) and the assignment and
   email are cleared; codes they created (as a former admin) are reassigned
   to the admin doing the deleting, since a code must have a creator;
-- picks and settings they authored keep their content, without the author;
+- picks, settings and winning-slip posts they authored keep their content,
+  without the author;
 - audit-log entries keep the action, with the link to them and their email
   removed; accounts they referred simply lose the referral link.
 
@@ -35,6 +36,7 @@ from app.db.models import (
     FeaturedPick,
     MatchView,
     User,
+    WinningSlip,
 )
 from app.timeutil import utcnow
 
@@ -70,6 +72,7 @@ def delete_user_account(db: Session, admin: User, target: User) -> None:
     db.execute(update(AdminPick).where(AdminPick.created_by_user_id == user_id).values(created_by_user_id=None))
     db.execute(update(FeaturedPick).where(FeaturedPick.created_by_user_id == user_id).values(created_by_user_id=None))
     db.execute(update(AppSetting).where(AppSetting.updated_by_user_id == user_id).values(updated_by_user_id=None))
+    db.execute(update(WinningSlip).where(WinningSlip.created_by_user_id == user_id).values(created_by_user_id=None))
     db.execute(update(User).where(User.referred_by_user_id == user_id).values(referred_by_user_id=None))
 
     db.execute(update(AuditLog).where(AuditLog.actor_user_id == user_id).values(actor_user_id=None, actor_email=None))

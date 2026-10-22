@@ -34,6 +34,9 @@ export const ACTION_LABELS: Record<string, string> = {
   "admin_pick.updated": "admin pick updated",
   "admin_pick.removed": "admin pick removed",
   "admin_pick.result_set": "admin pick result set",
+  "winning_slip.posted": "winning slip posted",
+  "winning_slip.updated": "winning slip updated",
+  "winning_slip.removed": "winning slip removed",
 };
 
 const PAGE_SIZE = 50;

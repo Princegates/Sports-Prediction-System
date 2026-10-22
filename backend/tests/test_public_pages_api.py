@@ -136,7 +136,7 @@ def test_landing_bundles_the_home_page_in_one_cached_call(db_session):
     response = client.get("/api/public/landing")
     assert response.status_code == 200
     body = response.json()
-    assert set(body) == {"branding", "stats", "track_record", "admin_pick_record", "fixtures", "free_picks", "teaser_pick"}
+    assert set(body) == {"branding", "stats", "track_record", "admin_pick_record", "fixtures", "free_picks", "winning_slips", "teaser_pick"}
     assert response.headers["cache-control"].startswith("public, max-age=300")
     # Authenticated, per-user routes are never marked cacheable.
     assert "public" not in client.get("/api/auth/me").headers.get("cache-control", "")
