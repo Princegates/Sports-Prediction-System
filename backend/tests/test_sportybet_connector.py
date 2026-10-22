@@ -171,6 +171,15 @@ def test_known_picks_translate_to_sportybet_ids(market, selection, expected):
     ("Away Team To Win Either Half", "No", ("51", None, "76")),
     ("Double Chance & BTTS", "Home/Away & BTTS Yes", ("546", None, "1720")),
     ("Double Chance & Total Goals 2.5", "Draw/Away & Over 2.5", ("547", "total=2.5", "1729")),
+    # 2nd half: Betradar's ids, each the fixed offset from its 1st-half twin
+    # (60 -> 83, 68 -> 90, 74 -> 94, 75 -> 95) with the twin's outcome ids.
+    ("2H Result", "Home", ("83", None, "1")),
+    ("2H Result", "Away", ("83", None, "3")),
+    ("2H Total Goals 1.5", "Over 1.5", ("90", "total=1.5", "12")),
+    ("2H Total Goals 0.5", "Under 0.5", ("90", "total=0.5", "13")),
+    ("2H Both Teams To Score", "Yes", ("95", None, "74")),
+    ("2H Both Teams To Score", "No", ("95", None, "76")),
+    ("2H Total Goals Odd/Even", "Odd", ("94", None, "70")),
 ])
 def test_the_wider_markets_translate_too(market, selection, expected):
     assert sb.translate(market, selection) == expected
@@ -213,6 +222,8 @@ def test_every_translation_names_an_outcome_sportybet_offers():
 
     checked = 0
     for (market, selection), (market_id, specifier, outcome_id) in sb._MARKETS.items():
+        if market_id in sb.UNCONFIRMED_MARKET_IDS:
+            continue  # from Betradar's table, not yet in a capture -- see the next test
         offered = _ON_SITE.get((market_id, specifier))
         if offered is None:
             assert specifier and specifier.startswith("total="), f"{market} / {selection}: no SportyBet market {market_id} {specifier}"
@@ -637,3 +648,36 @@ def test_the_site_step_reports_what_the_code_leaves_out(monkeypatch):
     assert code.unavailable_match_ids == [2]
     assert code.as_json()["unavailable_reasons"] == {"2": "Not listed on SportyBet Ghana right now."}
     assert "1 of these 2 picks" in code.message
+
+
+def test_second_half_markets_use_their_first_half_twins_outcome_ids():
+    """The 2nd-half entries reuse the 1st-half twin's fixed outcome ids, so
+    the two can't drift apart by a typo in one of them."""
+
+    for ht, h2, ht_id, h2_id in [
+        ("HT Result", "2H Result", "60", "83"),
+        ("HT Both Teams To Score", "2H Both Teams To Score", "75", "95"),
+        ("HT Total Goals Odd/Even", "2H Total Goals Odd/Even", "74", "94"),
+        ("HT Total Goals 2.5", "2H Total Goals 2.5", "68", "90"),
+    ]:
+        first = {sel: v for (m, sel), v in sb._MARKETS.items() if m == ht}
+        second = {sel: v for (m, sel), v in sb._MARKETS.items() if m == h2}
+        assert first and first.keys() == second.keys()
+        for sel, (market_id, specifier, outcome_id) in second.items():
+            assert market_id == h2_id and first[sel][0] == ht_id
+            assert (specifier, outcome_id) == first[sel][1:]
+
+
+@pytest.mark.parametrize("market", ["2H Double Chance", "2H Correct Score", "2H Exact Goals", "2H Multigoals"])
+def test_second_half_markets_without_confirmed_ids_are_not_guessed(market):
+    assert not any(m == market for (m, _) in sb._MARKETS)
+
+
+def test_only_second_half_markets_are_unconfirmed():
+    """The skip above must not become a way to wave through a mistyped id:
+    only the 2nd-half markets are exempt, and anything captured is checked."""
+
+    unconfirmed = {m for (m, _), (mid, _, _) in sb._MARKETS.items() if mid in sb.UNCONFIRMED_MARKET_IDS}
+    assert unconfirmed and all(m.startswith("2H ") for m in unconfirmed)
+    # Once a capture has a market, it comes off the list and gets checked.
+    assert not any(m["id"] in sb.UNCONFIRMED_MARKET_IDS for m in _CAPTURE["markets"])
