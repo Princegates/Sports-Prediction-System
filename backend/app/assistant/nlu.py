@@ -125,6 +125,13 @@ class ParsedQuery:
     # message didn't name one, in which case the responder's own default (or
     # the count/floor above, if those were stated instead) applies.
     risk_level: str | None = None
+    # The specific registry markets the message named ("2nd half over 1.5" ->
+    # "2H Total Goals 1.5"), when it named any -- see resolve_markets. These,
+    # not the coarse ``market`` family above, are what the responder ranks and
+    # reports on. ``selection_side`` is "Over"/"Under" when the message said so.
+    market_names: tuple[str, ...] = ()
+    market_label: str | None = None
+    selection_side: str | None = None
     raw: str = ""
 
 
@@ -241,6 +248,120 @@ def _detect_market(text: str) -> str | None:
         if _matches_any(text, patterns):
             return market
     return None
+
+
+@dataclass(frozen=True)
+class MarketRequest:
+    names: tuple[str, ...]  # exact outcome-registry market names
+    label: str  # how the answer refers to them
+    side: str | None = None  # "Over" / "Under" when the message said so
+
+
+_FIRST_HALF = re.compile(r"\b(?:1st|first)\s+half\b|\bhalf[\s-]?time\b|\bhalftime\b|\bht\b|\b1h\b")
+_SECOND_HALF = re.compile(r"\b(?:2nd|second)\s+half\b|\b2h\b")
+_HT_FT = re.compile(r"\bht\s*/\s*ft\b|\bhtft\b|\bhalf[\s-]?time\s*(?:/|-|and)?\s*full[\s-]?time\b")
+_LINE = re.compile(r"(?<![\d.])(\d{1,2}\.5)\b")
+
+# Lines the registry actually prices, per scope -- a line outside these
+# (a "7.5" first-half total) isn't a market we have, so it is dropped and
+# the scope's defaults used instead of inventing a name that matches nothing.
+_FULL_TIME_LINES = tuple(f"{n}.5" for n in range(10))
+_HALF_LINES = ("0.5", "1.5", "2.5", "3.5", "4.5")
+_CORNER_LINES = ("7.5", "8.5", "9.5", "10.5", "11.5")
+# The reference line for a bare "goals" question, and the two a half's
+# goals are usually quoted on.
+_DEFAULT_GOAL_LINES = {"": ("2.5",), "HT": ("0.5", "1.5"), "2H": ("0.5", "1.5")}
+_HALF_NAME = {"": "", "HT": "1st half ", "2H": "2nd half "}
+
+
+def resolve_markets(text: str) -> MarketRequest | None:
+    """The specific markets a message asks about, as outcome-registry names:
+    "2nd half over 1.5" is ``2H Total Goals 1.5`` (Over only), "first half
+    btts" is ``HT Both Teams To Score``, "corners over 9.5" is
+    ``Total Corners 9.5``.
+
+    ``_detect_market``'s five coarse families can't say any of that -- they
+    cannot tell a half from the full match or read a goal line, so "over 1.5"
+    used to be answered with the 2.5 line. This is the finer-grained read of
+    the same message; it returns ``None`` when nothing specific was named, and
+    the caller falls back to the coarse family. Names are only ever produced
+    from the fixed vocabulary above, so a request can't name a market the
+    registry doesn't have.
+    """
+
+    if _HT_FT.search(text):
+        return MarketRequest(("HT/FT",), "half-time/full-time")
+
+    half = "HT" if _FIRST_HALF.search(text) else ("2H" if _SECOND_HALF.search(text) else "")
+    prefix = f"{half} " if half else ""
+    where = _HALF_NAME[half]
+    names: list[str] = []
+    labels: list[str] = []
+
+    def add(market_names: tuple[str, ...], label: str) -> None:
+        names.extend(n for n in market_names if n not in names)
+        labels.append(label)
+
+    if re.search(r"\bwin(?:s|ning)?\b", text) and re.search(r"\b(?:both|each) halves\b|\beither half\b", text):
+        both = bool(re.search(r"\b(?:both|each) halves\b", text))
+        kind = "Both Halves" if both else "Either Half"
+        add((f"Home Team To Win {kind}", f"Away Team To Win {kind}"), f"to win {kind.lower()}")
+    elif re.search(r"\bhighest[\s-]scoring half\b|\bhalf with (?:the )?most goals\b|\bwhich half\b.*\bgoals?\b|\bmost goals\b.*\bhalf\b", text):
+        add(("Half With Most Goals",), "the half with most goals")
+    elif re.search(r"\bcorners?\b", text):
+        if re.search(r"\b(?:most|more) corners\b", text):
+            add(("Most Corners",), "most corners")
+        else:
+            lines = tuple(l for l in dict.fromkeys(_LINE.findall(text)) if l in _CORNER_LINES) or ("9.5",)
+            add(tuple(f"Total Corners {l}" for l in lines), f"total corners {'/'.join(lines)}")
+    else:
+        if re.search(r"\bclean[\s-]sheets?\b", text):
+            add(("Home Clean Sheet", "Away Clean Sheet"), "clean sheet")
+        if re.search(r"\bodd\s*(?:/|or|and)\s*even\b|\b(?:odd|even)\s+(?:number of\s+)?goals\b|\bgoals\s+(?:odd|even)\b", text):
+            add((f"{prefix}Total Goals Odd/Even",), f"{where}odd/even goals")
+        if re.search(r"\bbtts\b|\bboth teams? to score\b|\bboth (?:to )?score\b|\bgg\b|\bng\b", text):
+            add((f"{prefix}Both Teams To Score",), f"{where}both teams to score")
+        if re.search(r"\bdouble chance\b", text):
+            add((f"{prefix}Double Chance",), f"{where}double chance")
+        if re.search(r"\bdraw no bet\b|\bdnb\b", text) and not half:
+            add(("Draw No Bet",), "draw no bet")
+        if re.search(r"\bcorrect score\b|\bexact score\b|\bscoreline\b", text) and half:
+            add((f"{half} Correct Score",), f"{where}correct score")
+        if re.search(r"\bexact goals\b", text) and half:
+            add((f"{half} Exact Goals",), f"{where}exact goals")
+        if re.search(r"\bmulti[\s-]?goals\b", text) and half:
+            add((f"{half} Multigoals",), f"{where}multigoals")
+
+        side = "Over" if re.search(r"\bover\b", text) else None
+        if re.search(r"\bunder\b", text):
+            side = None if side else "Under"
+        valid = _HALF_LINES if half else _FULL_TIME_LINES
+        lines = tuple(l for l in dict.fromkeys(_LINE.findall(text)) if l in valid)
+        wants_goals = bool(
+            re.search(r"\bgoals?\b|\bover\s*/\s*under\b|\bo/u\b|\btotal\b", text)
+            or lines
+            or (side and half)
+        )
+        if wants_goals and not any("Odd/Even" in n for n in names):
+            lines = lines or _DEFAULT_GOAL_LINES[half]
+            add(tuple(f"{prefix}Total Goals {l}" for l in lines), f"{where}goals {'/'.join(lines)}")
+
+        if half and not names:
+            if re.search(r"\bresult\b|\b1x2\b|\bwin\b|\bwins\b|\bdraw\b|\bwinner\b", text):
+                add((f"{prefix}Result",), f"{where}result")
+            else:
+                # "first half picks": the half's everyday markets.
+                add((f"{prefix}Result", f"{prefix}Total Goals 0.5", f"{prefix}Total Goals 1.5",
+                     f"{prefix}Both Teams To Score", f"{prefix}Double Chance"), f"{where}markets")
+
+    if not names:
+        return None
+    side = None
+    if any("Total Goals" in n or "Total Corners" in n for n in names):
+        side = "Over" if re.search(r"\bover\b", text) else None
+        if re.search(r"\bunder\b", text):
+            side = None if side else "Under"
+    return MarketRequest(tuple(names), " & ".join(labels), side)
 
 
 # Matches the number attached to a "%"/"percent" token -- checked first so
@@ -490,6 +611,11 @@ def parse(
     teams = resolve_teams(db, text)
     date_from, date_to = _detect_dates(text, now)
     market = _detect_market(text)
+    requested = resolve_markets(text)
+    if requested is not None and market is None:
+        # Any non-None family keeps the bare-market fallbacks below working;
+        # the specific names, not this label, are what get ranked.
+        market = "custom"
 
     intent = _classify(
         text,
@@ -516,7 +642,18 @@ def parse(
     # them as a strong signal on their own would misfire on unrelated
     # messages like "did I win" -- honest UNKNOWN beats a confident but
     # irrelevant picks list there.
+    # With a match open in the UI, a bare "what about 2nd half goals?" is a
+    # question about that match -- unless the wording asks for a ranking.
+    if (
+        intent == Intent.UNKNOWN and requested is not None and not teams and context_match_id is not None
+        and not re.search(r"\b(?:best|top|picks?|tips?|today|tomorrow)\b", text)
+    ):
+        intent = Intent.MATCH_PREDICTION
     if intent == Intent.UNKNOWN and market not in (None, "1x2") and not teams:
+        intent = Intent.BEST_PICKS
+    # "2nd half over 1.5 today" names a market and a day, not a request for the
+    # day's full card: the market is the point, the day only narrows it.
+    if intent == Intent.TODAYS_CARD and requested is not None and not teams:
         intent = Intent.BEST_PICKS
 
     # An explicitly named league ("premier league picks") wins over one
@@ -541,5 +678,8 @@ def parse(
         selection_count=selection_count,
         probability_floor=probability_floor,
         risk_level=risk_level,
+        market_names=requested.names if requested else (),
+        market_label=requested.label if requested else None,
+        selection_side=requested.side if requested else None,
         raw=message.strip(),
     )

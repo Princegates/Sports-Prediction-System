@@ -69,6 +69,15 @@ MARKET_CATEGORY_NAMES: dict[str, tuple[str, ...]] = {
 }
 
 
+def matches_side(selection: str, side: str | None) -> bool:
+    """Whether a selection survives an Over/Under filter: anything that isn't
+    an Over/Under selection (a BTTS "Yes", a "Home") always does."""
+
+    if side is None or not selection.startswith(("Over ", "Under ")):
+        return True
+    return selection.startswith(f"{side} ")
+
+
 def best_outcomes(
     db: Session,
     market_category: str,
@@ -76,16 +85,24 @@ def best_outcomes(
     date_to: dt.datetime,
     league: str | None = None,
     limit: int = 5,
+    names: tuple[str, ...] = (),
+    side: str | None = None,
 ) -> list[OutcomeHit]:
     """The highest-probability selection in this market family, one per
     match, across upcoming fixtures that already have a stored prediction.
+
+    ``names`` (exact registry market names, from nlu.resolve_markets) take
+    the place of the coarse ``market_category`` when given; ``side`` limits
+    Over/Under markets to that side, so "over 1.5" doesn't come back as the
+    Under that happens to be likelier. Markets with no Over/Under selection
+    are unaffected by it.
 
     Only stored predictions -- same reasoning as ranked_predictions: this
     reads what the ensemble already produced rather than running it inside
     a chat turn.
     """
 
-    wanted = MARKET_CATEGORY_NAMES.get(market_category, ())
+    wanted = names or MARKET_CATEGORY_NAMES.get(market_category, ())
     if not wanted:
         return []
 
@@ -99,7 +116,10 @@ def best_outcomes(
 
     hits: list[OutcomeHit] = []
     for match, prediction in db.execute(stmt).all():
-        candidates = [o for o in outcomes_from_prediction(prediction) if o.market in wanted]
+        candidates = [
+            o for o in outcomes_from_prediction(prediction)
+            if o.market in wanted and matches_side(o.selection, side)
+        ]
         if not candidates:
             continue
         best = max(candidates, key=lambda o: o.probability)

@@ -23,6 +23,7 @@ from app.assistant.nlu import Intent, ParsedQuery
 from app.assistant.retrieval import MatchCard
 from app.betcode.selection import DEFAULT_MARKETS, DEFAULT_MIN_PROBABILITY, select_legs_by_confidence
 from app.db.models import Prediction
+from app.outcomes.registry import outcomes_from_prediction
 
 # Never phrase a probability as a certainty. This line is appended to any
 # answer that quotes a forward-looking number.
@@ -157,6 +158,52 @@ def _match_prediction(db: Session, q: ParsedQuery, card: MatchCard) -> Answer:
         sources=[Source("match", f"{card.home_team} vs {card.away_team}", card.match_id)],
         suggestions=suggestions,
         includes_probability=not played,
+    )
+
+
+def _match_markets(db: Session, q: ParsedQuery, card: MatchCard) -> Answer:
+    """"Arsenal Chelsea 2nd half over 1.5", "first half btts for this match":
+    the model's probability for exactly the markets named, on this fixture."""
+
+    p = card.prediction
+    if p is None:
+        return _no_prediction_answer(card, q.intent)
+
+    wanted = _wanted_markets(q)
+    found: dict[str, list] = {}
+    for o in outcomes_from_prediction(p):
+        if o.market in wanted and retrieval.matches_side(o.selection, q.selection_side):
+            found.setdefault(o.market, []).append(o)
+
+    title = f"{card.home_team} vs {card.away_team} -- {_kickoff(card.kickoff)}, {card.league}"
+    sources = [Source("match", f"{card.home_team} vs {card.away_team}", card.match_id)]
+    if not found:
+        return Answer(
+            text=(
+                f"{title}\n\nI don't have a {_market_label(q)} price for this match: that market needs "
+                f"half-time scoring data or enough match history for both teams, and this fixture's "
+                f"prediction doesn't carry it yet. I'd rather say so than estimate one."
+            ),
+            intent=q.intent,
+            sources=sources,
+            suggestions=[f"{card.home_team} vs {card.away_team}", "What are today's best picks?"],
+        )
+
+    lines = [title, ""]
+    for market in wanted:
+        for o in sorted(found.get(market, []), key=lambda o: o.probability, reverse=True):
+            lines.append(f"- {market}: **{o.selection}** -- {_pct(o.probability, 1)}")
+    lines += [
+        "",
+        f"Data quality {_pct(p.data_quality_score)}, model agreement {_pct(p.model_agreement_score)}. "
+        f"This is the model's probability, not a bookmaker price.",
+    ]
+    return Answer(
+        text="\n".join(lines),
+        intent=q.intent,
+        sources=sources,
+        suggestions=[f"{card.home_team} vs {card.away_team}", "Why is this favored?", "What are the risks?"],
+        includes_probability=True,
     )
 
 
@@ -496,6 +543,20 @@ _MARKET_LABELS = {
 }
 
 
+def _wanted_markets(q: ParsedQuery) -> tuple[str, ...]:
+    """The registry markets a market-scoped request is about: the specific
+    ones the message named, else the coarse family's."""
+
+    return q.market_names or retrieval.MARKET_CATEGORY_NAMES.get(q.market, ())
+
+
+def _market_label(q: ParsedQuery) -> str | None:
+    if not q.market:
+        return None
+    label = q.market_label or _MARKET_LABELS.get(q.market, q.market)
+    return f"{label} ({q.selection_side.lower()})" if q.selection_side else label
+
+
 def _best_picks_for_market(db: Session, q: ParsedQuery, now: dt.datetime) -> Answer:
     """"Best BTTS picks", "top over/under picks" -- q.market filters this to
     one market family instead of _best_picks' global most-likely outcome,
@@ -503,8 +564,10 @@ def _best_picks_for_market(db: Session, q: ParsedQuery, now: dt.datetime) -> Ans
 
     date_from = q.date_from or now
     date_to = q.date_to or now + dt.timedelta(days=3)
-    hits = retrieval.best_outcomes(db, q.market, date_from, date_to, q.league, limit=5)
-    label = _MARKET_LABELS.get(q.market, q.market)
+    hits = retrieval.best_outcomes(
+        db, q.market, date_from, date_to, q.league, limit=5, names=q.market_names, side=q.selection_side,
+    )
+    label = _market_label(q)
 
     if not hits:
         return Answer(
@@ -670,12 +733,8 @@ def _generate_selections(db: Session, q: ParsedQuery) -> Answer:
         if q.probability_floor is not None
         else (tier["min_probability"] if tier else DEFAULT_MIN_PROBABILITY)
     )
-    markets = (
-        retrieval.MARKET_CATEGORY_NAMES.get(q.market, ())
-        if q.market
-        else (tier["markets"] if tier else ())
-    )
-    market_label = _MARKET_LABELS.get(q.market, q.market) if q.market else None
+    markets = _wanted_markets(q) if q.market else (tier["markets"] if tier else ())
+    market_label = _market_label(q)
 
     pick = select_legs_by_confidence(
         db,
@@ -1027,6 +1086,8 @@ I read those rows and report them; I don't improvise numbers.
 - "What's on today?" / "fixtures this weekend"
 - "What are the best picks?" -- ranked by model probability
 - "Best BTTS picks" / "top double chance picks" -- ranked within one market
+- "2nd half over 1.5" / "1st half BTTS" / "corners over 9.5" -- any specific market, for the
+  whole card or one match ("Arsenal vs Chelsea 2nd half goals")
 - "Give me 10 selections with at least 60% chance" -- a combo priced from real bookmaker odds
 - "Build me a high risk accumulator" / "low risk la liga combo" -- low, medium, high or
   higher risk, up to 30 legs, any league or market this system has data for
@@ -1138,6 +1199,8 @@ def respond(db: Session, q: ParsedQuery, now: dt.datetime | None = None) -> Answ
             return _explain(db, q, card)
         if q.intent == Intent.WHAT_CHANGED:
             return _what_changed(db, q, card)
+        if q.market_names and q.intent == Intent.MATCH_PREDICTION:
+            return _match_markets(db, q, card)
         return _match_prediction(db, q, card)
 
     return _unknown(db, q)

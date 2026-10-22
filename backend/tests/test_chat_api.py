@@ -757,3 +757,58 @@ def test_stream_rejects_an_invalid_message_before_streaming_starts(db_session, a
 
     response = client.post("/api/chat/stream", json={"message": ""}, headers=auth_headers)
     assert response.status_code == 400
+
+
+# --- Specific markets -------------------------------------------------------
+
+
+def _with_half_time_rates(db_session, fixture_data):
+    prediction = fixture_data["prediction"]
+    breakdown = dict(prediction.model_breakdown)
+    breakdown["poisson"] = {**breakdown["poisson"], "lambda_home_ht": 0.75, "lambda_away_ht": 0.5}
+    prediction.model_breakdown = breakdown
+    db_session.commit()
+
+
+def test_a_named_market_on_a_named_match_gets_that_markets_numbers(db_session, auth_headers, fixture_data):
+    _with_half_time_rates(db_session, fixture_data)
+    body = _ask("arsenal vs chelsea 2nd half over 1.5", auth_headers)
+
+    assert body["intent"] == "match_prediction"
+    assert "2H Total Goals 1.5" in body["text"]
+    assert "Over 1.5" in body["text"] and "Under 1.5" not in body["text"]
+    assert "%" in body["text"]
+
+
+def test_a_market_the_match_has_no_price_for_is_said_not_estimated(db_session, auth_headers, fixture_data):
+    """The fixture has no half-time rates, so no 2nd-half market is priced."""
+
+    body = _ask("arsenal vs chelsea 2nd half over 1.5", auth_headers)
+
+    assert "don't have" in body["text"]
+    assert "%" not in body["text"].split("Data quality")[0].replace("1.5", "")
+
+
+def test_best_picks_for_a_half_market_rank_that_half_market(db_session, auth_headers, fixture_data):
+    _with_half_time_rates(db_session, fixture_data)
+    body = _ask("best 2nd half goals picks", auth_headers)
+
+    assert body["intent"] == "best_picks"
+    assert "2nd half goals" in body["text"]
+    assert any(pick["market"].startswith("2H Total Goals") for pick in body["picks"])
+
+
+def test_over_means_the_over_side_even_when_the_under_is_likelier(db_session, auth_headers, fixture_data):
+    _with_half_time_rates(db_session, fixture_data)
+    body = _ask("2nd half over 2.5 picks", auth_headers)
+
+    assert body["picks"], body["text"]
+    assert all(pick["selection"].startswith("Over") for pick in body["picks"])
+
+
+def test_a_market_question_on_the_open_match_uses_that_match(db_session, auth_headers, fixture_data):
+    _with_half_time_rates(db_session, fixture_data)
+    body = _ask("what about 1st half btts?", auth_headers, context_match_id=fixture_data["upcoming"].id)
+
+    assert body["intent"] == "match_prediction"
+    assert "HT Both Teams To Score" in body["text"]
