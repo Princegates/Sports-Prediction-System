@@ -6366,7 +6366,8 @@ table.admin-table {
 .wins-lightbox {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+  /* Above the sticky topbar, the cookie strip and the chat dock. */
+  z-index: 100000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -6378,6 +6379,9 @@ table.admin-table {
   margin: 0;
   max-width: min(560px, 100%);
   max-height: 100%;
+  /* A long multi-leg ticket scrolls at full width rather than shrinking
+     to fit the screen height. */
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -6385,8 +6389,8 @@ table.admin-table {
   cursor: default;
 }
 .wins-lightbox img {
-  max-width: 100%;
-  max-height: calc(100vh - 140px);
+  width: 100%;
+  height: auto;
   border-radius: var(--radius-sm, 10px);
 }
 .wins-lightbox figcaption {

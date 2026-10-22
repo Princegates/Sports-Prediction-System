@@ -88,8 +88,8 @@ export function AdminWinningSlips() {
         </label>
         {preview && <img className="wins-admin-preview" src={preview} alt="Preview" />}
         <p className="setting-note" style={{ margin: 0 }}>
-          Crop out or cover anything private first -- account balance, phone number, user ID. The image is shrunk
-          and its photo metadata removed before upload.
+          Crop out or cover anything private first -- account balance, phone number, user ID. The image is resized
+          and its photo metadata removed before upload. Long tickets are fine as one tall image.
         </p>
         <label className="setting-field">
           <span>Caption (optional)</span>
