@@ -39,7 +39,7 @@ class Outcome:
 # model like" slot would just restate a real pick more loosely, never add
 # one; see app.outcomes.engine.secondary_outcomes.
 DOMINANT_UNION_GROUPS = frozenset({
-    "double_chance", "ht_double_chance", "ht_ft_double_chance", "ht_double_chance_btts",
+    "double_chance", "ht_double_chance", "h2_double_chance", "ht_ft_double_chance", "ht_double_chance_btts",
     "dc_btts", "dc_total_goals_1.5", "dc_total_goals_2.5", "dc_total_goals_3.5", "dc_total_goals_4.5",
 })
 
@@ -49,7 +49,7 @@ DOMINANT_UNION_GROUPS = frozenset({
 # scorelines is kept (Correct Score, HT Correct Score). The Markets page's
 # "exactly one of these happens, adding up to 100%" framing is only true
 # outside this set -- see routes_predictions.py's `outcomes` endpoint.
-NOT_A_FULL_PARTITION_GROUPS = DOMINANT_UNION_GROUPS | frozenset({"correct_score", "ht_correct_score"})
+NOT_A_FULL_PARTITION_GROUPS = DOMINANT_UNION_GROUPS | frozenset({"correct_score", "ht_correct_score", "h2_correct_score"})
 
 
 def build_outcome_registry(
@@ -505,56 +505,106 @@ def corners_outcomes(lambda_home_corners: float, lambda_away_corners: float, mat
     return [o for o in outcomes if matches_available >= o.min_data_requirement]
 
 
+# How each half's markets word their definitions. The outcomes themselves are
+# identical in shape -- only what "ahead" means differs: ahead on the board at
+# the break, versus out-scoring the other side within the second half alone.
+_HALF_WORDING = {
+    "HT": {
+        "when": "at half-time",
+        "Home": "Home team is ahead at half-time.",
+        "Draw": "Scores are level at half-time.",
+        "Away": "Away team is ahead at half-time.",
+        "Home/Draw": "Home team is ahead or level at half-time.",
+        "Home/Away": "Either team is ahead at half-time (not level).",
+        "Draw/Away": "Scores are level or the away team is ahead at half-time.",
+        "both": "Both teams have scored by half-time.",
+        "not_both": "At least one team has not scored by half-time.",
+        "score": "Score at half-time",
+    },
+    "2H": {
+        "when": "in the second half",
+        "Home": "Home team scores more goals than the away team in the second half.",
+        "Draw": "Both teams score the same number of goals in the second half.",
+        "Away": "Away team scores more goals than the home team in the second half.",
+        "Home/Draw": "Home team scores at least as many goals as the away team in the second half.",
+        "Home/Away": "Either team scores more than the other in the second half (not level).",
+        "Draw/Away": "Away team scores at least as many goals as the home team in the second half.",
+        "both": "Both teams score in the second half.",
+        "not_both": "At least one team fails to score in the second half.",
+        "score": "Score in the second half alone",
+    },
+}
+
+
 def ht_matrix_derived_outcomes(lambda_home_ht: float, lambda_away_ht: float, matches_available: int) -> list[Outcome]:
     """Half-time markets: the identical Dixon-Coles machinery as
     matrix_derived_outcomes above, just built from half-time-scaled lambdas
     (app.prediction_models.poisson_model.ht_goal_fraction) and a smaller
     max_goals, since more than a handful of goals inside 45 minutes is
-    vanishingly rare.
+    vanishingly rare. See ``_half_outcomes`` for the market list; the second
+    half's equivalents are ``second_half_outcomes``.
+    """
 
-    Reuses markets_from_matrix wholesale for HT Result, the HT goal lines,
-    HT BTTS and HT Correct Score -- it already computes exactly those from
-    any two lambdas, home_win/draw/away_win just mean "ahead at the break"
-    instead of "ahead at full time" here. Only HT Double Chance, HT Exact
-    Goals, HT Odd/Even and HT Multigoals need the raw matrix directly, the
-    same way FT's own odd/even and goals-range markets do above.
+    return _half_outcomes(lambda_home_ht, lambda_away_ht, matches_available, "HT")
 
-    HT Multigoals bands are non-overlapping (0-1 / 2-3 / 4+) rather than the
+
+def second_half_outcomes(lambda_home_2h: float, lambda_away_2h: float, matches_available: int) -> list[Outcome]:
+    """Second-half markets (SportyBet's "2nd Half - 1X2", "2nd Half -
+    Over/Under", ...): the same set as the half-time ones, over the second
+    half's own scoreline. ``lambda_*_2h`` is each side's full-time rate less
+    its half-time rate -- see ``ht_ft_joint_outcomes`` for why that
+    subtraction is sound -- and "2H Result" is who scores more goals in the
+    second half alone, whatever the score was at the break."""
+
+    return _half_outcomes(lambda_home_2h, lambda_away_2h, matches_available, "2H")
+
+
+def _half_outcomes(lambda_home: float, lambda_away: float, matches_available: int, half: str) -> list[Outcome]:
+    """One half's markets ("HT" or "2H" is the market-name prefix).
+
+    Reuses markets_from_matrix wholesale for Result, the goal lines, BTTS and
+    Correct Score -- it already computes exactly those from any two lambdas,
+    home_win/draw/away_win just mean "ahead in this half" instead of "ahead
+    at full time" here. Only Double Chance, Exact Goals, Odd/Even and
+    Multigoals need the raw matrix directly, the same way FT's own odd/even
+    and goals-range markets do above.
+
+    Multigoals bands are non-overlapping (0-1 / 2-3 / 4+) rather than the
     overlapping bands a bookmaker's own "Multigoals" market advertises (1-2,
     1-3, 2-3, ...) -- every market in this registry is required to belong to
     a mutually_exclusive_group that sums to 1 (see this module's docstring),
     and overlapping bands can't satisfy that.
     """
 
-    matrix = build_score_matrix(lambda_home_ht, lambda_away_ht, max_goals=HT_MAX_GOALS)
+    w = _HALF_WORDING[half]
+    when = w["when"]
+    g = half.lower() if half == "HT" else "h2"
+    matrix = build_score_matrix(lambda_home, lambda_away, max_goals=HT_MAX_GOALS)
     max_goals = len(matrix) - 1
-    ht = markets_from_matrix(matrix, lambda_home_ht, lambda_away_ht)
+    ht = markets_from_matrix(matrix, lambda_home, lambda_away)
 
     outcomes: list[Outcome] = [
-        Outcome("HT Result", "Home", ht.home_win, "ht_1x2", 5, "Home team is ahead at half-time."),
-        Outcome("HT Result", "Draw", ht.draw, "ht_1x2", 5, "Scores are level at half-time."),
-        Outcome("HT Result", "Away", ht.away_win, "ht_1x2", 5, "Away team is ahead at half-time."),
-        Outcome("HT Double Chance", "Home/Draw", ht.home_win + ht.draw, "ht_double_chance", 5,
-                "Home team is ahead or level at half-time."),
-        Outcome("HT Double Chance", "Home/Away", ht.home_win + ht.away_win, "ht_double_chance", 5,
-                "Either team is ahead at half-time (not level)."),
-        Outcome("HT Double Chance", "Draw/Away", ht.draw + ht.away_win, "ht_double_chance", 5,
-                "Scores are level or the away team is ahead at half-time."),
-        Outcome("HT Both Teams To Score", "Yes", ht.btts_yes, "ht_btts", 5, "Both teams have scored by half-time."),
-        Outcome("HT Both Teams To Score", "No", ht.btts_no, "ht_btts", 5, "At least one team has not scored by half-time."),
+        Outcome(f"{half} Result", "Home", ht.home_win, f"{g}_1x2", 5, w["Home"]),
+        Outcome(f"{half} Result", "Draw", ht.draw, f"{g}_1x2", 5, w["Draw"]),
+        Outcome(f"{half} Result", "Away", ht.away_win, f"{g}_1x2", 5, w["Away"]),
+        Outcome(f"{half} Double Chance", "Home/Draw", ht.home_win + ht.draw, f"{g}_double_chance", 5, w["Home/Draw"]),
+        Outcome(f"{half} Double Chance", "Home/Away", ht.home_win + ht.away_win, f"{g}_double_chance", 5, w["Home/Away"]),
+        Outcome(f"{half} Double Chance", "Draw/Away", ht.draw + ht.away_win, f"{g}_double_chance", 5, w["Draw/Away"]),
+        Outcome(f"{half} Both Teams To Score", "Yes", ht.btts_yes, f"{g}_btts", 5, w["both"]),
+        Outcome(f"{half} Both Teams To Score", "No", ht.btts_no, f"{g}_btts", 5, w["not_both"]),
     ]
 
     for line, over_p in ht.over_probabilities.items():
         outcomes += [
-            Outcome(f"HT Total Goals {line}", f"Over {line}", over_p, f"ht_ou_{line}", 5,
-                    f"Total goals at half-time are greater than {line}."),
-            Outcome(f"HT Total Goals {line}", f"Under {line}", 1 - over_p, f"ht_ou_{line}", 5,
-                    f"Total goals at half-time are less than {line}."),
+            Outcome(f"{half} Total Goals {line}", f"Over {line}", over_p, f"{g}_ou_{line}", 5,
+                    f"Total goals {when} are greater than {line}."),
+            Outcome(f"{half} Total Goals {line}", f"Under {line}", 1 - over_p, f"{g}_ou_{line}", 5,
+                    f"Total goals {when} are less than {line}."),
         ]
 
     for score, prob in ht.correct_score_probabilities.items():
         outcomes.append(
-            Outcome("HT Correct Score", score, prob, "ht_correct_score", 10, f"Score at half-time is exactly {score}.")
+            Outcome(f"{half} Correct Score", score, prob, f"{g}_correct_score", 10, f"{w['score']} is exactly {score}.")
         )
 
     def parity(pairs) -> tuple[float, float]:
@@ -565,10 +615,10 @@ def ht_matrix_derived_outcomes(lambda_home_ht: float, lambda_away_ht: float, mat
         (h + a, matrix[h][a]) for h in range(max_goals + 1) for a in range(max_goals + 1)
     )
     outcomes += [
-        Outcome("HT Total Goals Odd/Even", "Even", total_even, "ht_goals_parity", 5,
-                "Total goals at half-time are an even number (0 counts as even)."),
-        Outcome("HT Total Goals Odd/Even", "Odd", total_odd, "ht_goals_parity", 5,
-                "Total goals at half-time are an odd number."),
+        Outcome(f"{half} Total Goals Odd/Even", "Even", total_even, f"{g}_goals_parity", 5,
+                f"Total goals {when} are an even number (0 counts as even)."),
+        Outcome(f"{half} Total Goals Odd/Even", "Odd", total_odd, f"{g}_goals_parity", 5,
+                f"Total goals {when} are an odd number."),
     ]
 
     exact = {"0": 0.0, "1": 0.0, "2": 0.0, "3+": 0.0}
@@ -578,8 +628,8 @@ def ht_matrix_derived_outcomes(lambda_home_ht: float, lambda_away_ht: float, mat
             key = str(total) if total < 3 else "3+"
             exact[key] += matrix[h][a]
     outcomes += [
-        Outcome("HT Exact Goals", k, v, "ht_exact_goals", 5,
-                f"Total goals at half-time is {'3 or more' if k == '3+' else k}.")
+        Outcome(f"{half} Exact Goals", k, v, f"{g}_exact_goals", 5,
+                f"Total goals {when} is {'3 or more' if k == '3+' else k}.")
         for k, v in exact.items()
     ]
 
@@ -590,7 +640,7 @@ def ht_matrix_derived_outcomes(lambda_home_ht: float, lambda_away_ht: float, mat
             key = "0-1" if total <= 1 else ("2-3" if total <= 3 else "4+")
             multi[key] += matrix[h][a]
     outcomes += [
-        Outcome("HT Multigoals", k, v, "ht_multigoals", 5, f"Total goals at half-time fall within the {k} range.")
+        Outcome(f"{half} Multigoals", k, v, f"{g}_multigoals", 5, f"Total goals {when} fall within the {k} range.")
         for k, v in multi.items()
     ]
 
@@ -610,8 +660,17 @@ _SECOND_HALF_PHRASE = {
 _HT_RESULT_GOALS_LINES = ("1.5", "2.5")  # mirrors matrix_derived_outcomes' own Result & Total Goals lines
 _HT_FT_GOALS_LINE = "2.5"
 _HT_VS_2H_GOALS_LINE = "1.5"
-# Same lines the 1st-half Over/Under offers (markets_from_matrix's goal_line_totals).
-_SECOND_HALF_GOAL_LINES = ("0.5", "1.5", "2.5", "3.5", "4.5")
+
+
+def second_half_lambdas(
+    lambda_home: float, lambda_away: float, lambda_home_ht: float, lambda_away_ht: float,
+) -> tuple[float, float]:
+    """Each side's second-half scoring rate: its full-time rate less its
+    half-time one. Floored, not left to go non-positive -- ht_goal_fraction is
+    clamped to [0.25, 0.65] so lambda_ht should never reach lambda itself,
+    but a second half needs some scoring rate to build a matrix from."""
+
+    return max(lambda_home - lambda_home_ht, 0.05), max(lambda_away - lambda_away_ht, 0.05)
 
 
 def ht_ft_joint_outcomes(
@@ -653,11 +712,7 @@ def ht_ft_joint_outcomes(
     """
 
     ht_matrix = build_score_matrix(lambda_home_ht, lambda_away_ht, max_goals=HT_MAX_GOALS)
-    # Floored, not left to go non-positive -- ht_goal_fraction is clamped to
-    # [0.25, 0.65] so lambda_ht should never reach lambda itself, but a
-    # second half needs some scoring rate to build a matrix from regardless.
-    lambda_home_2h = max(lambda_home - lambda_home_ht, 0.05)
-    lambda_away_2h = max(lambda_away - lambda_away_ht, 0.05)
+    lambda_home_2h, lambda_away_2h = second_half_lambdas(lambda_home, lambda_away, lambda_home_ht, lambda_away_ht)
     h2_matrix = build_score_matrix(lambda_home_2h, lambda_away_2h, max_goals=HT_MAX_GOALS)
     ht_max = len(ht_matrix) - 1
     h2_max = len(h2_matrix) - 1
@@ -864,20 +919,6 @@ def ht_ft_joint_outcomes(
         for (ht_over, h2_over), p in ht_2h_goals_p.items()
     ]
 
-    # 2H Total Goals -- SportyBet's "2nd Half - Over/Under". The second half's
-    # own scoreline matrix, summed out over both teams; the first-half
-    # equivalent is "HT Total Goals" in ht_matrix_derived_outcomes.
-    for line in _SECOND_HALF_GOAL_LINES:
-        over_p = min(1.0, max(0.0, sum(
-            h2_matrix[h][a] for h in range(h2_max + 1) for a in range(h2_max + 1) if h + a > float(line)
-        )))
-        outcomes += [
-            Outcome(f"2H Total Goals {line}", f"Over {line}", over_p, f"h2_ou_{line}", 5,
-                    f"Second-half goals are greater than {line}."),
-            Outcome(f"2H Total Goals {line}", f"Under {line}", 1 - over_p, f"h2_ou_{line}", 5,
-                    f"Second-half goals are less than {line}."),
-        ]
-
     outcomes += [
         Outcome(
             "Half With Most Goals", k, v, "half_most_goals", 5,
@@ -938,6 +979,9 @@ def outcomes_from_prediction(prediction) -> list[Outcome]:
 
     if lambda_home is not None and lambda_away is not None and lambda_home_ht is not None and lambda_away_ht is not None:
         outcomes += ht_ft_joint_outcomes(lambda_home, lambda_away, lambda_home_ht, lambda_away_ht, matches_available)
+        outcomes += second_half_outcomes(
+            *second_half_lambdas(lambda_home, lambda_away, lambda_home_ht, lambda_away_ht), matches_available
+        )
 
     lambda_home_corners, lambda_away_corners = poisson.get("lambda_home_corners"), poisson.get("lambda_away_corners")
     if lambda_home_corners is not None and lambda_away_corners is not None:

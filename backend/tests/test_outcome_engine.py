@@ -10,6 +10,7 @@ from app.outcomes.registry import (
     corners_outcomes,
     ht_ft_joint_outcomes,
     ht_matrix_derived_outcomes,
+    second_half_outcomes,
     matrix_derived_outcomes,
     outcomes_from_prediction,
 )
@@ -676,7 +677,8 @@ def test_outcomes_from_prediction_skips_corners_markets_without_corners_lambdas(
 
 
 def test_second_half_total_goals_is_a_partition_per_line_and_the_remainder_of_the_match():
-    outcomes = _ht_ft(lambda_home=1.6, lambda_away=1.1, lambda_home_ht=0.7, lambda_away_ht=0.5)
+    # Second-half rate is 0.9 + 0.6 = 1.5 goals.
+    outcomes = second_half_outcomes(lambda_home_2h=0.9, lambda_away_2h=0.6, matches_available=20)
     by_key = {(o.market, o.selection): o for o in outcomes}
 
     for line in ("0.5", "1.5", "2.5", "3.5", "4.5"):
@@ -684,8 +686,54 @@ def test_second_half_total_goals_is_a_partition_per_line_and_the_remainder_of_th
         assert over.probability + under.probability == pytest.approx(1.0)
         assert over.mutually_exclusive_group == under.mutually_exclusive_group
 
-    # Second-half rate is 0.9 + 0.6 = 1.5 goals, so Over 0.5 sits near 1 - e^-1.5.
+    # Over 0.5 sits near 1 - e^-1.5.
     assert by_key[("2H Total Goals 0.5", "Over 0.5")].probability == pytest.approx(1 - math.exp(-1.5), abs=0.02)
     # Higher lines are strictly harder to clear.
     overs = [by_key[(f"2H Total Goals {l}", f"Over {l}")].probability for l in ("0.5", "1.5", "2.5", "3.5", "4.5")]
     assert overs == sorted(overs, reverse=True)
+
+
+def test_every_second_half_group_sums_to_one_except_the_unions_and_truncated_scores():
+    from app.outcomes.registry import NOT_A_FULL_PARTITION_GROUPS
+
+    outcomes = second_half_outcomes(lambda_home_2h=0.9, lambda_away_2h=0.6, matches_available=20)
+    assert {o.market for o in outcomes} >= {
+        "2H Result", "2H Double Chance", "2H Both Teams To Score", "2H Total Goals 1.5",
+        "2H Correct Score", "2H Total Goals Odd/Even", "2H Exact Goals", "2H Multigoals",
+    }
+    groups: dict[str, float] = {}
+    for o in outcomes:
+        groups[o.mutually_exclusive_group] = groups.get(o.mutually_exclusive_group, 0.0) + o.probability
+    for group, total in groups.items():
+        if group in NOT_A_FULL_PARTITION_GROUPS:
+            continue
+        assert total == pytest.approx(1.0), f"group {group!r} summed to {total}"
+
+
+def test_second_half_result_agrees_with_the_joint_ht_plus_2h_grid():
+    """"2H Result" is the second half alone, so summing the joint HT + 2H
+    Result grid over the half-time side must reproduce it exactly."""
+
+    joint = [o for o in _ht_ft() if o.market == "HT + 2H Result"]
+    marginal: dict[str, float] = {}
+    for o in joint:
+        second = o.selection.split(" & ")[1]
+        marginal[second] = marginal.get(second, 0.0) + o.probability
+
+    from app.outcomes.registry import second_half_lambdas
+    h2 = second_half_outcomes(*second_half_lambdas(1.6, 1.1, 0.7, 0.5), matches_available=20)
+    result = {o.selection: o.probability for o in h2 if o.market == "2H Result"}
+    for side in ("Home", "Draw", "Away"):
+        assert result[side] == pytest.approx(marginal[side], abs=1e-9)
+
+
+def test_second_half_markets_are_gated_on_history_and_added_by_outcomes_from_prediction():
+    assert second_half_outcomes(0.9, 0.6, matches_available=3) == []
+    prediction = _prediction_stub(
+        model_breakdown={
+            "poisson": {"lambda_home": 1.6, "lambda_away": 1.1, "lambda_home_ht": 0.7, "lambda_away_ht": 0.5}
+        }
+    )
+    assert any(o.market == "2H Result" for o in outcomes_from_prediction(prediction))
+    no_ht = _prediction_stub(model_breakdown={"poisson": {"lambda_home": 1.6, "lambda_away": 1.1}})
+    assert not any(o.market.startswith("2H ") for o in outcomes_from_prediction(no_ht))

@@ -109,3 +109,19 @@ def test_second_half_total_goals_needs_the_half_time_score():
 def test_second_half_per_team_lines_are_not_graded_as_the_combined_total():
     scores = dict(home_score=3, away_score=1, ht_home_score=1, ht_away_score=0)
     assert grade_outcome("2H Home Goals 0.5", "Over 0.5", **scores) is None
+
+
+def test_second_half_single_half_markets_use_full_time_less_half_time():
+    # 3-1 final, 1-0 at the break: the second half finished 2-1 to the home side.
+    scores = dict(home_score=3, away_score=1, ht_home_score=1, ht_away_score=0)
+    assert grade_outcome("2H Result", "Home", **scores) is True
+    assert grade_outcome("2H Result", "Draw", **scores) is False
+    assert grade_outcome("2H Double Chance", "Draw/Away", **scores) is False
+    assert grade_outcome("2H Both Teams To Score", "Yes", **scores) is True
+    assert grade_outcome("2H Correct Score", "2-1", **scores) is True
+    assert grade_outcome("HT Correct Score", "1-0", **scores) is True
+
+
+def test_second_half_markets_need_the_half_time_score():
+    assert grade_outcome("2H Result", "Home", home_score=1, away_score=0) is None
+    assert grade_outcome("2H Correct Score", "1-0", home_score=1, away_score=0) is None

@@ -8,7 +8,8 @@ given what actually happened, was this specific selection correct?
 Covers the markets an admin or member is actually likely to pick: 1X2,
 Double Chance, Draw No Bet, Both Teams To Score, Total/Home/Away Goals
 Over/Under at any line, Correct Score, Clean Sheets, Odd/Even, and the
-half-time equivalents of the above (when half-time scores were recorded).
+half-time and second-half equivalents of the above (when half-time scores
+were recorded; the second half is full time less half time).
 Anything outside that set -- combo markets like "Result & BTTS", Winning
 Margin, Multigoals, HT/FT -- returns ``None`` ("can't auto-grade this")
 rather than guessing, so a pick in one of those stays pending until a
@@ -20,6 +21,22 @@ from __future__ import annotations
 import re
 
 _OU_RE = re.compile(r"^(?:HT |2H )?(?:Total|Home|Away) Goals (\d+(?:\.\d+)?)$")
+
+
+# The single-half markets besides Over/Under: "HT Result", "2H Double Chance", ...
+_HALF_MARKET_RE = re.compile(r"^(HT|2H) (Result|Double Chance|Both Teams To Score|Correct Score)$")
+
+
+def _half_score(
+    market: str, home: int, away: int, ht_home: int | None, ht_away: int | None,
+) -> tuple[int, int] | None:
+    """The score of the half this market is about: the half-time score for
+    "HT ...", full time less half time for "2H ...". None when half-time
+    wasn't recorded."""
+
+    if ht_home is None or ht_away is None:
+        return None
+    return (ht_home, ht_away) if market.startswith("HT ") else (home - ht_home, away - ht_away)
 
 
 def _result_1x2(home: int, away: int) -> str:
@@ -92,18 +109,12 @@ def grade_outcome(
     ou_match = _OU_RE.match(market)
     if ou_match:
         line = float(ou_match.group(1))
-        if market.startswith("2H "):
-            # Second-half goals are the full-time score less the half-time one.
-            # Only the combined total is a market (no per-team 2H lines).
-            if not market.startswith("2H Total") or ht_home_score is None or ht_away_score is None:
+        if market.startswith(("HT ", "2H ")):
+            half = _half_score(market, home_score, away_score, ht_home_score, ht_away_score)
+            # Only the combined total is a 2nd-half market (no per-team 2H lines).
+            if half is None or (market.startswith("2H ") and not market.startswith("2H Total")):
                 return None
-            total = (home_score - ht_home_score) + (away_score - ht_away_score)
-        elif market.startswith("HT "):
-            if ht_home_score is None or ht_away_score is None:
-                return None
-            total = ht_home_score + ht_away_score if market.startswith("HT Total") else (
-                ht_home_score if "Home" in market else ht_away_score
-            )
+            total = half[0] + half[1] if "Total" in market else (half[0] if "Home" in market else half[1])
         else:
             total = home_score + away_score if market.startswith("Total") else (
                 home_score if market.startswith("Home") else away_score
@@ -114,25 +125,23 @@ def grade_outcome(
             return total < line
         return None
 
-    if market == "HT Correct Score":
-        if ht_home_score is None or ht_away_score is None:
+    half_market = _HALF_MARKET_RE.match(market)
+    if half_market:
+        half = _half_score(market, home_score, away_score, ht_home_score, ht_away_score)
+        if half is None:
             return None
-        return selection == f"{ht_home_score}-{ht_away_score}"
-
-    if market in ("HT Result", "HT Double Chance"):
-        if ht_home_score is None or ht_away_score is None:
-            return None
-        ht_result = _result_1x2(ht_home_score, ht_away_score)
-        if market == "HT Result":
-            return {"Home": "H", "Draw": "D", "Away": "A"}.get(selection) == ht_result
-        pairs = {"Home/Draw": {"H", "D"}, "Home/Away": {"H", "A"}, "Draw/Away": {"D", "A"}}
-        group = pairs.get(selection)
-        return ht_result in group if group is not None else None
-
-    if market == "HT Both Teams To Score":
-        if ht_home_score is None or ht_away_score is None:
-            return None
-        both_scored = ht_home_score > 0 and ht_away_score > 0
+        half_home, half_away = half
+        kind = half_market.group(2)
+        if kind == "Correct Score":
+            return selection == f"{half_home}-{half_away}"
+        half_result = _result_1x2(half_home, half_away)
+        if kind == "Result":
+            return {"Home": "H", "Draw": "D", "Away": "A"}.get(selection) == half_result
+        if kind == "Double Chance":
+            pairs = {"Home/Draw": {"H", "D"}, "Home/Away": {"H", "A"}, "Draw/Away": {"D", "A"}}
+            group = pairs.get(selection)
+            return half_result in group if group is not None else None
+        both_scored = half_home > 0 and half_away > 0
         if selection == "Yes":
             return both_scored
         if selection == "No":
