@@ -119,6 +119,11 @@ NAME_THRESHOLD = 0.82
 # SportyBet's count first-half ones, so they, like "HT/FT & BTTS", "HT + 2H
 # Result" and "HT + FT Double Chance", have no entry.
 Selection = tuple[str, str | None, str]
+# Market ids taken from Betradar's published table rather than read off a
+# SportyBet match page (see the "second half" block in _build_markets). The
+# capture test skips these; once a capture containing one is added to the
+# fixture, remove it from here so that test starts checking it.
+UNCONFIRMED_MARKET_IDS = frozenset({"83", "90", "94", "95"})
 _RESULT = {"Home": 0, "Draw": 1, "Away": 2}
 _SHORT = {"1": "Home", "X": "Draw", "2": "Away"}
 _HALF_LINES = [f"{n}.5" for n in range(10)]
@@ -285,6 +290,22 @@ def _build_markets() -> dict[tuple[str, str], Selection]:
         {f"{htft} & {_goal_label(goals)}": str(o) for (htft, goals), o in ht_ft_exact.items()})
     add("HT & 2H Total Goals 1.5", "58", "total=1.5", {"Over 1.5 HT & Over 1.5 2H": "74"})
     add("HT & 2H Total Goals 1.5", "59", "total=1.5", {"Under 1.5 HT & Under 1.5 2H": "74"})
+    # -- second half ------------------------------------------------------
+    # Market ids from Betradar's published soccer market table (Sportradar's
+    # ids, the ones SportyBet uses): each 2nd-half market sits at a fixed
+    # offset from its 1st-half twin above (1x2 60 -> 83, total 68 -> 90,
+    # odd/even 74 -> 94, BTTS 75 -> 95), and that table's 1st-half rows match
+    # the ids read off SportyBet's own page. Outcome ids are the same fixed
+    # ones the twin uses (1/2/3, Over 12 / Under 13, Yes 74 / No 76, Odd 70 /
+    # Even 72). Not read off a SportyBet match page, unlike the rest: a line or
+    # market SportyBet doesn't offer is reported back by orders/share, not
+    # booked. 2nd-half Double Chance, Correct Score, Exact Goals and
+    # Multigoals have no entry: their ids/outcome ids are not in that table.
+    add("2H Result", "83", None, {"Home": "1", "Draw": "2", "Away": "3"})
+    add("2H Both Teams To Score", "95", None, yes_no)
+    add("2H Total Goals Odd/Even", "94", None, odd_even)
+    for line in _HALF_LINES:
+        add(f"2H Total Goals {line}", "90", f"total={line}", {f"Over {line}": "12", f"Under {line}": "13"})
     add("Half With Most Goals", "52", None, {"1st Half": "436", "2nd Half": "438", "Equal": "440"})
     # SportyBet's own markets 48-51.
     add("Home Team To Win Both Halves", "48", None, yes_no)
