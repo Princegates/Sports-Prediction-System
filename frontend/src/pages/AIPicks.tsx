@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { fetchAdminPicks } from "../api";
+import { fetchAdminPicks, fetchWinningSlips } from "../api";
 import { AdminPicksSection } from "../components/AdminPicksSection";
 import { CardGridSkeleton } from "../components/LoadingSkeleton";
 import { GudaPicksSection } from "../components/GudaPicksSection";
 import { RandomPicksSection } from "../components/RandomPicksSection";
 import { WeeklyPicksSection } from "../components/WeeklyPicksSection";
-import type { AdminPick } from "../types";
+import { WinningSlipsGallery } from "../components/WinningSlipsGallery";
+import type { AdminPick, WinningSlip } from "../types";
 
 const SECTIONS = ["guda", "adminPicks"] as const;
 type Section = (typeof SECTIONS)[number];
@@ -34,6 +35,14 @@ type Section = (typeof SECTIONS)[number];
  * unmounted) so their fetches aren't delayed by this wrapper at all. */
 export function AIPicks() {
   const [loaded, setLoaded] = useState<Set<Section>>(new Set());
+  // Screenshots of won slips an admin has posted (Admin -> Winning slips),
+  // below the picks. Not part of the loading skeleton: a failed or slow load
+  // just leaves the section out.
+  const [winningSlips, setWinningSlips] = useState<WinningSlip[]>([]);
+
+  useEffect(() => {
+    fetchWinningSlips().then(setWinningSlips).catch(() => {});
+  }, []);
   const markLoaded = useCallback((section: Section) => {
     setLoaded((prev) => (prev.has(section) ? prev : new Set(prev).add(section)));
   }, []);
@@ -84,6 +93,11 @@ export function AIPicks() {
         <AdminPicksSection picks={adminPicks} />
         <WeeklyPicksSection picks={adminPicks} />
         <RandomPicksSection picks={adminPicks} />
+        {winningSlips.length > 0 && (
+          <section className="dashboard-wins">
+            <WinningSlipsGallery slips={winningSlips} />
+          </section>
+        )}
       </div>
     </div>
   );
