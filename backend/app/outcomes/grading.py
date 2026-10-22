@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import re
 
-_OU_RE = re.compile(r"^(?:HT )?(?:Total|Home|Away) Goals (\d+(?:\.\d+)?)$")
+_OU_RE = re.compile(r"^(?:HT |2H )?(?:Total|Home|Away) Goals (\d+(?:\.\d+)?)$")
 
 
 def _result_1x2(home: int, away: int) -> str:
@@ -92,7 +92,13 @@ def grade_outcome(
     ou_match = _OU_RE.match(market)
     if ou_match:
         line = float(ou_match.group(1))
-        if market.startswith("HT "):
+        if market.startswith("2H "):
+            # Second-half goals are the full-time score less the half-time one.
+            # Only the combined total is a market (no per-team 2H lines).
+            if not market.startswith("2H Total") or ht_home_score is None or ht_away_score is None:
+                return None
+            total = (home_score - ht_home_score) + (away_score - ht_away_score)
+        elif market.startswith("HT "):
             if ht_home_score is None or ht_away_score is None:
                 return None
             total = ht_home_score + ht_away_score if market.startswith("HT Total") else (

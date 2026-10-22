@@ -32,7 +32,7 @@ const MAIN_MARKETS = ["Match Result", "Double Chance", "Both Teams To Score", "D
 const CATEGORY_ORDER = ["Main", "Total goals", "Team goals & clean sheets", "Corners", "Scores & margins", "Combos", "Half-time"];
 
 function categoryOf(market: string): string {
-  if (/^HT\b/.test(market) || market === "Half With Most Goals") return "Half-time";
+  if (/^(HT|2H)\b/.test(market) || market === "Half With Most Goals") return "Half-time";
   if (market.includes(" & ")) return "Combos";
   if (MAIN_MARKETS.includes(market)) return "Main";
   if (market.startsWith("Total Goals")) return "Total goals";

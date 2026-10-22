@@ -610,6 +610,8 @@ _SECOND_HALF_PHRASE = {
 _HT_RESULT_GOALS_LINES = ("1.5", "2.5")  # mirrors matrix_derived_outcomes' own Result & Total Goals lines
 _HT_FT_GOALS_LINE = "2.5"
 _HT_VS_2H_GOALS_LINE = "1.5"
+# Same lines the 1st-half Over/Under offers (markets_from_matrix's goal_line_totals).
+_SECOND_HALF_GOAL_LINES = ("0.5", "1.5", "2.5", "3.5", "4.5")
 
 
 def ht_ft_joint_outcomes(
@@ -861,6 +863,20 @@ def ht_ft_joint_outcomes(
         )
         for (ht_over, h2_over), p in ht_2h_goals_p.items()
     ]
+
+    # 2H Total Goals -- SportyBet's "2nd Half - Over/Under". The second half's
+    # own scoreline matrix, summed out over both teams; the first-half
+    # equivalent is "HT Total Goals" in ht_matrix_derived_outcomes.
+    for line in _SECOND_HALF_GOAL_LINES:
+        over_p = min(1.0, max(0.0, sum(
+            h2_matrix[h][a] for h in range(h2_max + 1) for a in range(h2_max + 1) if h + a > float(line)
+        )))
+        outcomes += [
+            Outcome(f"2H Total Goals {line}", f"Over {line}", over_p, f"h2_ou_{line}", 5,
+                    f"Second-half goals are greater than {line}."),
+            Outcome(f"2H Total Goals {line}", f"Under {line}", 1 - over_p, f"h2_ou_{line}", 5,
+                    f"Second-half goals are less than {line}."),
+        ]
 
     outcomes += [
         Outcome(

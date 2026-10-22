@@ -86,6 +86,7 @@ const QUICK_PICKS: MarketPreset[] = [
   { label: "1X2 + GG/NG + O/U 2.5", markets: ["Match Result", "Both Teams To Score", "Total Goals 2.5"] },
   { label: "Goal lines", markets: ["Total Goals 1.5", "Total Goals 2.5", "Total Goals 3.5"] },
   { label: "Half-time", markets: ["HT Result", "HT Total Goals 0.5", "HT Total Goals 1.5"] },
+  { label: "1st & 2nd half goals", markets: ["HT Total Goals 0.5", "HT Total Goals 1.5", "2H Total Goals 0.5", "2H Total Goals 1.5"] },
   { label: "Corners", markets: ["Most Corners", "Total Corners 9.5"] },
 ];
 

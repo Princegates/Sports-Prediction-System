@@ -90,3 +90,22 @@ def test_ht_markets_need_ht_scores():
 def test_unknown_market_is_ungradeable():
     assert grade_outcome("Winning Margin", "Home by 2", home_score=2, away_score=0) is None
     assert grade_outcome("Result & BTTS", "Home & BTTS Yes", home_score=2, away_score=1) is None
+
+
+def test_second_half_total_goals_is_full_time_minus_half_time():
+    # 3-1 final, 1-0 at the break: 2-1 in the second half, 3 goals.
+    scores = dict(home_score=3, away_score=1, ht_home_score=1, ht_away_score=0)
+    assert grade_outcome("2H Total Goals 2.5", "Over 2.5", **scores) is True
+    assert grade_outcome("2H Total Goals 3.5", "Over 3.5", **scores) is False
+    assert grade_outcome("2H Total Goals 3.5", "Under 3.5", **scores) is True
+    # The full-time and first-half totals aren't confused with it.
+    assert grade_outcome("HT Total Goals 1.5", "Over 1.5", **scores) is False
+
+
+def test_second_half_total_goals_needs_the_half_time_score():
+    assert grade_outcome("2H Total Goals 0.5", "Over 0.5", home_score=1, away_score=0) is None
+
+
+def test_second_half_per_team_lines_are_not_graded_as_the_combined_total():
+    scores = dict(home_score=3, away_score=1, ht_home_score=1, ht_away_score=0)
+    assert grade_outcome("2H Home Goals 0.5", "Over 0.5", **scores) is None

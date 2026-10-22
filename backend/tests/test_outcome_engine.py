@@ -1,3 +1,4 @@
+import math
 from types import SimpleNamespace
 
 import pytest
@@ -672,3 +673,19 @@ def test_outcomes_from_prediction_skips_corners_markets_without_corners_lambdas(
     outcomes = outcomes_from_prediction(prediction)
     assert not any(o.market == "Most Corners" for o in outcomes)
     assert not any(o.market.startswith("Total Corners") for o in outcomes)
+
+
+def test_second_half_total_goals_is_a_partition_per_line_and_the_remainder_of_the_match():
+    outcomes = _ht_ft(lambda_home=1.6, lambda_away=1.1, lambda_home_ht=0.7, lambda_away_ht=0.5)
+    by_key = {(o.market, o.selection): o for o in outcomes}
+
+    for line in ("0.5", "1.5", "2.5", "3.5", "4.5"):
+        over, under = by_key[(f"2H Total Goals {line}", f"Over {line}")], by_key[(f"2H Total Goals {line}", f"Under {line}")]
+        assert over.probability + under.probability == pytest.approx(1.0)
+        assert over.mutually_exclusive_group == under.mutually_exclusive_group
+
+    # Second-half rate is 0.9 + 0.6 = 1.5 goals, so Over 0.5 sits near 1 - e^-1.5.
+    assert by_key[("2H Total Goals 0.5", "Over 0.5")].probability == pytest.approx(1 - math.exp(-1.5), abs=0.02)
+    # Higher lines are strictly harder to clear.
+    overs = [by_key[(f"2H Total Goals {l}", f"Over {l}")].probability for l in ("0.5", "1.5", "2.5", "3.5", "4.5")]
+    assert overs == sorted(overs, reverse=True)
