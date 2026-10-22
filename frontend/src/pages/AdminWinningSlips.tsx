@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiUrl, deleteWinningSlip, fetchAdminWinningSlips, postWinningSlip, updateWinningSlip } from "../api";
 import { ErrorState } from "../components/ErrorState";
-import { resizeImage } from "../lib/imageResize";
+import { readAsDataUrl, resizeImage } from "../lib/imageResize";
 import type { SlipConversion } from "../lib/slipFromPdf";
 import type { WinningSlip } from "../types";
 
@@ -61,14 +61,17 @@ export function AdminWinningSlips() {
 
   useEffect(load, []);
 
+  // A data: URL, not a blob: one -- see readAsDataUrl for why.
   useEffect(() => {
-    if (!file) {
-      setPreview(null);
-      return;
-    }
-    const url = URL.createObjectURL(file);
-    setPreview(url);
-    return () => URL.revokeObjectURL(url);
+    setPreview(null);
+    if (!file) return;
+    let cancelled = false;
+    readAsDataUrl(file)
+      .then((url) => !cancelled && setPreview(url))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [file]);
 
   async function handlePost(e: React.FormEvent) {
