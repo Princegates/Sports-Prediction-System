@@ -123,6 +123,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/app/markets", label: "Markets" },
   { to: "/app/betcodes", label: "AI Generation" },
   { to: "/app/live", label: "Live" },
+  { to: "/app/share-win", label: "Share a win" },
 ];
 
 /** Segmented pill tab bar (top) + an avatar dropdown for every

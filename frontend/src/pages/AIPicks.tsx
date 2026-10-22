@@ -93,11 +93,9 @@ export function AIPicks() {
         <AdminPicksSection picks={adminPicks} />
         <WeeklyPicksSection picks={adminPicks} />
         <RandomPicksSection picks={adminPicks} />
-        {winningSlips.length > 0 && (
-          <section className="dashboard-wins">
-            <WinningSlipsGallery slips={winningSlips} />
-          </section>
-        )}
+        <section className="dashboard-wins">
+          <WinningSlipsGallery slips={winningSlips} />
+        </section>
       </div>
     </div>
   );

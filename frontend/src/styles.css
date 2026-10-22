@@ -6325,9 +6325,25 @@ table.admin-table {
    page (pages/AdminWinningSlips.tsx). */
 .wins-head {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin-bottom: var(--space-3, 12px);
+}
+.wins-head-text {
+  display: flex;
   flex-direction: column;
   gap: 4px;
-  margin-bottom: var(--space-3, 12px);
+  min-width: 0;
+}
+.wins-share-btn,
+.wins-share-btn:hover {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  text-decoration: none;
 }
 .wins-head h2 {
   margin: 0;
@@ -6522,4 +6538,13 @@ table.admin-table {
 .wins-status.live {
   color: var(--good);
   font-weight: 600;
+}
+
+/* Inside the app on a phone the bottom tab bar owns the bottom edge -- the
+   cookie notice sits just above it instead of covering every tab until
+   it's dismissed. */
+@media (max-width: 640px) {
+  body:has(.mobile-bottom-nav) .cookie-banner {
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  }
 }

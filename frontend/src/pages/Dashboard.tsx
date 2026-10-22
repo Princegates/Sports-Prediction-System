@@ -203,11 +203,9 @@ export function Dashboard() {
         )}
       </section>
 
-      {winningSlips.length > 0 && (
-        <section className="dashboard-wins">
-          <WinningSlipsGallery slips={winningSlips} />
-        </section>
-      )}
+      <section className="dashboard-wins">
+        <WinningSlipsGallery slips={winningSlips} />
+      </section>
 
       {/* Neither branch below can render yet without knowing hasAccess --
           without this, every visit shows a blank gap under the hero for

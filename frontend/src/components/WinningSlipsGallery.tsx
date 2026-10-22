@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiUrl } from "../api";
 import { useAuth } from "../lib/AuthContext";
+import { Trophy } from "./icons";
 import type { WinningSlip } from "../types";
 
 function wonLabel(slip: WinningSlip): string | null {
@@ -26,16 +27,25 @@ export function WinningSlipsGallery({ slips, title = "Recent winning slips" }: {
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  if (slips.length === 0) return null;
+  // Signed-in members always see the section, so "Share your win" is there
+  // to find even before anything has been posted; a visitor sees it only
+  // once there are slips to show.
+  if (slips.length === 0 && !user) return null;
 
   return (
     <div className="wins">
       <div className="wins-head">
-        <h2>{title}</h2>
-        <p className="meta" style={{ margin: 0 }}>
-          Won SportyBet slips built on our picks.{" "}
-          <Link to={user ? "/app/share-win" : "/register"}>Won with our picks? Share your slip</Link>.
-        </p>
+        <div className="wins-head-text">
+          <h2>{title}</h2>
+          <p className="meta" style={{ margin: 0 }}>
+            {slips.length > 0
+              ? "Won SportyBet slips built on our picks."
+              : "No winning slips posted yet -- won with our picks? Be the first to share yours."}
+          </p>
+        </div>
+        <Link className="btn wins-share-btn" to={user ? "/app/share-win" : "/register"}>
+          <Trophy size={16} /> Share your win
+        </Link>
       </div>
       <div className="wins-grid">
         {slips.map((s) => (
