@@ -812,3 +812,41 @@ def test_a_market_question_on_the_open_match_uses_that_match(db_session, auth_he
 
     assert body["intent"] == "match_prediction"
     assert "HT Both Teams To Score" in body["text"]
+
+
+# --- Plain-English tolerance -------------------------------------------------
+
+
+def test_a_typo_d_fixture_is_answered_and_the_guess_is_shown(db_session, auth_headers, fixture_data):
+    body = _ask("arsnal vs chelse", auth_headers)
+
+    assert body["intent"] == "match_prediction"
+    assert "I read 'arsnal' as 'arsenal'" in body["text"]
+    assert "61%" in body["text"]  # the stored btts_yes, i.e. the real prediction
+
+
+def test_one_team_gets_its_next_fixture(db_session, auth_headers, fixture_data):
+    body = _ask("will arsenal win", auth_headers)
+
+    assert body["intent"] == "match_prediction"
+    assert "Arsenal vs Chelsea" in body["text"]
+    assert not body["text"].startswith("*I read")  # nothing was guessed
+
+
+def test_one_team_with_no_upcoming_game_falls_back_to_form_and_says_so(db_session, auth_headers, fixture_data):
+    db_session.delete(fixture_data["prediction"])
+    db_session.delete(fixture_data["upcoming"])
+    db_session.commit()
+    body = _ask("arsenal next game", auth_headers)
+
+    assert "don't see an upcoming fixture for Arsenal" in body["text"]
+
+
+def test_an_unrecognised_message_offers_close_questions(db_session, auth_headers, fixture_data):
+    body = _ask("acuracy of the modle", auth_headers)
+
+    # The typos are repaired, so this is simply answered...
+    assert body["intent"] == "accuracy"
+
+    body = _ask("best corner tip", auth_headers)
+    assert body["intent"] == "best_picks"

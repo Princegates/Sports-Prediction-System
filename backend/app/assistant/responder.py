@@ -13,13 +13,14 @@ user can click through to verify is worth more than a confident tone.
 from __future__ import annotations
 
 import datetime as dt
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from sqlalchemy.orm import Session
 
 from app.timeutil import utcnow
 from app.assistant import retrieval
 from app.assistant.nlu import Intent, ParsedQuery
+from app.assistant.understanding import did_you_mean
 from app.assistant.retrieval import MatchCard
 from app.betcode.selection import DEFAULT_MARKETS, DEFAULT_MIN_PROBABILITY, select_legs_by_confidence
 from app.db.models import Prediction
@@ -1110,10 +1111,14 @@ If I don't recognize a question I'll say so rather than guess at it."""
 
 
 def _unknown(db: Session, q: ParsedQuery) -> Answer:
+    close = did_you_mean(q.raw)
+    guess = (
+        "**Did you mean one of these?**\n" + "\n".join(f"- {c}" for c in close) + "\n\n" if close else ""
+    )
     return Answer(
         text=(
             "I couldn't match that to something I can answer from the database, and I'd rather say so "
-            "than guess.\n\n"
+            "than guess.\n\n" + guess +
             "I handle fixtures and predictions (\"Arsenal vs Chelsea\", \"what's on today\"), reasoning "
             "(\"why is this favored\", \"what are the risks\"), team form and head-to-head, best picks, "
             "and questions about the model's own accuracy and methodology.\n\n"
@@ -1122,7 +1127,7 @@ def _unknown(db: Session, q: ParsedQuery) -> Answer:
         ),
         intent=Intent.UNKNOWN,
         sources=[],
-        suggestions=["What can you do?", "What are today's best picks?", "How does the model work?"],
+        suggestions=close or ["What can you do?", "What are today's best picks?", "How does the model work?"],
     )
 
 
@@ -1137,9 +1142,14 @@ def _resolve_card(db: Session, q: ParsedQuery) -> MatchCard | None:
         card = retrieval.find_match_for_teams(db, q.teams[0], q.teams[1])
         if card is not None:
             return card
-    if q.context_match_id is not None:
-        return retrieval.get_match_card(db, q.context_match_id)
-    return None
+    context_card = retrieval.get_match_card(db, q.context_match_id) if q.context_match_id is not None else None
+    if len(q.teams) == 1:
+        # One team named: the open match if it is theirs, else their next game.
+        team = q.teams[0]
+        if context_card is not None and team.name in (context_card.home_team, context_card.away_team):
+            return context_card
+        return retrieval.next_fixture_for_team(db, team)
+    return context_card
 
 
 def respond(db: Session, q: ParsedQuery, now: dt.datetime | None = None) -> Answer:
@@ -1177,6 +1187,15 @@ def respond(db: Session, q: ParsedQuery, now: dt.datetime | None = None) -> Answ
     ):
         card = _resolve_card(db, q)
         if card is None:
+            if len(q.teams) == 1:
+                # Nothing scheduled for them -- their recent form is the
+                # nearest real answer, and the reply says why it's that.
+                form = _team_form(db, q)
+                return replace(
+                    form,
+                    text=f"I don't see an upcoming fixture for {q.teams[0].name} in the imported schedule, "
+                         f"so here's how they've been playing instead.\n\n{form.text}",
+                )
             if len(q.teams) >= 2:
                 return Answer(
                     text=(

@@ -28,6 +28,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.timeutil import utcnow
+from app.assistant.understanding import understand
 from app.data.team_matching import normalize_team_name
 from app.db.models import Team
 
@@ -132,6 +133,10 @@ class ParsedQuery:
     market_names: tuple[str, ...] = ()
     market_label: str | None = None
     selection_side: str | None = None
+    # What had to be assumed to read the message -- a typo fixed, a nickname
+    # expanded (see understanding.understand). The answer shows these so a
+    # wrong guess is visible rather than silently acted on.
+    assumed: list[tuple[str, str]] = field(default_factory=list)
     raw: str = ""
 
 
@@ -143,12 +148,15 @@ _INTENT_PATTERNS: list[tuple[Intent, tuple[str, ...]]] = [
                               "life savings", "rent money", "borrow")),
     (Intent.ACCURACY, ("how accurate", "accuracy", "hit rate", "win rate", "track record",
                        "how good are you", "how reliable", "brier", "log loss", "calibrat",
-                       "backtest", "how often are you right", "are you right")),
+                       "backtest", "how often are you right", "are you right", "can i trust",
+                       "trust you", "trustworthy", "any good", "success rate", "how often do you win",
+                       "how right")),
     (Intent.METHODOLOGY, ("how do you work", "how does it work", "how does the model work",
                           "how does this work", "what model", "which model", "model work",
                           "how are predictions made", "methodology", "how do you predict",
                           "what data", "where does the data", "elo", "poisson", "ensemble",
-                          "algorithm", "machine learning", "how is this calculated")),
+                          "algorithm", "machine learning", "how is this calculated", "how do you know",
+                          "how do you decide", "how do you make", "where do you get")),
     (Intent.HEAD_TO_HEAD, ("head to head", "head-to-head", "h2h", "past meetings",
                            "previous meetings", "last time they", "when they played",
                            "history between", "record against")),
@@ -164,7 +172,9 @@ _INTENT_PATTERNS: list[tuple[Intent, tuple[str, ...]]] = [
     (Intent.BEST_PICKS, ("best pick", "best bet", "top pick", "top bet", "best selection",
                          "highest confidence", "high confidence", "safest", "strongest",
                          "most confident", "best value", "what should i back",
-                         "banker", "best today", "best tip", "top tip")),
+                         "banker", "best today", "best tip", "top tip", "what should i bet",
+                         "who should i back", "any tips", "recommend", "recommendation", "suggest",
+                         "what to bet", "what to back", "what do you like")),
     (Intent.TODAYS_CARD, ("today", "tonight", "tomorrow", "this weekend", "what's on",
                           "whats on", "fixtures", "what games", "which games",
                           "upcoming", "schedule")),
@@ -447,7 +457,7 @@ def _candidate_tokens(text: str) -> list[str]:
     return [w for w in words if len(w) >= _MIN_TOKEN_LEN and w not in _STOPWORDS]
 
 
-def resolve_teams(db: Session, text: str, limit: int = 2) -> list[Team]:
+def resolve_teams(db: Session, text: str, limit: int = 2, teams: list[Team] | None = None) -> list[Team]:
     """Find teams the user named, scored by how much of the team's own
     normalized name the message actually covers.
 
@@ -457,6 +467,10 @@ def resolve_teams(db: Session, text: str, limit: int = 2) -> list[Team]:
     inserted first. A team only qualifies if every significant token of its
     name is present, which makes the shared-token case a tie that the longer,
     more specific name wins.
+
+    A team is also found by any of its stored aliases ("Spurs", "Man Utd"),
+    each judged exactly like the name itself. ``teams`` lets a caller that
+    already loaded the table share it rather than query it again.
     """
 
     tokens = set(_candidate_tokens(text))
@@ -466,24 +480,28 @@ def resolve_teams(db: Session, text: str, limit: int = 2) -> list[Team]:
     lowered = text.lower()
     scored: list[tuple[float, int, Team]] = []
 
-    for team in db.execute(select(Team)).scalars():
-        normalized = normalize_team_name(team.name)
-        name_tokens = [t for t in re.findall(r"[a-z0-9']+", normalized) if len(t) >= _MIN_TOKEN_LEN]
-        if not name_tokens:
-            # Nothing distinctive survived normalization (e.g. a club named
-            # only "FC"); fall back to a whole-name substring check.
-            if normalized and normalized in lowered:
-                scored.append((1.0, len(normalized), team))
-            continue
+    for team in teams if teams is not None else db.execute(select(Team)).scalars():
+        best: tuple[float, int] | None = None
+        for spelling in (team.name, *(team.aliases or [])):
+            normalized = normalize_team_name(spelling)
+            name_tokens = [t for t in re.findall(r"[a-z0-9']+", normalized) if len(t) >= _MIN_TOKEN_LEN]
+            if not name_tokens:
+                # Nothing distinctive survived normalization (e.g. a club named
+                # only "FC"); fall back to a whole-name substring check.
+                if normalized and normalized in lowered:
+                    candidate = (1.0, len(normalized))
+                    best = max(best, candidate) if best else candidate
+                continue
 
-        matched = [t for t in name_tokens if t in tokens]
-        if len(matched) != len(name_tokens):
-            continue
+            if any(t not in tokens for t in name_tokens):
+                continue
 
-        # Full phrase appearing verbatim is a stronger signal than the same
-        # tokens scattered across the sentence.
-        score = 1.0 + (0.5 if normalized in lowered else 0.0)
-        scored.append((score, len(normalized), team))
+            # Full phrase appearing verbatim is a stronger signal than the same
+            # tokens scattered across the sentence.
+            candidate = (1.0 + (0.5 if normalized in lowered else 0.0), len(normalized))
+            best = max(best, candidate) if best else candidate
+        if best is not None:
+            scored.append((best[0], best[1], team))
 
     # Highest score first, then longest name (the more specific club).
     scored.sort(key=lambda row: (row[0], row[1]), reverse=True)
@@ -595,8 +613,51 @@ def _classify(text: str, has_two_teams: bool, has_one_team: bool, has_context: b
     if has_two_teams:
         return Intent.MATCH_PREDICTION
     if has_one_team:
-        return Intent.TEAM_FORM
+        return Intent.MATCH_PREDICTION if _FIXTURE_WORDS.search(text) else Intent.TEAM_FORM
     return Intent.UNKNOWN
+
+
+_EXTRA_VOCABULARY = (
+    "btts", "double", "chance", "corners", "correct", "clean", "sheet", "exact", "multigoals",
+    "halftime", "accumulator", "selections", "prediction", "predictions", "probability",
+    "bookmaker", "handicap", "against", "forecast",
+)
+_vocabulary_cache: set[str] | None = None
+
+
+def _vocabulary() -> set[str]:
+    """The words the assistant's own question patterns are built from -- what a
+    misspelling is corrected toward."""
+
+    global _vocabulary_cache
+    if _vocabulary_cache is None:
+        words: set[str] = set(_EXTRA_VOCABULARY) | _STOPWORDS
+        for _, needles in [*_INTENT_PATTERNS, *_MARKET_PATTERNS]:
+            for needle in needles:
+                words.update(w for w in re.findall(r"[a-z]+", needle.lower()) if len(w) >= 3)
+        _vocabulary_cache = words
+    return _vocabulary_cache
+
+
+def _name_tokens(teams: list[Team]) -> set[str]:
+    """Every word of every team name, alias and league -- the other thing a
+    misspelling can be corrected toward."""
+
+    names: set[str] = set()
+    for team in teams:
+        for spelling in (team.name, *(team.aliases or []), team.league or ""):
+            names.update(re.findall(r"[a-z0-9']+", _fold_accents(normalize_team_name(spelling))))
+    return {n for n in names if len(n) >= _MIN_TOKEN_LEN}
+
+
+# Words that make a message about one team a question about its next game
+# ("will arsenal win", "arsenal tonight", "chelsea next match") rather than
+# about its form.
+_FIXTURE_WORDS = re.compile(
+    r"\b(?:next|upcoming|play|plays|game|match|fixture|beat|beats|win|wins|lose|loses|score|scores|"
+    r"chance|chances|tonight|today|tomorrow|predict|prediction|predictions|outlook|expect|forecast|"
+    r"bet|bets|betting|tip|tips|back)\b"
+)
 
 
 def parse(
@@ -606,9 +667,11 @@ def parse(
     now: dt.datetime | None = None,
 ) -> ParsedQuery:
     now = now or utcnow()
-    text = message.lower().strip()
+    all_teams = list(db.execute(select(Team)).scalars())
+    understood = understand(message.lower().strip(), _vocabulary(), _name_tokens(all_teams))
+    text = understood.text
 
-    teams = resolve_teams(db, text)
+    teams = resolve_teams(db, text, teams=all_teams)
     date_from, date_to = _detect_dates(text, now)
     market = _detect_market(text)
     requested = resolve_markets(text)
@@ -628,6 +691,9 @@ def parse(
     # generic market explainer.
     if intent in (Intent.TODAYS_CARD, Intent.LIVE_STATUS) and len(teams) >= 2:
         intent = Intent.MATCH_PREDICTION if intent == Intent.TODAYS_CARD else intent
+    # One team and a day ("arsenal tonight") is that team's next game too.
+    if intent == Intent.TODAYS_CARD and len(teams) == 1:
+        intent = Intent.MATCH_PREDICTION
 
     # A market keyword with nothing else -- no team, no other intent
     # matched -- is "BTTS today" / "over 2.5 tips" / "double chance picks",
@@ -681,5 +747,6 @@ def parse(
         market_names=requested.names if requested else (),
         market_label=requested.label if requested else None,
         selection_side=requested.side if requested else None,
+        assumed=understood.assumed,
         raw=message.strip(),
     )
