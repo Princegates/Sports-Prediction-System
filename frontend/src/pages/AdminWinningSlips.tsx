@@ -2,12 +2,17 @@ import { useEffect, useState } from "react";
 import { apiUrl, deleteWinningSlip, fetchAdminWinningSlips, postWinningSlip, updateWinningSlip } from "../api";
 import { ErrorState } from "../components/ErrorState";
 import { resizeImage } from "../lib/imageResize";
+import type { SlipConversion } from "../lib/slipFromPdf";
 import type { WinningSlip } from "../types";
 
 /**
  * Admin -> Winning slips: post screenshots of won SportyBet slips. Each one
  * shows on the public home page and the member Dashboard straight away
  * (WinningSlipsGallery); hide or delete it here.
+ *
+ * A ticket saved as a PDF is converted to one image in the browser first
+ * (lib/slipFromPdf: ticket panel only, account link and IP address cut
+ * off), and its caption and win date filled in from the ticket text.
  */
 export function AdminWinningSlips() {
   const [slips, setSlips] = useState<WinningSlip[] | null>(null);
@@ -18,6 +23,34 @@ export function AdminWinningSlips() {
   const [wonOn, setWonOn] = useState("");
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [converting, setConverting] = useState(false);
+  const [conversion, setConversion] = useState<SlipConversion | null>(null);
+
+  async function pickFile(picked: File | null) {
+    setFormError(null);
+    setConversion(null);
+    setFile(null);
+    if (!picked) return;
+    const isPdf = picked.type === "application/pdf" || /\.pdf$/i.test(picked.name);
+    if (!isPdf) {
+      setFile(picked);
+      return;
+    }
+    setConverting(true);
+    try {
+      const { slipFromPdf } = await import("../lib/slipFromPdf");
+      const result = await slipFromPdf(picked);
+      setConversion(result);
+      setFile(result.file);
+      // Suggestions only -- never overwrite what the admin already typed.
+      setCaption((c) => c || result.caption);
+      setWonOn((d) => d || result.wonOn || "");
+    } catch (err) {
+      setFormError(`Couldn't convert that PDF -- ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setConverting(false);
+    }
+  }
 
   function load() {
     setError(null);
@@ -47,6 +80,7 @@ export function AdminWinningSlips() {
       const { dataUrl, width, height } = await resizeImage(file);
       await postWinningSlip({ image_data: dataUrl, caption: caption.trim(), won_on: wonOn || null, width, height });
       setFile(null);
+      setConversion(null);
       setCaption("");
       setWonOn("");
       (e.target as HTMLFormElement).reset();
@@ -83,13 +117,43 @@ export function AdminWinningSlips() {
 
       <form className="card card-pad wins-admin-form" onSubmit={handlePost}>
         <label className="setting-field">
-          <span>Screenshot</span>
-          <input type="file" accept="image/*" required onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+          <span>Screenshot or ticket PDF</span>
+          <input
+            type="file"
+            accept="image/*,application/pdf,.pdf"
+            required
+            onChange={(e) => pickFile(e.target.files?.[0] ?? null)}
+          />
         </label>
-        {preview && <img className="wins-admin-preview" src={preview} alt="Preview" />}
+        {converting && (
+          <p className="meta" role="status" style={{ margin: 0 }}>
+            Converting the PDF to an image…
+          </p>
+        )}
+        {conversion && (
+          <div className="wins-admin-conversion">
+            <strong>
+              Converted {conversion.pages} page{conversion.pages === 1 ? "" : "s"} into one image.
+            </strong>{" "}
+            Kept the ticket only -- page margins, the print footer (your account link), and everything from “Number
+            of Bets” down (transaction history, Delete Ticket, IP address) were removed. Check the preview before
+            posting.
+            {conversion.warnings.map((w) => (
+              <p key={w} className="wins-admin-warning">
+                {w}
+              </p>
+            ))}
+          </div>
+        )}
+        {preview && (
+          <div className="wins-admin-preview-box">
+            <img className="wins-admin-preview" src={preview} alt="Preview" />
+          </div>
+        )}
         <p className="setting-note" style={{ margin: 0 }}>
-          Crop out or cover anything private first -- account balance, phone number, user ID. The image is resized
-          and its photo metadata removed before upload. Long tickets are fine as one tall image.
+          A screenshot, or the ticket saved as a PDF from SportyBet (Print → Save as PDF) -- a PDF is converted
+          automatically. For a screenshot, crop out or cover anything private first: account balance, phone number,
+          user ID. Either way the image is resized and its photo metadata removed before upload.
         </p>
         <label className="setting-field">
           <span>Caption (optional)</span>
@@ -107,7 +171,7 @@ export function AdminWinningSlips() {
         </label>
         {formError && <p className="auth-error">{formError}</p>}
         <div>
-          <button className="btn" type="submit" disabled={!file || busy}>
+          <button className="btn" type="submit" disabled={!file || busy || converting}>
             {busy ? "Posting…" : "Post winning slip"}
           </button>
         </div>

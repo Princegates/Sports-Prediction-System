@@ -6447,3 +6447,47 @@ table.admin-table {
   gap: 6px;
   min-width: 0;
 }
+
+.wins-admin-preview-box {
+  max-height: 420px;
+  overflow-y: auto;
+  align-self: flex-start;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 10px);
+}
+.wins-admin-preview-box .wins-admin-preview {
+  display: block;
+  width: 260px;
+  max-width: none;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+}
+.wins-admin-conversion {
+  font-size: 0.85rem;
+  line-height: 1.45;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm, 10px);
+  background: var(--bg-surface-2);
+}
+.wins-admin-warning {
+  margin: 6px 0 0;
+  color: var(--critical);
+  font-weight: 600;
+}
+.wins-admin-form input[type="text"],
+.wins-admin-form input[type="date"] {
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 14px;
+  color: var(--text-primary);
+  font-weight: 400;
+  color-scheme: light dark;
+}
+.wins-admin-form input[type="text"]:focus,
+.wins-admin-form input[type="date"]:focus {
+  outline: none;
+  border-color: var(--accent);
+}
