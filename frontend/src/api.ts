@@ -46,6 +46,7 @@ import type {
   Landing,
   PublicFreePick,
   PublicFixtureDetail,
+  AdminWinningSlip,
   WinningSlip,
 } from "./types";
 
@@ -202,19 +203,39 @@ export function fetchWinningSlips(): Promise<WinningSlip[]> {
   return get("/api/public/winning-slips");
 }
 
-export function fetchAdminWinningSlips(): Promise<WinningSlip[]> {
+export function fetchAdminWinningSlips(): Promise<AdminWinningSlip[]> {
   return get("/api/admin/winning-slips");
 }
 
-export function postWinningSlip(body: {
+export interface WinningSlipUpload {
   image_data: string;
   caption: string;
   won_on: string | null;
   width: number;
   height: number;
-}): Promise<WinningSlip> {
+}
+
+export function postWinningSlip(body: WinningSlipUpload): Promise<WinningSlip> {
   // An image upload is bigger than anything else this client sends.
   return post("/api/admin/winning-slips", body, 60_000);
+}
+
+/** A member sharing their own win -- held for an admin's review. */
+export function shareWinningSlip(body: WinningSlipUpload): Promise<WinningSlip> {
+  return post("/api/winning-slips", body, 60_000);
+}
+
+export function fetchMyWinningSlips(): Promise<WinningSlip[]> {
+  return get("/api/winning-slips/mine");
+}
+
+export function deleteMyWinningSlip(id: number): Promise<{ message: string }> {
+  return del(`/api/winning-slips/${id}`);
+}
+
+/** A not-yet-public image as a data: URL -- yours, or any (admin). */
+export function fetchWinningSlipImageData(id: number, asAdmin: boolean): Promise<{ data_url: string }> {
+  return get(asAdmin ? `/api/admin/winning-slips/${id}/image-data` : `/api/winning-slips/${id}/image-data`);
 }
 
 export function updateWinningSlip(

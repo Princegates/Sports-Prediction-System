@@ -168,3 +168,13 @@ export function Live(props: IconProps) {
     </svg>
   );
 }
+
+export function Trophy(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M8 4h8v5a4 4 0 01-8 0V4z" />
+      <path d="M16 6h3v1a3 3 0 01-3 3M8 6H5v1a3 3 0 003 3" />
+      <path d="M12 13v4M8.5 20h7M10 17h4" />
+    </svg>
+  );
+}

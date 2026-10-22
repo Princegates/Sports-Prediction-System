@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiUrl } from "../api";
+import { useAuth } from "../lib/AuthContext";
 import type { WinningSlip } from "../types";
 
 function wonLabel(slip: WinningSlip): string | null {
@@ -19,6 +20,7 @@ function wonLabel(slip: WinningSlip): string | null {
  */
 export function WinningSlipsGallery({ slips, title = "Recent winning slips" }: { slips: WinningSlip[]; title?: string }) {
   const [open, setOpen] = useState<WinningSlip | null>(null);
+  const { user } = useAuth();
 
   useEffect(() => {
     if (!open) return;
@@ -35,7 +37,8 @@ export function WinningSlipsGallery({ slips, title = "Recent winning slips" }: {
         <h2>{title}</h2>
         <p className="meta" style={{ margin: 0 }}>
           Won SportyBet slips built on our picks. Wins are only half the story -- see the{" "}
-          <Link to="/#track-record">full track record</Link>, losses included.
+          <Link to="/#track-record">full track record</Link>, losses included.{" "}
+          <Link to={user ? "/app/share-win" : "/register"}>Won with our picks? Share your slip</Link>.
         </p>
       </div>
       <div className="wins-grid">
@@ -48,6 +51,7 @@ export function WinningSlipsGallery({ slips, title = "Recent winning slips" }: {
               width={s.width ?? undefined}
               height={s.height ?? undefined}
             />
+            {s.from_member && <span className="wins-member-tag">Shared by a member</span>}
             {(s.caption || s.won_on) && (
               <span className="wins-caption">
                 {s.caption}

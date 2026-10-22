@@ -16,6 +16,7 @@ from app.api import rate_limit
 from app.api.deps import require_active_access, require_not_paused
 from app.api.routes_access import router as access_router
 from app.api.routes_admin import router as admin_router
+from app.api.routes_winning_slips import router as winning_slips_router
 from app.api.routes_auth import router as auth_router
 from app.api.routes_betcodes import router as betcodes_router
 from app.api.routes_chat import router as chat_router
@@ -440,6 +441,7 @@ async def _security_headers(request: Request, call_next):
 app.include_router(auth_router)
 app.include_router(public_router)
 app.include_router(admin_router)
+app.include_router(winning_slips_router)
 app.include_router(settings_router)
 app.include_router(access_router)
 app.include_router(chat_router, dependencies=[Depends(require_active_access)])

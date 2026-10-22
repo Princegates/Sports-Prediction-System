@@ -37,6 +37,8 @@ export const ACTION_LABELS: Record<string, string> = {
   "winning_slip.posted": "winning slip posted",
   "winning_slip.updated": "winning slip updated",
   "winning_slip.removed": "winning slip removed",
+  "winning_slip.shared": "winning slip shared for review",
+  "winning_slip.withdrawn": "winning slip withdrawn",
 };
 
 const PAGE_SIZE = 50;

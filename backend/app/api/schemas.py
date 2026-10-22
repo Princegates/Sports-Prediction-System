@@ -1150,7 +1150,24 @@ class WinningSlipOut(BaseModel):
     width: int | None = None
     height: int | None = None
     published: bool
+    # Shared by a member rather than posted by the team.
+    from_member: bool = False
+    # "live" / "pending" (waiting for an admin) / "not_shown" (hidden or
+    # not approved).
+    status: str = "live"
     created_at: dt.datetime
+
+
+class AdminWinningSlipOut(WinningSlipOut):
+    # Who shared it -- admin review only, never on the public list.
+    submitted_by_email: str | None = None
+    submitted_by_name: str | None = None
+
+
+class WinningSlipImageDataOut(BaseModel):
+    # A data: URL, so a not-yet-public image can be shown to the admin
+    # reviewing it or the member who shared it.
+    data_url: str
 
 
 class LandingOut(BaseModel):

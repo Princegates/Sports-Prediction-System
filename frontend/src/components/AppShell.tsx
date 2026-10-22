@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Search, UserAvatar, SettingsIcon, Locked, UserFollow } from "./icons";
+import { Search, UserAvatar, SettingsIcon, Locked, UserFollow, Trophy } from "./icons";
 import { SearchCommand } from "./SearchCommand";
 import { AccountBanners } from "./AccountBanners";
 import { ChatDock } from "./ChatDock";
@@ -260,6 +260,9 @@ export function AppShell() {
                     <Locked size={16} /> Redeem access
                   </button>
                 )}
+                <button type="button" className="account-menu-item" onClick={() => navigate("/app/share-win")}>
+                  <Trophy size={16} /> Share a win
+                </button>
                 {isSuperadmin && (
                   <>
                     <button type="button" className="account-menu-item" onClick={() => navigate("/app/admin")}>

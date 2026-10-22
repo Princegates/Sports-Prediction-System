@@ -1,12 +1,17 @@
-"""Screenshots of won slips posted by an admin (see models.WinningSlip)."""
+"""Screenshots of won slips -- posted by an admin, or shared by any member
+and reviewed first (see models.WinningSlip)."""
 
 from __future__ import annotations
 
 import base64
 import binascii
 
-from app.api.schemas import WinningSlipOut
-from app.db.models import WinningSlip
+from app.api.schemas import AdminWinningSlipOut, WinningSlipOut
+from app.db.models import User, WinningSlip
+
+# How many winning slips one member can share per day -- plenty for real
+# wins, and a ceiling on anyone using it to flood the review queue.
+MEMBER_DAILY_SUBMISSIONS = 5
 
 # The browser shrinks a screenshot to ~1280px and re-encodes it before
 # upload, which lands well under this; the cap is for anything that didn't.
@@ -49,8 +54,30 @@ def decode_image(image_data: str) -> tuple[bytes, str]:
     return data, content_type
 
 
+def winning_slip_status(slip: WinningSlip) -> str:
+    if slip.published:
+        return "live"
+    return "pending" if slip.pending_review else "not_shown"
+
+
+def image_data_url(slip: WinningSlip) -> str:
+    return f"data:{slip.content_type};base64,{base64.b64encode(slip.image).decode()}"
+
+
 def winning_slip_to_schema(slip: WinningSlip) -> WinningSlipOut:
-    return WinningSlipOut(
+    return WinningSlipOut(**_fields(slip))
+
+
+def admin_winning_slip_to_schema(slip: WinningSlip, submitter: User | None) -> AdminWinningSlipOut:
+    return AdminWinningSlipOut(
+        **_fields(slip),
+        submitted_by_email=submitter.email if submitter else None,
+        submitted_by_name=submitter.name if submitter else None,
+    )
+
+
+def _fields(slip: WinningSlip) -> dict:
+    return dict(
         id=slip.id,
         caption=slip.caption or "",
         won_on=slip.won_on,
@@ -58,5 +85,7 @@ def winning_slip_to_schema(slip: WinningSlip) -> WinningSlipOut:
         width=slip.width,
         height=slip.height,
         published=slip.published,
+        from_member=bool(slip.submitted_by_member),
+        status=winning_slip_status(slip),
         created_at=slip.created_at,
     )

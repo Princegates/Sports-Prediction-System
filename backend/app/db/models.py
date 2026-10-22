@@ -590,9 +590,10 @@ class PublicFreePickSet(Base):
 
 
 class WinningSlip(Base):
-    """A screenshot of a won SportyBet slip, posted by an admin and shown on
-    the public home page and the member Dashboard (routes_public
-    .winning_slips). The image lives in the database itself -- a few hundred
+    """A screenshot of a won SportyBet slip, shown on the public home page,
+    the member Dashboard and AI Picks (routes_public.winning_slips). Posted
+    by an admin (live straight away) or shared by any member, in which case
+    it waits in ``pending_review`` until an admin approves it. The image lives in the database itself -- a few hundred
     KB each after the browser shrinks it (lib/imageResize.ts) -- so it
     survives redeploys on hosts with no persistent disk. Never edited in
     place, which is what lets its URL be cached forever."""
@@ -607,6 +608,8 @@ class WinningSlip(Base):
     caption: Mapped[str] = mapped_column(String(200), default="")
     won_on: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
     published: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    pending_review: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    submitted_by_member: Mapped[bool] = mapped_column(Boolean, default=False)
     created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
 

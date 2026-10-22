@@ -130,6 +130,10 @@ _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     # Per-user override of the global ai_generation_daily_limit setting --
     # see User.daily_ai_generation_limit_override / app.ai_generation_quota.
     ("users", "daily_ai_generation_limit_override", "INTEGER"),
+    # Winning slips any member can share, held for review before they show
+    # (see models.WinningSlip).
+    ("winning_slips", "pending_review", "BOOLEAN DEFAULT FALSE"),
+    ("winning_slips", "submitted_by_member", "BOOLEAN DEFAULT FALSE"),
 ]
 
 

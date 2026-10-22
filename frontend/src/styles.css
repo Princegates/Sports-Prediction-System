@@ -6491,3 +6491,35 @@ table.admin-table {
   outline: none;
   border-color: var(--accent);
 }
+
+.wins-thumb {
+  position: relative;
+}
+.wins-member-tag {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+.wins-review {
+  margin: 16px 0 24px;
+  padding: 14px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm, 10px);
+}
+.wins-review h2 {
+  margin: 0 0 4px;
+}
+.wins-status.pending {
+  color: var(--accent);
+  font-weight: 600;
+}
+.wins-status.live {
+  color: var(--good);
+  font-weight: 600;
+}

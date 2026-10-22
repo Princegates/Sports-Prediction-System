@@ -318,7 +318,16 @@ export interface WinningSlip {
   width: number | null;
   height: number | null;
   published: boolean;
+  /** Shared by a member rather than posted by the team. */
+  from_member: boolean;
+  /** "pending" = waiting for an admin; "not_shown" = hidden or declined. */
+  status: "live" | "pending" | "not_shown";
   created_at: string;
+}
+
+export interface AdminWinningSlip extends WinningSlip {
+  submitted_by_email: string | null;
+  submitted_by_name: string | null;
 }
 
 /** Everything the public home page shows -- GET /api/public/landing. */

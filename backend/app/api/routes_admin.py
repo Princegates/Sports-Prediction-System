@@ -39,6 +39,8 @@ from app.api.schemas import (
     PublicTeaserPickOut,
     RevokeCodeIn,
     RevokeGrantIn,
+    AdminWinningSlipOut,
+    WinningSlipImageDataOut,
     WinningSlipIn,
     WinningSlipOut,
     WinningSlipUpdateIn,
@@ -50,7 +52,7 @@ from app.betcode.selection import price_legs, resolve_legs_unpriced
 from app.config import get_settings
 from app import mailer, track_record
 from app.db.models import AccessCode, AccessGrant, AdminPick, AuditLog, BookingSlip, ChatMessage, FeaturedPick, LivePrediction, Match, Prediction, User, WinningSlip
-from app.winning_slips import WinningSlipImageError, decode_image, winning_slip_to_schema
+from app.winning_slips import WinningSlipImageError, admin_winning_slip_to_schema, decode_image, image_data_url, winning_slip_to_schema
 from app.outcomes.registry import find_outcome
 from app.pick_settlement import frozen_admin_pick_legs, settle_admin_pick, settle_booking_slip, settle_featured_pick
 
@@ -243,10 +245,27 @@ def delete_user(user_id: int, admin: User = Depends(require_superadmin), db: Ses
 # --- Winning slips (screenshots of won bets) ---------------------------------
 
 
-@router.get("/winning-slips", response_model=list[WinningSlipOut])
-def list_winning_slips(db: Session = Depends(get_db)) -> list[WinningSlipOut]:
-    rows = db.execute(select(WinningSlip).order_by(WinningSlip.created_at.desc(), WinningSlip.id.desc())).scalars()
-    return [winning_slip_to_schema(s) for s in rows]
+@router.get("/winning-slips", response_model=list[AdminWinningSlipOut])
+def list_winning_slips(db: Session = Depends(get_db)) -> list[AdminWinningSlipOut]:
+    """Everything, members' submissions waiting for review first."""
+
+    rows = list(db.execute(
+        select(WinningSlip).order_by(
+            WinningSlip.pending_review.desc(), WinningSlip.created_at.desc(), WinningSlip.id.desc()
+        )
+    ).scalars())
+    submitter_ids = {s.created_by_user_id for s in rows if s.created_by_user_id}
+    submitters = (
+        {u.id: u for u in db.execute(select(User).where(User.id.in_(submitter_ids))).scalars()} if submitter_ids else {}
+    )
+    return [admin_winning_slip_to_schema(s, submitters.get(s.created_by_user_id)) for s in rows]
+
+
+@router.get("/winning-slips/{slip_id}/image-data", response_model=WinningSlipImageDataOut)
+def winning_slip_image_data(slip_id: int, db: Session = Depends(get_db)) -> WinningSlipImageDataOut:
+    """Any slip's image, published or not -- what a reviewer looks at."""
+
+    return WinningSlipImageDataOut(data_url=image_data_url(_get_winning_slip(slip_id, db)))
 
 
 @router.post("/winning-slips", response_model=WinningSlipOut)
@@ -287,7 +306,9 @@ def update_winning_slip(
     if "won_on" in changes:
         slip.won_on = changes["won_on"]
     if changes.get("published") is not None:
+        # Showing it approves it; hiding it, while it waits, declines it.
         slip.published = changes["published"]
+        slip.pending_review = False
     _record(db, admin, "winning_slip.updated", None, {"winning_slip_id": slip.id, **{k: str(v) for k, v in changes.items()}})
     db.commit()
     db.refresh(slip)
