@@ -10,13 +10,10 @@ function wonLabel(slip: WinningSlip): string | null {
 }
 
 /**
- * Screenshots of won SportyBet slips an admin has posted (Admin -> Winning
- * slips), as a thumbnail grid; tap one to see it full size. Shown on the
- * public home page and the member Dashboard.
- *
- * Always paired with a pointer to the full graded record: a gallery of wins
- * on its own says nothing about the losses, and the site's whole pitch is
- * that it shows both.
+ * Screenshots of won SportyBet slips -- posted by the team, or shared by
+ * members and approved (Admin -> Winning slips) -- as a thumbnail grid; tap
+ * one to see it full size. Shown on the public home page, the member
+ * Dashboard and AI Picks.
  */
 export function WinningSlipsGallery({ slips, title = "Recent winning slips" }: { slips: WinningSlip[]; title?: string }) {
   const [open, setOpen] = useState<WinningSlip | null>(null);
@@ -36,8 +33,7 @@ export function WinningSlipsGallery({ slips, title = "Recent winning slips" }: {
       <div className="wins-head">
         <h2>{title}</h2>
         <p className="meta" style={{ margin: 0 }}>
-          Won SportyBet slips built on our picks. Wins are only half the story -- see the{" "}
-          <Link to="/#track-record">full track record</Link>, losses included.{" "}
+          Won SportyBet slips built on our picks.{" "}
           <Link to={user ? "/app/share-win" : "/register"}>Won with our picks? Share your slip</Link>.
         </p>
       </div>
