@@ -92,6 +92,11 @@ def compose(
                 # field added to Answer later can't be silently dropped
                 # here the way one already was.
                 result = replace(result, text=rewritten_text, rewritten=True)
+    if parsed.assumed and not result.general_chat:
+        # Show the guesses made reading the message (see understanding), so a
+        # wrong one is visible. Added after any rewrite so it is never lost.
+        note = "*I read " + "; ".join(f"'{a}' as '{b}'" for a, b in parsed.assumed) + ".*"
+        result = replace(result, text=f"{note}\n\n{result.text}")
     return result
 
 

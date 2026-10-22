@@ -12,7 +12,7 @@ import datetime as dt
 
 import pytest
 
-from app.assistant.nlu import Intent, parse, resolve_league, resolve_teams
+from app.assistant.nlu import Intent, parse, resolve_league, resolve_markets, resolve_teams
 from app.db.models import Team
 
 LEAGUE = "English Premier League"
@@ -323,3 +323,61 @@ def test_market_keyword_with_a_team_named_is_still_a_match_question(db_session, 
     assert parsed.intent == Intent.MATCH_PREDICTION
     assert parsed.market == "btts"
     assert parse(db_session, "over 2.5 goals arsenal chelsea").market == "over_under"
+
+
+# --- Specific markets ---------------------------------------------------
+
+
+@pytest.mark.parametrize("text, names, side", [
+    ("2nd half over 1.5", ("2H Total Goals 1.5",), "Over"),
+    ("second half under 2.5 goals", ("2H Total Goals 2.5",), "Under"),
+    ("1st half goals", ("HT Total Goals 0.5", "HT Total Goals 1.5"), None),
+    ("over 1.5 goals", ("Total Goals 1.5",), "Over"),
+    ("first half btts", ("HT Both Teams To Score",), None),
+    ("2nd half result", ("2H Result",), None),
+    ("half time double chance", ("HT Double Chance",), None),
+    ("corners over 10.5", ("Total Corners 10.5",), "Over"),
+    ("most corners", ("Most Corners",), None),
+    ("ht/ft", ("HT/FT",), None),
+    ("which half has the most goals", ("Half With Most Goals",), None),
+    ("odd or even goals", ("Total Goals Odd/Even",), None),
+    ("win both halves", ("Home Team To Win Both Halves", "Away Team To Win Both Halves"), None),
+    ("clean sheet", ("Home Clean Sheet", "Away Clean Sheet"), None),
+])
+def test_resolves_the_specific_market_a_message_names(text, names, side):
+    found = resolve_markets(text)
+    assert found is not None and found.names == names and found.side == side
+
+
+@pytest.mark.parametrize("text", [
+    "what's on today", "did i win", "the game is over", "over the weekend", "hello",
+    "how are you", "arsenal chelsea",
+])
+def test_ordinary_words_do_not_name_a_market(text):
+    assert resolve_markets(text) is None
+
+
+def test_a_line_the_registry_does_not_price_falls_back_to_the_defaults():
+    """There is no 7.5 first-half line; inventing "HT Total Goals 7.5" would
+    name a market that matches nothing."""
+
+    assert resolve_markets("1st half over 7.5").names == ("HT Total Goals 0.5", "HT Total Goals 1.5")
+
+
+def test_a_market_and_a_day_is_a_picks_request_not_the_days_card(db_session, teams):
+    parsed = parse(db_session, "2nd half over 1.5 today")
+    assert parsed.intent == Intent.BEST_PICKS
+    assert parsed.market_names == ("2H Total Goals 1.5",)
+    assert parsed.selection_side == "Over"
+
+
+def test_named_teams_and_a_specific_market_stay_a_fixture_question(db_session, teams):
+    parsed = parse(db_session, "arsenal vs chelsea 2nd half over 1.5")
+    assert parsed.intent == Intent.MATCH_PREDICTION
+    assert parsed.market_names == ("2H Total Goals 1.5",)
+
+
+def test_a_market_question_with_a_match_open_is_about_that_match(db_session, teams):
+    assert parse(db_session, "what about 2nd half goals?", context_match_id=1).intent == Intent.MATCH_PREDICTION
+    # ...but asking for a ranking still gets one.
+    assert parse(db_session, "best 2nd half goals tips", context_match_id=1).intent == Intent.BEST_PICKS
