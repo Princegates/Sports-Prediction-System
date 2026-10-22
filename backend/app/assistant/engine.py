@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.timeutil import utcnow
 from app import app_settings
-from app.assistant import llm, nlu, responder
+from app.assistant import llm, memory, nlu, responder
 from app.assistant.responder import Answer
 from app.db.models import ChatMessage
 
@@ -74,6 +74,8 @@ def compose(
 
     text = _validate(message)
     parsed = nlu.parse(db, text, context_match_id=context_match_id, now=now)
+    if user_id is not None and memory.needs_memory(text, parsed, context_match_id):
+        parsed = memory.carry_over(db, parsed, text, memory.recall(db, user_id, now), now=now)
     result = responder.respond(db, parsed, now=now)
 
     if allow_rewrite and llm.is_enabled(db) and (user_id is None or llm_quota_left(db, user_id)):
@@ -92,11 +94,15 @@ def compose(
                 # field added to Answer later can't be silently dropped
                 # here the way one already was.
                 result = replace(result, text=rewritten_text, rewritten=True)
-    if parsed.assumed and not result.general_chat:
-        # Show the guesses made reading the message (see understanding), so a
-        # wrong one is visible. Added after any rewrite so it is never lost.
-        note = "*I read " + "; ".join(f"'{a}' as '{b}'" for a, b in parsed.assumed) + ".*"
-        result = replace(result, text=f"{note}\n\n{result.text}")
+    notes = []
+    if parsed.carried:
+        notes.append("*Following on from: " + "; ".join(parsed.carried) + ".*")
+    if parsed.assumed:
+        notes.append("*I read " + "; ".join(f"'{a}' as '{b}'" for a, b in parsed.assumed) + ".*")
+    if notes and not result.general_chat:
+        # Show what was guessed or carried over (see understanding, memory), so
+        # a wrong guess is visible. Added after any rewrite so it is never lost.
+        result = replace(result, text="\n".join(notes) + f"\n\n{result.text}")
     return result
 
 
