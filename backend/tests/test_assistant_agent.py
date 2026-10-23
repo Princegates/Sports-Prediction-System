@@ -367,6 +367,17 @@ def test_effort_is_sent_only_to_models_that_accept_it_and_sampling_never(db_sess
     assert "output_config" not in fake.requests[0]
 
 
+def test_the_default_model_is_haiku_until_an_admin_chooses_another(db_session, monkeypatch):
+    fake = FakeClaude(reply(text("a")))
+    monkeypatch.setattr(agent, "_client", lambda values: fake)
+    app_settings.set_values(db_session, {"assistant_agent_enabled": True, "assistant_agent_api_key": "sk-ant-test"})
+
+    run(db_session)
+
+    assert fake.requests[0]["model"] == "claude-haiku-5-5"
+    assert fake.beta_requests == []  # no server-side fallback exists for Haiku, so none is asked for
+
+
 def test_the_prompt_and_tools_are_stable_so_they_can_be_cached(db_session, claude):
     fake = claude(reply(text("a")), reply(text("b")))
     run(db_session)
