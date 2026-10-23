@@ -850,3 +850,78 @@ def test_an_unrecognised_message_offers_close_questions(db_session, auth_headers
 
     body = _ask("best corner tip", auth_headers)
     assert body["intent"] == "best_picks"
+
+
+# --- Conversation memory ----------------------------------------------------
+
+
+def test_why_after_a_match_answer_is_about_that_match(db_session, auth_headers, fixture_data):
+    _ask("arsenal vs chelsea", auth_headers)
+    body = _ask("why is this favored?", auth_headers)  # no match open in the UI, none named
+
+    assert body["intent"] == "explain_reasoning"
+    assert "Following on from: Arsenal vs Chelsea" in body["text"]
+    assert "Elo edge" in body["text"]  # the stored explanation for that match
+
+
+def test_a_market_follow_up_is_answered_for_the_match_just_discussed(db_session, auth_headers, fixture_data):
+    _with_half_time_rates(db_session, fixture_data)
+    _ask("arsenal vs chelsea", auth_headers)
+    body = _ask("and the 2nd half over 1.5?", auth_headers)
+
+    assert body["intent"] == "match_prediction"
+    assert "Following on from: Arsenal vs Chelsea" in body["text"]
+    assert "2H Total Goals 1.5" in body["text"]
+
+
+def test_a_day_follow_up_keeps_the_previous_question(db_session, auth_headers, fixture_data):
+    _ask("best picks today", auth_headers)
+    body = _ask("what about tomorrow?", auth_headers)
+
+    assert body["intent"] == "best_picks"  # not the day's fixture card
+    assert "Following on from" in body["text"]
+
+
+def test_memory_expires(db_session, auth_headers, fixture_data):
+    _ask("arsenal vs chelsea", auth_headers)
+    for row in db_session.query(ChatMessage).all():
+        row.created_at = row.created_at - dt.timedelta(hours=2)
+    db_session.commit()
+
+    body = _ask("why is this favored?", auth_headers)
+
+    assert "Following on from" not in body["text"]
+    assert body["intent"] == "best_picks"  # the stateless fallback, as before
+
+
+def test_a_fresh_question_is_not_bent_by_memory(db_session, auth_headers, fixture_data):
+    _ask("arsenal vs chelsea", auth_headers)
+    body = _ask("how does the model work?", auth_headers)
+
+    assert body["intent"] == "methodology"
+    assert "Following on from" not in body["text"]
+
+
+def test_a_list_answer_leaves_no_single_match_to_follow(db_session, auth_headers, fixture_data):
+    """"Why is this favored?" after a list of picks has no one match to mean."""
+
+    upcoming = fixture_data["upcoming"]
+    db_session.add(Match(
+        league=LEAGUE, season="2025-26", date=upcoming.date + dt.timedelta(minutes=1),
+        home_team_id=fixture_data["away"].id, away_team_id=fixture_data["home"].id, status="SCHEDULED",
+    ))
+    db_session.commit()
+    first = _ask("what fixtures are on today?", auth_headers)
+    assert len([s for s in first["sources"] if s["kind"] == "match"]) > 1
+
+    body = _ask("what are the risks?", auth_headers)
+
+    assert "Following on from" not in body["text"]
+
+
+def test_naming_a_team_beats_memory(db_session, auth_headers, fixture_data):
+    _ask("arsenal vs chelsea", auth_headers)
+    body = _ask("arsenal form", auth_headers)
+
+    assert body["intent"] == "team_form"
+    assert "Following on from" not in body["text"]

@@ -137,6 +137,9 @@ class ParsedQuery:
     # expanded (see understanding.understand). The answer shows these so a
     # wrong guess is visible rather than silently acted on.
     assumed: list[tuple[str, str]] = field(default_factory=list)
+    # What was inherited from earlier in the conversation (see memory.py): a
+    # match, a day, a market. Shown on the answer so it is never silent.
+    carried: list[str] = field(default_factory=list)
     raw: str = ""
 
 
@@ -658,6 +661,15 @@ _FIXTURE_WORDS = re.compile(
     r"chance|chances|tonight|today|tomorrow|predict|prediction|predictions|outlook|expect|forecast|"
     r"bet|bets|betting|tip|tips|back)\b"
 )
+
+
+def intent_if_match_open(message: str) -> Intent:
+    """What a message would mean with a match open in the UI -- "why is this
+    favored?" is a request to explain a match, though with none to explain
+    ``parse`` quietly turns it into best-picks. Conversation memory uses this
+    to tell a question about the match just discussed from a general one."""
+
+    return _classify(message.lower().strip(), has_two_teams=False, has_one_team=False, has_context=True)
 
 
 def parse(
