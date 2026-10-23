@@ -14,6 +14,7 @@ const AccountStatus = lazy(() => import("./pages/AccountStatus").then((m) => ({ 
 const ActivityLog = lazy(() => import("./pages/ActivityLog").then((m) => ({ default: m.ActivityLog })));
 const AdminUsers = lazy(() => import("./pages/AdminUsers").then((m) => ({ default: m.AdminUsers })));
 const MyWinningSlips = lazy(() => import("./pages/MyWinningSlips").then((m) => ({ default: m.MyWinningSlips })));
+const AdminBanner = lazy(() => import("./pages/AdminBanner").then((m) => ({ default: m.AdminBanner })));
 const AdminWinningSlips = lazy(() => import("./pages/AdminWinningSlips").then((m) => ({ default: m.AdminWinningSlips })));
 const AIPicks = lazy(() => import("./pages/AIPicks").then((m) => ({ default: m.AIPicks })));
 const BetCodes = lazy(() => import("./pages/BetCodes").then((m) => ({ default: m.BetCodes })));
@@ -114,6 +115,7 @@ export default function App() {
               <Route path="admin/activity-log" element={<ActivityLog />} />
               <Route path="admin/settings" element={<Settings />} />
               <Route path="admin/winning-slips" element={<AdminWinningSlips />} />
+              <Route path="admin/banner" element={<AdminBanner />} />
             </Route>
           </Route>
         </Route>

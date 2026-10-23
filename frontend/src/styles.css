@@ -6548,3 +6548,126 @@ table.admin-table {
     bottom: calc(76px + env(safe-area-inset-bottom, 0px));
   }
 }
+
+/* ==========================================================================
+   NEWS BANNER -- the scrolling headline strip under the top bar. Sponsored
+   slides use the same markup with a "Sponsored" chip; see NewsBanner.tsx.
+   ========================================================================== */
+.news-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 var(--space-4, 16px);
+  padding: 6px 8px 6px 14px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill, 999px);
+  overflow: hidden;
+}
+.nb-title {
+  flex: none;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.nb-viewport {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  /* Fade the strip's ends so slides slide in and out rather than being cut. */
+  mask-image: linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+}
+.nb-track {
+  display: flex;
+  width: max-content;
+  animation: nb-scroll linear infinite;
+}
+.nb-copy {
+  display: flex;
+}
+.nb-viewport:hover .nb-track,
+.nb-viewport:focus-within .nb-track {
+  animation-play-state: paused;
+}
+@keyframes nb-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.nb-slide {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 2px 22px 2px 0;
+  font-size: 13px;
+  color: var(--text-primary);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.nb-slide::after {
+  content: "";
+  width: 4px;
+  height: 4px;
+  margin-left: 14px;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+.nb-slide:hover .nb-headline,
+.nb-slide:focus-visible .nb-headline {
+  text-decoration: underline;
+}
+.nb-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.nb-chip {
+  padding: 1px 7px;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.nb-ad .nb-label {
+  color: var(--text-secondary);
+}
+.nb-cta {
+  padding: 1px 9px;
+  border-radius: var(--radius-pill, 999px);
+  border: 1px solid var(--accent);
+  color: var(--accent-strong);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.nb-close {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.nb-close:hover {
+  background: var(--accent-soft);
+  color: var(--text-primary);
+}
+/* Reduce motion: no scrolling; the strip becomes a row the member scrolls by hand. */
+@media (prefers-reduced-motion: reduce) {
+  .nb-track { animation: none; }
+  .nb-viewport { overflow-x: auto; mask-image: none; -webkit-mask-image: none; }
+  .nb-copy { display: none; }
+}
+@media (max-width: 640px) {
+  .nb-title { display: none; }
+  .news-banner { border-radius: var(--radius-md); padding-left: 10px; }
+}

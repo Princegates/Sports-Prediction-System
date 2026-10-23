@@ -310,6 +310,38 @@ class AccessRedemption(Base):
     redeemed_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
+class BannerItem(Base):
+    """A sponsored slide in the app's news banner -- the slot third parties
+    can be sold. Text only, deliberately: the site's content-security policy
+    allows images from the site itself and a short list of hosts, so an
+    advertiser's own image would simply not load, and text can't carry a
+    tracking pixel. Always shown labelled "Sponsored" (see app.banner).
+
+    ``impressions`` and ``clicks`` are counted when a member's browser reports
+    the slide shown or clicked -- an indication for the advertiser's report,
+    not an audited figure.
+    """
+
+    __tablename__ = "banner_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sponsor: Mapped[str] = mapped_column(String(80))
+    headline: Mapped[str] = mapped_column(String(140))
+    body: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    cta_label: Mapped[str] = mapped_column(String(40), default="Learn more")
+    link_url: Mapped[str] = mapped_column(String(500))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Shown only inside this window; either end may be open.
+    starts_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    ends_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    # Lower first when several are live at once.
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    impressions: Mapped[int] = mapped_column(Integer, default=0)
+    clicks: Mapped[int] = mapped_column(Integer, default=0)
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class MatchTeamNews(Base):
     """Cached injuries and confirmed lineups for one match, from API-Football.
 
