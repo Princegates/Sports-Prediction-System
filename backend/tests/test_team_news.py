@@ -174,7 +174,9 @@ def test_a_cached_answer_for_a_finished_match_is_still_shown(db_session, match, 
 
 
 def test_the_daily_cap_stops_requests_and_serves_the_cache(db_session, match, provider, monkeypatch):
-    now = utcnow()
+    # Mid-morning, so the +7h below stays on the same calendar day: the cap
+    # correctly resets at midnight, and this test must not depend on what time it runs.
+    now = utcnow().replace(hour=8, minute=0, second=0, microsecond=0)
     team_news.injuries_for(db_session, match, now)
     monkeypatch.setattr(team_news, "_client", lambda db: (provider, 1))  # cap of one call a day: spent
     provider.calls.clear()

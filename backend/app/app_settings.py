@@ -267,6 +267,44 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 "allowance for everyone, or running up a bill on a paid one.",
                 default=30, minimum=1, maximum=1000),
 
+    # --- Guda smart mode (Claude) ---------------------------------------------
+    SettingSpec("assistant_agent_enabled", "bool", "assistant", "Smart mode (Claude)",
+                "Off by default. On, Guda hands each question to Claude, which works out what is being "
+                "asked and looks up exactly the data it needs -- fixtures, predictions, any of the ~100 "
+                "markets, form, head-to-head, team news, the model's accuracy, slips -- then answers "
+                "from those results only (any percentage it states is checked against them). Handles "
+                "typos, slang and follow-ups, and compound questions the built-in pipeline can't. If "
+                "Claude is slow, unreachable or over its limits, Guda answers from the built-in "
+                "pipeline instead, so it never goes silent. Bills your Anthropic account per question.",
+                env_attr="assistant_agent_enabled"),
+    SettingSpec("assistant_agent_api_key", "str", "assistant", "Anthropic API key",
+                "From console.anthropic.com -> API keys. A separate account from claude.ai chat "
+                "subscriptions; usage is billed there.",
+                secret=True, env_attr="assistant_agent_api_key"),
+    SettingSpec("assistant_agent_model", "str", "assistant", "Claude model",
+                "claude-opus-5-5 is the most capable -- roughly 5 to 12 US cents a question (a question "
+                "that looks several things up resends its context at each step); claude-sonnet-5-5 is "
+                "about half that and still strong; claude-haiku-5-5 is a fraction of a cent, fast, with "
+                "less depth on hard questions. Estimates -- watch your Anthropic usage page. The daily "
+                "limits below cap the spend.",
+                env_attr="assistant_agent_model"),
+    SettingSpec("assistant_agent_effort", "str", "assistant", "Thinking effort",
+                "How hard Claude thinks before answering: low is quickest and cheapest, high is the "
+                "most thorough. Medium suits most questions.",
+                choices=("low", "medium", "high"), env_attr="assistant_agent_effort"),
+    SettingSpec("assistant_agent_daily_per_user", "int", "assistant", "Smart-mode questions per user per day",
+                "After this many in 24 hours a user's questions are answered by the built-in pipeline "
+                "instead. Smart mode costs real money per question, so keep this modest.",
+                default=10, minimum=1, maximum=1000),
+    SettingSpec("assistant_agent_daily_total", "int", "assistant", "Smart-mode questions per day, whole site",
+                "A ceiling on the day's bill: once this many smart-mode answers have been given in 24 "
+                "hours, everyone falls back to the built-in pipeline until the count drops. With "
+                "Opus at roughly 10 cents a question, 300 caps a day near $30.",
+                default=300, minimum=1, maximum=100000),
+    SettingSpec("assistant_agent_timeout", "float", "assistant", "Smart-mode time limit (seconds)",
+                "Longest a single Claude call may take before Guda falls back to the built-in answer.",
+                env_attr="assistant_agent_timeout", minimum=10, maximum=170),
+
     # --- Guda Picks ----------------------------------------------------------
     SettingSpec("guda_picks_enabled", "bool", "picks", "Show Guda Picks",
                 "A dashboard section for outcomes a Super Admin has chosen to highlight -- "
