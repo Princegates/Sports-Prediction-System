@@ -35,6 +35,7 @@ import { RadialGauge } from "../components/RadialGauge";
 import { ScoreHeatmap } from "../components/ScoreHeatmap";
 import { ShareButton } from "../components/ShareButton";
 import { Tabs } from "../components/Tabs";
+import { TeamNewsPanel } from "../components/TeamNewsPanel";
 import { TeamComparison } from "../components/TeamComparison";
 import { formatSelection } from "../lib/copySelections";
 import { isHotPick } from "../lib/filters";
@@ -53,7 +54,7 @@ import type {
 } from "../types";
 import { marketLabel } from "../lib/marketLabel";
 
-const TAB_NAMES = ["Overview", "AI Prediction", "Form", "H2H", "Live", "Markets", "Explanation"];
+const TAB_NAMES = ["Overview", "AI Prediction", "Form", "H2H", "Team news", "Live", "Markets", "Explanation"];
 
 export function MatchDetail() {
   const { user } = useAuth();
@@ -408,6 +409,10 @@ export function MatchDetail() {
             </div>
           )}
         </div>
+      )}
+
+      {tab === "Team news" && (
+        <TeamNewsPanel matchId={matchId} homeName={match.home_team.name} awayName={match.away_team.name} />
       )}
 
       {tab === "Live" && (

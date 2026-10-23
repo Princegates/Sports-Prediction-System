@@ -310,6 +310,33 @@ class AccessRedemption(Base):
     redeemed_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
+class MatchTeamNews(Base):
+    """Cached injuries and confirmed lineups for one match, from API-Football.
+
+    A page view must not be a provider request: the key's daily budget is
+    shared with the fixture import and the live poll, and one popular match
+    opened a hundred times would otherwise spend a hundred requests for the
+    same answer. So the first view fetches and every view after reads this row
+    until it goes stale (see app.team_news for how long that is).
+
+    ``None`` means never fetched; ``[]``/``{}`` is a real "nothing to report"
+    answer (no injuries, lineups not published yet). ``calls_made`` on
+    ``calls_day`` is this feature's own request count, summed to hold it under
+    its share of the daily budget -- see app.team_news.
+    """
+
+    __tablename__ = "match_team_news"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    match_id: Mapped[int] = mapped_column(ForeignKey("matches.id", ondelete="CASCADE"), unique=True, index=True)
+    injuries: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    injuries_fetched_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    lineups: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    lineups_fetched_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    calls_day: Mapped[dt.date | None] = mapped_column(Date, nullable=True, index=True)
+    calls_made: Mapped[int] = mapped_column(Integer, default=0)
+
+
 class Team(Base):
     __tablename__ = "teams"
 

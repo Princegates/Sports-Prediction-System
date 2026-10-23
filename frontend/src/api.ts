@@ -28,6 +28,7 @@ import type {
   HeadToHeadMatch,
   LivePrediction,
   MatchHistoryEntry,
+  MatchLineups,
   MatchStatistics,
   MatchSummary,
   Prediction,
@@ -39,7 +40,7 @@ import type {
   Team,
   TeamForm,
   TokenResponse,
-  UnavailableResource,
+  TeamNews,
   User,
   ReferralStats,
   VerificationStatus,
@@ -824,11 +825,11 @@ export function fetchStatistics(matchId: number): Promise<MatchStatistics> {
   return get(`/api/matches/${matchId}/statistics`);
 }
 
-export function fetchLineup(matchId: number): Promise<UnavailableResource> {
+export function fetchLineup(matchId: number): Promise<MatchLineups> {
   return get(`/api/matches/${matchId}/lineup`);
 }
 
-export function fetchNews(matchId: number): Promise<UnavailableResource> {
+export function fetchNews(matchId: number): Promise<TeamNews> {
   return get(`/api/matches/${matchId}/news`);
 }
 

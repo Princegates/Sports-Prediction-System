@@ -174,6 +174,44 @@ export interface UnavailableResource {
   reason: string;
 }
 
+/** A player ruled out or doubtful for a match (API-Football's own wording). */
+export interface InjuredPlayer {
+  name: string;
+  /** "Missing Fixture" (out) or "Questionable" (doubt). */
+  type: string | null;
+  reason: string | null;
+}
+
+export interface TeamNews {
+  status: "ok" | "unavailable";
+  reason: string | null;
+  home: InjuredPlayer[];
+  away: InjuredPlayer[];
+  updated_at: string | null;
+}
+
+export interface LineupPlayer {
+  name: string;
+  number: number | null;
+  pos: string | null;
+}
+
+export interface TeamLineup {
+  formation: string | null;
+  coach: string | null;
+  start_xi: LineupPlayer[];
+  substitutes: LineupPlayer[];
+}
+
+export interface MatchLineups {
+  /** "pending" until the clubs submit them, about an hour before kickoff. */
+  status: "ok" | "pending" | "unavailable";
+  reason: string | null;
+  home: TeamLineup | null;
+  away: TeamLineup | null;
+  updated_at: string | null;
+}
+
 // --- AI assistant chat ----------------------------------------------------
 
 export interface ChatSource {
