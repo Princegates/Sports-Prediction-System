@@ -124,6 +124,9 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/app/betcodes", label: "AI Generation" },
   { to: "/app/live", label: "Live" },
   { to: "/app/share-win", label: "Share a win" },
+  // Super Admins never need one (their access is unlimited), so it is left
+  // out of their tab row -- see the filter where the tabs are rendered.
+  { to: "/app/access", label: "Access code" },
 ];
 
 /** Segmented pill tab bar (top) + an avatar dropdown for every
@@ -203,7 +206,7 @@ export function AppShell() {
         </NavLink>
 
         <nav className="topbar-tabs" aria-label="Primary">
-          {NAV_ITEMS.map((item) => (
+          {NAV_ITEMS.filter((item) => item.to !== "/app/access" || !isSuperadmin).map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -256,9 +259,9 @@ export function AppShell() {
                 <button type="button" className="account-menu-item" onClick={() => navigate("/app/profile")}>
                   <UserAvatar size={16} /> Profile
                 </button>
-                {needsAccess && (
+                {!isSuperadmin && (
                   <button type="button" className="account-menu-item" onClick={() => navigate("/app/access")}>
-                    <Locked size={16} /> Redeem access
+                    <Locked size={16} /> {needsAccess ? "Redeem access" : "Access code"}
                   </button>
                 )}
                 <button type="button" className="account-menu-item" onClick={() => navigate("/app/share-win")}>
