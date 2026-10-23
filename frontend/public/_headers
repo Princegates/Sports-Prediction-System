@@ -46,3 +46,9 @@
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
   Strict-Transport-Security: max-age=31536000; includeSubDomains
   Content-Security-Policy: default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://*.onrender.com https://api.soccaintel.com https://media.api-sports.io; connect-src 'self' https://*.onrender.com https://api.soccaintel.com https://cloudflareinsights.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
+
+# The landing page's promo video: large and unchanging, so let browsers and
+# the CDN keep it a day rather than refetching it on every visit. (Range
+# requests, which video seeking needs, are served by Pages already.)
+/videos/*
+  Cache-Control: public, max-age=86400
