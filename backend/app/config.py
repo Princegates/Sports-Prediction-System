@@ -101,7 +101,7 @@ class Settings(BaseSettings):
     # Smart mode: Claude reasons over Guda's data through tools (app/assistant/agent.py).
     assistant_agent_enabled: bool = False
     assistant_agent_api_key: str = ""
-    assistant_agent_model: str = "claude-opus-5-5"
+    assistant_agent_model: str = "claude-haiku-5-5"
     assistant_agent_effort: str = "medium"
     assistant_agent_timeout: float = 60.0
 

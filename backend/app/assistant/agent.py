@@ -690,7 +690,7 @@ def run(
     if not within_limits(db, user_id, now):
         return None
 
-    model = str(values.get("assistant_agent_model") or "claude-opus-5-5")
+    model = str(values.get("assistant_agent_model") or "claude-haiku-5-5")
     effort = str(values.get("assistant_agent_effort") or "medium")
     trace = Trace(db=db, now=now)
     client = _client(values)
