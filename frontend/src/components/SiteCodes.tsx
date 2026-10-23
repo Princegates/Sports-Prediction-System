@@ -13,6 +13,9 @@ export interface SiteCodeLeg {
   selection: string;
 }
 
+/** The one site ticked by default; the member ticks any other they want. */
+const DEFAULT_SITE = "sportybet_gh";
+
 interface Props {
   legs: SiteCodeLeg[];
   /** Asks the backend for a code on each of these sites. */
@@ -42,10 +45,11 @@ export function SiteCodes({ legs, book }: Props) {
         // site this platform will never auto-book (Betway: its own "create
         // a code" action places a real bet) still has real picks worth
         // showing, with a clear "not connected" message in place of a code
-        // once asked for. Only connected sites are pre-ticked, so clicking
-        // "Get booking codes" by default does exactly what it always did.
+        // once asked for. Only SportyBet is pre-ticked (when it is connected):
+        // every other site is one tap away, but asking each of them for a
+        // real price on every click is slow, so it is opt-in.
         setSites(all);
-        setChosen(all.filter((s) => s.connected).map((s) => s.key));
+        setChosen(all.filter((s) => s.connected && s.key === DEFAULT_SITE).map((s) => s.key));
       })
       .catch(() => {});
     return () => {

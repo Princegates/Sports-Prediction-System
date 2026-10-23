@@ -28,6 +28,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.timeutil import utcnow
+from app.assistant.understanding import understand
 from app.data.team_matching import normalize_team_name
 from app.db.models import Team
 
@@ -125,6 +126,20 @@ class ParsedQuery:
     # message didn't name one, in which case the responder's own default (or
     # the count/floor above, if those were stated instead) applies.
     risk_level: str | None = None
+    # The specific registry markets the message named ("2nd half over 1.5" ->
+    # "2H Total Goals 1.5"), when it named any -- see resolve_markets. These,
+    # not the coarse ``market`` family above, are what the responder ranks and
+    # reports on. ``selection_side`` is "Over"/"Under" when the message said so.
+    market_names: tuple[str, ...] = ()
+    market_label: str | None = None
+    selection_side: str | None = None
+    # What had to be assumed to read the message -- a typo fixed, a nickname
+    # expanded (see understanding.understand). The answer shows these so a
+    # wrong guess is visible rather than silently acted on.
+    assumed: list[tuple[str, str]] = field(default_factory=list)
+    # What was inherited from earlier in the conversation (see memory.py): a
+    # match, a day, a market. Shown on the answer so it is never silent.
+    carried: list[str] = field(default_factory=list)
     raw: str = ""
 
 
@@ -136,12 +151,15 @@ _INTENT_PATTERNS: list[tuple[Intent, tuple[str, ...]]] = [
                               "life savings", "rent money", "borrow")),
     (Intent.ACCURACY, ("how accurate", "accuracy", "hit rate", "win rate", "track record",
                        "how good are you", "how reliable", "brier", "log loss", "calibrat",
-                       "backtest", "how often are you right", "are you right")),
+                       "backtest", "how often are you right", "are you right", "can i trust",
+                       "trust you", "trustworthy", "any good", "success rate", "how often do you win",
+                       "how right")),
     (Intent.METHODOLOGY, ("how do you work", "how does it work", "how does the model work",
                           "how does this work", "what model", "which model", "model work",
                           "how are predictions made", "methodology", "how do you predict",
                           "what data", "where does the data", "elo", "poisson", "ensemble",
-                          "algorithm", "machine learning", "how is this calculated")),
+                          "algorithm", "machine learning", "how is this calculated", "how do you know",
+                          "how do you decide", "how do you make", "where do you get")),
     (Intent.HEAD_TO_HEAD, ("head to head", "head-to-head", "h2h", "past meetings",
                            "previous meetings", "last time they", "when they played",
                            "history between", "record against")),
@@ -157,7 +175,9 @@ _INTENT_PATTERNS: list[tuple[Intent, tuple[str, ...]]] = [
     (Intent.BEST_PICKS, ("best pick", "best bet", "top pick", "top bet", "best selection",
                          "highest confidence", "high confidence", "safest", "strongest",
                          "most confident", "best value", "what should i back",
-                         "banker", "best today", "best tip", "top tip")),
+                         "banker", "best today", "best tip", "top tip", "what should i bet",
+                         "who should i back", "any tips", "recommend", "recommendation", "suggest",
+                         "what to bet", "what to back", "what do you like")),
     (Intent.TODAYS_CARD, ("today", "tonight", "tomorrow", "this weekend", "what's on",
                           "whats on", "fixtures", "what games", "which games",
                           "upcoming", "schedule")),
@@ -243,6 +263,120 @@ def _detect_market(text: str) -> str | None:
     return None
 
 
+@dataclass(frozen=True)
+class MarketRequest:
+    names: tuple[str, ...]  # exact outcome-registry market names
+    label: str  # how the answer refers to them
+    side: str | None = None  # "Over" / "Under" when the message said so
+
+
+_FIRST_HALF = re.compile(r"\b(?:1st|first)\s+half\b|\bhalf[\s-]?time\b|\bhalftime\b|\bht\b|\b1h\b")
+_SECOND_HALF = re.compile(r"\b(?:2nd|second)\s+half\b|\b2h\b")
+_HT_FT = re.compile(r"\bht\s*/\s*ft\b|\bhtft\b|\bhalf[\s-]?time\s*(?:/|-|and)?\s*full[\s-]?time\b")
+_LINE = re.compile(r"(?<![\d.])(\d{1,2}\.5)\b")
+
+# Lines the registry actually prices, per scope -- a line outside these
+# (a "7.5" first-half total) isn't a market we have, so it is dropped and
+# the scope's defaults used instead of inventing a name that matches nothing.
+_FULL_TIME_LINES = tuple(f"{n}.5" for n in range(10))
+_HALF_LINES = ("0.5", "1.5", "2.5", "3.5", "4.5")
+_CORNER_LINES = ("7.5", "8.5", "9.5", "10.5", "11.5")
+# The reference line for a bare "goals" question, and the two a half's
+# goals are usually quoted on.
+_DEFAULT_GOAL_LINES = {"": ("2.5",), "HT": ("0.5", "1.5"), "2H": ("0.5", "1.5")}
+_HALF_NAME = {"": "", "HT": "1st half ", "2H": "2nd half "}
+
+
+def resolve_markets(text: str) -> MarketRequest | None:
+    """The specific markets a message asks about, as outcome-registry names:
+    "2nd half over 1.5" is ``2H Total Goals 1.5`` (Over only), "first half
+    btts" is ``HT Both Teams To Score``, "corners over 9.5" is
+    ``Total Corners 9.5``.
+
+    ``_detect_market``'s five coarse families can't say any of that -- they
+    cannot tell a half from the full match or read a goal line, so "over 1.5"
+    used to be answered with the 2.5 line. This is the finer-grained read of
+    the same message; it returns ``None`` when nothing specific was named, and
+    the caller falls back to the coarse family. Names are only ever produced
+    from the fixed vocabulary above, so a request can't name a market the
+    registry doesn't have.
+    """
+
+    if _HT_FT.search(text):
+        return MarketRequest(("HT/FT",), "half-time/full-time")
+
+    half = "HT" if _FIRST_HALF.search(text) else ("2H" if _SECOND_HALF.search(text) else "")
+    prefix = f"{half} " if half else ""
+    where = _HALF_NAME[half]
+    names: list[str] = []
+    labels: list[str] = []
+
+    def add(market_names: tuple[str, ...], label: str) -> None:
+        names.extend(n for n in market_names if n not in names)
+        labels.append(label)
+
+    if re.search(r"\bwin(?:s|ning)?\b", text) and re.search(r"\b(?:both|each) halves\b|\beither half\b", text):
+        both = bool(re.search(r"\b(?:both|each) halves\b", text))
+        kind = "Both Halves" if both else "Either Half"
+        add((f"Home Team To Win {kind}", f"Away Team To Win {kind}"), f"to win {kind.lower()}")
+    elif re.search(r"\bhighest[\s-]scoring half\b|\bhalf with (?:the )?most goals\b|\bwhich half\b.*\bgoals?\b|\bmost goals\b.*\bhalf\b", text):
+        add(("Half With Most Goals",), "the half with most goals")
+    elif re.search(r"\bcorners?\b", text):
+        if re.search(r"\b(?:most|more) corners\b", text):
+            add(("Most Corners",), "most corners")
+        else:
+            lines = tuple(l for l in dict.fromkeys(_LINE.findall(text)) if l in _CORNER_LINES) or ("9.5",)
+            add(tuple(f"Total Corners {l}" for l in lines), f"total corners {'/'.join(lines)}")
+    else:
+        if re.search(r"\bclean[\s-]sheets?\b", text):
+            add(("Home Clean Sheet", "Away Clean Sheet"), "clean sheet")
+        if re.search(r"\bodd\s*(?:/|or|and)\s*even\b|\b(?:odd|even)\s+(?:number of\s+)?goals\b|\bgoals\s+(?:odd|even)\b", text):
+            add((f"{prefix}Total Goals Odd/Even",), f"{where}odd/even goals")
+        if re.search(r"\bbtts\b|\bboth teams? to score\b|\bboth (?:to )?score\b|\bgg\b|\bng\b", text):
+            add((f"{prefix}Both Teams To Score",), f"{where}both teams to score")
+        if re.search(r"\bdouble chance\b", text):
+            add((f"{prefix}Double Chance",), f"{where}double chance")
+        if re.search(r"\bdraw no bet\b|\bdnb\b", text) and not half:
+            add(("Draw No Bet",), "draw no bet")
+        if re.search(r"\bcorrect score\b|\bexact score\b|\bscoreline\b", text) and half:
+            add((f"{half} Correct Score",), f"{where}correct score")
+        if re.search(r"\bexact goals\b", text) and half:
+            add((f"{half} Exact Goals",), f"{where}exact goals")
+        if re.search(r"\bmulti[\s-]?goals\b", text) and half:
+            add((f"{half} Multigoals",), f"{where}multigoals")
+
+        side = "Over" if re.search(r"\bover\b", text) else None
+        if re.search(r"\bunder\b", text):
+            side = None if side else "Under"
+        valid = _HALF_LINES if half else _FULL_TIME_LINES
+        lines = tuple(l for l in dict.fromkeys(_LINE.findall(text)) if l in valid)
+        wants_goals = bool(
+            re.search(r"\bgoals?\b|\bover\s*/\s*under\b|\bo/u\b|\btotal\b", text)
+            or lines
+            or (side and half)
+        )
+        if wants_goals and not any("Odd/Even" in n for n in names):
+            lines = lines or _DEFAULT_GOAL_LINES[half]
+            add(tuple(f"{prefix}Total Goals {l}" for l in lines), f"{where}goals {'/'.join(lines)}")
+
+        if half and not names:
+            if re.search(r"\bresult\b|\b1x2\b|\bwin\b|\bwins\b|\bdraw\b|\bwinner\b", text):
+                add((f"{prefix}Result",), f"{where}result")
+            else:
+                # "first half picks": the half's everyday markets.
+                add((f"{prefix}Result", f"{prefix}Total Goals 0.5", f"{prefix}Total Goals 1.5",
+                     f"{prefix}Both Teams To Score", f"{prefix}Double Chance"), f"{where}markets")
+
+    if not names:
+        return None
+    side = None
+    if any("Total Goals" in n or "Total Corners" in n for n in names):
+        side = "Over" if re.search(r"\bover\b", text) else None
+        if re.search(r"\bunder\b", text):
+            side = None if side else "Under"
+    return MarketRequest(tuple(names), " & ".join(labels), side)
+
+
 # Matches the number attached to a "%"/"percent" token -- checked first so
 # it can be masked out before looking for the leg count, otherwise "20 ...
 # 50% chance" would find "50" (from the percentage) as the count instead of
@@ -326,7 +460,7 @@ def _candidate_tokens(text: str) -> list[str]:
     return [w for w in words if len(w) >= _MIN_TOKEN_LEN and w not in _STOPWORDS]
 
 
-def resolve_teams(db: Session, text: str, limit: int = 2) -> list[Team]:
+def resolve_teams(db: Session, text: str, limit: int = 2, teams: list[Team] | None = None) -> list[Team]:
     """Find teams the user named, scored by how much of the team's own
     normalized name the message actually covers.
 
@@ -336,6 +470,10 @@ def resolve_teams(db: Session, text: str, limit: int = 2) -> list[Team]:
     inserted first. A team only qualifies if every significant token of its
     name is present, which makes the shared-token case a tie that the longer,
     more specific name wins.
+
+    A team is also found by any of its stored aliases ("Spurs", "Man Utd"),
+    each judged exactly like the name itself. ``teams`` lets a caller that
+    already loaded the table share it rather than query it again.
     """
 
     tokens = set(_candidate_tokens(text))
@@ -345,24 +483,28 @@ def resolve_teams(db: Session, text: str, limit: int = 2) -> list[Team]:
     lowered = text.lower()
     scored: list[tuple[float, int, Team]] = []
 
-    for team in db.execute(select(Team)).scalars():
-        normalized = normalize_team_name(team.name)
-        name_tokens = [t for t in re.findall(r"[a-z0-9']+", normalized) if len(t) >= _MIN_TOKEN_LEN]
-        if not name_tokens:
-            # Nothing distinctive survived normalization (e.g. a club named
-            # only "FC"); fall back to a whole-name substring check.
-            if normalized and normalized in lowered:
-                scored.append((1.0, len(normalized), team))
-            continue
+    for team in teams if teams is not None else db.execute(select(Team)).scalars():
+        best: tuple[float, int] | None = None
+        for spelling in (team.name, *(team.aliases or [])):
+            normalized = normalize_team_name(spelling)
+            name_tokens = [t for t in re.findall(r"[a-z0-9']+", normalized) if len(t) >= _MIN_TOKEN_LEN]
+            if not name_tokens:
+                # Nothing distinctive survived normalization (e.g. a club named
+                # only "FC"); fall back to a whole-name substring check.
+                if normalized and normalized in lowered:
+                    candidate = (1.0, len(normalized))
+                    best = max(best, candidate) if best else candidate
+                continue
 
-        matched = [t for t in name_tokens if t in tokens]
-        if len(matched) != len(name_tokens):
-            continue
+            if any(t not in tokens for t in name_tokens):
+                continue
 
-        # Full phrase appearing verbatim is a stronger signal than the same
-        # tokens scattered across the sentence.
-        score = 1.0 + (0.5 if normalized in lowered else 0.0)
-        scored.append((score, len(normalized), team))
+            # Full phrase appearing verbatim is a stronger signal than the same
+            # tokens scattered across the sentence.
+            candidate = (1.0 + (0.5 if normalized in lowered else 0.0), len(normalized))
+            best = max(best, candidate) if best else candidate
+        if best is not None:
+            scored.append((best[0], best[1], team))
 
     # Highest score first, then longest name (the more specific club).
     scored.sort(key=lambda row: (row[0], row[1]), reverse=True)
@@ -474,8 +616,60 @@ def _classify(text: str, has_two_teams: bool, has_one_team: bool, has_context: b
     if has_two_teams:
         return Intent.MATCH_PREDICTION
     if has_one_team:
-        return Intent.TEAM_FORM
+        return Intent.MATCH_PREDICTION if _FIXTURE_WORDS.search(text) else Intent.TEAM_FORM
     return Intent.UNKNOWN
+
+
+_EXTRA_VOCABULARY = (
+    "btts", "double", "chance", "corners", "correct", "clean", "sheet", "exact", "multigoals",
+    "halftime", "accumulator", "selections", "prediction", "predictions", "probability",
+    "bookmaker", "handicap", "against", "forecast",
+)
+_vocabulary_cache: set[str] | None = None
+
+
+def _vocabulary() -> set[str]:
+    """The words the assistant's own question patterns are built from -- what a
+    misspelling is corrected toward."""
+
+    global _vocabulary_cache
+    if _vocabulary_cache is None:
+        words: set[str] = set(_EXTRA_VOCABULARY) | _STOPWORDS
+        for _, needles in [*_INTENT_PATTERNS, *_MARKET_PATTERNS]:
+            for needle in needles:
+                words.update(w for w in re.findall(r"[a-z]+", needle.lower()) if len(w) >= 3)
+        _vocabulary_cache = words
+    return _vocabulary_cache
+
+
+def _name_tokens(teams: list[Team]) -> set[str]:
+    """Every word of every team name, alias and league -- the other thing a
+    misspelling can be corrected toward."""
+
+    names: set[str] = set()
+    for team in teams:
+        for spelling in (team.name, *(team.aliases or []), team.league or ""):
+            names.update(re.findall(r"[a-z0-9']+", _fold_accents(normalize_team_name(spelling))))
+    return {n for n in names if len(n) >= _MIN_TOKEN_LEN}
+
+
+# Words that make a message about one team a question about its next game
+# ("will arsenal win", "arsenal tonight", "chelsea next match") rather than
+# about its form.
+_FIXTURE_WORDS = re.compile(
+    r"\b(?:next|upcoming|play|plays|game|match|fixture|beat|beats|win|wins|lose|loses|score|scores|"
+    r"chance|chances|tonight|today|tomorrow|predict|prediction|predictions|outlook|expect|forecast|"
+    r"bet|bets|betting|tip|tips|back)\b"
+)
+
+
+def intent_if_match_open(message: str) -> Intent:
+    """What a message would mean with a match open in the UI -- "why is this
+    favored?" is a request to explain a match, though with none to explain
+    ``parse`` quietly turns it into best-picks. Conversation memory uses this
+    to tell a question about the match just discussed from a general one."""
+
+    return _classify(message.lower().strip(), has_two_teams=False, has_one_team=False, has_context=True)
 
 
 def parse(
@@ -485,11 +679,18 @@ def parse(
     now: dt.datetime | None = None,
 ) -> ParsedQuery:
     now = now or utcnow()
-    text = message.lower().strip()
+    all_teams = list(db.execute(select(Team)).scalars())
+    understood = understand(message.lower().strip(), _vocabulary(), _name_tokens(all_teams))
+    text = understood.text
 
-    teams = resolve_teams(db, text)
+    teams = resolve_teams(db, text, teams=all_teams)
     date_from, date_to = _detect_dates(text, now)
     market = _detect_market(text)
+    requested = resolve_markets(text)
+    if requested is not None and market is None:
+        # Any non-None family keeps the bare-market fallbacks below working;
+        # the specific names, not this label, are what get ranked.
+        market = "custom"
 
     intent = _classify(
         text,
@@ -502,6 +703,9 @@ def parse(
     # generic market explainer.
     if intent in (Intent.TODAYS_CARD, Intent.LIVE_STATUS) and len(teams) >= 2:
         intent = Intent.MATCH_PREDICTION if intent == Intent.TODAYS_CARD else intent
+    # One team and a day ("arsenal tonight") is that team's next game too.
+    if intent == Intent.TODAYS_CARD and len(teams) == 1:
+        intent = Intent.MATCH_PREDICTION
 
     # A market keyword with nothing else -- no team, no other intent
     # matched -- is "BTTS today" / "over 2.5 tips" / "double chance picks",
@@ -516,7 +720,18 @@ def parse(
     # them as a strong signal on their own would misfire on unrelated
     # messages like "did I win" -- honest UNKNOWN beats a confident but
     # irrelevant picks list there.
+    # With a match open in the UI, a bare "what about 2nd half goals?" is a
+    # question about that match -- unless the wording asks for a ranking.
+    if (
+        intent == Intent.UNKNOWN and requested is not None and not teams and context_match_id is not None
+        and not re.search(r"\b(?:best|top|picks?|tips?|today|tomorrow)\b", text)
+    ):
+        intent = Intent.MATCH_PREDICTION
     if intent == Intent.UNKNOWN and market not in (None, "1x2") and not teams:
+        intent = Intent.BEST_PICKS
+    # "2nd half over 1.5 today" names a market and a day, not a request for the
+    # day's full card: the market is the point, the day only narrows it.
+    if intent == Intent.TODAYS_CARD and requested is not None and not teams:
         intent = Intent.BEST_PICKS
 
     # An explicitly named league ("premier league picks") wins over one
@@ -541,5 +756,9 @@ def parse(
         selection_count=selection_count,
         probability_floor=probability_floor,
         risk_level=risk_level,
+        market_names=requested.names if requested else (),
+        market_label=requested.label if requested else None,
+        selection_side=requested.side if requested else None,
+        assumed=understood.assumed,
         raw=message.strip(),
     )
