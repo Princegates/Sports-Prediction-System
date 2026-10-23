@@ -12,6 +12,10 @@ pandas>=2.2
 scikit-learn>=1.5
 joblib>=1.4
 requests>=2.32
+# Guda's optional smart mode (app/assistant/agent.py) calls Claude through this.
+# The import there is guarded, so a missing install turns smart mode off
+# rather than stopping the backend.
+anthropic>=2.2
 python-dotenv>=1.0
 pytest>=8.2
 httpx>=0.27

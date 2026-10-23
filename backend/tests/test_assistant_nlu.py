@@ -381,3 +381,49 @@ def test_a_market_question_with_a_match_open_is_about_that_match(db_session, tea
     assert parse(db_session, "what about 2nd half goals?", context_match_id=1).intent == Intent.MATCH_PREDICTION
     # ...but asking for a ranking still gets one.
     assert parse(db_session, "best 2nd half goals tips", context_match_id=1).intent == Intent.BEST_PICKS
+
+
+# --- Plain-English requests with no keyword the patterns know -------------------
+
+
+@pytest.mark.parametrize("text, count", [
+    ("best 30 legs this week", 30),
+    ("top 5 picks tomorrow", 5),
+    ("give me 12 selections", 12),
+    ("10 legs", 10),
+    ("i want 8 bets for the weekend", 8),
+])
+def test_a_number_of_legs_is_a_slip_request_with_that_count(db_session, teams, text, count):
+    parsed = parse(db_session, text)
+
+    assert parsed.intent == Intent.GENERATE_SELECTIONS
+    assert parsed.selection_count == count
+
+
+def test_a_slip_request_keeps_the_day_it_named(db_session, teams):
+    parsed = parse(db_session, "best 30 legs this week", now=dt.datetime(2026, 10, 21, 9, 0))
+
+    assert parsed.date_from == dt.datetime(2026, 10, 21)
+    assert parsed.date_to == dt.datetime(2026, 10, 28)
+
+
+@pytest.mark.parametrize("text", ["last 5 matches", "past 5 games", "previous 3 fixtures"])
+def test_last_n_matches_is_never_a_slip_request(db_session, teams, text):
+    assert parse(db_session, text).intent != Intent.GENERATE_SELECTIONS
+
+
+@pytest.mark.parametrize("text", ["best this week", "safest bets today", "any good picks?", "give me the strongest ones"])
+def test_asking_for_the_best_without_saying_of_what_gets_the_best_picks(db_session, teams, text):
+    assert parse(db_session, text).intent in (Intent.BEST_PICKS, Intent.GENERATE_SELECTIONS)
+
+
+def test_are_you_any_good_is_still_about_accuracy_but_any_good_ones_is_not(db_session, teams):
+    assert parse(db_session, "are you any good?").intent == Intent.ACCURACY
+    assert parse(db_session, "any good picks?").intent != Intent.ACCURACY
+
+
+@pytest.mark.parametrize("text", ["2nd half over 2.5 picks", "over 1.5 goals tips", "best 3.5 goals bets"])
+def test_a_goal_line_is_not_mistaken_for_a_number_of_legs(db_session, teams, text):
+    """"2.5 picks" must not read the 5 as "5 picks"."""
+
+    assert parse(db_session, text).intent != Intent.GENERATE_SELECTIONS

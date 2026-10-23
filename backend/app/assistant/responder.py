@@ -737,6 +737,18 @@ def _generate_selections(db: Session, q: ParsedQuery) -> Answer:
     markets = _wanted_markets(q) if q.market else (tier["markets"] if tier else ())
     market_label = _market_label(q)
 
+    # A day the message named ("tomorrow", "this week", "this weekend") bounds
+    # the search; otherwise it is the usual next seven days. The parsed window
+    # ends at the next midnight, where the slip builder's end date is inclusive.
+    date_from = q.date_from.date() if q.date_from else None
+    date_to = (q.date_to - dt.timedelta(days=1)).date() if q.date_from and q.date_to else None
+    if date_from is None:
+        window = "in the next 7 days"
+    elif date_to and date_to != date_from:
+        window = f"between {date_from.strftime('%a %d %b')} and {date_to.strftime('%a %d %b')}"
+    else:
+        window = f"on {date_from.strftime('%a %d %b')}"
+
     pick = select_legs_by_confidence(
         db,
         min_probability=floor,
@@ -744,6 +756,8 @@ def _generate_selections(db: Session, q: ParsedQuery) -> Answer:
         markets=markets,
         league=q.league,
         days_ahead=7,
+        date_from=date_from,
+        date_to=date_to,
     )
 
     scope = f"{f' in {q.league}' if q.league else ''}{f' for {market_label}' if market_label else ''}"
@@ -751,7 +765,7 @@ def _generate_selections(db: Session, q: ParsedQuery) -> Answer:
     if not pick.legs:
         return Answer(
             text=(
-                f"No scheduled match in the next 7 days{scope} clears "
+                f"No scheduled match {window}{scope} clears "
                 f"{_pct(floor)} model probability -- so there's nothing I can put together honestly. "
                 f"Try a lower floor, a different league, or a different market."
             ),
@@ -776,7 +790,7 @@ def _generate_selections(db: Session, q: ParsedQuery) -> Answer:
     lines.append("")
     if len(pick.legs) < count:
         lines.append(
-            f"That's every match in the next 7 days{scope} that clears "
+            f"That's every match {window}{scope} that clears "
             f"{_pct(floor)} -- short of the {count} you asked for. A lower floor, a wider league, or a "
             f"different market would surface more."
         )

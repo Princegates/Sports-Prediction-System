@@ -925,3 +925,22 @@ def test_naming_a_team_beats_memory(db_session, auth_headers, fixture_data):
 
     assert body["intent"] == "team_form"
     assert "Following on from" not in body["text"]
+
+
+def test_best_n_legs_this_week_builds_a_slip_over_that_week(db_session, auth_headers, fixture_data):
+    """The message a member actually typed -- it used to get the capability menu."""
+
+    body = _ask("best 30 legs this week", auth_headers)
+
+    assert body["intent"] == "generate_selections"
+    assert "I couldn't match that" not in body["text"]
+    assert "30" in body["text"]  # says how many it was asked for
+    assert "selection" in body["text"]
+    assert "the next 7 days" not in body["text"]  # it named a week, so the answer names that week
+
+
+def test_a_slip_with_no_named_day_says_the_next_seven_days(db_session, auth_headers, fixture_data):
+    body = _ask("give me 3 selections", auth_headers)
+
+    assert body["intent"] == "generate_selections"
+    assert "I couldn't match that" not in body["text"]
