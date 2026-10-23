@@ -293,6 +293,20 @@ class ApiFootballClient:
         rows = self.get("fixtures", {"id": fixture_id})
         return rows[0] if rows else None
 
+    def injuries(self, fixture_id: int) -> list[dict]:
+        """Players ruled out or doubtful for one fixture -- one request.
+        Each row has ``player`` (name, ``type`` "Missing Fixture" or
+        "Questionable", ``reason``) and ``team`` (id, name)."""
+
+        return self.get("injuries", {"fixture": fixture_id})
+
+    def lineups(self, fixture_id: int) -> list[dict]:
+        """Both teams' formations, starting XIs and benches for one fixture --
+        one request. Empty until the clubs submit them, roughly an hour
+        before kickoff."""
+
+        return self.get("fixtures/lineups", {"fixture": fixture_id})
+
     def odds(self, *, fixture_id: int | None = None, league_id: int | None = None,
              season: int | None = None, date: dt.date | None = None, page: int = 1) -> list[dict]:
         return self.get(

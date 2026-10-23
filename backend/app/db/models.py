@@ -310,6 +310,65 @@ class AccessRedemption(Base):
     redeemed_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
+class BannerItem(Base):
+    """A sponsored slide in the app's news banner -- the slot third parties
+    can be sold. Text only, deliberately: the site's content-security policy
+    allows images from the site itself and a short list of hosts, so an
+    advertiser's own image would simply not load, and text can't carry a
+    tracking pixel. Always shown labelled "Sponsored" (see app.banner).
+
+    ``impressions`` and ``clicks`` are counted when a member's browser reports
+    the slide shown or clicked -- an indication for the advertiser's report,
+    not an audited figure.
+    """
+
+    __tablename__ = "banner_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sponsor: Mapped[str] = mapped_column(String(80))
+    headline: Mapped[str] = mapped_column(String(140))
+    body: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    cta_label: Mapped[str] = mapped_column(String(40), default="Learn more")
+    link_url: Mapped[str] = mapped_column(String(500))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Shown only inside this window; either end may be open.
+    starts_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    ends_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    # Lower first when several are live at once.
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    impressions: Mapped[int] = mapped_column(Integer, default=0)
+    clicks: Mapped[int] = mapped_column(Integer, default=0)
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class MatchTeamNews(Base):
+    """Cached injuries and confirmed lineups for one match, from API-Football.
+
+    A page view must not be a provider request: the key's daily budget is
+    shared with the fixture import and the live poll, and one popular match
+    opened a hundred times would otherwise spend a hundred requests for the
+    same answer. So the first view fetches and every view after reads this row
+    until it goes stale (see app.team_news for how long that is).
+
+    ``None`` means never fetched; ``[]``/``{}`` is a real "nothing to report"
+    answer (no injuries, lineups not published yet). ``calls_made`` on
+    ``calls_day`` is this feature's own request count, summed to hold it under
+    its share of the daily budget -- see app.team_news.
+    """
+
+    __tablename__ = "match_team_news"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    match_id: Mapped[int] = mapped_column(ForeignKey("matches.id", ondelete="CASCADE"), unique=True, index=True)
+    injuries: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    injuries_fetched_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    lineups: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    lineups_fetched_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    calls_day: Mapped[dt.date | None] = mapped_column(Date, nullable=True, index=True)
+    calls_made: Mapped[int] = mapped_column(Integer, default=0)
+
+
 class Team(Base):
     __tablename__ = "teams"
 

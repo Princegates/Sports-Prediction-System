@@ -23,6 +23,7 @@ from app.db.models import LivePrediction, Match, Prediction, User
 from app.features.team_stats import compute_team_form
 from app.live_engine import LIVE_STALE_AFTER, simulate_live_event
 from app.outcomes.registry import outcomes_from_prediction
+from app import team_news
 from app.prediction_service import build_prediction_for_match
 
 router = APIRouter(prefix="/api/matches", tags=["matches"])
@@ -200,27 +201,18 @@ def get_match_statistics(match: Match = Depends(get_match_or_404), db: Session =
 
 
 @router.get("/{match_id}/lineup")
-def get_match_lineup(match: Match = Depends(get_match_or_404)) -> dict:
-    return {
-        "status": "unavailable",
-        "reason": (
-            "No free confirmed-lineup data source is wired up yet. Plug a provider into "
-            "app/data/providers and this endpoint starts returning real data -- the "
-            "prediction recalculation-on-confirmation logic (spec section 14) is already "
-            "built into the outcome engine, it just needs lineup input."
-        ),
-    }
+def get_match_lineup(match: Match = Depends(get_match_or_404), db: Session = Depends(get_db)) -> dict:
+    """Confirmed formations and starting XIs -- see app.team_news for when they
+    are fetched, how long they are cached and the request budget they spend."""
+
+    return team_news.lineups_for(db, match)
 
 
 @router.get("/{match_id}/news")
-def get_match_news(match: Match = Depends(get_match_or_404)) -> dict:
-    return {
-        "status": "unavailable",
-        "reason": (
-            "No free team-news/NLP data source is wired up yet. See README's "
-            "'player/lineup/news intelligence' extension point."
-        ),
-    }
+def get_match_news(match: Match = Depends(get_match_or_404), db: Session = Depends(get_db)) -> dict:
+    """Team news: who is out or doubtful for each side."""
+
+    return team_news.injuries_for(db, match)
 
 
 @router.get("/{match_id}/live", response_model=list[LivePredictionOut])
