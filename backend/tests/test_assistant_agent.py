@@ -104,6 +104,14 @@ def test_it_is_off_by_default(db_session):
     assert run(db_session) is None
 
 
+def test_without_the_anthropic_package_smart_mode_is_off_not_a_crash(db_session, claude, monkeypatch):
+    claude(reply(text("hi")))
+    monkeypatch.setattr(agent, "anthropic", None)
+
+    assert run(db_session) is None
+    assert agent.is_enabled(db_session) is False
+
+
 def test_it_needs_a_key(db_session):
     app_settings.set_values(db_session, {"assistant_agent_enabled": True})
     assert run(db_session) is None

@@ -45,7 +45,10 @@ import time
 from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import Any, Callable
 
-import anthropic
+try:
+    import anthropic
+except ImportError:  # smart mode is optional; without the package it is simply off
+    anthropic = None  # type: ignore[assignment]
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -592,7 +595,7 @@ def _settings(db: Session) -> dict:
 
 def is_enabled(db: Session) -> bool:
     v = _settings(db)
-    return bool(v.get("assistant_agent_enabled") and v.get("assistant_agent_api_key"))
+    return anthropic is not None and bool(v.get("assistant_agent_enabled") and v.get("assistant_agent_api_key"))
 
 
 def within_limits(db: Session, user_id: int, now: dt.datetime | None = None) -> bool:
@@ -678,6 +681,8 @@ def run(
     """Smart mode's answer to ``message``, or ``None`` whenever the caller
     should use the built-in pipeline instead (see the module docstring)."""
 
+    if anthropic is None:
+        return None
     values = _settings(db)
     if not (values.get("assistant_agent_enabled") and values.get("assistant_agent_api_key")):
         return None
