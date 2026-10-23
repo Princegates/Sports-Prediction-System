@@ -6671,3 +6671,120 @@ table.admin-table {
   .nb-title { display: none; }
   .news-banner { border-radius: var(--radius-md); padding-left: 10px; }
 }
+
+/* ==========================================================================
+   AI GENERATION PROMO VIDEO (landing page) -- see AIGenerationVideo.tsx.
+   ========================================================================== */
+.promo-video {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  gap: var(--space-6, 32px);
+  align-items: center;
+}
+.promo-video-kicker {
+  display: inline-block;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.promo-video-copy h2 {
+  margin: 0 0 10px;
+}
+.promo-video-copy p {
+  color: var(--text-secondary);
+}
+.promo-video-points {
+  margin: 14px 0 18px;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+.promo-video-points li {
+  position: relative;
+  padding-left: 24px;
+  color: var(--text-primary);
+}
+.promo-video-points li::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 0.55em;
+  width: 10px;
+  height: 6px;
+  border-left: 2px solid var(--accent);
+  border-bottom: 2px solid var(--accent);
+  transform: translateY(-50%) rotate(-45deg);
+}
+.promo-video-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.promo-video-frame {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: #000;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-pop);
+}
+.promo-video-frame video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.promo-video-play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 76px;
+  height: 76px;
+  margin: -38px 0 0 -38px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-on-accent, #fff);
+  cursor: pointer;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+  transition: transform 0.15s ease;
+}
+.promo-video-play:hover,
+.promo-video-play:focus-visible {
+  transform: scale(1.08);
+}
+/* A vertical (phone-screen) video: a phone-shaped frame beside the text, not a
+   widescreen strip with black bars either side of it. */
+.promo-video[data-orientation="portrait"] {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 360px);
+  justify-content: space-between;
+}
+.promo-video[data-orientation="portrait"] .promo-video-frame {
+  aspect-ratio: 9 / 16;
+  max-height: 78vh;
+  width: auto;
+  justify-self: center;
+}
+@media (max-width: 860px) {
+  .promo-video,
+  .promo-video[data-orientation="portrait"] {
+    grid-template-columns: 1fr;
+  }
+  .promo-video-frame {
+    order: -1;
+  }
+  .promo-video[data-orientation="portrait"] .promo-video-frame {
+    width: min(100%, 340px);
+    max-height: none;
+    justify-self: center;
+  }
+}
