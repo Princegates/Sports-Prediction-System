@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { changePassword, fetchBranding, fetchMatchHistory, fetchReferralStats, pauseAccount, revokeOtherSessions } from "../api";
+import {
+  changePassword, fetchBranding, fetchMatchHistory, fetchReferralStats, pauseAccount, redeemAccessCode, revokeOtherSessions,
+} from "../api";
 import { Mascot } from "../components/Mascot";
 import { CopyButton } from "../components/CopyButton";
 import { EmptyState } from "../components/EmptyState";
@@ -8,6 +10,81 @@ import { ErrorState } from "../components/ErrorState";
 import { useAuth } from "../lib/AuthContext";
 import { whatsappLink } from "../lib/whatsapp";
 import type { Branding, MatchHistoryEntry, ReferralStats } from "../types";
+
+/** Where a member enters the access code a Super Admin sent them (the full
+ * page, with the price and WhatsApp contact, is /app/access). Shown with their
+ * current status so "do I have access, and until when?" is answered here too. */
+function AccessCodeCard() {
+  const { accessStatus, refreshAccessStatus } = useAuth();
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    refreshAccessStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function handleRedeem(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    setDone(false);
+    try {
+      await redeemAccessCode(code.trim());
+      setCode("");
+      setDone(true);
+      await refreshAccessStatus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const status = accessStatus?.status;
+  const until = accessStatus?.expires_at ? new Date(accessStatus.expires_at).toLocaleDateString() : null;
+  const summary =
+    status === "unlimited" ? "Unlimited -- Super Admin accounts never expire."
+    : status === "active" ? `Active${until ? ` until ${until}` : ""}.`
+    : status === "expired" ? `Expired${until ? ` on ${until}` : ""}. Enter a new code to continue.`
+    : status === "none" ? "No access yet. Enter the access code you were sent to unlock predictions."
+    : "Checking your access...";
+
+  return (
+    <div className="card card-pad" style={{ marginBottom: 24 }}>
+      <h3 style={{ marginTop: 0, fontSize: 14 }}>Access code</h3>
+      <p style={{ margin: "0 0 12px", fontSize: 13.5, color: "var(--text-secondary)" }}>
+        {status && <span className={`status-tag ${status === "none" ? "pending" : status === "expired" ? "suspended" : "active"}`}>{status}</span>}{" "}
+        {summary}
+      </p>
+      {status !== "unlimited" && (
+        <form onSubmit={handleRedeem} className="auth-form" style={{ maxWidth: 420 }}>
+          <label>
+            {status === "active" ? "Add time with another code" : "Your access code"}
+            <input
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              placeholder="XXXX-XXXX-XXXX"
+              autoComplete="off"
+              spellCheck={false}
+              style={{ fontFamily: "monospace", textTransform: "uppercase" }}
+            />
+          </label>
+          {error && <p className="auth-error">{error}</p>}
+          {done && <p className="meta" style={{ color: "var(--success, inherit)" }}>Code redeemed -- your access has been updated.</p>}
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <button className="btn" type="submit" disabled={busy || !code.trim()}>
+              {busy ? "Redeeming..." : "Redeem code"}
+            </button>
+            <Link to="/app/access" className="meta">Need a code? See how to get one</Link>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
 
 /** A referral section only makes sense once there's a real bonus a shared
  * code would earn -- hidden entirely while a superadmin has turned the
@@ -328,6 +405,8 @@ export function Profile() {
           </div>
         </div>
       </div>
+
+      <AccessCodeCard />
 
       <div className="section-header">
         <h2>Account settings</h2>
