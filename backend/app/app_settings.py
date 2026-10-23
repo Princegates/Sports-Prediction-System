@@ -282,11 +282,12 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 "subscriptions; usage is billed there.",
                 secret=True, env_attr="assistant_agent_api_key"),
     SettingSpec("assistant_agent_model", "str", "assistant", "Claude model",
-                "claude-opus-5-5 is the most capable -- roughly 5 to 12 US cents a question (a question "
-                "that looks several things up resends its context at each step); claude-sonnet-5-5 is "
-                "about half that and still strong; claude-haiku-5-5 is a fraction of a cent, fast, with "
-                "less depth on hard questions. Estimates -- watch your Anthropic usage page. The daily "
-                "limits below cap the spend.",
+                "claude-haiku-5-5 (the default) is fast and a fraction of a cent a question, with less depth "
+                "on hard, multi-step questions; claude-sonnet-5-5 is stronger, roughly 3 to 6 US cents; "
+                "claude-opus-5-5 is the most capable, roughly 5 to 12 US cents (a question that looks "
+                "several things up resends its context at each step). Estimates -- watch your Anthropic "
+                "usage page. The daily limits below cap the spend. Type the name exactly: a wrong name "
+                "makes every smart answer fail and Guda falls back to its built-in pipeline.",
                 env_attr="assistant_agent_model"),
     SettingSpec("assistant_agent_effort", "str", "assistant", "Thinking effort",
                 "How hard Claude thinks before answering: low is quickest and cheapest, high is the "
@@ -299,7 +300,7 @@ REGISTRY: tuple[SettingSpec, ...] = (
     SettingSpec("assistant_agent_daily_total", "int", "assistant", "Smart-mode questions per day, whole site",
                 "A ceiling on the day's bill: once this many smart-mode answers have been given in 24 "
                 "hours, everyone falls back to the built-in pipeline until the count drops. With "
-                "Opus at roughly 10 cents a question, 300 caps a day near $30.",
+                "Haiku, 300 is well under a dollar a day; on Opus at roughly 10 cents a question it is about $30.",
                 default=300, minimum=1, maximum=100000),
     SettingSpec("assistant_agent_timeout", "float", "assistant", "Smart-mode time limit (seconds)",
                 "Longest a single Claude call may take before Guda falls back to the built-in answer.",
