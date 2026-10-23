@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchLanding } from "../api";
+import { AIGenerationVideo } from "../components/AIGenerationVideo";
 import { FixtureTeaserRow } from "../components/FixtureTeaserRow";
 import { FreePicksSlip } from "../components/FreePicksSlip";
 import { WinningSlipsGallery } from "../components/WinningSlipsGallery";
@@ -219,6 +220,9 @@ export function Welcome() {
           </div>
         </div>
       </section>
+
+      {/* ---------------- AI Generation promo video (appears once the file is added) ---------------- */}
+      <AIGenerationVideo />
 
       {/* ---------------- Today's free picks ---------------- */}
       {freePicks.length > 0 && (
