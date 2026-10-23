@@ -168,6 +168,12 @@ export function ChatDock() {
   const [whatsapp, setWhatsapp] = useState<string | null>(null);
 
   const threadRef = useRef<HTMLDivElement | null>(null);
+  // Whether the member is reading the newest messages. The thread follows new
+  // content only while they are -- scrolling up to read history must not be
+  // undone by the next streamed chunk -- and a "Latest" button appears when
+  // they are not.
+  const followRef = useRef(true);
+  const [showLatest, setShowLatest] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const abortRef = useRef<(() => void) | null>(null);
   const location = useLocation();
@@ -221,8 +227,34 @@ export function ChatDock() {
 
   useEffect(() => {
     const el = threadRef.current;
+    if (!el) return;
+    // A message the member has just sent always brings them to the bottom.
+    if (turns[turns.length - 1]?.role === "user") followRef.current = true;
+    if (followRef.current) el.scrollTop = el.scrollHeight;
+  }, [turns]);
+
+  // Opening the dock starts at the newest message.
+  useEffect(() => {
+    if (!open) return;
+    followRef.current = true;
+    const el = threadRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [turns, open]);
+  }, [open]);
+
+  function handleThreadScroll() {
+    const el = threadRef.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    followRef.current = atBottom;
+    setShowLatest((prev) => (prev === !atBottom ? prev : !atBottom));
+  }
+
+  function jumpToLatest() {
+    const el = threadRef.current;
+    if (!el) return;
+    followRef.current = true;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }
 
   useEffect(() => {
     if (open) inputRef.current?.focus();
@@ -397,7 +429,7 @@ export function ChatDock() {
         </div>
       </header>
 
-      <div className="chat-thread" ref={threadRef}>
+      <div className="chat-thread" ref={threadRef} onScroll={handleThreadScroll}>
         {turns.length === 0 && accessLoading && (
           <div className="chat-empty">
             <Mascot pose="idle" size={56} />
@@ -504,6 +536,12 @@ export function ChatDock() {
             <span />
             <span />
           </div>
+        )}
+
+        {showLatest && (
+          <button type="button" className="chat-latest" onClick={jumpToLatest}>
+            ↓ Latest
+          </button>
         )}
       </div>
 
