@@ -174,6 +174,44 @@ export interface UnavailableResource {
   reason: string;
 }
 
+/** A player ruled out or doubtful for a match (API-Football's own wording). */
+export interface InjuredPlayer {
+  name: string;
+  /** "Missing Fixture" (out) or "Questionable" (doubt). */
+  type: string | null;
+  reason: string | null;
+}
+
+export interface TeamNews {
+  status: "ok" | "unavailable";
+  reason: string | null;
+  home: InjuredPlayer[];
+  away: InjuredPlayer[];
+  updated_at: string | null;
+}
+
+export interface LineupPlayer {
+  name: string;
+  number: number | null;
+  pos: string | null;
+}
+
+export interface TeamLineup {
+  formation: string | null;
+  coach: string | null;
+  start_xi: LineupPlayer[];
+  substitutes: LineupPlayer[];
+}
+
+export interface MatchLineups {
+  /** "pending" until the clubs submit them, about an hour before kickoff. */
+  status: "ok" | "pending" | "unavailable";
+  reason: string | null;
+  home: TeamLineup | null;
+  away: TeamLineup | null;
+  updated_at: string | null;
+}
+
 // --- AI assistant chat ----------------------------------------------------
 
 export interface ChatSource {
@@ -832,4 +870,51 @@ export interface BetCodePick {
   match_id: number;
   market: string;
   selection: string;
+}
+
+
+// --- News banner -------------------------------------------------------------
+
+/** One slide: a football headline, or a sponsored item (always labelled). */
+export interface BannerSlide {
+  id: string;
+  kind: "news" | "ad";
+  headline: string;
+  /** The publisher for news, the sponsor's name for an ad. */
+  label: string;
+  url: string;
+  body: string | null;
+  /** Button text, ads only. */
+  cta: string | null;
+  published_at: string | null;
+}
+
+export interface BannerItem {
+  id: number;
+  sponsor: string;
+  headline: string;
+  body: string | null;
+  cta_label: string;
+  link_url: string;
+  active: boolean;
+  starts_at: string | null;
+  ends_at: string | null;
+  sort_order: number;
+  impressions: number;
+  clicks: number;
+  created_at: string;
+  /** Showing to members right now. */
+  live: boolean;
+}
+
+export interface BannerItemInput {
+  sponsor: string;
+  headline: string;
+  body?: string | null;
+  cta_label?: string;
+  link_url: string;
+  active?: boolean;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  sort_order?: number;
 }

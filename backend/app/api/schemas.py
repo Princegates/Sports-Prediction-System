@@ -1183,3 +1183,66 @@ class LandingOut(BaseModel):
     free_picks: list[PublicFreePickOut]
     winning_slips: list[WinningSlipOut] = []
     teaser_pick: PublicTeaserPickOut
+
+
+# --- news banner -------------------------------------------------------------
+
+
+class BannerSlideOut(BaseModel):
+    id: str
+    kind: str  # "news" | "ad"
+    headline: str
+    label: str  # publisher, or the sponsor's name
+    url: str
+    body: str | None = None
+    cta: str | None = None
+    published_at: dt.datetime | None = None
+
+
+class BannerOut(BaseModel):
+    slides: list[BannerSlideOut]
+
+
+class BannerItemIn(BaseModel):
+    sponsor: str = Field(min_length=1, max_length=80)
+    headline: str = Field(min_length=1, max_length=140)
+    body: str | None = Field(default=None, max_length=200)
+    cta_label: str = Field(default="Learn more", min_length=1, max_length=40)
+    link_url: str = Field(max_length=500)
+    active: bool = True
+    starts_at: dt.datetime | None = None
+    ends_at: dt.datetime | None = None
+    sort_order: int = Field(default=0, ge=-1000, le=1000)
+
+
+class BannerItemUpdateIn(BaseModel):
+    sponsor: str | None = Field(default=None, min_length=1, max_length=80)
+    headline: str | None = Field(default=None, min_length=1, max_length=140)
+    body: str | None = Field(default=None, max_length=200)
+    cta_label: str | None = Field(default=None, min_length=1, max_length=40)
+    link_url: str | None = Field(default=None, max_length=500)
+    active: bool | None = None
+    starts_at: dt.datetime | None = None
+    ends_at: dt.datetime | None = None
+    sort_order: int | None = Field(default=None, ge=-1000, le=1000)
+    # Sent explicitly to remove a start/end date (None means "leave alone").
+    clear_starts_at: bool = False
+    clear_ends_at: bool = False
+
+
+class BannerItemOut(BaseModel):
+    id: int
+    sponsor: str
+    headline: str
+    body: str | None = None
+    cta_label: str
+    link_url: str
+    active: bool
+    starts_at: dt.datetime | None = None
+    ends_at: dt.datetime | None = None
+    sort_order: int
+    impressions: int
+    clicks: int
+    created_at: dt.datetime
+    # Derived: whether it is showing to members right now.
+    live: bool

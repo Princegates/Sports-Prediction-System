@@ -28,6 +28,10 @@ import type {
   HeadToHeadMatch,
   LivePrediction,
   MatchHistoryEntry,
+  BannerItem,
+  BannerItemInput,
+  BannerSlide,
+  MatchLineups,
   MatchStatistics,
   MatchSummary,
   Prediction,
@@ -39,7 +43,7 @@ import type {
   Team,
   TeamForm,
   TokenResponse,
-  UnavailableResource,
+  TeamNews,
   User,
   ReferralStats,
   VerificationStatus,
@@ -824,11 +828,11 @@ export function fetchStatistics(matchId: number): Promise<MatchStatistics> {
   return get(`/api/matches/${matchId}/statistics`);
 }
 
-export function fetchLineup(matchId: number): Promise<UnavailableResource> {
+export function fetchLineup(matchId: number): Promise<MatchLineups> {
   return get(`/api/matches/${matchId}/lineup`);
 }
 
-export function fetchNews(matchId: number): Promise<UnavailableResource> {
+export function fetchNews(matchId: number): Promise<TeamNews> {
   return get(`/api/matches/${matchId}/news`);
 }
 
@@ -999,4 +1003,39 @@ export function fetchOutcomesForLeagues(
       days_ahead: responses[0]?.days_ahead ?? 0,
     };
   });
+}
+
+
+// --- News banner ---------------------------------------------------------------
+
+export function fetchBanner(): Promise<{ slides: BannerSlide[] }> {
+  return get("/api/banner");
+}
+
+/** Best-effort counters for the advertiser's report -- never allowed to fail the page. */
+export function reportAdImpression(id: number): Promise<void> {
+  return post<void>(`/api/banner/ads/${id}/impression`, {}).catch(() => undefined);
+}
+
+export function reportAdClick(id: number): Promise<void> {
+  return post<void>(`/api/banner/ads/${id}/click`, {}).catch(() => undefined);
+}
+
+export function fetchBannerItems(): Promise<BannerItem[]> {
+  return get("/api/admin/banner-items");
+}
+
+export function createBannerItem(body: BannerItemInput): Promise<BannerItem> {
+  return post("/api/admin/banner-items", body);
+}
+
+export function updateBannerItem(
+  id: number,
+  body: Partial<BannerItemInput> & { clear_starts_at?: boolean; clear_ends_at?: boolean },
+): Promise<BannerItem> {
+  return patch(`/api/admin/banner-items/${id}`, body);
+}
+
+export function deleteBannerItem(id: number): Promise<{ message: string }> {
+  return del(`/api/admin/banner-items/${id}`);
 }

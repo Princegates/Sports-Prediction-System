@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { NewsBanner } from "./NewsBanner";
 import { Search, UserAvatar, SettingsIcon, Locked, UserFollow, Trophy } from "./icons";
 import { SearchCommand } from "./SearchCommand";
 import { AccountBanners } from "./AccountBanners";
@@ -281,6 +282,9 @@ export function AppShell() {
                     <button type="button" className="account-menu-item" onClick={() => navigate("/app/admin/winning-slips")}>
                       <SettingsIcon size={16} /> Winning slips
                     </button>
+                    <button type="button" className="account-menu-item" onClick={() => navigate("/app/admin/banner")}>
+                      <SettingsIcon size={16} /> Banner &amp; ads
+                    </button>
                   </>
                 )}
                 <button type="button" className="account-menu-item" onClick={handleLogout}>
@@ -294,6 +298,7 @@ export function AppShell() {
 
       <main id="main-content" className="app-content">
         <AccountBanners />
+        <NewsBanner />
         <Outlet />
       </main>
 
