@@ -26,7 +26,7 @@ const GROUP_NOTES: Record<string, string> = {
   betcode:
     "AI Generation picks by model probability alone, never a bookmaker price — these are just its defaults for that search.",
   assistant:
-    "Off by default — Guda's answers already come straight from this system's own data. Turning this on does two things: it rewrites the phrasing of an answer already composed (never shown a fact it wasn't already given), and it lets Guda answer basic questions the grounded system can't match to anything, instead of only ever handing back a capability menu — both are clearly labeled in the chat either way. Google AI Studio's Gemini API has a genuine free tier if you want to try it — get a key at aistudio.google.com/apikey.",
+    "Off by default — Guda's answers already come straight from this system's own data. Turning this on does two things: it rewrites the phrasing of an answer already composed (never shown a fact it wasn't already given), and it lets Guda answer basic questions the grounded system can't match to anything, instead of only ever handing back a capability menu — both are clearly labeled in the chat either way. Google AI Studio's Gemini API has a genuine free tier if you want to try it — get a key at aistudio.google.com/apikey. Separately, Smart mode (Claude) lets Claude work out each question and look up exactly the data it needs; it bills your Anthropic account per question, so set the daily limits below it.",
 };
 
 function relative(iso: string | null): string {

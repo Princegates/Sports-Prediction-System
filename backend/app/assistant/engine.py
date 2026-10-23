@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.timeutil import utcnow
 from app import app_settings
-from app.assistant import llm, memory, nlu, responder
+from app.assistant import agent, llm, memory, nlu, responder
 from app.assistant.responder import Answer
 from app.db.models import ChatMessage
 
@@ -73,6 +73,14 @@ def compose(
     that user's daily LLM quota (see ``llm_quota_left``)."""
 
     text = _validate(message)
+    if allow_rewrite and user_id is not None:
+        # Smart mode first, when it is switched on and within its daily limits:
+        # Claude works out the question and looks the facts up itself. Anything
+        # short of a clean answer returns None and the built-in pipeline below
+        # answers exactly as it always has.
+        smart = agent.run(db, text, user_id=user_id, context_match_id=context_match_id, now=now)
+        if smart is not None:
+            return smart
     parsed = nlu.parse(db, text, context_match_id=context_match_id, now=now)
     if user_id is not None and memory.needs_memory(text, parsed, context_match_id):
         parsed = memory.carry_over(db, parsed, text, memory.recall(db, user_id, now), now=now)

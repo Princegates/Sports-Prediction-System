@@ -35,6 +35,8 @@ interface Turn {
   picks?: ChatPick[];
   rewritten?: boolean;
   general_chat?: boolean;
+  /** The server's intent for this answer; "agent" marks one worked out by smart mode. */
+  intent?: string | null;
   caveat?: string | null;
   streaming?: boolean;
   failed?: boolean;
@@ -208,6 +210,7 @@ export function ChatDock() {
             picks: r.picks,
             rewritten: r.rewritten,
             general_chat: r.general_chat,
+            intent: r.intent,
           })),
         );
       })
@@ -289,6 +292,7 @@ export function ChatDock() {
             picks: answer.picks,
             rewritten: answer.rewritten,
             general_chat: answer.general_chat,
+            intent: answer.intent,
             caveat: answer.caveat,
             streaming: false,
           })),
@@ -439,7 +443,15 @@ export function ChatDock() {
             {turn.role === "assistant" && (
               <span className="chat-turn-badge">
                 {turn.failed ? "Unavailable" : "Guda"}
-                {turn.rewritten && (
+                {turn.rewritten && turn.intent === "agent" && (
+                  <span
+                    className="chat-rewritten-badge"
+                    title="Claude worked out your question and looked up the facts in this system's own data; the figures in the answer are checked against what it retrieved"
+                  >
+                    ✨ smart answer
+                  </span>
+                )}
+                {turn.rewritten && turn.intent !== "agent" && (
                   <span
                     className="chat-rewritten-badge"
                     title="Phrasing polished by the configured AI model -- every fact still comes from this system's own data, unchanged"

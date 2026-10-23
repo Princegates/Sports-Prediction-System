@@ -101,6 +101,9 @@ class Intent(str, Enum):
     WHAT_CHANGED = "what_changed"
     METHODOLOGY = "methodology"
     RESPONSIBLE_USE = "responsible_use"
+    # An answer worked out by smart mode (agent.py) rather than classified by the
+    # patterns here.
+    AGENT = "agent"
     UNKNOWN = "unknown"
 
 
@@ -152,7 +155,7 @@ _INTENT_PATTERNS: list[tuple[Intent, tuple[str, ...]]] = [
     (Intent.ACCURACY, ("how accurate", "accuracy", "hit rate", "win rate", "track record",
                        "how good are you", "how reliable", "brier", "log loss", "calibrat",
                        "backtest", "how often are you right", "are you right", "can i trust",
-                       "trust you", "trustworthy", "any good", "success rate", "how often do you win",
+                       "trust you", "trustworthy", "you any good", "success rate", "how often do you win",
                        "how right")),
     (Intent.METHODOLOGY, ("how do you work", "how does it work", "how does the model work",
                           "how does this work", "what model", "which model", "model work",
@@ -202,6 +205,21 @@ _INTENT_PATTERNS: list[tuple[Intent, tuple[str, ...]]] = [
     (Intent.GREETING, ("hello", "hey there", "good morning", "good afternoon",
                        "good evening", "how are you")),
 ]
+
+# "30 legs", "top 5 picks", "10 selections" -- a number attached to what a
+# slip is made of is a request to build one, whatever else the sentence says
+# ("best 30 legs this week"). Not after "last/past/..." -- "last 5 matches" is
+# a team's form, not a slip.
+_COUNT_REQUEST = re.compile(
+    r"(?<!last )(?<!past )(?<!previous )(?<!recent )(?<!first )"
+    r"(?<![\d.])\b(\d{1,2})\s*(?:legs?|selections?|picks?|tips?|bets?|games?|matches|fixtures|events|teams|odds)\b"
+)
+# Words that ask for a ranking without naming anything to rank ("best this
+# week", "safest today", "any good ones?") -- the nearest real answer is the
+# best picks, rather than a menu.
+_RANKING_WORDS = re.compile(
+    r"\b(?:best|top|safest|strongest|surest|solid|banker|bankers)\b|\bgood (?:picks?|bets?|tips?|ones|slips?|games)\b"
+)
 
 _GREETING_EXACT = {"hi", "hey", "yo", "hello", "sup", "hiya", "morning", "evening"}
 
@@ -587,9 +605,12 @@ def _classify(text: str, has_two_teams: bool, has_one_team: bool, has_context: b
     if stripped in _GREETING_EXACT:
         return Intent.GREETING
 
+    count_request = bool(_COUNT_REQUEST.search(text))
     for intent, patterns in _COMPILED_INTENTS:
         if not _matches_any(text, patterns):
             continue
+        if count_request and intent in (Intent.BEST_PICKS, Intent.TODAYS_CARD):
+            return Intent.GENERATE_SELECTIONS
 
         # "why"/"risk"/"explain" are only answerable against a specific
         # match. Without one named or in context there is nothing to explain,
@@ -617,6 +638,10 @@ def _classify(text: str, has_two_teams: bool, has_one_team: bool, has_context: b
         return Intent.MATCH_PREDICTION
     if has_one_team:
         return Intent.MATCH_PREDICTION if _FIXTURE_WORDS.search(text) else Intent.TEAM_FORM
+    if count_request:
+        return Intent.GENERATE_SELECTIONS
+    if _RANKING_WORDS.search(text):
+        return Intent.BEST_PICKS
     return Intent.UNKNOWN
 
 

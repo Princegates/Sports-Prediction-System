@@ -98,6 +98,12 @@ class Settings(BaseSettings):
     assistant_llm_model: str = "gemini-3.5-flash-lite"
     assistant_llm_api_key: str = ""
     assistant_llm_timeout: float = 20.0
+    # Smart mode: Claude reasons over Guda's data through tools (app/assistant/agent.py).
+    assistant_agent_enabled: bool = False
+    assistant_agent_api_key: str = ""
+    assistant_agent_model: str = "claude-opus-5-5"
+    assistant_agent_effort: str = "medium"
+    assistant_agent_timeout: float = 60.0
 
     # Optional outbound email, for handing an access code to the person who
     # paid for it. Everything works without these -- the admin just copies the
