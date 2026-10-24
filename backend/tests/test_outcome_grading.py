@@ -129,57 +129,55 @@ def test_second_half_markets_need_the_half_time_score():
     assert grade_outcome("2H Correct Score", "1-0", home_score=1, away_score=0) is None
 
 
-# --- "Result or ..." bets win on EITHER condition --------------------------------
+# --- SportyBet's "X or Y" markets: Yes wins on EITHER condition ------------------
 
 
 def _grade(market, selection, home, away):
     return grade_outcome(market, selection, home_score=home, away_score=away)
 
 
-@pytest.mark.parametrize("selection, home, away, wins", [
-    ("Home or Over 2.5", 1, 0, True),   # home won, only 1 goal
-    ("Home or Over 2.5", 0, 3, True),   # home lost but 3 goals: the over wins it
-    ("Home or Over 2.5", 1, 1, False),  # neither
-    ("Away or Over 2.5", 0, 1, True),
-    ("Away or Over 2.5", 2, 1, True),   # away lost, over 2.5
-    ("Away or Over 2.5", 1, 0, False),
-    ("Draw or Over 2.5", 1, 1, True),   # a draw on 2 goals: the draw itself wins it
-    ("Draw or Over 2.5", 2, 0, False),  # not a draw, only 2 goals
+@pytest.mark.parametrize("market, home, away, yes_wins", [
+    ("Home Team or Over 2.5", 1, 0, True),    # home won, only 1 goal
+    ("Home Team or Over 2.5", 0, 3, True),    # home lost, but 3 goals: the over wins it
+    ("Home Team or Over 2.5", 1, 1, False),   # neither
+    ("Home Team or Under 2.5", 0, 2, True),   # home lost, under 2.5
+    ("Home Team or Under 2.5", 2, 1, True),   # home won (3 goals)
+    ("Home Team or Under 2.5", 1, 3, False),
+    ("Draw or Over 2.5", 1, 1, True),         # a 2-goal draw: the draw wins it
     ("Draw or Over 2.5", 3, 0, True),
-    ("Home or Under 2.5", 0, 2, True),  # home lost, under 2.5
-    ("Home or Under 2.5", 2, 1, True),  # home won
-    ("Home or Under 2.5", 1, 3, False),
+    ("Draw or Over 2.5", 2, 0, False),
+    ("Draw or Under 2.5", 2, 2, True),        # a 4-goal draw
+    ("Draw or Under 2.5", 1, 0, True),
+    ("Draw or Under 2.5", 3, 1, False),
+    ("Away or Over 2.5", 0, 1, True),
+    ("Away or Over 2.5", 2, 1, True),
+    ("Away or Over 2.5", 1, 0, False),
     ("Away or Under 2.5", 1, 1, True),
+    ("Away or Under 2.5", 3, 1, False),
+    ("Home Team or GG", 1, 0, True),
+    ("Home Team or GG", 1, 2, True),          # home lost but both scored
+    ("Home Team or GG", 0, 1, False),
+    ("Draw or GG", 0, 0, True),               # a goalless draw
+    ("Draw or GG", 2, 1, True),               # both scored
+    ("Draw or GG", 1, 0, False),
+    ("Away Team or GG", 2, 1, True),
+    ("Away Team or GG", 1, 0, False),
+    ("Home Team or Any Clean Sheet", 2, 1, True),   # home won
+    ("Home Team or Any Clean Sheet", 0, 1, True),   # lost, but home was kept out: a clean sheet for away
+    ("Home Team or Any Clean Sheet", 1, 1, False),  # a scoring draw
+    ("Draw or Any Clean Sheet", 0, 0, True),
+    ("Draw or Any Clean Sheet", 2, 0, True),        # not a draw, but a clean sheet
+    ("Draw or Any Clean Sheet", 2, 2, True),        # a draw
+    ("Draw or Any Clean Sheet", 2, 1, False),
+    ("Away Team or Any Clean Sheet", 1, 2, True),
+    ("Away Team or Any Clean Sheet", 1, 0, True),   # away lost, home kept a clean sheet
+    ("Away Team or Any Clean Sheet", 2, 2, False),
 ])
-def test_result_or_total_goals_wins_on_either_condition(selection, home, away, wins):
-    assert _grade("Result or Total Goals 2.5", selection, home, away) is wins
+def test_or_markets_yes_wins_on_either_condition_and_no_is_the_opposite(market, home, away, yes_wins):
+    assert _grade(market, "Yes", home, away) is yes_wins
+    assert _grade(market, "No", home, away) is (not yes_wins)
 
 
-@pytest.mark.parametrize("selection, home, away, wins", [
-    ("Home or Any Clean Sheet", 2, 1, True),   # home won
-    ("Home or Any Clean Sheet", 0, 1, True),   # home lost but the home side was kept out -- a clean sheet for away
-    ("Home or Any Clean Sheet", 1, 1, False),  # a scoring draw: no clean sheet, no home win
-    ("Home or Any Clean Sheet", 0, 0, True),
-    ("Away or Any Clean Sheet", 1, 2, True),
-    ("Away or Any Clean Sheet", 1, 0, True),   # away lost, but home kept a clean sheet
-    ("Away or Any Clean Sheet", 2, 2, False),
-])
-def test_result_or_any_clean_sheet(selection, home, away, wins):
-    assert _grade("Result or Any Clean Sheet", selection, home, away) is wins
-
-
-@pytest.mark.parametrize("selection, home, away, wins", [
-    ("Home or GG", 1, 0, True),   # home won
-    ("Home or GG", 1, 2, True),   # home lost but both scored
-    ("Home or GG", 0, 1, False),
-    ("Away or GG", 2, 1, True),
-    ("Away or GG", 1, 0, False),
-    ("Away or GG", 0, 0, False),
-])
-def test_result_or_gg(selection, home, away, wins):
-    assert _grade("Result or GG", selection, home, away) is wins
-
-
-def test_result_or_with_an_unknown_selection_is_not_graded():
-    assert _grade("Result or GG", "Nobody or GG", 1, 1) is None
-    assert _grade("Result or Total Goals 2.5", "Home or Over 3.5", 1, 1) is None
+def test_or_markets_with_an_unknown_selection_are_not_graded():
+    assert _grade("Draw or GG", "Maybe", 1, 1) is None
+    assert _grade("Home Team or Over 2.5", "Home or Over 2.5", 1, 1) is None

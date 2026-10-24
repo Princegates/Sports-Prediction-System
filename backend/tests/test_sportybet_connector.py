@@ -198,11 +198,12 @@ def test_the_wider_markets_translate_too(market, selection, expected):
     ("HT/FT & BTTS", "1/1 & BTTS Yes"),
     ("Total Goals 2.5", "Over 3.5"),  # a selection from a different line
     ("Total Goals 2", "Over 2"),  # a whole line settles differently (a push)
-    # "X or Y" bets win on either condition; SportyBet's lookalikes ("&" combos)
-    # need both, so none of them settles the same way.
-    ("Result or Total Goals 2.5", "Home or Over 2.5"),
-    ("Result or Any Clean Sheet", "Home or Any Clean Sheet"),
-    ("Result or GG", "Away or GG"),
+    # SportyBet does offer "Home Team or Over 2.5" and the rest of the "X or Y"
+    # markets, but its market ids for them haven't been read off a match page
+    # yet, so they are left out rather than guessed (a wrong id books another bet).
+    ("Home Team or Over 2.5", "Yes"),
+    ("Draw or GG", "No"),
+    ("Away Team or Any Clean Sheet", "Yes"),
 ])
 def test_a_pick_without_an_identical_sportybet_bet_is_not_approximated(market, selection):
     assert sb.translate(market, selection) is None

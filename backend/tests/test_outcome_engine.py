@@ -739,97 +739,84 @@ def test_second_half_markets_are_gated_on_history_and_added_by_outcomes_from_pre
     assert not any(o.market.startswith("2H ") for o in outcomes_from_prediction(no_ht))
 
 
-# --- "Result or ..." markets (Home or Over 2.5, Away or any clean sheet, Home or GG) ---
+# --- "X or Y" markets, SportyBet style: "Home Team or Over 2.5" -> Yes / No ---
 
-_OR_SELECTIONS = {
-    "Result or Total Goals 2.5": {
-        "Home or Over 2.5", "Away or Over 2.5", "Draw or Over 2.5", "Home or Under 2.5", "Away or Under 2.5",
-    },
-    "Result or Any Clean Sheet": {"Home or Any Clean Sheet", "Away or Any Clean Sheet"},
-    "Result or GG": {"Home or GG", "Away or GG"},
-}
+SPORTYBET_OR_MARKETS = [
+    "Home Team or Over 2.5", "Home Team or Under 2.5", "Draw or Over 2.5", "Draw or Under 2.5",
+    "Away or Over 2.5", "Away or Under 2.5", "Home Team or GG", "Draw or GG", "Away Team or GG",
+    "Home Team or Any Clean Sheet", "Draw or Any Clean Sheet", "Away Team or Any Clean Sheet",
+]
 
 
 def _by_key(outcomes):
     return {(o.market, o.selection): o.probability for o in outcomes}
 
 
-def test_every_requested_result_or_bet_is_offered():
+def test_every_sportybet_or_market_is_offered_as_a_yes_no_pair():
+    outcomes = matrix_derived_outcomes(lambda_home=1.6, lambda_away=1.1, matches_available=20)
+    by = _by_key(outcomes)
+
+    for market in SPORTYBET_OR_MARKETS:
+        assert {sel for (m, sel) in by if m == market} == {"Yes", "No"}, market
+        assert by[(market, "Yes")] + by[(market, "No")] == pytest.approx(1.0)
+
+
+def test_or_markets_equal_the_matching_and_buckets():
+    """"Home Team or Over 2.5: Yes" wins on any home win plus every non-home
+    match that still goes over 2.5 -- exactly the Result & Total Goals buckets it
+    is made of. Checked against that independently computed "&" market."""
+
     by = _by_key(matrix_derived_outcomes(lambda_home=1.6, lambda_away=1.1, matches_available=20))
+    both = lambda r, side: by[("Result & Total Goals 2.5", f"{r} & {side} 2.5")]  # noqa: E731
+    whole = lambda r: both(r, "Over") + both(r, "Under")  # noqa: E731
 
-    for market, selections in _OR_SELECTIONS.items():
-        assert {sel for (m, sel) in by if m == market} == selections
-
-
-def test_result_or_over_under_equals_the_matching_and_buckets():
-    """"Home or Over 2.5" wins on any home win, plus every non-home match that
-    still goes over 2.5. That is exactly the Result & Total Goals buckets it is
-    built from, so the two must agree -- checked against the independently
-    computed "&" market rather than re-deriving the same loop."""
-
-    by = _by_key(matrix_derived_outcomes(lambda_home=1.6, lambda_away=1.1, matches_available=20))
-    both = lambda r, side, line="2.5": by[("Result & Total Goals 2.5", f"{r} & {side} {line}")]  # noqa: E731
-    home = both("Home", "Over") + both("Home", "Under")
-
-    assert by[("Result or Total Goals 2.5", "Home or Over 2.5")] == pytest.approx(
-        home + both("Draw", "Over") + both("Away", "Over"))
-    assert by[("Result or Total Goals 2.5", "Home or Under 2.5")] == pytest.approx(
-        home + both("Draw", "Under") + both("Away", "Under"))
-    away = both("Away", "Over") + both("Away", "Under")
-    assert by[("Result or Total Goals 2.5", "Away or Over 2.5")] == pytest.approx(
-        away + both("Home", "Over") + both("Draw", "Over"))
-    draw = both("Draw", "Over") + both("Draw", "Under")
-    assert by[("Result or Total Goals 2.5", "Draw or Over 2.5")] == pytest.approx(
-        draw + both("Home", "Over") + both("Away", "Over"))
-    assert by[("Result or Total Goals 2.5", "Away or Under 2.5")] == pytest.approx(
-        away + both("Home", "Under") + both("Draw", "Under"))
+    for side, market_side in (("Home", "Home Team"), ("Draw", "Draw"), ("Away", "Away")):
+        others = [r for r in ("Home", "Draw", "Away") if r != side]
+        assert by[(f"{market_side} or Over 2.5", "Yes")] == pytest.approx(whole(side) + sum(both(r, "Over") for r in others))
+        assert by[(f"{market_side} or Under 2.5", "Yes")] == pytest.approx(whole(side) + sum(both(r, "Under") for r in others))
 
 
-def test_result_or_gg_and_clean_sheet_equal_the_matching_btts_buckets():
-    """Any clean sheet is just "not both teams to score", and GG is BTTS Yes."""
+def test_or_gg_and_clean_sheet_equal_the_matching_btts_buckets():
+    """Any clean sheet is just "not both teams to score"; GG is BTTS Yes."""
 
     by = _by_key(matrix_derived_outcomes(lambda_home=1.6, lambda_away=1.1, matches_available=20))
     bt = lambda r, yes: by[("Result & BTTS", f"{r} & BTTS {'Yes' if yes else 'No'}")]  # noqa: E731
-    home = bt("Home", True) + bt("Home", False)
-    away = bt("Away", True) + bt("Away", False)
+    whole = lambda r: bt(r, True) + bt(r, False)  # noqa: E731
 
-    assert by[("Result or GG", "Home or GG")] == pytest.approx(home + bt("Draw", True) + bt("Away", True))
-    assert by[("Result or GG", "Away or GG")] == pytest.approx(away + bt("Draw", True) + bt("Home", True))
-    assert by[("Result or Any Clean Sheet", "Home or Any Clean Sheet")] == pytest.approx(
-        home + bt("Draw", False) + bt("Away", False))
-    assert by[("Result or Any Clean Sheet", "Away or Any Clean Sheet")] == pytest.approx(
-        away + bt("Draw", False) + bt("Home", False))
+    for side, market_side in (("Home", "Home Team"), ("Draw", "Draw"), ("Away", "Away Team")):
+        others = [r for r in ("Home", "Draw", "Away") if r != side]
+        assert by[(f"{market_side} or GG", "Yes")] == pytest.approx(whole(side) + sum(bt(r, True) for r in others))
+        assert by[(f"{market_side} or Any Clean Sheet", "Yes")] == pytest.approx(
+            whole(side) + sum(bt(r, False) for r in others))
 
 
-def test_a_result_or_bet_is_never_less_likely_than_either_of_its_parts():
+def test_a_yes_is_never_less_likely_than_either_of_its_parts():
     by = _by_key(matrix_derived_outcomes(lambda_home=1.3, lambda_away=1.4, matches_available=20))
     bucket = lambda r, side: by[("Result & Total Goals 2.5", f"{r} & {side} 2.5")]  # noqa: E731
     over = sum(bucket(r, "Over") for r in ("Home", "Draw", "Away"))
     result = {r: bucket(r, "Over") + bucket(r, "Under") for r in ("Home", "Draw", "Away")}
 
-    for r in ("Home", "Away", "Draw"):
-        sel = f"{r} or Over 2.5"
-        assert by[("Result or Total Goals 2.5", sel)] >= max(result[r], over) - 1e-12
-    for (market, _), p in by.items():
-        if market.startswith("Result or"):
-            assert 0.0 < p <= 1.0
+    for r, market in (("Home", "Home Team or Over 2.5"), ("Draw", "Draw or Over 2.5"), ("Away", "Away or Over 2.5")):
+        assert by[(market, "Yes")] >= max(result[r], over) - 1e-12
 
 
-def test_result_or_markets_are_unions_so_they_never_headline_or_claim_to_sum_to_one():
+def test_or_markets_are_real_pairs_that_still_stay_out_of_the_headline():
     from app.outcomes.registry import NOT_A_FULL_PARTITION_GROUPS
+    from app.outcomes.result_or import RESULT_OR_GROUPS
 
     outcomes = matrix_derived_outcomes(lambda_home=1.6, lambda_away=1.1, matches_available=20)
-    groups = {o.mutually_exclusive_group for o in outcomes if o.market.startswith("Result or")}
+    groups = {o.mutually_exclusive_group for o in outcomes if o.market in SPORTYBET_OR_MARKETS}
 
-    assert groups == {"result_or_total_2.5", "result_or_clean_sheet", "result_or_gg"}
-    assert groups <= DOMINANT_UNION_GROUPS and groups <= NOT_A_FULL_PARTITION_GROUPS
-    winner = select_global_most_likely([o for o in outcomes if not o.market.startswith("Result or")])
+    assert groups == RESULT_OR_GROUPS and len(groups) == 12
+    assert groups <= DOMINANT_UNION_GROUPS  # never the headline pick or a "what else" slot
+    assert not groups & NOT_A_FULL_PARTITION_GROUPS  # but each Yes/No pair does sum to 100%
+    winner = select_global_most_likely([o for o in outcomes if o.market not in SPORTYBET_OR_MARKETS])
     also = secondary_outcomes(outcomes, exclude=(winner.market, winner.selection), n=len(outcomes))
-    assert not any(o.market.startswith("Result or") for o in also)
+    assert not any(o.market in SPORTYBET_OR_MARKETS for o in also)
 
 
-def test_result_or_markets_respect_the_data_gate_and_reach_the_prediction_view():
-    assert [o for o in matrix_derived_outcomes(1.6, 1.1, 3) if o.market.startswith("Result or")] == []
+def test_or_markets_respect_the_data_gate_and_reach_the_prediction_view():
+    assert [o for o in matrix_derived_outcomes(1.6, 1.1, 3) if o.market in SPORTYBET_OR_MARKETS] == []
     prediction = _prediction_stub(model_breakdown={"poisson": {"lambda_home": 1.6, "lambda_away": 1.1}})
 
-    assert {o.market for o in outcomes_from_prediction(prediction)} >= set(_OR_SELECTIONS)
+    assert {o.market for o in outcomes_from_prediction(prediction)} >= set(SPORTYBET_OR_MARKETS)
