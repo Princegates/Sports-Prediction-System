@@ -198,15 +198,27 @@ def test_the_wider_markets_translate_too(market, selection, expected):
     ("HT/FT & BTTS", "1/1 & BTTS Yes"),
     ("Total Goals 2.5", "Over 3.5"),  # a selection from a different line
     ("Total Goals 2", "Over 2"),  # a whole line settles differently (a push)
-    # SportyBet does offer "Home Team or Over 2.5" and the rest of the "X or Y"
-    # markets, but its market ids for them haven't been read off a match page
-    # yet, so they are left out rather than guessed (a wrong id books another bet).
-    ("Home Team or Over 2.5", "Yes"),
-    ("Draw or GG", "No"),
-    ("Away Team or Any Clean Sheet", "Yes"),
+    ("Home Team or Over 2.5", "Home or Over 2.5"),  # not a Yes/No selection
 ])
 def test_a_pick_without_an_identical_sportybet_bet_is_not_approximated(market, selection):
     assert sb.translate(market, selection) is None
+
+
+@pytest.mark.parametrize("market,selection,expected", [
+    ("Home Team or Over 2.5", "Yes", ("854", "total=2.5", "74")),
+    ("Away or Under 2.5", "No", ("859", "total=2.5", "76")),
+    ("Draw or GG", "Yes", ("861", None, "74")),
+    ("Away Team or Any Clean Sheet", "No", ("865", None, "76")),
+    ("Home Win To Nil", "Yes", ("33", None, "74")),
+])
+def test_the_x_or_y_markets_book_as_sportradar_854_to_865(market, selection, expected):
+    assert sb.translate(market, selection) == expected
+
+
+def test_every_x_or_y_market_has_a_booking_id():
+    from app.outcomes.result_or import RESULT_OR_MARKETS
+    for market in RESULT_OR_MARKETS:
+        assert sb.translate(market, "Yes") is not None and sb.translate(market, "No") is not None
 
 
 # --- the table against SportyBet's own market list -----------------------------
@@ -679,11 +691,13 @@ def test_second_half_markets_without_confirmed_ids_are_not_guessed(market):
     assert not any(m == market for (m, _) in sb._MARKETS)
 
 
-def test_only_second_half_markets_are_unconfirmed():
+def test_only_second_half_and_x_or_y_markets_are_unconfirmed():
     """The skip above must not become a way to wave through a mistyped id:
-    only the 2nd-half markets are exempt, and anything captured is checked."""
+    only the 2nd-half and "X or Y" markets are exempt, and anything captured is checked."""
+
+    from app.outcomes.result_or import RESULT_OR_MARKETS
 
     unconfirmed = {m for (m, _), (mid, _, _) in sb._MARKETS.items() if mid in sb.UNCONFIRMED_MARKET_IDS}
-    assert unconfirmed and all(m.startswith("2H ") for m in unconfirmed)
+    assert unconfirmed and all(m.startswith("2H ") or m in RESULT_OR_MARKETS for m in unconfirmed)
     # Once a capture has a market, it comes off the list and gets checked.
     assert not any(m["id"] in sb.UNCONFIRMED_MARKET_IDS for m in _CAPTURE["markets"])
