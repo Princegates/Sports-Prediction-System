@@ -46,6 +46,8 @@ DOMINANT_UNION_GROUPS = frozenset({
     # of two events, so always at least as likely as each alone -- they would
     # fill the headline and "what else" slots by restating a real pick loosely.
     *RESULT_OR_GROUPS,
+    # "1st Half Result or Match Result": Home = home leads at half-time OR wins.
+    "ht_or_ft_result",
 })
 
 # Groups whose displayed selections do not actually partition 100% of
@@ -113,6 +115,13 @@ _ASIAN_HANDICAP_LINES = (0.5, 1.5)
 HANDICAP_LINES = (-2, -1, 1, 2)
 
 _RESULT_SHORT = {"Home": "1", "Draw": "X", "Away": "2"}
+
+HT_OR_FT_MARKET = "1st Half Result or Match Result"
+_HT_OR_FT_MEANING = {
+    "Home": "The home team is ahead at half-time or wins the match.",
+    "Draw": "The game is level at half-time or ends in a draw.",
+    "Away": "The away team is ahead at half-time or wins the match.",
+}
 _RESULT_PHRASE = {
     "Home": "the home team is ahead",
     "Draw": "the scores are level",
@@ -320,6 +329,15 @@ def matrix_derived_outcomes(lambda_home: float, lambda_away: float, matches_avai
     home_cs = away_goals[0]
     away_cs = home_goals[0]
     both_cs = matrix[0][0]
+    # "Home Win To Nil": the home team wins and the away team does not score.
+    home_wtn = sum(matrix[h][0] for h in range(1, max_goals + 1))
+    away_wtn = sum(matrix[0][a] for a in range(1, max_goals + 1))
+    outcomes += [
+        Outcome("Home Win To Nil", "Yes", home_wtn, "home_win_to_nil", 5, "The home team wins and the away team does not score."),
+        Outcome("Home Win To Nil", "No", 1 - home_wtn, "home_win_to_nil", 5, "The home team does not win, or the away team scores."),
+        Outcome("Away Win To Nil", "Yes", away_wtn, "away_win_to_nil", 5, "The away team wins and the home team does not score."),
+        Outcome("Away Win To Nil", "No", 1 - away_wtn, "away_win_to_nil", 5, "The away team does not win, or the home team scores."),
+    ]
     outcomes += [
         Outcome("Home Clean Sheet", "Yes", home_cs, "home_clean_sheet", 5, "The away team fails to score."),
         Outcome("Home Clean Sheet", "No", 1 - home_cs, "home_clean_sheet", 5, "The away team scores at least once."),
@@ -828,6 +846,18 @@ def ht_ft_joint_outcomes(
             f"At half-time {_RESULT_PHRASE[h]}; at full-time {_RESULT_PHRASE[f]}.",
         )
         for (h, f), p in ht_ft_p.items()
+    ]
+
+    # SportyBet's "1st Half Result or Match Result": a side's selection wins if
+    # that side leads at half-time OR wins the match (so the three overlap).
+    outcomes += [
+        Outcome(
+            HT_OR_FT_MARKET, side,
+            sum(p for (h, f), p in ht_ft_p.items() if side in (h, f)),
+            "ht_or_ft_result", 5,
+            _HT_OR_FT_MEANING[side],
+        )
+        for side in ("Home", "Draw", "Away")
     ]
 
     outcomes += [

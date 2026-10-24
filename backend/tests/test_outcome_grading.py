@@ -181,3 +181,42 @@ def test_or_markets_yes_wins_on_either_condition_and_no_is_the_opposite(market, 
 def test_or_markets_with_an_unknown_selection_are_not_graded():
     assert _grade("Draw or GG", "Maybe", 1, 1) is None
     assert _grade("Home Team or Over 2.5", "Home or Over 2.5", 1, 1) is None
+
+
+@pytest.mark.parametrize(
+    "selection,ht,ft,expected",
+    [
+        ("Home", (1, 0), (1, 2), True),  # led at half-time, lost the match
+        ("Away", (1, 0), (1, 2), True),  # won the match
+        ("Draw", (1, 0), (1, 2), False),
+        ("Draw", (0, 0), (2, 1), True),  # level at half-time
+        ("Home", (0, 1), (0, 1), False),
+        ("Draw", (1, 0), (1, 1), True),  # drawn at full time
+    ],
+)
+def test_first_half_result_or_match_result(selection, ht, ft, expected):
+    got = grade_outcome(
+        "1st Half Result or Match Result", selection,
+        home_score=ft[0], away_score=ft[1], ht_home_score=ht[0], ht_away_score=ht[1],
+    )
+    assert got is expected
+
+
+def test_first_half_result_or_match_result_needs_the_half_time_score():
+    assert grade_outcome("1st Half Result or Match Result", "Home", home_score=2, away_score=0) is None
+
+
+@pytest.mark.parametrize(
+    "market,selection,score,expected",
+    [
+        ("Home Win To Nil", "Yes", (2, 0), True),
+        ("Home Win To Nil", "Yes", (2, 1), False),
+        ("Home Win To Nil", "Yes", (0, 0), False),
+        ("Home Win To Nil", "No", (0, 0), True),
+        ("Away Win To Nil", "Yes", (0, 1), True),
+        ("Away Win To Nil", "Yes", (1, 2), False),
+        ("Away Win To Nil", "No", (3, 0), True),
+    ],
+)
+def test_win_to_nil(market, selection, score, expected):
+    assert grade_outcome(market, selection, home_score=score[0], away_score=score[1]) is expected

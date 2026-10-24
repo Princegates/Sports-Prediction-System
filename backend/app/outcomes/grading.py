@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import re
 
+from app.outcomes.registry import HT_OR_FT_MARKET
 from app.outcomes.result_or import RESULT_OR_MARKETS, wins as result_or_wins
 
 _OU_RE = re.compile(r"^(?:HT |2H )?(?:Total|Home|Away) Goals (\d+(?:\.\d+)?)$")
@@ -83,6 +84,14 @@ def grade_outcome(
     if market == "Correct Score":
         return selection == f"{home_score}-{away_score}"
 
+    if market in ("Home Win To Nil", "Away Win To Nil"):
+        won = (result == "H" and away_score == 0) if market.startswith("Home") else (result == "A" and home_score == 0)
+        if selection == "Yes":
+            return won
+        if selection == "No":
+            return not won
+        return None
+
     if market in ("Home Clean Sheet", "Away Clean Sheet", "Both Teams Clean Sheet"):
         clean = {
             "Home Clean Sheet": away_score == 0,
@@ -107,6 +116,15 @@ def grade_outcome(
         if selection == "Odd":
             return not is_even
         return None
+
+    if market == HT_OR_FT_MARKET:
+        # Wins if the side's result holds at half-time or at full time.
+        if ht_home_score is None or ht_away_score is None:
+            return None
+        wanted = {"Home": "H", "Draw": "D", "Away": "A"}.get(selection)
+        if wanted is None:
+            return None
+        return wanted in (_result_1x2(ht_home_score, ht_away_score), result)
 
     if market in RESULT_OR_MARKETS:
         # SportyBet's "Home Team or Over 2.5" etc.: Yes wins if either condition holds.
