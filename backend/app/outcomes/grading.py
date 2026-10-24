@@ -106,6 +106,27 @@ def grade_outcome(
             return not is_even
         return None
 
+    if market in ("Result or Total Goals 2.5", "Result or Any Clean Sheet", "Result or GG"):
+        # "<side> or <condition>": wins if the side won, or the condition holds.
+        side, _, condition = selection.partition(" or ")
+        if side not in ("Home", "Away", "Draw"):
+            return None
+        side_won = {"Home": "H", "Away": "A", "Draw": "D"}[side] == result
+        total = home_score + away_score
+        if market == "Result or Total Goals 2.5":
+            if condition not in ("Over 2.5", "Under 2.5"):
+                return None
+            condition_met = total > 2.5 if condition == "Over 2.5" else total < 2.5
+        elif market == "Result or Any Clean Sheet":
+            if condition != "Any Clean Sheet":
+                return None
+            condition_met = home_score == 0 or away_score == 0
+        else:
+            if condition != "GG":
+                return None
+            condition_met = home_score > 0 and away_score > 0
+        return side_won or condition_met
+
     ou_match = _OU_RE.match(market)
     if ou_match:
         line = float(ou_match.group(1))
