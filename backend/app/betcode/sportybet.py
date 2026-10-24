@@ -123,7 +123,15 @@ Selection = tuple[str, str | None, str]
 # SportyBet match page (see the "second half" block in _build_markets). The
 # capture test skips these; once a capture containing one is added to the
 # fixture, remove it from here so that test starts checking it.
-UNCONFIRMED_MARKET_IDS = frozenset({"83", "90", "94", "95"})
+UNCONFIRMED_MARKET_IDS = frozenset({"83", "90", "94", "95", *(str(n) for n in range(854, 866))})
+_RESULT_OR_IDS = [
+    ("Home Team or Over 2.5", "854", "total=2.5"), ("Home Team or Under 2.5", "855", "total=2.5"),
+    ("Draw or Over 2.5", "856", "total=2.5"), ("Draw or Under 2.5", "857", "total=2.5"),
+    ("Away or Over 2.5", "858", "total=2.5"), ("Away or Under 2.5", "859", "total=2.5"),
+    ("Home Team or GG", "860", None), ("Draw or GG", "861", None), ("Away Team or GG", "862", None),
+    ("Home Team or Any Clean Sheet", "863", None), ("Draw or Any Clean Sheet", "864", None),
+    ("Away Team or Any Clean Sheet", "865", None),
+]
 _RESULT = {"Home": 0, "Draw": 1, "Away": 2}
 _SHORT = {"1": "Home", "X": "Draw", "2": "Away"}
 _HALF_LINES = [f"{n}.5" for n in range(10)]
@@ -246,6 +254,11 @@ def _build_markets() -> dict[tuple[str, str], Selection]:
     add("Which Team To Score", "30", None, {"None": "784", "Only Home": "788", "Only Away": "790", "Both": "792"})
     # The winning side keeping a clean sheet is SportyBet's "win to nil"; a
     # clean-sheet draw is 0-0. The "No" halves have no single SportyBet bet.
+    # "Home Team or Over 2.5" and the rest: Sportradar markets 854-865, Yes 74 /
+    # No 76, the total ones with a total=2.5 specifier. Ids are from Betradar's
+    # published table (UNCONFIRMED_MARKET_IDS), not a SportyBet capture.
+    for name, market_id, specifier in _RESULT_OR_IDS:
+        add(name, market_id, specifier, yes_no)
     add("Home Win To Nil", "33", None, yes_no)
     add("Away Win To Nil", "34", None, yes_no)
     add("Result & Clean Sheet", "33", None, {"Home & Clean Sheet Yes": "74"})
