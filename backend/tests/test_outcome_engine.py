@@ -820,3 +820,24 @@ def test_or_markets_respect_the_data_gate_and_reach_the_prediction_view():
     prediction = _prediction_stub(model_breakdown={"poisson": {"lambda_home": 1.6, "lambda_away": 1.1}})
 
     assert {o.market for o in outcomes_from_prediction(prediction)} >= set(SPORTYBET_OR_MARKETS)
+
+
+def test_ht_or_ft_result_is_the_union_of_the_ht_ft_grid_cells():
+    outcomes = _ht_ft()
+    grid = {o.selection: o.probability for o in outcomes if o.market == "HT/FT"}
+    union = {o.selection: o for o in outcomes if o.market == "1st Half Result or Match Result"}
+    assert set(union) == {"Home", "Draw", "Away"}
+    # Home = 1/1, 1/X, 1/2, X/1, 2/1 -- home leads at half-time OR wins.
+    expected_home = sum(p for k, p in grid.items() if k.split("/")[0] == "1" or k.split("/")[1] == "1")
+    assert abs(union["Home"].probability - expected_home) < 1e-9
+    assert all(o.mutually_exclusive_group == "ht_or_ft_result" for o in union.values())
+    # Each is at least as likely as the plain full-time result it contains.
+    assert union["Home"].probability >= sum(p for k, p in grid.items() if k.endswith("/1"))
+
+
+def test_win_to_nil_matches_the_result_and_clean_sheet_bucket():
+    registry = matrix_derived_outcomes(lambda_home=1.6, lambda_away=1.1, matches_available=20)
+    by = {(o.market, o.selection): o.probability for o in registry}
+    assert abs(by[("Home Win To Nil", "Yes")] - by[("Result & Clean Sheet", "Home & Clean Sheet Yes")]) < 1e-9
+    assert abs(by[("Away Win To Nil", "Yes")] - by[("Result & Clean Sheet", "Away & Clean Sheet Yes")]) < 1e-9
+    assert abs(by[("Home Win To Nil", "Yes")] + by[("Home Win To Nil", "No")] - 1) < 1e-9

@@ -246,6 +246,8 @@ def _build_markets() -> dict[tuple[str, str], Selection]:
     add("Which Team To Score", "30", None, {"None": "784", "Only Home": "788", "Only Away": "790", "Both": "792"})
     # The winning side keeping a clean sheet is SportyBet's "win to nil"; a
     # clean-sheet draw is 0-0. The "No" halves have no single SportyBet bet.
+    add("Home Win To Nil", "33", None, yes_no)
+    add("Away Win To Nil", "34", None, yes_no)
     add("Result & Clean Sheet", "33", None, {"Home & Clean Sheet Yes": "74"})
     add("Result & Clean Sheet", "34", None, {"Away & Clean Sheet Yes": "74"})
     add("Result & Clean Sheet", "18", "total=0.5", {"Draw & Clean Sheet Yes": "13"})
