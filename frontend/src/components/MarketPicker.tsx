@@ -33,7 +33,7 @@ const CATEGORY_ORDER = ["Main", "Total goals", "Team goals & clean sheets", "Cor
 
 function categoryOf(market: string): string {
   if (/^(HT|2H)\b/.test(market) || market === "Half With Most Goals") return "Half-time";
-  if (market.includes(" & ")) return "Combos";
+  if (market.includes(" & ") || market.includes(" or ")) return "Combos";
   if (MAIN_MARKETS.includes(market)) return "Main";
   if (market.startsWith("Total Goals")) return "Total goals";
   if (market.startsWith("Total Corners") || market === "Most Corners") return "Corners";

@@ -41,6 +41,9 @@ class Outcome:
 DOMINANT_UNION_GROUPS = frozenset({
     "double_chance", "ht_double_chance", "h2_double_chance", "ht_ft_double_chance", "ht_double_chance_btts",
     "dc_btts", "dc_total_goals_1.5", "dc_total_goals_2.5", "dc_total_goals_3.5", "dc_total_goals_4.5",
+    # "Home or Over 2.5" and the like: either of two events, so always at least
+    # as likely as each alone, and the selections within a market overlap.
+    "result_or_total_2.5", "result_or_clean_sheet", "result_or_gg",
 })
 
 # Groups whose displayed selections do not actually partition 100% of
@@ -468,6 +471,51 @@ def matrix_derived_outcomes(lambda_home: float, lambda_away: float, matches_avai
                 f"{result} win combined with a clean sheet for the winning side"
                 + (" (or a 0-0 draw)" if result == "Draw" else "") + (" -- yes" if cs else " -- no") + ".")
         for (result, cs), p in result_cs.items()
+    ]
+
+    # -- "Result or ..." markets: Home/Away/Draw or a goals condition ---------
+    # The bookmaker "X or Y" bets -- the bet wins if EITHER the result happens
+    # or the second condition does ("Home or Over 2.5" wins on a home win, and
+    # also on a 0-3 away win because that is over 2.5). Unlike every "&" combo
+    # above, which needs both, these are unions: each is at least as likely as
+    # either part, and the selections within one market overlap, so they sit in
+    # DOMINANT_UNION_GROUPS (never the headline pick, not a 100% partition) just
+    # as Double Chance does. Full time only, goal line 2.5 only.
+    result_or_total = {"Home or Over 2.5": 0.0, "Away or Over 2.5": 0.0, "Draw or Over 2.5": 0.0,
+                       "Home or Under 2.5": 0.0, "Away or Under 2.5": 0.0}
+    result_or_clean_sheet = {"Home or Any Clean Sheet": 0.0, "Away or Any Clean Sheet": 0.0}
+    result_or_gg = {"Home or GG": 0.0, "Away or GG": 0.0}
+    for h in range(max_goals + 1):
+        for a in range(max_goals + 1):
+            p = matrix[h][a]
+            r = result_of(h, a)
+            over = h + a > 2.5
+            any_clean_sheet = h == 0 or a == 0  # at least one side kept the other out
+            gg = not any_clean_sheet  # both teams scored
+            for side in ("Home", "Away", "Draw"):
+                if r == side or over:
+                    result_or_total[f"{side} or Over 2.5"] += p
+            for side in ("Home", "Away"):
+                if r == side or not over:
+                    result_or_total[f"{side} or Under 2.5"] += p
+                if r == side or any_clean_sheet:
+                    result_or_clean_sheet[f"{side} or Any Clean Sheet"] += p
+                if r == side or gg:
+                    result_or_gg[f"{side} or GG"] += p
+    outcomes += [
+        Outcome("Result or Total Goals 2.5", sel, p, "result_or_total_2.5", 5,
+                f"{sel.split(' or ')[0]} wins, or total match goals are "
+                f"{'over' if 'Over' in sel else 'under'} 2.5 -- either one is enough.")
+        for sel, p in result_or_total.items()
+    ] + [
+        Outcome("Result or Any Clean Sheet", sel, p, "result_or_clean_sheet", 5,
+                f"{sel.split(' or ')[0]} wins, or at least one team keeps a clean sheet (the match is not "
+                f"both-teams-to-score) -- either one is enough.")
+        for sel, p in result_or_clean_sheet.items()
+    ] + [
+        Outcome("Result or GG", sel, p, "result_or_gg", 5,
+                f"{sel.split(' or ')[0]} wins, or both teams score (GG) -- either one is enough.")
+        for sel, p in result_or_gg.items()
     ]
 
     return [o for o in outcomes if matches_available >= o.min_data_requirement]

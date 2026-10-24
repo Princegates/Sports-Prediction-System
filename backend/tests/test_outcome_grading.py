@@ -3,6 +3,8 @@ score. Settlement (test_pick_settlement.py) builds on top of this."""
 
 from __future__ import annotations
 
+import pytest
+
 from app.outcomes.grading import grade_outcome
 
 
@@ -125,3 +127,59 @@ def test_second_half_single_half_markets_use_full_time_less_half_time():
 def test_second_half_markets_need_the_half_time_score():
     assert grade_outcome("2H Result", "Home", home_score=1, away_score=0) is None
     assert grade_outcome("2H Correct Score", "1-0", home_score=1, away_score=0) is None
+
+
+# --- "Result or ..." bets win on EITHER condition --------------------------------
+
+
+def _grade(market, selection, home, away):
+    return grade_outcome(market, selection, home_score=home, away_score=away)
+
+
+@pytest.mark.parametrize("selection, home, away, wins", [
+    ("Home or Over 2.5", 1, 0, True),   # home won, only 1 goal
+    ("Home or Over 2.5", 0, 3, True),   # home lost but 3 goals: the over wins it
+    ("Home or Over 2.5", 1, 1, False),  # neither
+    ("Away or Over 2.5", 0, 1, True),
+    ("Away or Over 2.5", 2, 1, True),   # away lost, over 2.5
+    ("Away or Over 2.5", 1, 0, False),
+    ("Draw or Over 2.5", 1, 1, True),   # a draw on 2 goals: the draw itself wins it
+    ("Draw or Over 2.5", 2, 0, False),  # not a draw, only 2 goals
+    ("Draw or Over 2.5", 3, 0, True),
+    ("Home or Under 2.5", 0, 2, True),  # home lost, under 2.5
+    ("Home or Under 2.5", 2, 1, True),  # home won
+    ("Home or Under 2.5", 1, 3, False),
+    ("Away or Under 2.5", 1, 1, True),
+])
+def test_result_or_total_goals_wins_on_either_condition(selection, home, away, wins):
+    assert _grade("Result or Total Goals 2.5", selection, home, away) is wins
+
+
+@pytest.mark.parametrize("selection, home, away, wins", [
+    ("Home or Any Clean Sheet", 2, 1, True),   # home won
+    ("Home or Any Clean Sheet", 0, 1, True),   # home lost but the home side was kept out -- a clean sheet for away
+    ("Home or Any Clean Sheet", 1, 1, False),  # a scoring draw: no clean sheet, no home win
+    ("Home or Any Clean Sheet", 0, 0, True),
+    ("Away or Any Clean Sheet", 1, 2, True),
+    ("Away or Any Clean Sheet", 1, 0, True),   # away lost, but home kept a clean sheet
+    ("Away or Any Clean Sheet", 2, 2, False),
+])
+def test_result_or_any_clean_sheet(selection, home, away, wins):
+    assert _grade("Result or Any Clean Sheet", selection, home, away) is wins
+
+
+@pytest.mark.parametrize("selection, home, away, wins", [
+    ("Home or GG", 1, 0, True),   # home won
+    ("Home or GG", 1, 2, True),   # home lost but both scored
+    ("Home or GG", 0, 1, False),
+    ("Away or GG", 2, 1, True),
+    ("Away or GG", 1, 0, False),
+    ("Away or GG", 0, 0, False),
+])
+def test_result_or_gg(selection, home, away, wins):
+    assert _grade("Result or GG", selection, home, away) is wins
+
+
+def test_result_or_with_an_unknown_selection_is_not_graded():
+    assert _grade("Result or GG", "Nobody or GG", 1, 1) is None
+    assert _grade("Result or Total Goals 2.5", "Home or Over 3.5", 1, 1) is None
