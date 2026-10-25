@@ -756,6 +756,15 @@ export interface SuggestCriteria {
    * surfaces a genuinely different combination instead of the identical,
    * deterministic result safest-first search always lands on otherwise. */
   exclude_match_ids?: number[];
+  /** (match, market) pairs already shown -- what Refresh sends. The match
+   * stays eligible, so a refresh can move a game to a different market
+   * rather than only swapping games. */
+  exclude_legs?: ExcludedLeg[];
+}
+
+export interface ExcludedLeg {
+  match_id: number;
+  market: string;
 }
 
 /** What POST /api/betcodes/suggest-random searches with -- min_legs/max_legs
@@ -772,6 +781,7 @@ export interface SuggestRandomCriteria {
   date_from?: string | null;
   date_to?: string | null;
   exclude_match_ids?: number[];
+  exclude_legs?: ExcludedLeg[];
 }
 
 export interface SuggestedLeg {

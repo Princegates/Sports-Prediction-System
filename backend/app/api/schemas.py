@@ -925,6 +925,11 @@ class BetCodePickIn(BaseModel):
     selection: str
 
 
+class ExcludedLegIn(BaseModel):
+    match_id: int
+    market: str
+
+
 class SuggestCriteriaIn(BaseModel):
     """What POST /api/betcodes/suggest searches with -- no target price, no
     bookmaker: the result is meant to be booked directly with a betting site
@@ -960,6 +965,10 @@ class SuggestCriteriaIn(BaseModel):
     # instead of the identical, deterministic result safest-first search
     # always lands on for unchanged criteria over unchanged data.
     exclude_match_ids: list[int] = []
+    # The finer-grained form Refresh actually sends: (match, market) pairs
+    # already shown. The match stays eligible, so a refresh can move a game to
+    # a different market instead of only swapping games.
+    exclude_legs: list[ExcludedLegIn] = []
 
 
 class SuggestRandomCriteriaIn(BaseModel):
@@ -984,6 +993,7 @@ class SuggestRandomCriteriaIn(BaseModel):
     # own, but this still keeps it from re-surfacing a match the visible
     # slip already has a leg from).
     exclude_match_ids: list[int] = []
+    exclude_legs: list[ExcludedLegIn] = []
 
 
 class ResolvePicksIn(BaseModel):
