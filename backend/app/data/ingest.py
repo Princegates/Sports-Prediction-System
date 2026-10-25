@@ -69,17 +69,6 @@ class TeamResolver:
         return team
 
 
-def get_or_create_team(db: Session, name: str, league: str) -> Team:
-    """Single-shot team resolution.
-
-    Kept for callers outside an import loop. Inside one, build a
-    ``TeamResolver`` once and reuse it -- this rebuilds the league index on
-    every call.
-    """
-
-    return TeamResolver(db, league).get_or_create(name)
-
-
 def _existing_by_pairing(db: Session, league: str, season: str | None = None) -> dict[tuple, Match]:
     """Every already-imported match for a league (optionally one season),
     keyed by the pairing the import loop looks up.

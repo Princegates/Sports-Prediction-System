@@ -257,10 +257,6 @@ export function fetchLanding(): Promise<Landing> {
   return get("/api/public/landing");
 }
 
-export function fetchPublicFreePicks(): Promise<PublicFreePick[]> {
-  return get("/api/public/free-picks");
-}
-
 export function fetchLeagueFixtures(league: string, daysAhead = 7, limit = 60): Promise<PublicFixture[]> {
   const params = new URLSearchParams({ league, days_ahead: String(daysAhead), limit: String(limit) });
   return get(`/api/public/fixtures?${params.toString()}`);
@@ -271,10 +267,6 @@ export function fetchPublicFixture(matchId: number): Promise<PublicFixtureDetail
 }
 
 // --- AI assistant chat --------------------------------------------------
-
-export function sendChatMessage(message: string, contextMatchId?: number | null): Promise<ChatAnswer> {
-  return post("/api/chat/message", { message, context_match_id: contextMatchId ?? null });
-}
 
 export function fetchChatHistory(limit = 50): Promise<ChatMessage[]> {
   return get(`/api/chat/history?limit=${limit}`);
@@ -623,13 +615,6 @@ export function fetchAdminPickTrackRecord(): Promise<AdminPickTrackRecord> {
   return get("/api/public/admin-picks-track-record");
 }
 
-/** The one showcase combo shown with real selections on the public Welcome
- * page -- see PublicTeaserPick's own docstring for why this, alone, shows
- * teams/market/selection with no login required. */
-export function fetchPublicTeaserPick(): Promise<PublicTeaserPick> {
-  return get("/api/public/teaser-pick");
-}
-
 /** Superadmin only -- admin's own preview of exactly what the public
  * endpoint above is currently showing. */
 export function fetchPublicTeaserPickAdmin(): Promise<PublicTeaserPick> {
@@ -730,13 +715,6 @@ export function fetchTodaysPredictions(league?: string, date?: string): Promise<
   return get(`/api/predictions/today${query ? `?${query}` : ""}`);
 }
 
-/** Every genuinely-live fixture with its prediction already attached, built
- * in one batched backend request -- same reasoning as fetchTodaysPredictions,
- * for the Live page's own fetchPrediction-per-match fan-out. */
-export function fetchLivePredictions(): Promise<Prediction[]> {
-  return get("/api/predictions/live");
-}
-
 export function fetchMostLikely(league?: string, daysAhead = 3, limit = 10): Promise<Prediction[]> {
   const params = new URLSearchParams({ days_ahead: String(daysAhead), limit: String(limit) });
   if (league) params.set("league", league);
@@ -752,12 +730,6 @@ export function fetchMostLikelyAcrossLeagues(leagues: string[], daysAhead = 3, l
   const params = new URLSearchParams({ days_ahead: String(daysAhead), limit: String(limit) });
   for (const l of leagues) params.append("leagues", l);
   return get(`/api/predictions/most-likely?${params.toString()}`);
-}
-
-export function fetchHighConfidence(league?: string, daysAhead = 3): Promise<Prediction[]> {
-  const params = new URLSearchParams({ days_ahead: String(daysAhead) });
-  if (league) params.set("league", league);
-  return get(`/api/predictions/high-confidence?${params.toString()}`);
 }
 
 export function fetchMatch(matchId: number): Promise<MatchSummary> {

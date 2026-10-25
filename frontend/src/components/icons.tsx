@@ -72,28 +72,11 @@ export function UserFollow(props: IconProps) {
   );
 }
 
-export function Pin(props: IconProps) {
-  return (
-    <svg {...base(props)}>
-      <path d="M12 2l1.8 5.6L19 9l-4.6 3.2L15 18l-3-3.6L9 18l.6-5.8L5 9l5.2-1.4z" />
-      <path d="M12 14v8" />
-    </svg>
-  );
-}
-
 export function PinFilled(props: IconProps) {
   return (
     <svg {...base(props)} fill="currentColor">
       <path d="M12 2l1.8 5.6L19 9l-4.6 3.2L15 18l-3-3.6L9 18l.6-5.8L5 9l5.2-1.4z" />
       <path d="M12 14v8" stroke="currentColor" />
-    </svg>
-  );
-}
-
-export function ChevronRight(props: IconProps) {
-  return (
-    <svg {...base(props)}>
-      <path d="M9 18l6-6-6-6" />
     </svg>
   );
 }
