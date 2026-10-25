@@ -971,6 +971,7 @@ def select_legs_by_confidence(
     date_from: dt.date | None = None,
     date_to: dt.date | None = None,
     exclude_match_ids: frozenset[int] = frozenset(),
+    exclude_legs: frozenset[tuple[int, str]] = frozenset(),
     user_salt: int | None = None,
 ) -> ConfidencePick:
     """The no-odds sibling of select_legs: picks up to max_legs matches,
@@ -990,7 +991,7 @@ def select_legs_by_confidence(
     # market leaves that match with nothing else to offer.
     pool = _build_random_pool(
         db, min_probability=min_probability, markets=markets, leagues=leagues, league=league, days_ahead=days_ahead,
-        date_from=date_from, date_to=date_to, exclude_match_ids=exclude_match_ids,
+        date_from=date_from, date_to=date_to, exclude_match_ids=exclude_match_ids, exclude_legs=exclude_legs,
     )
     candidates = [max(legs, key=lambda leg: leg.model_probability) for legs in pool.values()]
     cap = _per_market_cap(max_legs, markets)
@@ -1069,6 +1070,7 @@ def select_legs_featuring_every_market(
     date_from: dt.date | None = None,
     date_to: dt.date | None = None,
     exclude_match_ids: frozenset[int] = frozenset(),
+    exclude_legs: frozenset[tuple[int, str]] = frozenset(),
     user_salt: int | None = None,
 ) -> ConfidencePick:
     """select_legs_by_confidence collapses each match to its single
@@ -1112,12 +1114,13 @@ def select_legs_featuring_every_market(
         return select_legs_by_confidence(
             db, min_probability=min_probability, max_legs=max_legs, markets=markets,
             leagues=leagues, league=league, days_ahead=days_ahead, date_from=date_from, date_to=date_to,
-            exclude_match_ids=exclude_match_ids, user_salt=user_salt,
+            exclude_match_ids=exclude_match_ids, exclude_legs=exclude_legs, user_salt=user_salt,
         )
 
     pool = _build_random_pool(
         db, min_probability=min_probability, markets=markets, leagues=leagues, league=league,
         days_ahead=days_ahead, date_from=date_from, date_to=date_to, exclude_match_ids=exclude_match_ids,
+        exclude_legs=exclude_legs,
     )
 
     legs_by_market: dict[str, list[Leg]] = {}
@@ -1229,6 +1232,7 @@ def _build_random_pool(
     date_from: dt.date | None = None,
     date_to: dt.date | None = None,
     exclude_match_ids: frozenset[int] = frozenset(),
+    exclude_legs: frozenset[tuple[int, str]] = frozenset(),
 ) -> dict[int, list[Leg]]:
     """Like build_confidence_candidates, but keyed by match_id with every
     qualifying *market* kept, not collapsed to the single strongest one.
@@ -1257,6 +1261,11 @@ def _build_random_pool(
     collapsing to one Leg per (match, market) bounds it to
     matches x distinct-markets-wanted, regardless of how many selections
     any one market happens to offer.
+
+    ``exclude_legs`` is the Refresh button's finer-grained twin of
+    ``exclude_match_ids``: (match_id, market) pairs already shown, dropped
+    from the pool while the match itself stays in it -- so a refresh can
+    keep a game but move it to a different market, not only swap games.
     """
 
     start, end = _match_window(days_ahead, date_from, date_to)
@@ -1299,6 +1308,8 @@ def _build_random_pool(
         # docstring for why.
         best_per_market: dict[str, Outcome] = {}
         for o in outcomes:
+            if (match_id, o.market) in exclude_legs:
+                continue
             current = best_per_market.get(o.market)
             if current is None or o.probability > current.probability:
                 best_per_market[o.market] = o
@@ -1316,6 +1327,8 @@ def _build_random_pool(
             )
             for o in best_per_market.values()
         ]
+        if not pool[match_id]:
+            del pool[match_id]
 
     return pool
 
@@ -1333,6 +1346,7 @@ def select_random_legs(
     date_from: dt.date | None = None,
     date_to: dt.date | None = None,
     exclude_match_ids: frozenset[int] = frozenset(),
+    exclude_legs: frozenset[tuple[int, str]] = frozenset(),
     rng: random.Random | None = None,
 ) -> ConfidencePick:
     """select_legs_by_confidence's random sibling: the same qualifying
@@ -1355,7 +1369,7 @@ def select_random_legs(
     rng = rng or random.Random()
     pool = _build_random_pool(
         db, min_probability=min_probability, markets=markets, leagues=leagues, league=league, days_ahead=days_ahead,
-        date_from=date_from, date_to=date_to, exclude_match_ids=exclude_match_ids,
+        date_from=date_from, date_to=date_to, exclude_match_ids=exclude_match_ids, exclude_legs=exclude_legs,
     )
 
     if not pool:

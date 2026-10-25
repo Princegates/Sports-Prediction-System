@@ -135,6 +135,7 @@ def suggest(
         date_from=payload.date_from,
         date_to=payload.date_to,
         exclude_match_ids=frozenset(payload.exclude_match_ids),
+        exclude_legs=frozenset((leg.match_id, leg.market) for leg in payload.exclude_legs),
         user_salt=user.id,
     )
     ai_generation_quota.record_generation(db, user)
@@ -172,6 +173,7 @@ def suggest_random(
         date_from=payload.date_from,
         date_to=payload.date_to,
         exclude_match_ids=frozenset(payload.exclude_match_ids),
+        exclude_legs=frozenset((leg.match_id, leg.market) for leg in payload.exclude_legs),
     )
     ai_generation_quota.record_generation(db, user)
     return SuggestedPicksOut(

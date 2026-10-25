@@ -329,6 +329,44 @@ def test_suggest_exclude_match_ids_surfaces_a_different_match(db_session, auth_h
     assert refreshed_legs[0]["match_id"] == runner_up.id  # the one Refresh should surface instead
 
 
+def test_suggest_exclude_legs_keeps_the_game_but_changes_its_market(db_session, auth_headers, upcoming_match):
+    """Refresh used to swap games only. exclude_legs drops the (match, market)
+    pairs already shown, so the same game can come back on another market."""
+
+    db_session.add(_prediction(upcoming_match.id, home=0.80))
+    db_session.commit()
+    criteria = {"min_probability": 0.5, "max_legs": 1}
+
+    first = client.post("/api/betcodes/suggest", json=criteria, headers=auth_headers).json()["legs"]
+    assert len(first) == 1 and first[0]["match_id"] == upcoming_match.id
+
+    second = client.post(
+        "/api/betcodes/suggest",
+        json={**criteria, "exclude_legs": [{"match_id": first[0]["match_id"], "market": first[0]["market"]}]},
+        headers=auth_headers,
+    )
+    assert second.status_code == 200, second.text
+    legs = second.json()["legs"]
+    assert len(legs) == 1
+    assert legs[0]["match_id"] == upcoming_match.id  # same game...
+    assert legs[0]["market"] != first[0]["market"]  # ...different market
+
+
+def test_random_suggest_accepts_exclude_legs(db_session, auth_headers, upcoming_match):
+    db_session.add(_prediction(upcoming_match.id, home=0.80))
+    db_session.commit()
+    response = client.post(
+        "/api/betcodes/suggest-random",
+        json={"min_probability": 0.5, "exclude_legs": [{"match_id": upcoming_match.id, "market": "Match Result"}]},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    assert all(
+        not (leg["match_id"] == upcoming_match.id and leg["market"] == "Match Result")
+        for leg in response.json()["legs"]
+    )
+
+
 def test_suggest_returns_no_priced_fields(auth_headers, upcoming_match):
     response = client.post("/api/betcodes/suggest", json={"min_probability": 0.5}, headers=auth_headers)
     assert response.status_code == 200, response.text
