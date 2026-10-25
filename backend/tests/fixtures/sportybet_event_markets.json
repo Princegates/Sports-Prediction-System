@@ -1,5 +1,5 @@
 {
-  "_source": "SportyBet Ghana factsCenter/event for sr:match:72221292 (Arsenal vs Leeds United), captured 2026-09-29. Market and outcome ids and names only. Trimmed to the markets the SportyBet connection books. Handicap (market 14) added 2026-10-16: hcp=0:1..0:5 from SportyBet Ghana factsCenter/pcUpcomingEvents (sr:match:72221320, Fulham vs Hull City) and hcp=1:0..5:0 from the same endpoint (sr:match:67015418, HamKam vs Bodoe/Glimt) -- one capture per direction since no single upcoming match happened to quote lines that deep in both directions at once. Markets 12/13/25/30/48-51/546/547 and market 16 (quarter/half-line Asian Handicap) added 2026-10-17: 12/13/16(-3.5..-0.5)/25/30/546/547 from SportyBet Ghana factsCenter/event for sr:match:71945334 (Inter vs Fiorentina, Serie A) and sr:match:72221318 (Everton vs Chelsea, EPL); 16(+0.5..+3.5) from sr:match:72478626 (Betis vs Barcelona, La Liga); 48-51 from the Everton vs Chelsea capture. Markets 83/90/94/95 (2nd half 1X2, Over/Under, Odd/Even, GG/NG) and 854-865 ('X or Y' Yes/No markets) added 2026-10-25 from SportyBet Ghana factsCenter/event for sr:match:72221340 (Crystal Palace vs Newcastle, EPL).",
+  "_source": "SportyBet Ghana factsCenter/event for sr:match:72221292 (Arsenal vs Leeds United), captured 2026-09-29. Market and outcome ids and names only. Trimmed to the markets the SportyBet connection books. Handicap (market 14) added 2026-10-16: hcp=0:1..0:5 from SportyBet Ghana factsCenter/pcUpcomingEvents (sr:match:72221320, Fulham vs Hull City) and hcp=1:0..5:0 from the same endpoint (sr:match:67015418, HamKam vs Bodoe/Glimt) -- one capture per direction since no single upcoming match happened to quote lines that deep in both directions at once. Markets 12/13/25/30/48-51/546/547 and market 16 (quarter/half-line Asian Handicap) added 2026-10-17: 12/13/16(-3.5..-0.5)/25/30/546/547 from SportyBet Ghana factsCenter/event for sr:match:71945334 (Inter vs Fiorentina, Serie A) and sr:match:72221318 (Everton vs Chelsea, EPL); 16(+0.5..+3.5) from sr:match:72478626 (Betis vs Barcelona, La Liga); 48-51 from the Everton vs Chelsea capture. Markets 83/90/94/95 (2nd half 1X2, Over/Under, Odd/Even, GG/NG) and 854-865 ('X or Y' Yes/No markets) added 2026-10-25 from SportyBet Ghana factsCenter/event for sr:match:72221340 (Crystal Palace vs Newcastle, EPL). Markets 85/93/98/553 (2nd half Double Chance, Exact Goals, Correct Score, Multigoals) and 1179 (1st Half Result or Match Result) added from the same capture.",
   "markets": [
     {
       "id": "1",
@@ -1224,6 +1224,65 @@
       "outcomes": {
         "74": "Yes",
         "76": "No"
+      }
+    },
+    {
+      "id": "85",
+      "specifier": null,
+      "desc": "2nd Half - Double Chance",
+      "outcomes": {
+        "9": "Home or Draw",
+        "10": "Home or Away",
+        "11": "Draw or Away"
+      }
+    },
+    {
+      "id": "98",
+      "specifier": null,
+      "desc": "2nd Half - Correct Score",
+      "outcomes": {
+        "546": "0:0",
+        "548": "0:1",
+        "550": "0:2",
+        "552": "1:0",
+        "554": "1:1",
+        "556": "1:2",
+        "558": "2:0",
+        "560": "2:1",
+        "562": "2:2",
+        "564": "Other"
+      }
+    },
+    {
+      "id": "93",
+      "specifier": "variant=sr:exact_goals:2+",
+      "desc": "2nd Half - Exact Goals",
+      "outcomes": {
+        "sr:exact_goals:2+:85": "0",
+        "sr:exact_goals:2+:86": "1",
+        "sr:exact_goals:2+:87": "2+"
+      }
+    },
+    {
+      "id": "553",
+      "specifier": null,
+      "desc": "2nd Half - Multigoals",
+      "outcomes": {
+        "1746": "1-2",
+        "1747": "1-3",
+        "1748": "2-3",
+        "1749": "4+",
+        "1805": "No goal"
+      }
+    },
+    {
+      "id": "1179",
+      "specifier": null,
+      "desc": "1st Half Result or Match Result",
+      "outcomes": {
+        "1": "Home",
+        "2": "Draw",
+        "3": "Away"
       }
     }
   ]

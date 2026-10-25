@@ -274,6 +274,8 @@ def _build_markets() -> dict[tuple[str, str], Selection]:
         {k: f"sr:exact_goals:3+:{88 + i}" for i, k in enumerate(["0", "1", "2", "3+"])})
     add("HT Multigoals", "552", None, {"2-3": "1748", "4+": "1749"})
     add("HT Multigoals", "68", "total=1.5", {"0-1": "13"})
+    # A side's selection wins if it leads at half-time or wins the match.
+    add("1st Half Result or Match Result", "1179", None, {"Home": "1", "Draw": "2", "Away": "3"})
 
     # -- half time + full time --------------------------------------------
     for ht_short, ht in _SHORT.items():
@@ -305,11 +307,21 @@ def _build_markets() -> dict[tuple[str, str], Selection]:
     # reuses the twin's outcome ids (1/2/3, Over 12 / Under 13, Yes 74 / No 76,
     # Odd 70 / Even 72); all confirmed against SportyBet's match page. A line or
     # market SportyBet doesn't offer is reported back by orders/share, not
-    # booked. 2nd-half Double Chance, Correct Score, Exact Goals and
-    # Multigoals have no entry yet.
+    # booked.
     add("2H Result", "83", None, {"Home": "1", "Draw": "2", "Away": "3"})
     add("2H Both Teams To Score", "95", None, yes_no)
     add("2H Total Goals Odd/Even", "94", None, odd_even)
+    add("2H Double Chance", "85", None, double_chance)
+    add("2H Correct Score", "98", None, {
+        "0-0": "546", "0-1": "548", "0-2": "550", "1-0": "552", "1-1": "554",
+        "1-2": "556", "2-0": "558", "2-1": "560", "2-2": "562",
+    })
+    # SportyBet's 2nd-half exact goals is 0 / 1 / 2+, so our "2" and "3+" have no
+    # single bet of their own.
+    add("2H Exact Goals", "93", "variant=sr:exact_goals:2+",
+        {"0": "sr:exact_goals:2+:85", "1": "sr:exact_goals:2+:86"})
+    add("2H Multigoals", "553", None, {"2-3": "1748", "4+": "1749"})
+    add("2H Multigoals", "90", "total=1.5", {"0-1": "13"})
     for line in _HALF_LINES:
         add(f"2H Total Goals {line}", "90", f"total={line}", {f"Over {line}": "12", f"Under {line}": "13"})
     add("Half With Most Goals", "52", None, {"1st Half": "436", "2nd Half": "438", "Equal": "440"})
