@@ -119,11 +119,6 @@ NAME_THRESHOLD = 0.82
 # SportyBet's count first-half ones, so they, like "HT/FT & BTTS", "HT + 2H
 # Result" and "HT + FT Double Chance", have no entry.
 Selection = tuple[str, str | None, str]
-# Market ids taken from Betradar's published table rather than read off a
-# SportyBet match page (see the "second half" block in _build_markets). The
-# capture test skips these; once a capture containing one is added to the
-# fixture, remove it from here so that test starts checking it.
-UNCONFIRMED_MARKET_IDS = frozenset({"83", "90", "94", "95", *(str(n) for n in range(854, 866))})
 _RESULT_OR_IDS = [
     ("Home Team or Over 2.5", "854", "total=2.5"), ("Home Team or Under 2.5", "855", "total=2.5"),
     ("Draw or Over 2.5", "856", "total=2.5"), ("Draw or Under 2.5", "857", "total=2.5"),
@@ -255,8 +250,7 @@ def _build_markets() -> dict[tuple[str, str], Selection]:
     # The winning side keeping a clean sheet is SportyBet's "win to nil"; a
     # clean-sheet draw is 0-0. The "No" halves have no single SportyBet bet.
     # "Home Team or Over 2.5" and the rest: Sportradar markets 854-865, Yes 74 /
-    # No 76, the total ones with a total=2.5 specifier. Ids are from Betradar's
-    # published table (UNCONFIRMED_MARKET_IDS), not a SportyBet capture.
+    # No 76, the total ones with a total=2.5 specifier.
     for name, market_id, specifier in _RESULT_OR_IDS:
         add(name, market_id, specifier, yes_no)
     add("Home Win To Nil", "33", None, yes_no)
@@ -306,16 +300,13 @@ def _build_markets() -> dict[tuple[str, str], Selection]:
     add("HT & 2H Total Goals 1.5", "58", "total=1.5", {"Over 1.5 HT & Over 1.5 2H": "74"})
     add("HT & 2H Total Goals 1.5", "59", "total=1.5", {"Under 1.5 HT & Under 1.5 2H": "74"})
     # -- second half ------------------------------------------------------
-    # Market ids from Betradar's published soccer market table (Sportradar's
-    # ids, the ones SportyBet uses): each 2nd-half market sits at a fixed
-    # offset from its 1st-half twin above (1x2 60 -> 83, total 68 -> 90,
-    # odd/even 74 -> 94, BTTS 75 -> 95), and that table's 1st-half rows match
-    # the ids read off SportyBet's own page. Outcome ids are the same fixed
-    # ones the twin uses (1/2/3, Over 12 / Under 13, Yes 74 / No 76, Odd 70 /
-    # Even 72). Not read off a SportyBet match page, unlike the rest: a line or
+    # Each 2nd-half market sits at a fixed offset from its 1st-half twin above
+    # (1x2 60 -> 83, total 68 -> 90, odd/even 74 -> 94, BTTS 75 -> 95) and
+    # reuses the twin's outcome ids (1/2/3, Over 12 / Under 13, Yes 74 / No 76,
+    # Odd 70 / Even 72); all confirmed against SportyBet's match page. A line or
     # market SportyBet doesn't offer is reported back by orders/share, not
     # booked. 2nd-half Double Chance, Correct Score, Exact Goals and
-    # Multigoals have no entry: their ids/outcome ids are not in that table.
+    # Multigoals have no entry yet.
     add("2H Result", "83", None, {"Home": "1", "Draw": "2", "Away": "3"})
     add("2H Both Teams To Score", "95", None, yes_no)
     add("2H Total Goals Odd/Even", "94", None, odd_even)

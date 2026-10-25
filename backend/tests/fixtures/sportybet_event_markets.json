@@ -1,5 +1,5 @@
 {
-  "_source": "SportyBet Ghana factsCenter/event for sr:match:72221292 (Arsenal vs Leeds United), captured 2026-09-29. Market and outcome ids and names only. Trimmed to the markets the SportyBet connection books. Handicap (market 14) added 2026-10-16: hcp=0:1..0:5 from SportyBet Ghana factsCenter/pcUpcomingEvents (sr:match:72221320, Fulham vs Hull City) and hcp=1:0..5:0 from the same endpoint (sr:match:67015418, HamKam vs Bodoe/Glimt) -- one capture per direction since no single upcoming match happened to quote lines that deep in both directions at once. Markets 12/13/25/30/48-51/546/547 and market 16 (quarter/half-line Asian Handicap) added 2026-10-17: 12/13/16(-3.5..-0.5)/25/30/546/547 from SportyBet Ghana factsCenter/event for sr:match:71945334 (Inter vs Fiorentina, Serie A) and sr:match:72221318 (Everton vs Chelsea, EPL); 16(+0.5..+3.5) from sr:match:72478626 (Betis vs Barcelona, La Liga); 48-51 from the Everton vs Chelsea capture.",
+  "_source": "SportyBet Ghana factsCenter/event for sr:match:72221292 (Arsenal vs Leeds United), captured 2026-09-29. Market and outcome ids and names only. Trimmed to the markets the SportyBet connection books. Handicap (market 14) added 2026-10-16: hcp=0:1..0:5 from SportyBet Ghana factsCenter/pcUpcomingEvents (sr:match:72221320, Fulham vs Hull City) and hcp=1:0..5:0 from the same endpoint (sr:match:67015418, HamKam vs Bodoe/Glimt) -- one capture per direction since no single upcoming match happened to quote lines that deep in both directions at once. Markets 12/13/25/30/48-51/546/547 and market 16 (quarter/half-line Asian Handicap) added 2026-10-17: 12/13/16(-3.5..-0.5)/25/30/546/547 from SportyBet Ghana factsCenter/event for sr:match:71945334 (Inter vs Fiorentina, Serie A) and sr:match:72221318 (Everton vs Chelsea, EPL); 16(+0.5..+3.5) from sr:match:72478626 (Betis vs Barcelona, La Liga); 48-51 from the Everton vs Chelsea capture. Markets 83/90/94/95 (2nd half 1X2, Over/Under, Odd/Even, GG/NG) and 854-865 ('X or Y' Yes/No markets) added 2026-10-25 from SportyBet Ghana factsCenter/event for sr:match:72221340 (Crystal Palace vs Newcastle, EPL).",
   "markets": [
     {
       "id": "1",
@@ -1034,6 +1034,196 @@
         "1727": "Home/Draw & Over 4.5",
         "1728": "Home/Away & Over 4.5",
         "1729": "Draw/Away & Over 4.5"
+      }
+    },
+    {
+      "id": "83",
+      "specifier": null,
+      "desc": "2nd Half - 1X2",
+      "outcomes": {
+        "1": "Home",
+        "2": "Draw",
+        "3": "Away"
+      }
+    },
+    {
+      "id": "90",
+      "specifier": "total=0.5",
+      "desc": "2nd Half - Over/Under",
+      "outcomes": {
+        "12": "Over 0.5",
+        "13": "Under 0.5"
+      }
+    },
+    {
+      "id": "90",
+      "specifier": "total=1",
+      "desc": "2nd Half - Over/Under",
+      "outcomes": {
+        "12": "Over 1",
+        "13": "Under 1"
+      }
+    },
+    {
+      "id": "90",
+      "specifier": "total=1.5",
+      "desc": "2nd Half - Over/Under",
+      "outcomes": {
+        "12": "Over 1.5",
+        "13": "Under 1.5"
+      }
+    },
+    {
+      "id": "90",
+      "specifier": "total=2",
+      "desc": "2nd Half - Over/Under",
+      "outcomes": {
+        "12": "Over 2",
+        "13": "Under 2"
+      }
+    },
+    {
+      "id": "90",
+      "specifier": "total=2.5",
+      "desc": "2nd Half - Over/Under",
+      "outcomes": {
+        "12": "Over 2.5",
+        "13": "Under 2.5"
+      }
+    },
+    {
+      "id": "90",
+      "specifier": "total=3",
+      "desc": "2nd Half - Over/Under",
+      "outcomes": {
+        "12": "Over 3",
+        "13": "Under 3"
+      }
+    },
+    {
+      "id": "94",
+      "specifier": null,
+      "desc": "2nd Half - Odd/Even",
+      "outcomes": {
+        "70": "Odd",
+        "72": "Even"
+      }
+    },
+    {
+      "id": "95",
+      "specifier": null,
+      "desc": "2nd Half - GG/NG",
+      "outcomes": {
+        "74": "Yes",
+        "76": "No"
+      }
+    },
+    {
+      "id": "854",
+      "specifier": "total=2.5",
+      "desc": "Home Team or Over 2.5",
+      "outcomes": {
+        "74": "Yes",
+        "76": "No"
+      }
+    },
+    {
+      "id": "855",
+      "specifier": "total=2.5",
+      "desc": "Home Team or Under 2.5",
+      "outcomes": {
+        "74": "Yes",
+        "76": "No"
+      }
+    },
+    {
+      "id": "856",
+      "specifier": "total=2.5",
+      "desc": "Draw or Over 2.5",
+      "outcomes": {
+        "74": "Yes",
+        "76": "No"
+      }
+    },
+    {
+      "id": "857",
+      "specifier": "total=2.5",
+      "desc": "Draw or Under 2.5",
+      "outcomes": {
+        "74": "Yes",
+        "76": "No"
+      }
+    },
+    {
+      "id": "858",
+      "specifier": "total=2.5",
+      "desc": "Away or Over 2.5",
+      "outcomes": {
+        "74": "Yes",
+        "76": "No"
+      }
+    },
+    {
+      "id": "859",
+      "specifier": "total=2.5",
+      "desc": "Away or Under 2.5",
+      "outcomes": {
+        "74": "Yes",
+        "76": "No"
+      }
+    },
+    {
+      "id": "860",
+      "specifier": null,
+      "desc": "Home Team or GG",
+      "outcomes": {
+        "74": "Yes",
+        "76": "No"
+      }
+    },
+    {
+      "id": "861",
+      "specifier": null,
+      "desc": "Draw or GG",
+      "outcomes": {
+        "74": "Yes",
+        "76": "No"
+      }
+    },
+    {
+      "id": "862",
+      "specifier": null,
+      "desc": "Away Team or GG",
+      "outcomes": {
+        "74": "Yes",
+        "76": "No"
+      }
+    },
+    {
+      "id": "863",
+      "specifier": null,
+      "desc": "Home Team or Any Clean Sheet",
+      "outcomes": {
+        "74": "Yes",
+        "76": "No"
+      }
+    },
+    {
+      "id": "864",
+      "specifier": null,
+      "desc": "Draw or Any Clean Sheet",
+      "outcomes": {
+        "74": "Yes",
+        "76": "No"
+      }
+    },
+    {
+      "id": "865",
+      "specifier": null,
+      "desc": "Away Team or Any Clean Sheet",
+      "outcomes": {
+        "74": "Yes",
+        "76": "No"
       }
     }
   ]
