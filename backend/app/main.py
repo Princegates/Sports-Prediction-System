@@ -315,7 +315,7 @@ if settings.secret_key_is_default:
         raise RuntimeError(
             "SECRET_KEY is the published development default. Refusing to start against a real database: "
             "anyone who has read this repository could forge a session for any account. Set SECRET_KEY "
-            "(Render's blueprint generates one) and redeploy."
+            "and redeploy."
         )
     logger.warning(
         "SECRET_KEY is the published development default -- session tokens can be forged by anyone "
@@ -423,7 +423,7 @@ async def _security_headers(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    # Render terminates TLS in front of this process, so every request a
+    # A proxy terminates TLS in front of this process, so every request a
     # browser actually makes is HTTPS even though uvicorn itself sees HTTP --
     # safe to tell the browser to enforce that for a year regardless.
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"

@@ -191,11 +191,3 @@ def headlines(limit: int = 12) -> list[Headline]:
     if start_background:
         threading.Thread(target=_refresh, daemon=True).start()
     return cached[1][:limit]
-
-
-def reset_cache() -> None:
-    """For tests."""
-
-    global _cache, _refreshing
-    with _lock:
-        _cache, _refreshing = None, False

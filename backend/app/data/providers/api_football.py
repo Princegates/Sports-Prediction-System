@@ -53,7 +53,7 @@ LEAGUE_IDS: dict[str, int] = {
     # Below: domestic leagues added so every Champions League entrant's home
     # league has a real Team row to resolve against, instead of its fixture
     # being skipped (see app/data/api_football_ingest.py's module
-    # docstring). Found by scripts/map_cl_unresolved_leagues.py against the
+    # docstring). Found by mapping the unresolved Champions League fixtures against the
     # current Champions League league-phase + qualifying rounds -- every
     # club API-Football returned for it that this project didn't already
     # hold. Full parity with the leagues above: fixture import, Elo

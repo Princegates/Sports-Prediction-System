@@ -421,10 +421,6 @@ def all_values(db: Session) -> dict[str, Any]:
     return resolved
 
 
-def is_overridden(db: Session, key: str) -> bool:
-    return db.get(AppSetting, key) is not None
-
-
 def overridden_values(db: Session, keys: list[str]) -> dict[str, Any]:
     """The saved overrides among ``keys``, coerced -- one query, for callers
     that need to know which settings the panel actually set rather than

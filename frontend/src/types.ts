@@ -169,11 +169,6 @@ export interface HeadToHeadMatch {
   away_score: number;
 }
 
-export interface UnavailableResource {
-  status: "unavailable";
-  reason: string;
-}
-
 /** A player ruled out or doubtful for a match (API-Football's own wording). */
 export interface InjuredPlayer {
   name: string;
