@@ -242,6 +242,31 @@ async function main() {
 
   try {
     const page = await browser.newPage();
+    // The API only allows the production origin through CORS, and this
+    // headless browser loads the site from http://127.0.0.1. Every API call
+    // the pages make was blocked, so fixture pages baked in "Fixture not
+    // found" and league hubs rendered "League not found". Answering those
+    // calls from outside the page (route.fetch ignores CORS) and tagging them
+    // as allowed lets the pages render with their real data.
+    if (API) {
+      await page.route(`${API}/**`, async (route) => {
+        const cors = {
+          "access-control-allow-origin": "*",
+          "access-control-allow-headers": "*",
+          "access-control-allow-methods": "GET, OPTIONS",
+        };
+        if (route.request().method() === "OPTIONS") {
+          await route.fulfill({ status: 204, headers: cors });
+          return;
+        }
+        try {
+          const response = await route.fetch();
+          await route.fulfill({ response, headers: { ...response.headers(), ...cors } });
+        } catch {
+          await route.abort();
+        }
+      });
+    }
     const fixtures = await upcomingFixtures();
     const fixtureBySlug = new Map(fixtures.map((f) => [fixtureSlug(f), f]));
     const routes = [

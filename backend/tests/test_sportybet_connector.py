@@ -240,8 +240,6 @@ def test_every_translation_names_an_outcome_sportybet_offers():
 
     checked = 0
     for (market, selection), (market_id, specifier, outcome_id) in sb._MARKETS.items():
-        if market_id in sb.UNCONFIRMED_MARKET_IDS:
-            continue  # from Betradar's table, not yet in a capture -- see the next test
         offered = _ON_SITE.get((market_id, specifier))
         if offered is None:
             assert specifier and specifier.startswith("total="), f"{market} / {selection}: no SportyBet market {market_id} {specifier}"
@@ -259,9 +257,9 @@ def _expected_desc(market: str, selection: str) -> str | None:
     both sides. None for the ones booked under SportyBet's own name for the
     same bet (checked by hand in the table's comments)."""
 
-    if market in ("Correct Score", "HT Correct Score"):
+    if market in ("Correct Score", "HT Correct Score", "2H Correct Score"):
         return selection.replace("-", ":")
-    if market in ("Double Chance", "HT Double Chance"):
+    if market in ("Double Chance", "HT Double Chance", "2H Double Chance"):
         return selection.replace("/", " or ")
     if market == "HT/FT":
         ht, ft = selection.split("/")
@@ -281,7 +279,8 @@ def _expected_desc(market: str, selection: str) -> str | None:
     if market == "Total Goals Range":
         return None if selection == "5+ goals" else selection.split(" ")[0]
     if market.startswith(("Total Goals ", "Home Goals ", "Away Goals ", "HT Total Goals ",
-                          "Result & Total Goals ", "BTTS & Total Goals ", "HT Exact Goals", "HT Result",
+                          "Result & Total Goals ", "BTTS & Total Goals ", "HT Exact Goals", "HT Result", "2H Exact Goals", "2H Result",
+                          "1st Half Result or Match Result",
                           "Match Result", "Both Teams To Score", "HT Both Teams To Score", "Draw No Bet",
                           "Half With Most Goals")) and "Odd/Even" not in market:
         if market.startswith("BTTS & Total Goals "):
@@ -686,18 +685,8 @@ def test_second_half_markets_use_their_first_half_twins_outcome_ids():
             assert (specifier, outcome_id) == first[sel][1:]
 
 
-@pytest.mark.parametrize("market", ["2H Double Chance", "2H Correct Score", "2H Exact Goals", "2H Multigoals"])
-def test_second_half_markets_without_confirmed_ids_are_not_guessed(market):
-    assert not any(m == market for (m, _) in sb._MARKETS)
+def test_second_half_exact_goals_only_books_the_bands_sportybet_has():
+    """SportyBet's 2nd-half exact goals is 0 / 1 / 2+, so our "2" and "3+" have no bet."""
 
-
-def test_only_second_half_and_x_or_y_markets_are_unconfirmed():
-    """The skip above must not become a way to wave through a mistyped id:
-    only the 2nd-half and "X or Y" markets are exempt, and anything captured is checked."""
-
-    from app.outcomes.result_or import RESULT_OR_MARKETS
-
-    unconfirmed = {m for (m, _), (mid, _, _) in sb._MARKETS.items() if mid in sb.UNCONFIRMED_MARKET_IDS}
-    assert unconfirmed and all(m.startswith("2H ") or m in RESULT_OR_MARKETS for m in unconfirmed)
-    # Once a capture has a market, it comes off the list and gets checked.
-    assert not any(m["id"] in sb.UNCONFIRMED_MARKET_IDS for m in _CAPTURE["markets"])
+    booked = {sel for (m, sel) in sb._MARKETS if m == "2H Exact Goals"}
+    assert booked == {"0", "1"}
