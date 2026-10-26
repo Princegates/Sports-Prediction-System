@@ -22,6 +22,7 @@ from app.api.routes_banner import admin_router as banner_admin_router, router as
 from app.api.routes_betcodes import router as betcodes_router
 from app.api.routes_chat import router as chat_router
 from app.api.routes_matches import router as matches_router
+from app.api.routes_payments import admin_router as payments_admin_router, router as payments_router
 from app.api.routes_predictions import router as predictions_router
 from app.api.routes_public import router as public_router
 from app.api.routes_settings import router as settings_router
@@ -447,6 +448,8 @@ app.include_router(banner_router)
 app.include_router(banner_admin_router)
 app.include_router(settings_router)
 app.include_router(access_router)
+app.include_router(payments_router)
+app.include_router(payments_admin_router)
 app.include_router(chat_router, dependencies=[Depends(require_active_access)])
 app.include_router(teams_router, dependencies=[Depends(require_active_access)])
 app.include_router(matches_router, dependencies=[Depends(require_active_access)])

@@ -200,6 +200,28 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 "or punctuation (e.g. 233596909643), since this also builds the wa.me link.",
                 default="233596909643"),
 
+    # --- Online payments (Hubtel) ----------------------------------------
+    SettingSpec("hubtel_enabled", "bool", "payments", "Accept payments through Hubtel",
+                "Shows a \"Pay now\" option on the Access page. The price comes from Settings -> "
+                "Access (amount + days). Admin-issued codes keep working either way -- it's the "
+                "fallback for a payment that doesn't go through.",
+                default=False),
+    SettingSpec("hubtel_client_id", "str", "payments", "Hubtel API ID",
+                "API & Integrations -> API Credentials in your Hubtel dashboard.",
+                secret=True, env_attr="hubtel_client_id"),
+    SettingSpec("hubtel_client_secret", "str", "payments", "Hubtel API secret",
+                secret=True, env_attr="hubtel_client_secret"),
+    SettingSpec("hubtel_merchant_account", "str", "payments", "Hubtel merchant account number",
+                "Your merchant account number (not the API ID).", env_attr="hubtel_merchant_account"),
+    SettingSpec("public_api_url", "str", "payments", "Public API URL",
+                "Where Hubtel can reach this backend, e.g. https://api.soccaintel.com -- the payment "
+                "notification (callback) URL is built from it.", env_attr="public_api_url"),
+    SettingSpec("hubtel_initiate_url", "str", "payments", "Hubtel checkout URL",
+                "Leave as-is unless Hubtel tells you otherwise.", env_attr="hubtel_initiate_url"),
+    SettingSpec("hubtel_status_url", "str", "payments", "Hubtel status-check URL",
+                "Base URL of the Transaction Status Check API. Your server's IP must be whitelisted "
+                "by Hubtel before it will answer.", env_attr="hubtel_status_url"),
+
     # --- Appearance ------------------------------------------------------
     SettingSpec("default_theme", "choice", "appearance", "Theme",
                 "Applies to every visitor and account -- there is no per-user override.",
@@ -342,6 +364,7 @@ GROUP_LABELS = {
     "data": "Data sources",
     "email": "Email",
     "access": "Access & registration",
+    "payments": "Online payments",
     "appearance": "Appearance",
     "model": "Model defaults",
     "notice": "Site notice",

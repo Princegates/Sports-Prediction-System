@@ -143,6 +143,19 @@ class Settings(BaseSettings):
     # anything else.
     public_site_url: str = ""
 
+    # Online payments through Hubtel -- all optional; with nothing set the
+    # "Pay now" option simply never appears and admin-issued codes carry on
+    # as before. The two URLs are Hubtel's documented endpoints; the status
+    # check one is unverified against a live account yet (see
+    # app.payments.hubtel) and is overridable for exactly that reason.
+    hubtel_client_id: str = ""
+    hubtel_client_secret: str = ""
+    hubtel_merchant_account: str = ""
+    hubtel_initiate_url: str = "https://payproxyapi.hubtel.com/items/initiate"
+    hubtel_status_url: str = "https://api-txnstatus.hubtel.com"
+    # Where Hubtel can reach this backend (the callback URL is built from it).
+    public_api_url: str = ""
+
     @property
     def normalized_database_url(self) -> str:
         """``database_url`` in a form SQLAlchemy 2 actually accepts.

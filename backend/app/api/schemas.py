@@ -502,6 +502,39 @@ class PaymentNoticeIn(BaseModel):
     reference: str = Field(max_length=120)
 
 
+class PaymentOptionsOut(BaseModel):
+    """Whether the Access page should offer "Pay now", and what it costs."""
+
+    enabled: bool
+    amount: float = 0
+    days: int = 0
+    currency: str = ""
+
+
+class CheckoutOut(BaseModel):
+    reference: str
+    checkout_url: str
+
+
+class PaymentStatusOut(BaseModel):
+    reference: str
+    # pending / fulfilling / completed / cancelled / failed
+    status: str
+    access_expires_at: dt.datetime | None = None
+
+
+class AdminPaymentOut(BaseModel):
+    id: int
+    user_id: int | None
+    user_email: str | None
+    reference: str
+    amount: float
+    access_days: int
+    status: str
+    created_at: dt.datetime
+    completed_at: dt.datetime | None = None
+
+
 class AccessRedeemIn(BaseModel):
     code: str = Field(max_length=64)
 

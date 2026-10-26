@@ -310,6 +310,46 @@ class AccessRedemption(Base):
     redeemed_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
+class Payment(Base):
+    """One attempt to pay for access through an online gateway (Hubtel).
+
+    The row exists before the member ever reaches the gateway, keyed by a
+    ``client_reference`` the gateway echoes back -- that reference, never a
+    claim in a callback body, is how a later notification is tied to what was
+    actually owed. Access is only granted once the gateway itself confirms
+    the payment (see app.payments.service), by cutting and redeeming an
+    ordinary ``AccessCode`` so everything downstream (grants, the audit
+    trail, referral rewards) treats it like any other paid code.
+
+    ``user_id`` is nullable only so a deleted account's payment history
+    survives it -- a financial record isn't the person's own to erase.
+    """
+
+    __tablename__ = "payments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    provider: Mapped[str] = mapped_column(String(16), default="hubtel")
+    # Unguessable and unique; Hubtel caps this at 32 characters.
+    client_reference: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    # What was owed and what it buys, frozen at checkout time so a later
+    # price change never reinterprets an old payment.
+    amount: Mapped[float] = mapped_column(Float)
+    access_days: Mapped[int] = mapped_column(Integer)
+    # "pending" -> "fulfilling" (claimed by exactly one worker) ->
+    # "completed"; or "cancelled" / "failed" (e.g. the amount paid was short).
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    checkout_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    checkout_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The code cut for this payment once it was confirmed.
+    access_code_id: Mapped[int | None] = mapped_column(ForeignKey("access_codes.id"), nullable=True)
+    # Last verified status payload from the gateway, kept for reconciliation.
+    provider_detail: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    last_checked_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    completed_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class BannerItem(Base):
     """A sponsored slide in the app's news banner -- the slot third parties
     can be sold. Text only, deliberately: the site's content-security policy
