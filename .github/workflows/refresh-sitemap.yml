@@ -1,0 +1,66 @@
+name: Refresh sitemap
+
+# The sitemap used to be regenerated as the last step of "Refresh predictions",
+# but that job runs into its 60-minute limit and gets cancelled before it ever
+# reaches that step -- so the sitemap went stale (past fixtures, no league
+# hubs). This is only a database read and a file write, so it gets its own
+# short job. Cloudflare Pages redeploys on the commit, same as any other push.
+
+on:
+  schedule:
+    # After the daily refresh has had time to import the day's fixtures.
+    - cron: "30 7 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: refresh-sitemap
+  cancel-in-progress: false
+
+jobs:
+  sitemap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Regenerate sitemap
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret is not set -- nothing to regenerate."
+            exit 0
+          fi
+          python scripts/generate_sitemap.py
+
+      - name: Commit sitemap if it changed
+        run: |
+          if git diff --quiet -- frontend/public/sitemap.xml; then
+            echo "Sitemap unchanged."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add frontend/public/sitemap.xml
+          git commit -m "Update sitemap with current upcoming fixtures"
+          for attempt in 1 2 3; do
+            git fetch origin "${{ github.ref_name }}"
+            if git rebase "origin/${{ github.ref_name }}" && git push origin HEAD:${{ github.ref_name }}; then
+              break
+            fi
+            git rebase --abort 2>/dev/null || true
+            [ "$attempt" = 3 ] && exit 1
+            sleep 5
+          done
