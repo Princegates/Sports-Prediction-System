@@ -112,6 +112,13 @@ export class AuthExpiredError extends Error {}
 // of "feels broken."
 const REQUEST_TIMEOUT_MS = 20_000;
 
+/** Endpoints that answer 401 when the password typed was wrong -- that's a
+ * message for the person ("Incorrect email or password"), not the session
+ * ending. Treating it as an expired session logged an already-signed-in
+ * member out when they mistyped their current password, and hid the real
+ * reason on the login form. */
+const CREDENTIAL_PATHS = new Set(["/api/auth/login", "/api/auth/status", "/api/auth/password"]);
+
 async function request<T>(path: string, options: RequestInit = {}, timeoutMs: number = REQUEST_TIMEOUT_MS): Promise<T> {
   const token = getStoredToken();
   const headers: Record<string, string> = { ...(options.headers as Record<string, string>) };
@@ -136,7 +143,7 @@ async function request<T>(path: string, options: RequestInit = {}, timeoutMs: nu
     clearTimeout(timeoutId);
   }
 
-  if (response.status === 401) {
+  if (response.status === 401 && !CREDENTIAL_PATHS.has(path)) {
     clearStoredToken();
     window.dispatchEvent(new Event(AUTH_LOGOUT_EVENT));
     throw new AuthExpiredError("Session expired -- please log in again.");
