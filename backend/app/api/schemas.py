@@ -502,13 +502,35 @@ class PaymentNoticeIn(BaseModel):
     reference: str = Field(max_length=120)
 
 
+class AIProductOut(BaseModel):
+    key: str
+    label: str
+    amount: float
+    currency: str
+
+
 class PaymentOptionsOut(BaseModel):
-    """Whether the Access page should offer "Pay now", and what it costs."""
+    """What the Access page should offer: paying for access time (``enabled``,
+    with its price), and any AI Generation extras the account can buy."""
 
     enabled: bool
     amount: float = 0
     days: int = 0
     currency: str = ""
+    ai_products: list[AIProductOut] = []
+
+
+class CheckoutIn(BaseModel):
+    # "access" (the default) or an AI Generation product key.
+    product: str = Field(default="access", max_length=32)
+
+
+class AIGenerationQuotaOut(BaseModel):
+    # None = unlimited (a Super Admin, or a bought day pass is running).
+    daily_limit: int | None
+    remaining_today: int | None
+    credits: int
+    unlimited_until: dt.datetime | None = None
 
 
 class CheckoutOut(BaseModel):
@@ -518,6 +540,7 @@ class CheckoutOut(BaseModel):
 
 class PaymentStatusOut(BaseModel):
     reference: str
+    product: str = "access"
     # pending / fulfilling / completed / cancelled / failed
     status: str
     access_expires_at: dt.datetime | None = None

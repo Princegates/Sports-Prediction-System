@@ -1,6 +1,15 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { fetchBranding, redeemAccessCode, reportPayment } from "../api";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import {
+  fetchBranding,
+  fetchPaymentOptions,
+  fetchPaymentStatus,
+  redeemAccessCode,
+  reportPayment,
+  startPaymentCheckout,
+} from "../api";
+import type { PaymentOptions } from "../types";
+import { AIGenerationExtras } from "../components/AIGenerationExtras";
 import { Mascot } from "../components/Mascot";
 import { useTilt } from "../lib/useTilt";
 import { useAuth } from "../lib/AuthContext";
@@ -103,6 +112,133 @@ function PaymentNotice() {
   );
 }
 
+const PAYMENT_POLL_MS = 5_000;
+// Hubtel's own guidance is to give up waiting on a callback after about five
+// minutes; past that the payment may still land, but the member shouldn't be
+// left staring at a spinner -- the WhatsApp route below is the way out.
+const PAYMENT_POLL_GIVE_UP_MS = 5 * 60_000;
+
+/** "Pay now" -- takes the member to Hubtel's hosted checkout (mobile money or
+ * card). Access is granted by the server once Hubtel confirms the payment;
+ * nothing here decides that. Renders nothing until the server says online
+ * payment is switched on and priced, so a deployment without Hubtel set up
+ * looks exactly as it did before. */
+function PayNow({ options, label }: { options: PaymentOptions | null; label: string }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!options?.enabled) return null;
+
+  async function handleClick() {
+    setBusy(true);
+    setError(null);
+    try {
+      const { checkout_url } = await startPaymentCheckout();
+      window.location.assign(checkout_url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="status-result-actions">
+      <button className="btn btn-lg" onClick={handleClick} disabled={busy}>
+        {busy ? "Opening secure checkout..." : label}
+      </button>
+      <span className="meta">
+        {options.currency}
+        {options.amount.toLocaleString()} for {options.days} day{options.days === 1 ? "" : "s"} -- mobile money or
+        card, confirmed automatically.
+      </span>
+      {error && <p className="auth-error">{error}</p>}
+    </div>
+  );
+}
+
+/** Shown when Hubtel sends the member back here (?payment=REF). Polls the
+ * server -- which asks Hubtel itself -- until the payment settles, so a slow
+ * or lost notification delays access rather than losing it. */
+function PaymentReturn({ reference, cancelled, onSettled, onDismiss }: {
+  reference: string;
+  cancelled: boolean;
+  onSettled: () => void;
+  onDismiss: () => void;
+}) {
+  const [product, setProduct] = useState("access");
+  const [status, setStatus] = useState<"checking" | "completed" | "cancelled" | "failed" | "slow">(
+    cancelled ? "cancelled" : "checking",
+  );
+
+  useEffect(() => {
+    if (cancelled) return;
+    let stopped = false;
+    const startedAt = Date.now();
+
+    async function poll() {
+      try {
+        const result = await fetchPaymentStatus(reference);
+        if (stopped) return;
+        setProduct(result.product);
+        if (result.status === "completed") {
+          setStatus("completed");
+          onSettled();
+          return;
+        }
+        if (result.status === "cancelled" || result.status === "failed") {
+          setStatus(result.status);
+          return;
+        }
+      } catch {
+        // A hiccup (network, a server restart) isn't a verdict -- keep trying.
+      }
+      if (stopped) return;
+      if (Date.now() - startedAt >= PAYMENT_POLL_GIVE_UP_MS) {
+        setStatus("slow");
+        return;
+      }
+      timer = setTimeout(poll, PAYMENT_POLL_MS);
+    }
+
+    let timer = setTimeout(poll, 0);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reference, cancelled]);
+
+  const copy = {
+    checking: { title: "Confirming your payment...", body: "This usually takes a few seconds. Please keep this page open." },
+    completed: {
+      title: "Payment received",
+      body: product === "access" ? "Your access is active -- thank you!" : "Your AI Generation extras are ready -- thank you!",
+    },
+    cancelled: { title: "Payment cancelled", body: "You weren't charged. You can try again below, or ask an admin for a code." },
+    failed: {
+      title: "We couldn't confirm that payment",
+      body: "If money left your account, contact an admin on WhatsApp with this reference and they'll sort out your access.",
+    },
+    slow: {
+      title: "Still waiting on the payment",
+      body: "It hasn't been confirmed yet. If you completed it, it may still come through -- or contact an admin on WhatsApp with this reference.",
+    },
+  }[status];
+
+  return (
+    <div className="card card-pad" style={{ maxWidth: 480, margin: "0 auto var(--space-4)" }} role="status">
+      <h3 style={{ marginTop: 0, fontSize: 15 }}>{copy.title}</h3>
+      <p className="meta" style={{ margin: "0 0 8px" }}>{copy.body}</p>
+      <p className="meta" style={{ margin: 0 }}>Reference: <code>{reference}</code></p>
+      {status !== "checking" && (
+        <button className="btn ghost" style={{ marginTop: 12 }} onClick={onDismiss}>
+          Dismiss
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function Access() {
   const { user, accessStatus, accessLoading, refreshAccessStatus } = useAuth();
   const navigate = useNavigate();
@@ -115,6 +251,10 @@ export function Access() {
   const [whatsapp, setWhatsapp] = useState<string | null>(null);
   const [price, setPrice] = useState<string | null>(null);
   const [slow, setSlow] = useState(false);
+  const [paymentOptions, setPaymentOptions] = useState<PaymentOptions | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const paymentReference = searchParams.get("payment");
+  const paymentCancelled = searchParams.get("cancelled") === "1";
 
   useEffect(() => {
     if (!accessLoading) {
@@ -127,6 +267,9 @@ export function Access() {
 
   useEffect(() => {
     refreshAccessStatus();
+    fetchPaymentOptions()
+      .then(setPaymentOptions)
+      .catch(() => setPaymentOptions(null));
     fetchBranding()
       .then((b) => {
         setWhatsapp(b.contact_whatsapp || null);
@@ -166,6 +309,17 @@ export function Access() {
         <h2>Access</h2>
         <span className="meta">Activate your football AI access</span>
       </div>
+
+      {paymentReference && (
+        <div style={{ paddingTop: "var(--space-4)" }}>
+          <PaymentReturn
+            reference={paymentReference}
+            cancelled={paymentCancelled}
+            onSettled={() => refreshAccessStatus()}
+            onDismiss={() => setSearchParams({}, { replace: true })}
+          />
+        </div>
+      )}
 
       <section className="status-result-shell" style={{ padding: "var(--space-5) 0" }}>
         <div
@@ -219,6 +373,7 @@ export function Access() {
                   Enter the platform
                 </button>
               </div>
+              {accessStatus?.status !== "unlimited" && <PayNow options={paymentOptions} label="Add more time" />}
             </>
           )}
 
@@ -226,10 +381,17 @@ export function Access() {
             <>
               <h1>{accessStatus?.status === "expired" ? "Your access has expired" : "No active access yet"}</h1>
               <p className="status-result-message">
-                Predictions, teams and matches stay locked until you redeem a code. A Super Admin issues one
-                after confirming your payment outside the platform.
-                {price && <> Access is <strong>{price}</strong>.</>}
+                {paymentOptions?.enabled
+                  ? "Predictions, teams and matches stay locked until you pay or redeem a code."
+                  : "Predictions, teams and matches stay locked until you redeem a code. A Super Admin issues one after confirming your payment outside the platform."}
+                {price && !paymentOptions?.enabled && <> Access is <strong>{price}</strong>.</>}
               </p>
+              <PayNow options={paymentOptions} label="Pay now" />
+              {paymentOptions?.enabled && (
+                <p className="meta" style={{ margin: "8px 0 0" }}>
+                  Prefer to pay another way, or had a problem paying? Message an admin for a code instead.
+                </p>
+              )}
               {whatsapp && (
                 <div className="status-result-actions">
                   <a
@@ -251,6 +413,12 @@ export function Access() {
           )}
         </div>
       </section>
+
+      {!accessLoading && hasAccess && accessStatus?.status !== "unlimited" && (
+        <div style={{ maxWidth: 480, margin: "0 auto" }}>
+          <AIGenerationExtras heading="AI Generation extras" />
+        </div>
+      )}
 
       {/* Always rendered, regardless of accessLoading -- a slow or stuck
           access check (a flaky network, a backend hiccup) must never block

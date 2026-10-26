@@ -112,6 +112,11 @@ class User(Base):
     # Generation calls per day. Null means "use the global default"; a
     # superadmin is never limited regardless (see app.ai_generation_quota).
     daily_ai_generation_limit_override: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Bought in packs (app.payments.products): extra AI Generation runs that
+    # are spent only once the day's allowance is used up, and never expire.
+    ai_generation_credits: Mapped[int] = mapped_column(Integer, default=0)
+    # A bought day pass: no daily limit at all until this moment.
+    ai_unlimited_until: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
@@ -330,6 +335,8 @@ class Payment(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     provider: Mapped[str] = mapped_column(String(16), default="hubtel")
+    # What was bought -- "access" or a key from app.payments.products.
+    product: Mapped[str] = mapped_column(String(32), default="access")
     # Unguessable and unique; Hubtel caps this at 32 characters.
     client_reference: Mapped[str] = mapped_column(String(32), unique=True, index=True)
     # What was owed and what it buys, frozen at checkout time so a later

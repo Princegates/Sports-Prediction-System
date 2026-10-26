@@ -200,3 +200,28 @@ def test_no_added_column_uses_a_datetime_type_postgres_does_not_have():
 
     offending = [(table, column) for table, column, column_type in migrate._ADDED_COLUMNS if "DATETIME" in column_type.upper()]
     assert offending == [], f"Use TIMESTAMP, not DATETIME (Postgres has no such type): {offending}"
+
+
+def test_ensure_schema_adds_the_payment_and_ai_extras_columns_to_an_older_database():
+    """A database created before these columns existed (the live one) must
+    catch up -- a missing column here would break every query on the table."""
+
+    from sqlalchemy import create_engine, inspect, text
+
+    old = create_engine("sqlite://")
+    with old.begin() as conn:
+        conn.execute(text("CREATE TABLE users (id INTEGER PRIMARY KEY, email VARCHAR(255))"))
+        conn.execute(text("INSERT INTO users (id, email) VALUES (1, 'old@example.com')"))
+        conn.execute(text("CREATE TABLE payments (id INTEGER PRIMARY KEY, client_reference VARCHAR(32))"))
+        conn.execute(text("INSERT INTO payments (id, client_reference) VALUES (1, 'REF')"))
+
+    migrate.ensure_schema(old)
+
+    inspector = inspect(old)
+    assert {"ai_generation_credits", "ai_unlimited_until", "daily_ai_generation_limit_override"} <= {
+        c["name"] for c in inspector.get_columns("users")
+    }
+    assert "product" in {c["name"] for c in inspector.get_columns("payments")}
+    with old.begin() as conn:
+        assert conn.execute(text("SELECT ai_generation_credits FROM users")).scalar() == 0
+        assert conn.execute(text("SELECT product FROM payments")).scalar() == "access"

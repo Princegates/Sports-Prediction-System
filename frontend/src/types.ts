@@ -420,6 +420,36 @@ export interface AccessStatus {
   expires_at: string | null;
 }
 
+export interface AIProduct {
+  key: string;
+  label: string;
+  amount: number;
+  currency: string;
+}
+
+export interface PaymentOptions {
+  enabled: boolean;
+  amount: number;
+  days: number;
+  currency: string;
+  ai_products: AIProduct[];
+}
+
+export interface AIGenerationQuota {
+  // null = unlimited (a Super Admin, or a day pass is running).
+  daily_limit: number | null;
+  remaining_today: number | null;
+  credits: number;
+  unlimited_until: string | null;
+}
+
+export interface PaymentStatus {
+  reference: string;
+  product: string;
+  status: "pending" | "fulfilling" | "completed" | "cancelled" | "failed";
+  access_expires_at: string | null;
+}
+
 export interface SiteNotice {
   enabled: boolean;
   message: string;

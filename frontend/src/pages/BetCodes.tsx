@@ -13,10 +13,12 @@ import {
   resolvePicks,
   setAdminPickFeaturedPublic,
   setAdminPickResult,
+  fetchAIGenerationQuota,
   suggestPicks,
   suggestRandomPicks,
   updateAdminPick,
 } from "../api";
+import { AIGenerationExtras } from "../components/AIGenerationExtras";
 import { CopyButton } from "../components/CopyButton";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
@@ -30,7 +32,7 @@ import { LEAGUES, useLeague } from "../components/AppShell";
 import { useAuth } from "../lib/AuthContext";
 import { useIsMobile } from "../lib/useIsMobile";
 import { takePendingSlip } from "../lib/pendingSlip";
-import type { AdminPick, BetCodePick, ExcludedLeg, MarketSummary, MatchSummary, PublicTeaserPick, SuggestCriteria, SuggestedLeg, SuggestedPicks } from "../types";
+import type { AIGenerationQuota, AdminPick, BetCodePick, ExcludedLeg, MarketSummary, MatchSummary, PublicTeaserPick, SuggestCriteria, SuggestedLeg, SuggestedPicks } from "../types";
 import { chanceLabel } from "../lib/odds";
 import { marketLabel } from "../lib/marketLabel";
 
@@ -282,6 +284,7 @@ export function BetCodes() {
   const [preview, setPreview] = useState<SuggestedPicks | null>(null);
   const resultsCardRef = useRef<HTMLDivElement | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [quota, setQuota] = useState<AIGenerationQuota | null>(null);
   const [previewing, setPreviewing] = useState(false);
   // Set only when the current preview came from picks handed over by Guda
   // (or another page) rather than the criteria form below -- changes the
@@ -382,6 +385,16 @@ export function BetCodes() {
   // excludedLegs over from just this result), false for a Refresh
   // (adds this result's legs on top of whatever was already excluded,
   // so the next Refresh keeps exploring forward instead of circling back).
+  function refreshQuota() {
+    fetchAIGenerationQuota()
+      .then(setQuota)
+      .catch(() => {});
+  }
+
+  useEffect(() => {
+    refreshQuota();
+  }, []);
+
   async function runPreview(fetchPreview: () => Promise<SuggestedPicks>, resetExclusions: boolean) {
     setPreviewing(true);
     setPreviewError(null);
@@ -401,6 +414,7 @@ export function BetCodes() {
       setPreviewError(String(e instanceof Error ? e.message : e));
     } finally {
       setPreviewing(false);
+      refreshQuota();
     }
   }
 
@@ -947,7 +961,20 @@ export function BetCodes() {
         )}
       </div>
 
+      {quota && (
+        <p className="setting-note" style={{ margin: "0 0 12px" }}>
+          {quota.unlimited_until
+            ? `Unlimited runs until ${new Date(quota.unlimited_until).toLocaleString()}.`
+            : quota.remaining_today === null
+              ? "Unlimited runs."
+              : `${quota.remaining_today} run${quota.remaining_today === 1 ? "" : "s"} left today` +
+                (quota.credits > 0 ? ` + ${quota.credits} extra` : "") +
+                "."}
+        </p>
+      )}
+
       {previewError && <ErrorState message={previewError} />}
+      {previewError && /AI Generation run/i.test(previewError) && <AIGenerationExtras />}
 
       {preview && (
         <div className="card card-pad" style={{ marginBottom: 20 }} ref={resultsCardRef}>

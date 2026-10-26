@@ -54,6 +54,35 @@ def fake_hubtel(monkeypatch):
     return state
 
 
+@pytest.fixture()
+def upcoming_match_for_quota(db_session):
+    import datetime as dt
+
+    from app.db.models import Match, Prediction, Team
+    from app.timeutil import utcnow
+
+    home = Team(name="Arsenal", league="English Premier League", aliases=[])
+    away = Team(name="Chelsea", league="English Premier League", aliases=[])
+    db_session.add_all([home, away])
+    db_session.commit()
+    match = Match(
+        league="English Premier League", season="2025-26", date=utcnow() + dt.timedelta(days=1),
+        home_team_id=home.id, away_team_id=away.id, status="SCHEDULED",
+    )
+    db_session.add(match)
+    db_session.commit()
+    db_session.add(Prediction(
+        match_id=match.id, model_version="test", home_win=0.85, draw=0.09, away_win=0.06,
+        over_probabilities={"2.5": 0.6}, btts_yes=0.55, btts_no=0.45,
+        correct_score_probabilities={"2-1": 0.11}, most_likely_score="2-1", most_likely_score_probability=0.11,
+        global_outcome_market="Match Result", global_outcome_selection="Home Win", global_outcome_probability=0.85,
+        confidence="HIGH", data_quality_score=1.0, model_agreement_score=0.9,
+        explanation={"positive": [], "negative": []}, model_breakdown={},
+    ))
+    db_session.commit()
+    return match
+
+
 def _user_id(db_session) -> int:
     return db_session.query(User).filter(User.email == "test-user@example.com").one().id
 
@@ -84,7 +113,9 @@ def test_options_are_disabled_until_hubtel_is_configured(auth_headers):
 
 def test_options_enabled_once_configured_with_a_price(auth_headers, configured):
     body = client.get("/api/payments/options", headers=auth_headers).json()
-    assert body == {"enabled": True, "amount": 20.0, "days": 5, "currency": "GH₵"}
+    assert {k: body[k] for k in ("enabled", "amount", "days", "currency")} == {
+        "enabled": True, "amount": 20.0, "days": 5, "currency": "GH₵",
+    }
 
 
 def test_options_need_a_price_even_when_hubtel_is_on(db_session, auth_headers, configured):
@@ -328,3 +359,130 @@ def test_deleting_an_account_keeps_its_payment_record(db_session, auth_headers, 
 
     payment = db_session.query(Payment).one()
     assert payment.user_id is None
+
+
+# --- AI Generation extras ------------------------------------------------------
+
+
+def _ai_checkout(auth_headers, product):
+    return client.post("/api/payments/checkout", json={"product": product}, headers=auth_headers)
+
+
+def test_the_extras_on_sale_are_priced_by_the_admin(auth_headers, configured):
+    body = client.get("/api/payments/options", headers=auth_headers).json()
+    assert {p["key"]: p["amount"] for p in body["ai_products"]} == {
+        "ai_pack_3": 10.0, "ai_pack_6": 15.0, "ai_pack_10": 20.0, "ai_unlimited_day": 50.0,
+    }
+
+
+def test_a_zero_price_hides_an_extra(db_session, auth_headers, configured):
+    app_settings.set_values(db_session, {"ai_unlimited_day_price": 0})
+    keys = {p["key"] for p in client.get("/api/payments/options", headers=auth_headers).json()["ai_products"]}
+    assert "ai_unlimited_day" not in keys and "ai_pack_3" in keys
+
+
+def test_extras_are_not_offered_without_live_access(configured, headers_no_access):
+    body = client.get("/api/payments/options", headers=headers_no_access).json()
+    assert body["ai_products"] == []
+    assert client.post("/api/payments/checkout", json={"product": "ai_pack_3"}, headers=headers_no_access).status_code == 400
+
+
+def test_an_unknown_product_is_refused(auth_headers, configured, fake_hubtel):
+    assert _ai_checkout(auth_headers, "free_money").status_code == 400
+    assert fake_hubtel["created"] == []
+
+
+def test_a_pack_checkout_charges_the_pack_price(db_session, auth_headers, configured, fake_hubtel):
+    assert _ai_checkout(auth_headers, "ai_pack_6").status_code == 200
+    payment = db_session.query(Payment).one()
+    assert (payment.product, payment.amount) == ("ai_pack_6", 15.0)
+    assert fake_hubtel["created"][0]["amount"] == 15.0
+
+
+def test_a_paid_pack_adds_credits_once(db_session, auth_headers, configured, fake_hubtel):
+    reference = _ai_checkout(auth_headers, "ai_pack_10").json()["reference"]
+    fake_hubtel["status"] = "paid"
+    fake_hubtel["amount"] = 20.0
+
+    _callback(reference)
+    _callback(reference)
+
+    db_session.expire_all()
+    user = db_session.query(User).filter(User.email == "test-user@example.com").one()
+    assert user.ai_generation_credits == 10
+    assert db_session.query(Payment).one().status == "completed"
+    assert _hubtel_codes(db_session) == 0  # an extra is not an access code
+
+
+def test_a_paid_day_pass_lifts_the_limit_for_24_hours(db_session, auth_headers, configured, fake_hubtel):
+    from app.timeutil import utcnow
+
+    reference = _ai_checkout(auth_headers, "ai_unlimited_day").json()["reference"]
+    fake_hubtel.update(status="paid", amount=50.0)
+    _callback(reference)
+
+    db_session.expire_all()
+    user = db_session.query(User).filter(User.email == "test-user@example.com").one()
+    hours = (user.ai_unlimited_until - utcnow()).total_seconds() / 3600
+    assert 23.9 < hours <= 24.0
+
+
+def test_credits_are_spent_only_after_the_daily_allowance(db_session, auth_headers, upcoming_match_for_quota):
+    from app.db.models import User
+
+    app_settings.set_values(db_session, {"ai_generation_daily_limit": 1})
+    user = db_session.query(User).filter(User.email == "test-user@example.com").one()
+    user.ai_generation_credits = 2
+    db_session.commit()
+
+    statuses = [
+        client.post("/api/betcodes/suggest", json={"min_probability": 0.5}, headers=auth_headers).status_code
+        for _ in range(4)
+    ]
+
+    assert statuses == [200, 200, 200, 429]  # allowance, then two credits, then blocked
+    db_session.expire_all()
+    assert db_session.get(User, user.id).ai_generation_credits == 0
+
+
+def test_a_day_pass_means_no_limit_and_does_not_eat_the_allowance(db_session, auth_headers, upcoming_match_for_quota):
+    import datetime as dt
+
+    from app.db.models import AIGenerationLog, User
+    from app.timeutil import utcnow
+
+    app_settings.set_values(db_session, {"ai_generation_daily_limit": 1})
+    user = db_session.query(User).filter(User.email == "test-user@example.com").one()
+    user.ai_unlimited_until = utcnow() + dt.timedelta(hours=5)
+    db_session.commit()
+
+    for _ in range(4):
+        assert client.post("/api/betcodes/suggest", json={"min_probability": 0.5}, headers=auth_headers).status_code == 200
+    assert db_session.query(AIGenerationLog).count() == 0
+
+    user.ai_unlimited_until = utcnow() - dt.timedelta(minutes=1)  # pass ends
+    db_session.commit()
+    assert client.post("/api/betcodes/suggest", json={"min_probability": 0.5}, headers=auth_headers).status_code == 200
+    assert client.post("/api/betcodes/suggest", json={"min_probability": 0.5}, headers=auth_headers).status_code == 429
+
+
+def test_the_quota_endpoint_reports_what_is_left(db_session, auth_headers):
+    from app.db.models import User
+
+    app_settings.set_values(db_session, {"ai_generation_daily_limit": 7})
+    user = db_session.query(User).filter(User.email == "test-user@example.com").one()
+    user.ai_generation_credits = 3
+    db_session.commit()
+
+    body = client.get("/api/betcodes/quota", headers=auth_headers).json()
+    assert body == {"daily_limit": 7, "remaining_today": 7, "credits": 3, "unlimited_until": None}
+
+
+def test_changing_a_price_in_settings_changes_the_offer_and_the_charge(db_session, auth_headers, configured, fake_hubtel):
+    app_settings.set_values(db_session, {"ai_pack_3_price": 12.5, "ai_unlimited_day_price": 60})
+
+    offered = {p["key"]: p["amount"] for p in client.get("/api/payments/options", headers=auth_headers).json()["ai_products"]}
+    assert offered["ai_pack_3"] == 12.5 and offered["ai_unlimited_day"] == 60.0
+
+    assert _ai_checkout(auth_headers, "ai_pack_3").status_code == 200
+    assert fake_hubtel["created"][-1]["amount"] == 12.5

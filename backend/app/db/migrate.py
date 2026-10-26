@@ -134,6 +134,12 @@ _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     # (see models.WinningSlip).
     ("winning_slips", "pending_review", "BOOLEAN DEFAULT FALSE"),
     ("winning_slips", "submitted_by_member", "BOOLEAN DEFAULT FALSE"),
+    # Bought AI Generation extras -- see app.payments.products. DEFAULT 0 so
+    # existing accounts start with none rather than NULL.
+    ("users", "ai_generation_credits", "INTEGER DEFAULT 0"),
+    ("users", "ai_unlimited_until", "TIMESTAMP"),
+    # payments shipped before it could sell anything but access.
+    ("payments", "product", "VARCHAR(32) DEFAULT 'access'"),
 ]
 
 

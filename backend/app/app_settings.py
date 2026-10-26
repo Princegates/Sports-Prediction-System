@@ -222,6 +222,16 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 "Base URL of the Transaction Status Check API. Your server's IP must be whitelisted "
                 "by Hubtel before it will answer.", env_attr="hubtel_status_url"),
 
+    SettingSpec("ai_pack_3_price", "float", "payments", "AI Generation pack: 3 extra runs (price)",
+                "Bought with Hubtel on top of the daily limit; spent once the day's runs are used up and "
+                "never expire. 0 hides the pack.", default=10.0, minimum=0, maximum=100000),
+    SettingSpec("ai_pack_6_price", "float", "payments", "AI Generation pack: 6 extra runs (price)",
+                default=15.0, minimum=0, maximum=100000),
+    SettingSpec("ai_pack_10_price", "float", "payments", "AI Generation pack: 10 extra runs (price)",
+                default=20.0, minimum=0, maximum=100000),
+    SettingSpec("ai_unlimited_day_price", "float", "payments", "AI Generation day pass: unlimited for 24 hours (price)",
+                "0 hides it.", default=50.0, minimum=0, maximum=100000),
+
     # --- Appearance ------------------------------------------------------
     SettingSpec("default_theme", "choice", "appearance", "Theme",
                 "Applies to every visitor and account -- there is no per-user override.",

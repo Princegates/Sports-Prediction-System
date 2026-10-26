@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from app import ai_generation_quota
 from app.api.deps import get_db, require_active_access
 from app.api.schemas import (
+    AIGenerationQuotaOut,
     BettingSiteOut,
     MyBookingSlipOut,
     PickedLegOut,
@@ -114,9 +115,24 @@ def _ensure_ai_generation_quota(db: Session, user: User) -> None:
             status_code=429,
             detail=(
                 f"You've used your {limit} AI Generation run{'s' if limit != 1 else ''} for today -- "
-                "it resets on a rolling 24-hour basis. Contact a Super Admin for a higher daily limit."
+                "it resets on a rolling 24-hour basis. Buy extra runs on the Access page, or contact a Super Admin."
             ),
         )
+
+
+@router.get("/quota", response_model=AIGenerationQuotaOut)
+def ai_generation_quota_status(
+    user: User = Depends(require_active_access), db: Session = Depends(get_db)
+) -> AIGenerationQuotaOut:
+    """What the member has left today, for the AI Generation page to show --
+    and to know when to offer the extras on sale."""
+
+    return AIGenerationQuotaOut(
+        daily_limit=ai_generation_quota.daily_limit(db, user),
+        remaining_today=ai_generation_quota.quota_remaining(db, user),
+        credits=user.ai_generation_credits or 0,
+        unlimited_until=user.ai_unlimited_until if ai_generation_quota.is_unlimited_now(user) else None,
+    )
 
 
 @router.post("/suggest", response_model=SuggestedPicksOut)

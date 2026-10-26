@@ -18,14 +18,14 @@ from __future__ import annotations
 import datetime as dt
 import secrets
 
-from sqlalchemy import update
+from sqlalchemy import func, update
 from sqlalchemy.orm import Session
 
 from app import app_settings
-from app.access import AccessCodeError, create_access_code, redeem_access_code
+from app.access import AccessCodeError, create_access_code, current_grant, redeem_access_code
 from app.api import rate_limit
 from app.db.models import AuditLog, Payment, User
-from app.payments import hubtel
+from app.payments import hubtel, products
 from app.timeutil import utcnow
 
 # Hubtel rate-limits these endpoints (~5/min), so a member's polling can't be
@@ -47,13 +47,30 @@ def _price(db: Session) -> tuple[float, int, str]:
     )
 
 
-def options(db: Session) -> dict:
-    """What the Access page needs to decide whether to offer "Pay now"."""
+def _gateway_ready(db: Session) -> bool:
+    return bool(app_settings.get_value(db, "hubtel_enabled")) and hubtel.resolve_config(db).configured
+
+
+def options(db: Session, user: User | None = None) -> dict:
+    """What the Access page needs to decide what to offer. AI Generation
+    extras are only offered to an account that already has access (a
+    superadmin never needs them)."""
 
     amount, days, currency = _price(db)
-    config = hubtel.resolve_config(db)
-    enabled = bool(app_settings.get_value(db, "hubtel_enabled")) and config.configured and amount > 0 and days > 0
-    return {"enabled": enabled, "amount": amount, "days": days, "currency": currency}
+    ready = _gateway_ready(db)
+    enabled = ready and amount > 0 and days > 0
+
+    ai_products: list[dict] = []
+    if ready and user is not None and user.role != "superadmin":
+        grant = current_grant(db, user)
+        if grant is not None and grant.expires_at > utcnow():
+            for product in products.AI_PRODUCTS:
+                price = float(app_settings.get_value(db, product.price_setting) or 0)
+                if price > 0:
+                    ai_products.append(
+                        {"key": product.key, "label": product.label, "amount": price, "currency": currency or "GH₵"}
+                    )
+    return {"enabled": enabled, "amount": amount, "days": days, "currency": currency, "ai_products": ai_products}
 
 
 def _new_reference() -> str:
@@ -73,10 +90,18 @@ def _audit(db: Session, user: User | None, action: str, payment: Payment, detail
     )
 
 
-def start_checkout(db: Session, user: User) -> Payment:
-    opts = options(db)
-    if not opts["enabled"]:
-        raise PaymentError("Online payment isn't available right now -- contact an admin for an access code.")
+def start_checkout(db: Session, user: User, product_key: str = products.ACCESS) -> Payment:
+    if product_key == products.ACCESS:
+        opts = options(db)
+        if not opts["enabled"]:
+            raise PaymentError("Online payment isn't available right now -- contact an admin for an access code.")
+        amount, days, description_what = opts["amount"], opts["days"], None
+    else:
+        product = products.BY_KEY.get(product_key)
+        offered = {p["key"]: p for p in options(db, user)["ai_products"]}
+        if product is None or product_key not in offered:
+            raise PaymentError("That isn't available right now.")
+        amount, days, description_what = offered[product_key]["amount"], 0, product.label
 
     config = hubtel.resolve_config(db)
     site = str(app_settings.get_value(db, "public_site_url") or "").rstrip("/")
@@ -86,9 +111,10 @@ def start_checkout(db: Session, user: User) -> Payment:
 
     payment = Payment(
         user_id=user.id,
+        product=product_key,
         client_reference=_new_reference(),
-        amount=opts["amount"],
-        access_days=opts["days"],
+        amount=amount,
+        access_days=days,
     )
     db.add(payment)
     db.commit()
@@ -99,7 +125,7 @@ def start_checkout(db: Session, user: User) -> Payment:
         result = hubtel.create_checkout(
             config,
             amount=payment.amount,
-            description=f"{payment.access_days}-day access to {site_name}",
+            description=description_what or f"{payment.access_days}-day access to {site_name}",
             client_reference=reference,
             callback_url=f"{config.public_api_url}/api/payments/hubtel/callback",
             return_url=f"{site}/app/access?payment={reference}",
@@ -137,6 +163,10 @@ def _fulfil(db: Session, payment: Payment) -> None:
         db.commit()
         return
 
+    if payment.product != products.ACCESS:
+        _apply_ai_product(db, payment, user)
+        return
+
     try:
         code = create_access_code(
             db,
@@ -164,6 +194,37 @@ def _fulfil(db: Session, payment: Payment) -> None:
     payment.access_code_id = code.id
     _audit(db, user, "payment.completed", payment, {"amount": payment.amount, "access_days": payment.access_days})
     db.commit()
+
+
+def _apply_ai_product(db: Session, payment: Payment, user: User) -> None:
+    """Credits or a day pass, applied together with marking the payment
+    completed in one commit -- either both happen or neither does."""
+
+    product = products.BY_KEY.get(payment.product)
+    try:
+        if product is None:
+            raise AccessCodeError(f"Unknown product {payment.product!r}")
+        now = utcnow()
+        if product.kind == "ai_credits":
+            db.execute(
+                update(User)
+                .where(User.id == user.id)
+                .values(ai_generation_credits=func.coalesce(User.ai_generation_credits, 0) + product.credits)
+            )
+        else:
+            current = user.ai_unlimited_until
+            base = current if current is not None and current > now else now
+            user.ai_unlimited_until = base + dt.timedelta(hours=product.hours)
+        payment.status = "completed"
+        payment.completed_at = now
+        _audit(db, user, "payment.completed", payment, {"amount": payment.amount, "product": payment.product})
+        db.commit()
+    except Exception:
+        db.rollback()
+        payment = db.get(Payment, payment.id)
+        payment.status = "pending"
+        db.commit()
+        raise
 
 
 def reconcile(db: Session, payment: Payment, *, force: bool = False) -> Payment:

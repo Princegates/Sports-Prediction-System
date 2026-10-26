@@ -20,9 +20,9 @@ from sqlalchemy.orm import Session
 from app.access import AccessCodeError, current_grant
 from app.api.deps import get_current_user, get_db, require_superadmin
 from app.api.rate_limit import enforce, enforce_key
-from app.api.schemas import AdminPaymentOut, CheckoutOut, PaymentOptionsOut, PaymentStatusOut
+from app.api.schemas import AdminPaymentOut, CheckoutIn, CheckoutOut, PaymentOptionsOut, PaymentStatusOut
 from app.db.models import Payment, User
-from app.payments import hubtel, service
+from app.payments import hubtel, products, service
 
 logger = logging.getLogger(__name__)
 
@@ -32,15 +32,17 @@ admin_router = APIRouter(prefix="/api/admin/payments", tags=["payments"], depend
 
 @router.get("/options", response_model=PaymentOptionsOut)
 def payment_options(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> PaymentOptionsOut:
-    return PaymentOptionsOut(**service.options(db))
+    return PaymentOptionsOut(**service.options(db, user))
 
 
 @router.post("/checkout", response_model=CheckoutOut)
-def start_checkout(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> CheckoutOut:
+def start_checkout(
+    payload: CheckoutIn | None = None, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+) -> CheckoutOut:
     # Each call creates a payment row and calls Hubtel; keyed on the account.
     enforce_key(f"payment_checkout-user:{user.id}", 5, 600)
     try:
-        payment = service.start_checkout(db, user)
+        payment = service.start_checkout(db, user, payload.product if payload else products.ACCESS)
     except service.PaymentError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return CheckoutOut(reference=payment.client_reference, checkout_url=payment.checkout_url or "")
@@ -66,10 +68,12 @@ def payment_status(
         logger.error("Payment %s confirmed but access couldn't be granted: %s", reference, exc)
 
     expires_at = None
-    if payment.status == "completed":
+    if payment.status == "completed" and payment.product == products.ACCESS:
         grant = current_grant(db, user)
         expires_at = grant.expires_at if grant else None
-    return PaymentStatusOut(reference=payment.client_reference, status=payment.status, access_expires_at=expires_at)
+    return PaymentStatusOut(
+        reference=payment.client_reference, product=payment.product, status=payment.status, access_expires_at=expires_at
+    )
 
 
 @router.post("/hubtel/callback")

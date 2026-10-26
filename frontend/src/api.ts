@@ -17,6 +17,9 @@ import type {
   AccessCode,
   AccessGrant,
   AccessStatus,
+  AIGenerationQuota,
+  PaymentOptions,
+  PaymentStatus,
   AccountStatus,
   AdminOverview,
   AdminUser,
@@ -482,6 +485,26 @@ export function demoteUser(userId: number): Promise<AdminUser> {
 
 export function fetchAccessStatus(): Promise<AccessStatus> {
   return get("/api/access/status");
+}
+
+// --- Online payment (Hubtel) ------------------------------------------------
+
+export function fetchPaymentOptions(): Promise<PaymentOptions> {
+  return get("/api/payments/options");
+}
+
+/** ``product`` is omitted for access time, or an AI product key from
+ * fetchPaymentOptions().ai_products. */
+export function startPaymentCheckout(product?: string): Promise<{ reference: string; checkout_url: string }> {
+  return post("/api/payments/checkout", product ? { product } : {});
+}
+
+export function fetchAIGenerationQuota(): Promise<AIGenerationQuota> {
+  return get("/api/betcodes/quota");
+}
+
+export function fetchPaymentStatus(reference: string): Promise<PaymentStatus> {
+  return get(`/api/payments/${encodeURIComponent(reference)}/status`);
 }
 
 /** One headline pick per league -- works for any logged-in account, even
