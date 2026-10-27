@@ -475,7 +475,7 @@ def test_the_quota_endpoint_reports_what_is_left(db_session, auth_headers):
     db_session.commit()
 
     body = client.get("/api/betcodes/quota", headers=auth_headers).json()
-    assert body == {"daily_limit": 7, "remaining_today": 7, "credits": 3, "unlimited_until": None}
+    assert body == {"daily_limit": 7, "remaining_today": 7, "credits": 3, "unlimited_until": None, "next_free_at": None}
 
 
 def test_changing_a_price_in_settings_changes_the_offer_and_the_charge(db_session, auth_headers, configured, fake_hubtel):

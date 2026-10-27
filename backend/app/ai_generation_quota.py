@@ -67,6 +67,30 @@ def quota_remaining(db: Session, user: User, now: dt.datetime | None = None) -> 
     return max(limit - used_today(db, user.id, now), 0)
 
 
+def next_free_at(db: Session, user: User, now: dt.datetime | None = None) -> dt.datetime | None:
+    """When the daily allowance next frees a run -- the moment the oldest
+    counted run ages out of the 24 hours. ``None`` while runs remain (or
+    there is no limit to run out of)."""
+
+    now = now or utcnow()
+    limit = daily_limit(db, user)
+    if limit is None or is_unlimited_now(user, now):
+        return None
+    used = used_today(db, user.id, now)
+    if used < limit:
+        return None
+    # An admin lowering the limit can leave used > limit; then several runs
+    # must age out before one is free, so skip to the one that matters.
+    oldest = db.execute(
+        select(AIGenerationLog.created_at)
+        .where(AIGenerationLog.user_id == user.id, AIGenerationLog.created_at >= now - dt.timedelta(hours=24))
+        .order_by(AIGenerationLog.created_at)
+        .offset(used - limit)
+        .limit(1)
+    ).scalar()
+    return oldest + dt.timedelta(hours=24) if oldest is not None else None
+
+
 def has_quota_left(db: Session, user: User, now: dt.datetime | None = None) -> bool:
     remaining = quota_remaining(db, user, now)
     return remaining is None or remaining > 0 or (user.ai_generation_credits or 0) > 0

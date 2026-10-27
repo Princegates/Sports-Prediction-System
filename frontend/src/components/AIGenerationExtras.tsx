@@ -7,10 +7,8 @@ import type { AIProduct } from "../types";
  * which extras exist come from the server, so an admin's price change shows
  * up here with no deploy; renders nothing when none are on sale (online
  * payment off, no live access, or every price set to 0). */
-export function AIGenerationExtras({ heading = "Need more AI Generation runs?" }: { heading?: string }) {
+export function useAIProducts(): AIProduct[] {
   const [products, setProducts] = useState<AIProduct[]>([]);
-  const [busyKey, setBusyKey] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -21,6 +19,14 @@ export function AIGenerationExtras({ heading = "Need more AI Generation runs?" }
       cancelled = true;
     };
   }, []);
+
+  return products;
+}
+
+export function AIGenerationExtras({ heading = "Need more AI Generation runs?" }: { heading?: string }) {
+  const products = useAIProducts();
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   if (products.length === 0) return null;
 

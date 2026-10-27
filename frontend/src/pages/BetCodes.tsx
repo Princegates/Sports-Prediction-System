@@ -17,7 +17,7 @@ import {
   suggestRandomPicks,
   updateAdminPick,
 } from "../api";
-import { AIGenerationExtras } from "../components/AIGenerationExtras";
+import { OutOfRunsPanel } from "../components/OutOfRunsPanel";
 import { CopyButton } from "../components/CopyButton";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
@@ -686,6 +686,12 @@ export function BetCodes() {
         and add them yourself.
       </p>
 
+      {outOfRuns && (
+        <div className="card card-pad" style={{ marginBottom: 20 }}>
+          <OutOfRunsPanel />
+        </div>
+      )}
+
       <div className="card card-pad" style={{ marginBottom: 20 }}>
         <div className="meta" style={{ marginBottom: 10 }}>
           Generate by risk level
@@ -975,12 +981,10 @@ export function BetCodes() {
             Takes 5 to 10 seconds to load.
           </p>
         )}
+        {outOfRuns && (!isMobile || step === WIZARD_STEPS.length - 1) && <OutOfRunsPanel />}
       </div>
 
       {previewError && <ErrorState message={previewError} />}
-      {(runsLeft === 0 || (previewError !== null && /AI Generation run/i.test(previewError))) && (
-        <AIGenerationExtras heading="Out of AI Generation runs for today?" />
-      )}
 
       {preview && (
         <div className="card card-pad" style={{ marginBottom: 20 }} ref={resultsCardRef}>

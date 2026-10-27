@@ -88,3 +88,35 @@ def test_quota_is_per_user_not_shared(db_session):
     ai_generation_quota.record_generation(db_session, a)
     assert ai_generation_quota.has_quota_left(db_session, a) is False
     assert ai_generation_quota.has_quota_left(db_session, b) is True
+
+
+def test_next_free_at_is_when_the_oldest_run_ages_out(db_session):
+    user = _make_user(db_session, "waiting@example.com", override=2)
+    now = utcnow()
+    first, second = now - dt.timedelta(hours=20), now - dt.timedelta(hours=2)
+    db_session.add_all([AIGenerationLog(user_id=user.id, created_at=first), AIGenerationLog(user_id=user.id, created_at=second)])
+    db_session.commit()
+
+    assert ai_generation_quota.next_free_at(db_session, user, now) == first + dt.timedelta(hours=24)
+
+
+def test_next_free_at_is_none_while_runs_remain_or_unlimited(db_session):
+    member = _make_user(db_session, "plenty@example.com", override=5)
+    ai_generation_quota.record_generation(db_session, member)
+    admin = _make_user(db_session, "boss@example.com", role="superadmin")
+
+    assert ai_generation_quota.next_free_at(db_session, member) is None
+    assert ai_generation_quota.next_free_at(db_session, admin) is None
+
+
+def test_next_free_at_waits_for_every_excess_run_when_the_limit_was_lowered(db_session):
+    """Three runs counted but the limit is now 1: a slot only opens once all
+    three have aged out, i.e. when the newest does -- not the oldest."""
+
+    user = _make_user(db_session, "lowered@example.com", override=1)
+    now = utcnow()
+    times = [now - dt.timedelta(hours=h) for h in (22, 10, 1)]
+    db_session.add_all([AIGenerationLog(user_id=user.id, created_at=t) for t in times])
+    db_session.commit()
+
+    assert ai_generation_quota.next_free_at(db_session, user, now) == times[2] + dt.timedelta(hours=24)

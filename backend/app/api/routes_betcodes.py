@@ -133,6 +133,7 @@ def ai_generation_quota_status(
         remaining_today=ai_generation_quota.quota_remaining(db, user),
         credits=user.ai_generation_credits or 0,
         unlimited_until=user.ai_unlimited_until if ai_generation_quota.is_unlimited_now(user) else None,
+        next_free_at=ai_generation_quota.next_free_at(db, user),
     )
 
 

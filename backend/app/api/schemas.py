@@ -531,6 +531,8 @@ class AIGenerationQuotaOut(BaseModel):
     remaining_today: int | None
     credits: int
     unlimited_until: dt.datetime | None = None
+    # When the next run frees up, once the daily allowance is used up.
+    next_free_at: dt.datetime | None = None
 
 
 class CheckoutOut(BaseModel):
