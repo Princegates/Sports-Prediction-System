@@ -1,3 +1,4 @@
+import { AIGenerationCount } from "./AIGenerationCount";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { NewsBanner } from "./NewsBanner";
@@ -215,6 +216,7 @@ export function AppShell() {
               className={({ isActive }) => `topbar-tab${isActive ? " active" : ""}`}
             >
               {item.label}
+              {item.to === "/app/betcodes" && <AIGenerationCount />}
             </NavLink>
           ))}
         </nav>

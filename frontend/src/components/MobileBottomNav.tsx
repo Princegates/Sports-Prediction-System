@@ -1,4 +1,5 @@
 import { NavLink } from "react-router-dom";
+import { AIGenerationCount } from "./AIGenerationCount";
 import { Home, ChartLine, ShoppingCatalog, AiGenerate, Live as LiveIcon, PinFilled, Trophy } from "./icons";
 
 const ITEMS: { to: string; label: string; end?: boolean; icon?: typeof Home }[] = [
@@ -33,6 +34,7 @@ export function MobileBottomNav() {
         >
           <span className="mobile-bottom-nav-icon" aria-hidden>
             {item.icon ? <item.icon size={20} /> : <span className="mobile-bottom-nav-dot" />}
+            {item.to === "/app/betcodes" && <AIGenerationCount onIcon />}
           </span>
           {item.label}
         </NavLink>

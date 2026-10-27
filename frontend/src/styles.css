@@ -2546,6 +2546,7 @@ table.predictions-table.odds-grid .match-col .sub {
   }
 
   .mobile-bottom-nav-icon {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;

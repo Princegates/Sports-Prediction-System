@@ -719,3 +719,34 @@ body[data-accent="denim"] { --accent: #3b6ea5; }
 @media (prefers-reduced-motion: reduce) {
   .route-spinner { animation: none; }
 }
+
+
+// "Runs left" count beside the AI Generation navigation entries
+// (components/AIGenerationCount.tsx).
+.nav-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+
+  &.low { background: color-mix(in srgb, var(--warning) 22%, transparent); color: var(--warning); }
+  &.empty { background: color-mix(in srgb, var(--critical) 22%, transparent); color: var(--critical); }
+
+  &.on-icon {
+    position: absolute;
+    top: -6px;
+    left: calc(50% + 4px);
+    min-width: 16px;
+    height: 16px;
+    font-size: 10px;
+  }
+}

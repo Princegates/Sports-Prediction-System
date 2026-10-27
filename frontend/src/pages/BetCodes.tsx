@@ -13,7 +13,6 @@ import {
   resolvePicks,
   setAdminPickFeaturedPublic,
   setAdminPickResult,
-  fetchAIGenerationQuota,
   suggestPicks,
   suggestRandomPicks,
   updateAdminPick,
@@ -30,9 +29,10 @@ import { SiteCodes } from "../components/SiteCodes";
 import { StickySlipBar } from "../components/StickySlipBar";
 import { LEAGUES, useLeague } from "../components/AppShell";
 import { useAuth } from "../lib/AuthContext";
+import { quotaLabel as formatQuota, refreshAIGenerationQuota, runsLeftOf, useAIGenerationQuota } from "../lib/aiQuota";
 import { useIsMobile } from "../lib/useIsMobile";
 import { takePendingSlip } from "../lib/pendingSlip";
-import type { AIGenerationQuota, AdminPick, BetCodePick, ExcludedLeg, MarketSummary, MatchSummary, PublicTeaserPick, SuggestCriteria, SuggestedLeg, SuggestedPicks } from "../types";
+import type { AdminPick, BetCodePick, ExcludedLeg, MarketSummary, MatchSummary, PublicTeaserPick, SuggestCriteria, SuggestedLeg, SuggestedPicks } from "../types";
 import { chanceLabel } from "../lib/odds";
 import { marketLabel } from "../lib/marketLabel";
 
@@ -284,7 +284,7 @@ export function BetCodes() {
   const [preview, setPreview] = useState<SuggestedPicks | null>(null);
   const resultsCardRef = useRef<HTMLDivElement | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
-  const [quota, setQuota] = useState<AIGenerationQuota | null>(null);
+  const quota = useAIGenerationQuota();
   const [previewing, setPreviewing] = useState(false);
   // Set only when the current preview came from picks handed over by Guda
   // (or another page) rather than the criteria form below -- changes the
@@ -385,32 +385,13 @@ export function BetCodes() {
   // excludedLegs over from just this result), false for a Refresh
   // (adds this result's legs on top of whatever was already excluded,
   // so the next Refresh keeps exploring forward instead of circling back).
-  // Runs left across the day's allowance and any bought extras; null when
-  // there's no limit to count down (a Super Admin, or a day pass is running).
-  const runsLeft =
-    quota === null || quota.unlimited_until || quota.remaining_today === null
-      ? null
-      : quota.remaining_today + quota.credits;
-  const quotaLabel = quota
-    ? quota.unlimited_until
-      ? `Unlimited until ${new Date(quota.unlimited_until).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}`
-      : runsLeft === null
-        ? "Unlimited runs"
-        : quota.remaining_today === 0 && quota.credits > 0
-          ? `${runsLeft} extra run${runsLeft === 1 ? "" : "s"} left`
-          : `${runsLeft} run${runsLeft === 1 ? "" : "s"} left today` +
-            (quota.credits > 0 ? ` (incl. ${quota.credits} extra)` : "")
-    : null;
+  const runsLeft = runsLeftOf(quota);
+  const quotaLabel = formatQuota(quota);
+  const outOfRuns = runsLeft === 0;
 
   function refreshQuota() {
-    fetchAIGenerationQuota()
-      .then(setQuota)
-      .catch(() => {});
+    void refreshAIGenerationQuota();
   }
-
-  useEffect(() => {
-    refreshQuota();
-  }, []);
 
   async function runPreview(fetchPreview: () => Promise<SuggestedPicks>, resetExclusions: boolean) {
     setPreviewing(true);
@@ -718,7 +699,7 @@ export function BetCodes() {
                 type="button"
                 className={`risk-preset-card ${risk}${activeRisk === risk ? " active" : ""}`}
                 onClick={() => runPreset(risk)}
-                disabled={previewing}
+                disabled={previewing || outOfRuns}
               >
                 <span className="risk-preset-label">{p.label}</span>
                 <span className="risk-preset-description">{p.description}</span>
@@ -729,7 +710,7 @@ export function BetCodes() {
             type="button"
             className="risk-preset-card random"
             onClick={() => runRandomSlip()}
-            disabled={previewing}
+            disabled={previewing || outOfRuns}
           >
             <span className="risk-preset-label">Random slip</span>
             <span className="risk-preset-description">10-20 legs, drawn at random -- not ranked by risk level</span>
@@ -978,8 +959,14 @@ export function BetCodes() {
               Next →
             </button>
           ) : (
-            <button className="btn" onClick={() => handlePreview()} disabled={previewing}>
-              {previewing ? "Finding selections…" : "Generate selections"}
+            <button className="btn" onClick={() => handlePreview()} disabled={previewing || outOfRuns}>
+              {previewing
+                ? "Finding selections…"
+                : outOfRuns
+                  ? "No runs left today"
+                  : runsLeft !== null
+                    ? `Generate selections (${runsLeft} left)`
+                    : "Generate selections"}
             </button>
           )}
         </div>
