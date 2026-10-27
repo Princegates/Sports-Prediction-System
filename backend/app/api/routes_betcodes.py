@@ -16,7 +16,7 @@ from __future__ import annotations
 import datetime as dt
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app import ai_generation_quota
@@ -24,6 +24,7 @@ from app.api.deps import get_db, require_active_access
 from app.api.schemas import (
     AIGenerationQuotaOut,
     BettingSiteOut,
+    MessageOut,
     MyBookingSlipOut,
     PickedLegOut,
     PicksBookingIn,
@@ -329,6 +330,39 @@ def my_booking_slips(
             )
         )
     return out
+
+
+@router.delete("/mine/{slip_id}", status_code=204)
+def delete_my_booking_slip(
+    slip_id: int, user: User = Depends(require_active_access), db: Session = Depends(get_db)
+) -> None:
+    """Removes one of the member's own codes from their history. Scoped to
+    the caller -- another member's slip is a 404, not a 403, so ids can't be
+    probed. A code an admin already committed to the public track record
+    isn't affected: that is its own copy (AdminPick), made at the time."""
+
+    slip = db.get(BookingSlip, slip_id)
+    if slip is None or slip.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Code not found.")
+    db.delete(slip)
+    db.commit()
+
+
+@router.delete("/mine", response_model=MessageOut)
+def clear_my_booking_history(
+    user: User = Depends(require_active_access), db: Session = Depends(get_db)
+) -> MessageOut:
+    """Clears the member's settled codes -- the results history. A code still
+    waiting on its matches is left alone, so an upcoming slip (one an admin
+    may still commit to the track record) can't vanish with a stray click;
+    delete those one at a time."""
+
+    result = db.execute(
+        delete(BookingSlip).where(BookingSlip.user_id == user.id, BookingSlip.result != "pending")
+    )
+    db.commit()
+    count = result.rowcount or 0
+    return MessageOut(message=f"Cleared {count} code{'s' if count != 1 else ''} from your history.")
 
 
 @router.get("/sites", response_model=list[BettingSiteOut])

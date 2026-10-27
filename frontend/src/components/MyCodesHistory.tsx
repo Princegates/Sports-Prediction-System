@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fetchMyBookingSlips, promoteBookingSlipToTrackRecord } from "../api";
+import { clearMyBookingHistory, deleteMyBookingSlip, fetchMyBookingSlips, promoteBookingSlipToTrackRecord } from "../api";
 import { useAuth } from "../lib/AuthContext";
 import type { MyBookingSlip } from "../types";
 import { ErrorState } from "./ErrorState";
@@ -25,6 +25,8 @@ export function MyCodesHistory() {
   const [slips, setSlips] = useState<MyBookingSlip[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [publishingId, setPublishingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [clearing, setClearing] = useState(false);
   const [publishedIds, setPublishedIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
@@ -45,6 +47,32 @@ export function MyCodesHistory() {
     user?.role === "superadmin"
       ? slips?.filter((slip) => slip.result === "pending" && slip.legs.every((leg) => new Date(leg.kickoff).getTime() > now)) ?? []
       : [];
+
+  async function handleDelete(slipId: number) {
+    if (!window.confirm("Delete this code from your history? This can't be undone.")) return;
+    setDeletingId(slipId);
+    try {
+      await deleteMyBookingSlip(slipId);
+      setSlips((prev) => prev?.filter((s) => s.id !== slipId) ?? prev);
+    } catch (err) {
+      window.alert(String(err instanceof Error ? err.message : err));
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  async function handleClear() {
+    if (!window.confirm("Clear all your settled codes from history? This can't be undone.")) return;
+    setClearing(true);
+    try {
+      await clearMyBookingHistory();
+      setSlips((prev) => prev?.filter((s) => s.result === "pending") ?? prev);
+    } catch (err) {
+      window.alert(String(err instanceof Error ? err.message : err));
+    } finally {
+      setClearing(false);
+    }
+  }
 
   async function handlePublish(slipId: number) {
     setPublishingId(slipId);
@@ -106,9 +134,25 @@ export function MyCodesHistory() {
                         Commit to track record
                       </button>
                     )}
+                    <button
+                      type="button"
+                      className="btn ghost"
+                      style={{ padding: "2px 8px", fontSize: 12, marginLeft: 8 }}
+                      disabled={deletingId === slip.id}
+                      onClick={() => handleDelete(slip.id)}
+                    >
+                      Delete
+                    </button>
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+          {settledSlips !== null && settledSlips.length > 0 && (
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+              <button type="button" className="btn ghost" style={{ padding: "2px 10px", fontSize: 12 }} disabled={clearing} onClick={handleClear}>
+                {clearing ? "Clearing..." : "Clear history"}
+              </button>
             </div>
           )}
           {settledSlips !== null && settledSlips.length > 0 && (
@@ -132,6 +176,17 @@ export function MyCodesHistory() {
                         .join(" · ")}
                     </div>
                   )}
+                  <div style={{ marginTop: 8 }}>
+                    <button
+                      type="button"
+                      className="btn ghost"
+                      style={{ padding: "2px 8px", fontSize: 12 }}
+                      disabled={deletingId === slip.id}
+                      onClick={() => handleDelete(slip.id)}
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

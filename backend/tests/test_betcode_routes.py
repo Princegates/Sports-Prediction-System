@@ -927,3 +927,84 @@ def test_a_settled_lost_code_stays_visible_as_lost(db_session, auth_headers, upc
     body = client.get("/api/betcodes/mine", headers=auth_headers).json()
     assert body[0]["result"] == "lost"
     assert body[0]["legs"][0]["result"] == "lost"
+
+
+# --- Deleting code history -----------------------------------------------------
+
+
+def _other_member_headers(db_session):
+    from app.auth.passwords import hash_password
+    from app.auth.tokens import create_token
+    from app.config import get_settings
+    from app.db.models import User
+    from tests.conftest import grant_active_access
+
+    other = User(
+        email="other-member@example.com", name="Other", password_hash=hash_password("a-good-password"),
+        role="user", status="active",
+    )
+    db_session.add(other)
+    db_session.commit()
+    db_session.refresh(other)
+    grant_active_access(db_session, other)
+    settings = get_settings()
+    token = create_token({"user_id": other.id, "role": other.role}, settings.secret_key, settings.session_ttl_seconds)
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_a_member_can_delete_one_of_their_codes(db_session, auth_headers, upcoming_match, sites):
+    sites(sportybet_gh=_FakeConnector("DEL001"))
+    _book(auth_headers, upcoming_match)
+    slip_id = client.get("/api/betcodes/mine", headers=auth_headers).json()[0]["id"]
+
+    assert client.delete(f"/api/betcodes/mine/{slip_id}", headers=auth_headers).status_code == 204
+    assert client.get("/api/betcodes/mine", headers=auth_headers).json() == []
+
+
+def test_a_member_cannot_delete_someone_elses_code(db_session, auth_headers, upcoming_match, sites):
+    sites(sportybet_gh=_FakeConnector("DEL002"))
+    _book(auth_headers, upcoming_match)
+    slip_id = client.get("/api/betcodes/mine", headers=auth_headers).json()[0]["id"]
+
+    response = client.delete(f"/api/betcodes/mine/{slip_id}", headers=_other_member_headers(db_session))
+
+    assert response.status_code == 404
+    assert len(client.get("/api/betcodes/mine", headers=auth_headers).json()) == 1
+
+
+def test_deleting_a_code_requires_login():
+    assert client.delete("/api/betcodes/mine/1").status_code == 401
+    assert client.delete("/api/betcodes/mine").status_code == 401
+
+
+def test_clearing_history_removes_settled_codes_and_keeps_pending_ones(
+    db_session, auth_headers, upcoming_match, sites
+):
+    from app.db.models import BookingSlip
+
+    sites(sportybet_gh=_FakeConnector("CLR001"))
+    _book(auth_headers, upcoming_match)
+    _book(auth_headers, upcoming_match, market="Both Teams To Score", selection="Yes")
+    first = db_session.query(BookingSlip).order_by(BookingSlip.id).first()
+    first.result = "won"
+    db_session.commit()
+
+    body = client.delete("/api/betcodes/mine", headers=auth_headers).json()
+
+    assert body["message"] == "Cleared 1 code from your history."
+    remaining = db_session.query(BookingSlip).all()
+    assert len(remaining) == 1 and remaining[0].result == "pending"
+
+
+def test_clearing_history_never_touches_another_members_codes(db_session, auth_headers, upcoming_match, sites):
+    from app.db.models import BookingSlip
+
+    sites(sportybet_gh=_FakeConnector("CLR002"))
+    other_headers = _other_member_headers(db_session)
+    _book(other_headers, upcoming_match)
+    db_session.query(BookingSlip).update({"result": "won"})
+    db_session.commit()
+
+    client.delete("/api/betcodes/mine", headers=auth_headers)
+
+    assert db_session.query(BookingSlip).count() == 1

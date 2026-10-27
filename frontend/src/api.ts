@@ -679,6 +679,15 @@ export function promoteBookingSlipToTrackRecord(slipId: number): Promise<AdminPi
  * they've ever booked through bookPicks, settled against real results once
  * its matches finish. Nothing is cherry-picked: a loss stays visible
  * exactly like a win. */
+export function deleteMyBookingSlip(slipId: number): Promise<void> {
+  return del(`/api/betcodes/mine/${slipId}`);
+}
+
+/** Clears the settled codes only; ones still waiting on their matches stay. */
+export function clearMyBookingHistory(): Promise<{ message: string }> {
+  return del("/api/betcodes/mine");
+}
+
 export function fetchMyBookingSlips(): Promise<MyBookingSlip[]> {
   return get("/api/betcodes/mine");
 }

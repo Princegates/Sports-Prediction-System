@@ -385,6 +385,23 @@ export function BetCodes() {
   // excludedLegs over from just this result), false for a Refresh
   // (adds this result's legs on top of whatever was already excluded,
   // so the next Refresh keeps exploring forward instead of circling back).
+  // Runs left across the day's allowance and any bought extras; null when
+  // there's no limit to count down (a Super Admin, or a day pass is running).
+  const runsLeft =
+    quota === null || quota.unlimited_until || quota.remaining_today === null
+      ? null
+      : quota.remaining_today + quota.credits;
+  const quotaLabel = quota
+    ? quota.unlimited_until
+      ? `Unlimited until ${new Date(quota.unlimited_until).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}`
+      : runsLeft === null
+        ? "Unlimited runs"
+        : quota.remaining_today === 0 && quota.credits > 0
+          ? `${runsLeft} extra run${runsLeft === 1 ? "" : "s"} left`
+          : `${runsLeft} run${runsLeft === 1 ? "" : "s"} left today` +
+            (quota.credits > 0 ? ` (incl. ${quota.credits} extra)` : "")
+    : null;
+
   function refreshQuota() {
     fetchAIGenerationQuota()
       .then(setQuota)
@@ -654,7 +671,19 @@ export function BetCodes() {
   return (
     <div className={editedLegs.length > 0 ? "has-sticky-slip-space" : undefined}>
       <div className="section-header">
-        <h2>AI Generation</h2>
+        <h2>
+          AI Generation
+          {quotaLabel && (
+            <span
+              className={`status-tag ${runsLeft === 0 ? "suspended" : runsLeft !== null && runsLeft <= 2 ? "pending" : "active"}`}
+              style={{ marginLeft: 10, verticalAlign: "middle", fontSize: 12 }}
+              role="status"
+              aria-live="polite"
+            >
+              {quotaLabel}
+            </span>
+          )}
+        </h2>
         <span className="meta">
           Combine matches by model confidence -- scoped to{" "}
           <strong>
@@ -961,20 +990,10 @@ export function BetCodes() {
         )}
       </div>
 
-      {quota && (
-        <p className="setting-note" style={{ margin: "0 0 12px" }}>
-          {quota.unlimited_until
-            ? `Unlimited runs until ${new Date(quota.unlimited_until).toLocaleString()}.`
-            : quota.remaining_today === null
-              ? "Unlimited runs."
-              : `${quota.remaining_today} run${quota.remaining_today === 1 ? "" : "s"} left today` +
-                (quota.credits > 0 ? ` + ${quota.credits} extra` : "") +
-                "."}
-        </p>
-      )}
-
       {previewError && <ErrorState message={previewError} />}
-      {previewError && /AI Generation run/i.test(previewError) && <AIGenerationExtras />}
+      {(runsLeft === 0 || (previewError !== null && /AI Generation run/i.test(previewError))) && (
+        <AIGenerationExtras heading="Out of AI Generation runs for today?" />
+      )}
 
       {preview && (
         <div className="card card-pad" style={{ marginBottom: 20 }} ref={resultsCardRef}>
