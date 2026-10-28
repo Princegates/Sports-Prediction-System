@@ -324,76 +324,6 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://soccaintel.com/predict/27767-ararat-armenia-vs-fc-noah</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/45383-fc-iberia-1999-vs-torpedo-kutaisi</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/16708-besiktas-vs-basaksehir</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/16709-rizespor-vs-trabzonspor</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/38500-nea-salamis-vs-pafos</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/55223-grobina-vs-riga</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/56310-kauno-zalgiris-vs-fk-zalgiris-vilnius</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/38501-aek-larnaca-vs-omonia-nicosia</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/59824-floriana-vs-zabbar-st-patrick</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/41312-fc-copenhagen-vs-odense</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/16710-galatasaray-vs-fenerbahce</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/22158-cd-santa-clara-vs-sl-benfica</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/59825-mosta-vs-hibernians</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/4274-sevilla-fc-vs-ca-osasuna</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
     <loc>https://soccaintel.com/predict/42464-fc-levadia-tallinn-vs-tammeka</loc>
     <changefreq>hourly</changefreq>
     <priority>0.7</priority>
@@ -4280,6 +4210,11 @@
   </url>
   <url>
     <loc>https://soccaintel.com/predict/22166-cf-estrela-da-amadora-vs-sl-benfica</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/45393-fc-iberia-1999-vs-gagra</loc>
     <changefreq>hourly</changefreq>
     <priority>0.7</priority>
   </url>
