@@ -420,6 +420,17 @@ export interface AccessStatus {
   expires_at: string | null;
 }
 
+export interface AdminMessageResult {
+  email: string;
+  sent: boolean;
+  error: string | null;
+}
+
+export interface AdminMessageResponse {
+  results: AdminMessageResult[];
+  not_registered: string[];
+}
+
 export interface AIProduct {
   key: string;
   label: string;

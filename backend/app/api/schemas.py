@@ -560,6 +560,26 @@ class AdminPaymentOut(BaseModel):
     completed_at: dt.datetime | None = None
 
 
+class AdminMessageIn(BaseModel):
+    """A direct email from an admin to one or more registered accounts."""
+
+    recipients: list[str] = Field(min_length=1, max_length=25)
+    subject: str = Field(min_length=1, max_length=150)
+    message: str = Field(min_length=1, max_length=5000)
+
+
+class AdminMessageResultOut(BaseModel):
+    email: str
+    sent: bool
+    error: str | None = None
+
+
+class AdminMessageOut(BaseModel):
+    results: list[AdminMessageResultOut]
+    # Addresses with no registered account -- never emailed.
+    not_registered: list[str] = []
+
+
 class AccessRedeemIn(BaseModel):
     code: str = Field(max_length=64)
 

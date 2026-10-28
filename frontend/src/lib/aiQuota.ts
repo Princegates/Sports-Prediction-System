@@ -22,7 +22,9 @@ function load(): Promise<void> {
     inFlight = fetchAIGenerationQuota()
       .then((q) => {
         lastFetchedAt = Date.now();
-        publish(q);
+        // An incomplete answer (say, a backend mid-deploy) would otherwise
+        // surface as "NaN runs left" -- show nothing instead.
+        publish(typeof q?.credits === "number" && q.remaining_today !== undefined ? q : null);
       })
       .catch(() => {})
       .finally(() => {

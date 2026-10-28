@@ -17,6 +17,7 @@ import type {
   AccessCode,
   AccessGrant,
   AccessStatus,
+  AdminMessageResponse,
   AIGenerationQuota,
   PaymentOptions,
   PaymentStatus,
@@ -733,6 +734,16 @@ export function extendUserAccess(userId: number, additionalDays: number): Promis
 
 export function revokeUserAccess(userId: number, reason?: string): Promise<AdminUser> {
   return post(`/api/admin/users/${userId}/access/revoke`, { reason });
+}
+
+/** Emails registered members directly -- ``recipients`` are account emails;
+ * any with no account come back in ``not_registered`` and are not emailed. */
+export function sendAdminMessage(payload: {
+  recipients: string[];
+  subject: string;
+  message: string;
+}): Promise<AdminMessageResponse> {
+  return post("/api/admin/messages", payload);
 }
 
 export function setUserAIGenerationLimit(userId: number, dailyLimit: number | null): Promise<AdminUser> {

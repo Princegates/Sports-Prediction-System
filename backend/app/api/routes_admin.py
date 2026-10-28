@@ -17,8 +17,12 @@ from app.access import (
     revoke_current_grant,
 )
 from app.api.deps import get_db, get_match_or_404, require_superadmin
+from app.api.rate_limit import enforce_key
 from app.api.schemas import (
     AccessCodeCreatedOut,
+    AdminMessageIn,
+    AdminMessageOut,
+    AdminMessageResultOut,
     AccessCodeCreateIn,
     AccessCodeOut,
     AdminOverviewOut,
@@ -50,7 +54,7 @@ from app.api.routes_public import resolve_public_teaser_pick
 from app.api.serializers import access_code_to_schema, admin_pick_to_schema, admin_user_to_schema, featured_pick_to_schema, match_to_schema
 from app.betcode.selection import price_legs, resolve_legs_unpriced
 from app.config import get_settings
-from app import mailer, track_record
+from app import app_settings, mailer, track_record
 from app.db.models import AccessCode, AccessGrant, AdminPick, AuditLog, BookingSlip, ChatMessage, FeaturedPick, LivePrediction, Match, Prediction, User, WinningSlip
 from app.winning_slips import WinningSlipImageError, admin_winning_slip_to_schema, decode_image, image_data_url, winning_slip_to_schema
 from app.outcomes.registry import find_outcome
@@ -541,6 +545,59 @@ def revoke_user_access(
     except AccessCodeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return admin_user_to_schema(target, db)
+
+
+@router.post("/messages", response_model=AdminMessageOut)
+def send_direct_message(
+    payload: AdminMessageIn,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> AdminMessageOut:
+    """Emails a plain-text message to registered members, from the platform's
+    own sender. Recipients must have an account here -- an unknown address is
+    reported back and never emailed, so this can't be used as an open relay
+    or to reach people who never signed up. The subject is collapsed to one
+    line (a newline in a header is how mail gets forged) and the send is
+    audit-logged (subject and recipients, not the body)."""
+
+    enforce_key(f"admin_message-user:{admin.id}", 20, 600)
+    if not mailer.is_configured(db):
+        raise HTTPException(status_code=400, detail=EMAIL_NOT_CONFIGURED)
+
+    subject = " ".join(payload.subject.split())
+    message = payload.message.strip()
+    if not subject or not message:
+        raise HTTPException(status_code=422, detail="A subject and a message are both required.")
+
+    wanted: list[str] = []
+    for raw in payload.recipients:
+        email = raw.strip().lower()
+        if email and email not in wanted:
+            wanted.append(email)
+    users = {
+        u.email.lower(): u
+        for u in db.execute(select(User).where(func.lower(User.email).in_(wanted))).scalars()
+    }
+
+    config = mailer.resolve_config(db)
+    site_name = str(app_settings.get_value(db, "site_name") or "Socca Intelligence")
+    footer = f"\n\n-- {site_name}" + (f"\n{config.site_url}" if config.site_url else "")
+
+    results: list[AdminMessageResultOut] = []
+    not_registered: list[str] = []
+    for email in wanted:
+        user = users.get(email)
+        if user is None:
+            not_registered.append(email)
+            continue
+        sent = mailer.send_email(user.email, subject, message + footer, db=db)
+        results.append(AdminMessageResultOut(email=user.email, sent=sent.sent, error=sent.error))
+        _record(
+            db, admin, "admin.message_sent", user,
+            {"subject": subject[:150], "delivered": sent.sent},
+        )
+    db.commit()
+    return AdminMessageOut(results=results, not_registered=not_registered)
 
 
 @router.post("/users/{user_id}/ai-generation-limit", response_model=AdminUserOut)

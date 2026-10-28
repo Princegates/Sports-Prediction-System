@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   createAccessCode,
@@ -15,11 +15,12 @@ import {
   revealAccessCode,
   revokeAccessCode,
   revokeUserAccess,
+  sendAdminMessage,
   setUserAIGenerationLimit,
   suspendUser,
 } from "../api";
 import { useAuth } from "../lib/AuthContext";
-import type { AccessCode, AdminOverview, AdminUser, UserStatus } from "../types";
+import type { AccessCode, AdminMessageResponse, AdminOverview, AdminUser, UserStatus } from "../types";
 import { ErrorState } from "../components/ErrorState";
 
 const FILTERS: { label: string; value: UserStatus | "all" }[] = [
@@ -59,6 +60,14 @@ export function AdminUsers() {
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
+
+  const [msgTo, setMsgTo] = useState("");
+  const [msgSubject, setMsgSubject] = useState("");
+  const [msgBody, setMsgBody] = useState("");
+  const [msgBusy, setMsgBusy] = useState(false);
+  const [msgError, setMsgError] = useState<string | null>(null);
+  const [msgResult, setMsgResult] = useState<AdminMessageResponse | null>(null);
+  const msgCardRef = useRef<HTMLDivElement>(null);
 
   const [codes, setCodes] = useState<AccessCode[] | null>(null);
   const [codeError, setCodeError] = useState<string | null>(null);
@@ -232,6 +241,43 @@ export function AdminUsers() {
     await withBusy(u.id, () => deleteUser(u.id));
   }
 
+  function startMessage(email: string) {
+    setMsgTo(email);
+    setMsgResult(null);
+    setMsgError(null);
+    msgCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  async function handleSendMessage(e: React.FormEvent) {
+    e.preventDefault();
+    setMsgError(null);
+    setMsgResult(null);
+    const recipients = msgTo
+      .split(/[\s,;]+/)
+      .map((r) => r.trim())
+      .filter(Boolean);
+    if (recipients.length === 0) {
+      setMsgError("Add at least one email address.");
+      return;
+    }
+    setMsgBusy(true);
+    try {
+      const result = await sendAdminMessage({ recipients, subject: msgSubject.trim(), message: msgBody.trim() });
+      setMsgResult(result);
+      // Keep the form for anything that didn't go out (so it can be fixed and
+      // resent); clear it once every recipient got the message.
+      if (result.results.every((r) => r.sent) && result.not_registered.length === 0) {
+        setMsgTo("");
+        setMsgSubject("");
+        setMsgBody("");
+      }
+    } catch (err) {
+      setMsgError(String(err instanceof Error ? err.message : err));
+    } finally {
+      setMsgBusy(false);
+    }
+  }
+
   async function handleRevokeAccess(id: number) {
     await withBusy(id, () => revokeUserAccess(id));
   }
@@ -312,6 +358,65 @@ export function AdminUsers() {
 
       {error && <p className="auth-error" style={{ marginBottom: 12 }}>{error}</p>}
 
+      <div className="card card-pad" ref={msgCardRef} style={{ marginBottom: 16 }}>
+        <h3 style={{ marginTop: 0, fontSize: 15 }}>Send a message</h3>
+        <p className="setting-note" style={{ marginTop: 0 }}>
+          Emails registered members directly from the site's own sender. Separate several addresses with commas or
+          spaces. Anyone without an account here is skipped, not emailed.
+        </p>
+        <form onSubmit={handleSendMessage} className="auth-form">
+          <label>
+            To
+            <input
+              required
+              value={msgTo}
+              onChange={(e) => setMsgTo(e.target.value)}
+              placeholder="member@example.com"
+              autoComplete="off"
+            />
+          </label>
+          <label>
+            Subject
+            <input required maxLength={150} value={msgSubject} onChange={(e) => setMsgSubject(e.target.value)} />
+          </label>
+          <label>
+            Message
+            <textarea
+              required
+              rows={6}
+              maxLength={5000}
+              value={msgBody}
+              onChange={(e) => setMsgBody(e.target.value)}
+              style={{ resize: "vertical", font: "inherit" }}
+            />
+          </label>
+          {msgError && <p className="auth-error">{msgError}</p>}
+          {msgResult && (
+            <div role="status" className="setting-note">
+              {msgResult.results.filter((r) => r.sent).length > 0 && (
+                <p style={{ margin: "0 0 4px" }}>
+                  Sent to {msgResult.results.filter((r) => r.sent).map((r) => r.email).join(", ")}.
+                </p>
+              )}
+              {msgResult.results.filter((r) => !r.sent).map((r) => (
+                <p key={r.email} className="auth-error" style={{ margin: "0 0 4px" }}>
+                  Couldn't send to {r.email}: {r.error ?? "unknown error"}
+                </p>
+              ))}
+              {msgResult.not_registered.length > 0 && (
+                <p className="auth-error" style={{ margin: 0 }}>
+                  No account for {msgResult.not_registered.join(", ")} -- not emailed.
+                </p>
+              )}
+            </div>
+          )}
+          <button className="btn" type="submit" disabled={msgBusy || !msgTo.trim() || !msgSubject.trim() || !msgBody.trim()}>
+            {msgBusy ? "Sending..." : "Send message"}
+          </button>
+        </form>
+      </div>
+
+
       <div className="card admin-table-wrapper">
         <table className="admin-table">
           <thead>
@@ -375,6 +480,9 @@ export function AdminUsers() {
                           AI limit
                         </button>
                       )}
+                      <button className="btn ghost" disabled={busy} onClick={() => startMessage(u.email)}>
+                        Message
+                      </button>
                       {u.status === "suspended" && (
                         <button
                           className="btn"
