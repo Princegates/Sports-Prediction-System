@@ -98,6 +98,48 @@ def current_grant(db: Session, user: User) -> AccessGrant | None:
     )
 
 
+def had_signup_trial(db: Session, user: User) -> bool:
+    return (
+        db.execute(
+            select(AccessCode.id).where(AccessCode.assigned_user_id == user.id, AccessCode.kind == "trial").limit(1)
+        ).first()
+        is not None
+    )
+
+
+def activation_pending(db: Session, user: User) -> bool:
+    """A member whose free access is still waiting on their email
+    confirmation: signup asks for it, they haven't clicked the link, and the
+    trial it unlocks was never started. False for a Super Admin, and for an
+    account that predates confirmation (it already had its trial, so there's
+    nothing left to activate)."""
+
+    if user.role == "superadmin" or user.email_verified_at is not None:
+        return False
+    if not app_settings.get_value(db, "email_verification_required"):
+        return False
+    return not had_signup_trial(db, user)
+
+
+def count_activation_pending(db: Session) -> int:
+    """How many active members are waiting on activation -- the same rule as
+    ``activation_pending``, counted in one query for the admin overview."""
+
+    if not app_settings.get_value(db, "email_verification_required"):
+        return 0
+    has_trial = select(AccessCode.assigned_user_id).where(
+        AccessCode.kind == "trial", AccessCode.assigned_user_id.is_not(None)
+    )
+    return db.execute(
+        select(func.count(User.id)).where(
+            User.role != "superadmin",
+            User.status == "active",
+            User.email_verified_at.is_(None),
+            User.id.not_in(has_trial),
+        )
+    ).scalar_one()
+
+
 def create_access_code(
     db: Session,
     admin: User,

@@ -5,7 +5,13 @@ import datetime as dt
 from sqlalchemy.orm import Session
 
 from app.timeutil import utcnow
-from app.access import access_code_effective_status, access_grant_effective_status, current_grant, mask_code
+from app.access import (
+    access_code_effective_status,
+    access_grant_effective_status,
+    activation_pending,
+    current_grant,
+    mask_code,
+)
 from app.api.schemas import (
     AccessCodeOut,
     AccessGrantOut,
@@ -83,6 +89,7 @@ def admin_user_to_schema(user: User, db: Session) -> AdminUserOut:
         access_status=access_status,
         access_expires_at=access_expires_at,
         ai_generation_daily_limit_override=user.daily_ai_generation_limit_override,
+        activation_pending=activation_pending(db, user),
     )
 
 

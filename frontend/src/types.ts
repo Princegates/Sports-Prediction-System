@@ -117,6 +117,8 @@ export interface AdminUser extends User {
   access_expires_at: string | null;
   // null = this account uses the global ai_generation_daily_limit setting.
   ai_generation_daily_limit_override: number | null;
+  // Still waiting on the emailed confirmation link (no trial yet).
+  activation_pending: boolean;
 }
 
 export interface TokenResponse {
@@ -629,6 +631,8 @@ export interface AdminOverview {
   superadmins: number;
   total_users: number;
   users_without_access: number;
+  // Haven't confirmed their email, so their free trial hasn't started.
+  unverified_users: number;
   active_access_grants: number;
   matches_analyzed: number;
   predictions_generated: number;

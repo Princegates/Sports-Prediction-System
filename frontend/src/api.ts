@@ -746,6 +746,16 @@ export function sendAdminMessage(payload: {
   return post("/api/admin/messages", payload);
 }
 
+/** Emails the member a fresh confirmation link. */
+export function resendUserVerification(userId: number): Promise<void> {
+  return post(`/api/admin/users/${userId}/resend-verification`, {});
+}
+
+/** Confirms the member's email on their behalf and starts their free trial. */
+export function activateUser(userId: number): Promise<AdminUser> {
+  return post(`/api/admin/users/${userId}/activate`, {});
+}
+
 export function setUserAIGenerationLimit(userId: number, dailyLimit: number | null): Promise<AdminUser> {
   return post(`/api/admin/users/${userId}/ai-generation-limit`, { daily_limit: dailyLimit });
 }

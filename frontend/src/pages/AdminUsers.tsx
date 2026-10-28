@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
+  activateUser,
   createAccessCode,
   deleteUser,
   demoteUser,
@@ -11,6 +12,7 @@ import {
   fetchSettings,
   promoteUser,
   reinstateUser,
+  resendUserVerification,
   resendAccessCode,
   revealAccessCode,
   revokeAccessCode,
@@ -60,6 +62,9 @@ export function AdminUsers() {
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
+
+  const [onlyPending, setOnlyPending] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const [msgTo, setMsgTo] = useState("");
   const [msgSubject, setMsgSubject] = useState("");
@@ -241,6 +246,49 @@ export function AdminUsers() {
     await withBusy(u.id, () => deleteUser(u.id));
   }
 
+  const pendingUsers = (users ?? []).filter((u) => u.activation_pending);
+  const shownUsers = onlyPending ? pendingUsers : users;
+
+  async function handleResendLink(u: AdminUser) {
+    setNotice(null);
+    await withBusy(u.id, async () => {
+      await resendUserVerification(u.id);
+      setNotice(`Confirmation link sent to ${u.email}.`);
+    });
+  }
+
+  async function handleActivate(u: AdminUser) {
+    if (
+      !window.confirm(
+        `Activate ${u.email} without them confirming their email?\n\nThis starts their free trial right away. ` +
+          "Only do this if you trust the address is theirs, or they can't receive the link.",
+      )
+    )
+      return;
+    setNotice(null);
+    await withBusy(u.id, async () => {
+      await activateUser(u.id);
+      setNotice(`${u.email} is activated and their free trial has started.`);
+    });
+  }
+
+  // Fills the message form for everyone not yet activated -- at most the 25
+  // a single send allows -- with a starting draft if nothing's been written.
+  function messageEveryonePending() {
+    setMsgTo(pendingUsers.slice(0, 25).map((u) => u.email).join(", "));
+    setMsgResult(null);
+    setMsgError(null);
+    if (!msgSubject.trim()) setMsgSubject("Activate your account to start your free trial");
+    if (!msgBody.trim()) {
+      setMsgBody(
+        "Hi,\n\nYou signed up but haven't confirmed your email yet, so your free trial hasn't started. " +
+          "Open the confirmation link we emailed you (check your spam or junk folder too) and it starts straight away.\n\n" +
+          "Can't find it? Reply to this message and we'll sort it out for you.",
+      );
+    }
+    msgCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   function startMessage(email: string) {
     setMsgTo(email);
     setMsgResult(null);
@@ -333,6 +381,12 @@ export function AdminUsers() {
               {overview.users_without_access === 1 ? "account has" : "accounts have"} no access grant
             </span>
           </div>
+          {overview.unverified_users > 0 && (
+            <div className="admin-overview-tile">
+              <span className="admin-overview-value">{overview.unverified_users}</span>
+              <span className="admin-overview-label">Not activated (email unconfirmed)</span>
+            </div>
+          )}
           <div className="admin-overview-tile">
             <span className="admin-overview-value">{overview.active_access_grants}</span>
             <span className="admin-overview-label">Active access grants</span>
@@ -357,6 +411,22 @@ export function AdminUsers() {
       )}
 
       {error && <p className="auth-error" style={{ marginBottom: 12 }}>{error}</p>}
+      {notice && <p className="setting-note" role="status" style={{ marginBottom: 12 }}>{notice}</p>}
+
+      {pendingUsers.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 12 }}>
+          <button
+            className={`btn ghost${onlyPending ? " active" : ""}`}
+            aria-pressed={onlyPending}
+            onClick={() => setOnlyPending((v) => !v)}
+          >
+            Not activated ({pendingUsers.length})
+          </button>
+          <button className="btn ghost" onClick={messageEveryonePending}>
+            Message everyone not activated
+          </button>
+        </div>
+      )}
 
       <div className="card card-pad" ref={msgCardRef} style={{ marginBottom: 16 }}>
         <h3 style={{ marginTop: 0, fontSize: 15 }}>Send a message</h3>
@@ -436,8 +506,8 @@ export function AdminUsers() {
                 <td colSpan={7}>Loading...</td>
               </tr>
             )}
-            {users !== null && users.length === 0 && <tr><td colSpan={7}>No users in this view.</td></tr>}
-            {users?.map((u) => {
+            {shownUsers !== null && shownUsers.length === 0 && <tr><td colSpan={7}>No users in this view.</td></tr>}
+            {shownUsers?.map((u) => {
               const isSelf = u.id === currentUser?.id;
               const busy = busyId === u.id;
               return (
@@ -446,6 +516,13 @@ export function AdminUsers() {
                   <td>{u.email}</td>
                   <td>
                     <span className={`status-tag ${u.status}`}>{u.status}</span>
+                    {u.activation_pending && (
+                      <div style={{ marginTop: 4 }}>
+                        <span className="status-tag pending" title="Hasn't confirmed their email, so their free trial hasn't started">
+                          not activated
+                        </span>
+                      </div>
+                    )}
                   </td>
                   <td>{u.role}</td>
                   <td>
@@ -479,6 +556,16 @@ export function AdminUsers() {
                         <button className="btn ghost" disabled={busy} onClick={() => handleSetAIGenerationLimit(u)}>
                           AI limit
                         </button>
+                      )}
+                      {u.activation_pending && (
+                        <>
+                          <button className="btn ghost" disabled={busy} onClick={() => handleResendLink(u)}>
+                            Resend link
+                          </button>
+                          <button className="btn" disabled={busy} onClick={() => handleActivate(u)}>
+                            Activate
+                          </button>
+                        </>
                       )}
                       <button className="btn ghost" disabled={busy} onClick={() => startMessage(u.email)}>
                         Message

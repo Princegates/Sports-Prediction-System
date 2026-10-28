@@ -11,12 +11,16 @@ from app.account_deletion import AccountDeletionError, delete_user_account
 from app.access import (
     AccessCodeError,
     access_code_effective_status,
+    activation_pending,
+    count_activation_pending,
+    had_signup_trial,
     create_access_code,
     extend_grant,
     revoke_access_code,
     revoke_current_grant,
 )
 from app.api.deps import get_db, get_match_or_404, require_superadmin
+from app.api import routes_auth
 from app.api.rate_limit import enforce_key
 from app.api.schemas import (
     AccessCodeCreatedOut,
@@ -124,6 +128,7 @@ def overview(db: Session = Depends(get_db)) -> AdminOverviewOut:
         superadmins=count_users(role="superadmin"),
         total_users=count_users(),
         users_without_access=users_without_access,
+        unverified_users=count_activation_pending(db),
         active_access_grants=active_grants,
         matches_analyzed=db.execute(
             select(func.count()).select_from(Match).where(Match.home_score.is_not(None))
@@ -544,6 +549,61 @@ def revoke_user_access(
         revoke_current_grant(db, admin, target, payload.reason)
     except AccessCodeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return admin_user_to_schema(target, db)
+
+
+@router.post("/users/{user_id}/resend-verification", status_code=204)
+def resend_user_verification(
+    user_id: int, admin: User = Depends(require_superadmin), db: Session = Depends(get_db)
+) -> None:
+    """Emails a member a fresh confirmation link -- the same one the signup
+    email carried, for someone who lost it or never saw it."""
+
+    target = _get_target_user(user_id, db)
+    if not activation_pending(db, target):
+        raise HTTPException(status_code=400, detail="This account isn't waiting on email confirmation.")
+    if routes_auth._verification_link_base(db) is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Email confirmation isn't available -- set up email and the public site URL under Settings.",
+        )
+    enforce_key(f"admin_resend_verification:{target.id}", 3, 3600)
+
+    subject, body = mailer.verify_email_message(
+        routes_auth._verification_link(db, target), trial_days=routes_auth._trial_days_on_offer(db)
+    )
+    result = mailer.send_email(target.email, subject, body, db=db)
+    if not result.sent:
+        raise HTTPException(status_code=502, detail=f"The email couldn't be sent: {result.error or 'unknown error'}")
+    _record(db, admin, "account.verification_resent", target)
+    db.commit()
+
+
+@router.post("/users/{user_id}/activate", response_model=AdminUserOut)
+def activate_user(
+    user_id: int, admin: User = Depends(require_superadmin), db: Session = Depends(get_db)
+) -> AdminUserOut:
+    """Confirms a member's email on their behalf and starts the free trial --
+    for someone who can't receive or open the link. Skips the check that the
+    address is real, so it's the admin's call; audit-logged as such. An
+    account that already had its trial just gets marked confirmed."""
+
+    target = _get_target_user(user_id, db)
+    if target.role == "superadmin":
+        raise HTTPException(status_code=400, detail="Super Admins don't need activating.")
+    if target.email_verified_at is not None:
+        raise HTTPException(status_code=400, detail="This account's email is already confirmed.")
+
+    had_trial = had_signup_trial(db, target)
+    target.email_verified_at = utcnow()
+    _record(db, admin, "account.activated_by_admin", target, {"trial_already_had": had_trial})
+    db.commit()
+
+    trial_days = 0
+    if not had_trial:
+        trial_days, _ = routes_auth.start_free_access(db, target)
+    routes_auth._send_welcome(db, target, trial_days)
+    db.refresh(target)
     return admin_user_to_schema(target, db)
 
 

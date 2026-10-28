@@ -188,6 +188,9 @@ class AdminUserOut(UserOut):
     # None means this account uses the global ai_generation_daily_limit
     # setting -- see User.daily_ai_generation_limit_override.
     ai_generation_daily_limit_override: int | None = None
+    # Still waiting on the emailed confirmation link, so the free trial it
+    # unlocks hasn't started -- see app.access.activation_pending.
+    activation_pending: bool = False
 
 
 class TokenOut(BaseModel):
@@ -230,6 +233,8 @@ class AdminOverviewOut(BaseModel):
     superadmins: int
     total_users: int
     users_without_access: int
+    # Members who haven't confirmed their email, so haven't started their trial.
+    unverified_users: int = 0
     active_access_grants: int
     matches_analyzed: int
     predictions_generated: int
