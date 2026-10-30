@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchLanding } from "../api";
+import { fetchBranding, fetchLanding } from "../api";
 import { AIGenerationVideo } from "../components/AIGenerationVideo";
 import { FixtureTeaserRow } from "../components/FixtureTeaserRow";
 import { FreePicksSlip } from "../components/FreePicksSlip";
@@ -10,7 +10,7 @@ import { PublicShell } from "../components/PublicShell";
 import { usePageStructuredData } from "../lib/pageMeta";
 import { useTilt } from "../lib/useTilt";
 import { whatsappLink } from "../lib/whatsapp";
-import type { Landing, TrackRecord } from "../types";
+import type { Branding, Landing, TrackRecord } from "../types";
 
 /**
  * Public landing page.
@@ -69,13 +69,20 @@ export function Welcome() {
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const heroTilt = useTilt<HTMLDivElement>();
 
+  // The landing bundle is cached for a few minutes; what an admin edits in
+  // Settings (trial days, price and period, referral bonus) comes from the
+  // always-revalidated branding call instead, so a change shows on the next
+  // page load rather than after the cache expires.
+  const [freshBranding, setFreshBranding] = useState<Branding | null>(null);
+
   useEffect(() => {
     // A failed refresh keeps whatever is already on screen (the baked
     // snapshot), rather than blanking real numbers.
     fetchLanding().then(setLanding).catch(() => {});
+    fetchBranding().then(setFreshBranding).catch(() => {});
   }, []);
 
-  const branding = landing?.branding ?? null;
+  const branding = freshBranding ?? landing?.branding ?? null;
   const record = landing?.track_record ?? null;
   const stats = landing?.stats ?? null;
   const freePicks = landing?.free_picks ?? [];

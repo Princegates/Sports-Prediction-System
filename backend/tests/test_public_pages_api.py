@@ -199,3 +199,58 @@ def test_free_picks_stay_fixed_until_every_match_is_over(db_session):
     after = client.get("/api/public/free-picks").json()
     assert [p["fixture"]["match_id"] for p in after] != chosen
     assert {p["status"] for p in after} == {"upcoming"}
+
+
+# --- Branding is always revalidated, so an admin's edit shows up at once -----
+
+
+def test_branding_is_always_revalidated_not_cached_for_minutes(db_session):
+    response = client.get("/api/public/branding")
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-cache"
+    assert response.headers["etag"]
+
+
+def test_the_rest_of_the_public_data_is_still_cached(db_session):
+    assert "max-age=300" in client.get("/api/public/stats").headers["cache-control"]
+
+
+def test_an_admin_change_to_days_shows_on_the_very_next_request(db_session):
+    from app import app_settings
+
+    first = client.get("/api/public/branding")
+    app_settings.set_values(
+        db_session,
+        {"trial_duration_days": 9, "referral_bonus_days": 4, "price_amount": 30, "price_days": 7, "price_currency": "GH₵"},
+    )
+    second = client.get("/api/public/branding")
+
+    body = second.json()
+    assert (body["trial_days"], body["referral_bonus_days"]) == (9, 4)
+    assert body["pricing_label"] == "GH₵30 for 7 days"
+    assert second.headers["etag"] != first.headers["etag"]
+
+
+def test_an_unchanged_branding_answers_with_a_tiny_304(db_session):
+    first = client.get("/api/public/branding")
+
+    again = client.get("/api/public/branding", headers={"If-None-Match": first.headers["etag"]})
+
+    assert again.status_code == 304 and again.content == b""
+    assert again.headers["etag"] == first.headers["etag"]
+
+
+def test_a_stale_etag_gets_the_full_fresh_answer(db_session):
+    from app import app_settings
+
+    first = client.get("/api/public/branding")
+    app_settings.set_values(db_session, {"trial_duration_days": 11})
+
+    after = client.get("/api/public/branding", headers={"If-None-Match": first.headers["etag"]})
+
+    assert after.status_code == 200 and after.json()["trial_days"] == 11
+
+
+def test_the_landing_bundle_still_carries_the_same_branding(db_session):
+    assert client.get("/api/public/landing").json()["branding"] == client.get("/api/public/branding").json()

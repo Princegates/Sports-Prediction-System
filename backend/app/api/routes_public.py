@@ -19,8 +19,9 @@ the rule above rather than being the rule.
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -357,7 +358,27 @@ def public_teaser_pick(db: Session = Depends(get_db)) -> PublicTeaserPickOut:
 
 
 @router.get("/branding", response_model=BrandingOut)
-def public_branding(db: Session = Depends(get_db)) -> BrandingOut:
+def branding_endpoint(request: Request, db: Session = Depends(get_db)) -> Response:
+    """The branding, served so a browser always checks it's current.
+
+    Everything else under /api/public/ is cached for minutes (see
+    app.main), which is fine for fixtures and track-record figures but not
+    for what an admin edits in Settings -- the trial length, the price and
+    its period, the referral bonus -- where "I changed it and the public page
+    still says the old number" is the bug. ``no-cache`` makes the browser
+    ask every time, and the ETag turns that ask into a tiny 304 whenever
+    nothing changed, so it costs about what the old caching saved.
+    """
+
+    body = public_branding(db).model_dump_json().encode()
+    etag = f'"{hashlib.sha256(body).hexdigest()[:16]}"'
+    headers = {"Cache-Control": "no-cache", "ETag": etag}
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=headers)
+    return Response(content=body, media_type="application/json", headers=headers)
+
+
+def public_branding(db: Session) -> BrandingOut:
     """Site name and default look, readable before anyone logs in.
 
     Public because the landing page needs it: a visitor with no account still
