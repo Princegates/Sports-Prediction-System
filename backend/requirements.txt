@@ -10,6 +10,7 @@ pydantic-settings>=2.3
 numpy>=1.26
 pandas>=2.2
 scikit-learn>=1.5
+scipy>=1.11
 joblib>=1.4
 requests>=2.32
 # Guda's optional smart mode (app/assistant/agent.py) calls Claude through this.
