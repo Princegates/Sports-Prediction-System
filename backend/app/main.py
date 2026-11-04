@@ -38,6 +38,7 @@ from app.db.models import Match
 from app.db.session import SessionLocal, engine
 from app.prediction_service import build_prediction_for_match
 from app.random_picks import generate_cadence
+from app.risk_picks import generate_daily as generate_daily_risk_picks
 
 logger = logging.getLogger(__name__)
 
@@ -191,6 +192,28 @@ def _run_random_daily_picks_once() -> float:
     return RANDOM_PICKS_INTERVAL_SECONDS
 
 
+# The daily Low / Medium / High risk slips (app.risk_picks) run here for the
+# same reason as the random daily picks above: they need only predictions
+# already in the database, and GitHub's scheduler can't be relied on for a
+# daily cadence. Hourly rather than every few hours because a slip is
+# replaced once its first match is about to kick off (a pending pick drops
+# off the AI Picks page the moment any one of its matches finishes), so the
+# check has to come around well inside a match's length. Each run is a few
+# cheap queries unless a slip is actually due.
+RISK_PICKS_INTERVAL_SECONDS = 3600.0
+
+
+def _run_risk_daily_picks_once() -> float:
+    db = SessionLocal()
+    try:
+        for line in generate_daily_risk_picks(db):
+            logger.info("Daily risk picks: %s", line)
+        db.commit()
+    finally:
+        db.close()
+    return RISK_PICKS_INTERVAL_SECONDS
+
+
 ACCESS_REMINDER_INTERVAL_SECONDS = 3600.0
 
 
@@ -239,6 +262,12 @@ _LOOPS = (
         _run_random_daily_picks_once,
         dt.timedelta(seconds=RANDOM_PICKS_INTERVAL_SECONDS + 600),
         RANDOM_PICKS_INTERVAL_SECONDS,
+    ),
+    (
+        "risk_daily_picks",
+        _run_risk_daily_picks_once,
+        dt.timedelta(seconds=RISK_PICKS_INTERVAL_SECONDS + 600),
+        RISK_PICKS_INTERVAL_SECONDS,
     ),
     ("access_reminders", _run_access_reminders_once, LEASE_TTL, ACCESS_REMINDER_INTERVAL_SECONDS),
 )

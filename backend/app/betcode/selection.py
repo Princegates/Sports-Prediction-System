@@ -1416,6 +1416,103 @@ def select_random_legs(
     )
 
 
+def select_band_legs(
+    db: Session,
+    *,
+    min_probability: float,
+    max_probability: float,
+    min_legs: int,
+    max_legs: int,
+    markets: tuple[str, ...] = (),
+    leagues: tuple[str, ...] = (),
+    days_ahead: int = DEFAULT_DAYS_AHEAD,
+    exclude_match_ids: frozenset[int] = frozenset(),
+) -> ConfidencePick:
+    """A slip whose every leg sits inside one probability band --
+    ``min_probability`` <= leg < ``max_probability`` -- which is what makes
+    a Low, a Medium and a High risk slip genuinely different from each
+    other. Floor-only selection (select_legs_by_confidence) can't: it takes
+    the safest legs available whatever the floor, so Medium and High would
+    come out identical to Low whenever enough safe legs exist.
+
+    One leg per match, safest-in-band first (so a Medium slip is built from
+    each match's strongest outcome *below* the Low band, not its weakest),
+    spread across market families the way AI Generation's own slips are
+    (_per_market_cap) -- twelve "Handicap +2" legs isn't a slip anyone
+    wants. If the market-family cap leaves it short of ``min_legs`` it is
+    topped up ignoring the cap, since a full slip beats a varied short one.
+    Unpriced throughout (no MatchOdds needed), like select_random_legs.
+
+    ``exclude_match_ids`` lets a caller building several slips in one run
+    keep them on different matches.
+    """
+
+    pool = _build_random_pool(
+        db, min_probability=min_probability, markets=markets, leagues=leagues, league=None,
+        days_ahead=days_ahead, exclude_match_ids=exclude_match_ids,
+    )
+    candidates = sorted(
+        (leg for legs in pool.values() for leg in legs if leg.model_probability < max_probability),
+        key=lambda leg: (-leg.model_probability, leg.match_id, leg.market),
+    )
+    in_band_matches = {leg.match_id for leg in candidates}
+
+    if not candidates:
+        return ConfidencePick(
+            legs=[],
+            combined_probability=0.0,
+            candidates_considered=0,
+            warnings=[
+                f"No scheduled match in the next {days_ahead} day(s) has an outcome between "
+                f"{min_probability:.0%} and {max_probability:.0%}."
+            ],
+        )
+
+    # The usual per-family cap, but never so tight that the families this
+    # band actually has can't fill the slip -- if only two families offer
+    # anything in the band, each is allowed half the slip rather than the
+    # slip stopping short at the minimum.
+    families_present = {_market_family(leg.market) for leg in candidates}
+    cap = max(_per_market_cap(max_legs, markets or DEFAULT_MARKETS), math.ceil(max_legs / len(families_present)))
+    chosen: list[Leg] = []
+    used_matches: set[int] = set()
+    per_family: Counter[str] = Counter()
+    for leg in candidates:
+        if len(chosen) >= max_legs:
+            break
+        family = _market_family(leg.market)
+        if leg.match_id in used_matches or per_family[family] >= cap:
+            continue
+        chosen.append(leg)
+        used_matches.add(leg.match_id)
+        per_family[family] += 1
+
+    if len(chosen) < min_legs:
+        for leg in candidates:
+            if len(chosen) >= min_legs:
+                break
+            if leg.match_id not in used_matches:
+                chosen.append(leg)
+                used_matches.add(leg.match_id)
+
+    combined_probability = 1.0
+    for leg in chosen:
+        combined_probability *= leg.model_probability
+
+    warnings: list[str] = []
+    if len(chosen) < min_legs:
+        warnings.append(
+            f"Only {len(chosen)} match(es) have an outcome between {min_probability:.0%} and "
+            f"{max_probability:.0%} -- fewer than the {min_legs} wanted."
+        )
+    return ConfidencePick(
+        legs=chosen,
+        combined_probability=combined_probability,
+        candidates_considered=len(in_band_matches),
+        warnings=warnings,
+    )
+
+
 # Independent of which risk preset (if any) produced a slip -- labels the
 # *resulting* combined probability, the same "result, not input" reasoning
 # BetCodes.tsx's own resultRiskLabel uses on the frontend, mirrored here so

@@ -1180,6 +1180,11 @@ export function BetCodes() {
                     (auto-generated, weekly){" "}
                   </span>
                 )}
+                {pick.source?.startsWith("system_daily_") && (
+                  <span className="sub" style={{ fontStyle: "italic" }}>
+                    (auto-generated, daily){" "}
+                  </span>
+                )}
                 <span className="sub">
                   {pick.legs.length} leg{pick.legs.length === 1 ? "" : "s"} ·{" "}
                   {pick.priced && pick.combined_odds !== null ? `${pick.combined_odds.toFixed(2)} odds · ` : ""}
@@ -1202,7 +1207,7 @@ export function BetCodes() {
                     riskOverride doc). For one of those, the label's own
                     "Low/Medium/High Risk" text is the actual tier -- this
                     tag is only ever shown here for a hand-built slip. */}
-                {!pick.source?.startsWith("system_weekly_") && (
+                {!pick.source?.startsWith("system_weekly_") && !pick.source?.startsWith("system_daily_") && (
                   <span className={`risk-tag ${pick.risk_tier}`} style={{ marginLeft: 8 }}>
                     {pick.risk_tier === "low" ? "Low risk" : pick.risk_tier === "medium" ? "Medium risk" : "High risk"}
                   </span>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { fetchAdminPicks, fetchWinningSlips } from "../api";
 import { AdminPicksSection } from "../components/AdminPicksSection";
 import { CardGridSkeleton } from "../components/LoadingSkeleton";
+import { DailyPicksSection } from "../components/DailyPicksSection";
 import { GudaPicksSection } from "../components/GudaPicksSection";
 import { RandomPicksSection } from "../components/RandomPicksSection";
 import { WeeklyPicksSection } from "../components/WeeklyPicksSection";
@@ -91,6 +92,7 @@ export function AIPicks() {
       <div style={{ display: stillLoading ? "none" : undefined }}>
         <GudaPicksSection onLoaded={() => markLoaded("guda")} />
         <AdminPicksSection picks={adminPicks} />
+        <DailyPicksSection picks={adminPicks} />
         <WeeklyPicksSection picks={adminPicks} />
         <RandomPicksSection picks={adminPicks} />
         <section className="dashboard-wins">
