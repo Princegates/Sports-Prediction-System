@@ -324,9 +324,45 @@ per-league runs only if that fails.
   block) would give error bars on every number in this section.
 - **Out-of-fold fitting of the goal-market calibrators** (see 1c), so the
   deployed models can train on all data.
-- **A full Dixon-Coles maximum-likelihood fit** for Poisson. The current
-  ratings are ratios of weighted averages and are not adjusted for the
-  strength of the opponents faced.
+- ~~**A full Dixon-Coles maximum-likelihood fit** for Poisson.~~ *Done, see 1f.*
+
+#### 1f. Opponent-adjusted Poisson ratings (November 2026)
+
+The Poisson component's team ratings were ratios of time-weighted averages:
+goals scored divided by the league average. That credits a side for a soft run
+of fixtures and penalises it for a hard one. `poisson_model.fit_team_ratings`
+now fits every team's attack and defence jointly, by time-weighted Poisson
+maximum likelihood (`log lambda = c + home + attack + defence`), with an L2
+pull toward league average in place of the pseudo-matches. The fit is convex
+and takes milliseconds per league. It is cached per (league, kickoff) and
+keyed on a fingerprint of the league's finished matches, so the history is
+fetched once per data change instead of once per prediction.
+
+Tuned on validation only (six leagues, 2015-16 to 2025-26): a 450-day
+half-life and a penalty of 5. Both are flat optima: 365 to 540 days and 3 to 8
+were all within 0.0005 log loss of each other. Then scored once on the test
+slice (3,882 matches), paired match by match against the previous code. Both
+runs were full `backtest.py --all-leagues` retrains on identical data:
+
+| Test slice | Old | New | Paired z |
+|---|---|---|---|
+| Poisson component, 1X2 log loss | 1.0114 | **1.0069** | -2.4 |
+| Ensemble, 1X2 log loss | 1.0083 | **1.0058** | -2.2 |
+| Ensemble, 1X2 RPS | 0.2074 | **0.2067** | -1.9 |
+| Ensemble, accuracy | 50.1% | **50.9%** | +2.4 |
+| Over 2.5 / BTTS log loss | 0.6880 / 0.6892 | 0.6879 / 0.6890 | ~0 |
+
+The refitted blend weights moved from 40/35/25 (Elo/Poisson/GBM) to 10/65/25:
+once the Poisson ratings correct for schedule, they carry most of what Elo was
+contributing. Results by league: Serie A and the Championship improved clearly
+(log loss -0.004 and -0.009). The Premier League and La Liga improved slightly.
+Ligue 1 and the Bundesliga came out slightly worse on log loss (+0.001 and
++0.002), but neither change is significant (z under 1). The 5-league mean
+accuracy went from 51.7% to 52.3%.
+
+**Measured and not shipped:** a prior that starts promoted sides below
+average (-0.0002 log loss), and a stronger Dixon-Coles rho of -0.10 instead of
+-0.05 (-0.0003). Both are real but too small to justify the extra moving parts.
 
 #### 2. Security gaps
 

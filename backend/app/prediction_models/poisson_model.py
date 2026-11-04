@@ -1,20 +1,28 @@
 """Poisson goal model (spec section 23, Model 2/3) with a Dixon-Coles
 low-score correction.
 
-Team attack/defense strengths are estimated relative to the league's
-home/away scoring averages (a standard, well-documented approach -- see
-Maher 1982, Dixon & Coles 1997), split by home/away context per spec
-section 9, time-decayed and shrunk toward league average (see the constants
-below). Everything here is a pure function of data available strictly
-before ``as_of``, so it plugs directly into the leakage-free backtester.
+Expected goals come from team attack/defence ratings fitted jointly by
+time-weighted Poisson maximum likelihood (Maher 1982, Dixon & Coles 1997):
+``log lambda_home = c + home_advantage + attack[home] + defence[away]``, with
+an L2 penalty pulling every rating toward league average. Fitting them
+jointly is what adjusts each team for the opponents it actually faced -- a
+side that scored freely against a weak run of fixtures no longer looks as
+strong as one that did it against the top of the table (see
+``fit_team_ratings``). Everything here is a pure function of data available
+strictly before ``as_of``, so it plugs directly into the leakage-free
+backtester.
 """
 
 from __future__ import annotations
 
 import datetime as dt
 import math
+import threading
+from collections import OrderedDict
 from dataclasses import dataclass, field
 
+import numpy as np
+from scipy.optimize import minimize
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
@@ -64,6 +72,23 @@ SHRINKAGE_MATCHES = 3.0
 # tuning) -- scripts/backtest.py should confirm or retune this figure before
 # it is trusted the same way.
 EUROPEAN_SHRINKAGE_MATCHES = 10.0
+
+# --- Opponent-adjusted ratings (fit_team_ratings) ------------------------
+# Tuned on the validation slice of six leagues x 2015-16..2025-26 (never on
+# test), scoring the Poisson component alone. The optimum is flat: half-lives
+# from 365 to 540 days and penalties from 3 to 8 were all within ~0.0005 log
+# loss of each other, so none of these figures is fragile.
+RATING_HALF_LIFE_DAYS = 450.0
+# Strength of the pull toward league average, in weighted-match units -- the
+# MLE counterpart of SHRINKAGE_MATCHES' pseudo-matches.
+RATING_PENALTY = 5.0
+# A European competition gets the same proportionally heavier pull
+# EUROPEAN_SHRINKAGE_MATCHES gives the ratio ratings, for the reasons given
+# there.
+EUROPEAN_RATING_PENALTY = RATING_PENALTY * EUROPEAN_SHRINKAGE_MATCHES / SHRINKAGE_MATCHES
+# Matches older than this are not fetched at all; by then their weight is
+# about 1/70th of a match played today.
+RATING_HORIZON_DAYS = 2700
 
 # Half-time score grids stay much smaller than full-time ones -- more than a
 # handful of goals inside 45 minutes is vanishingly rare, and Poisson decay
@@ -221,21 +246,193 @@ def team_attack_defense(
     )
 
 
+@dataclass
+class TeamRatings:
+    """Log-scale ratings from ``fit_team_ratings``. A team absent from the fit
+    (no finished match in the window) reads as exactly league average."""
+
+    intercept: float
+    home_advantage: float
+    attack: dict[int, float]
+    defence: dict[int, float]
+
+    def lambdas(self, home_team_id: int, away_team_id: int) -> tuple[float, float]:
+        log_home = self.intercept + self.home_advantage + self.attack.get(home_team_id, 0.0) + self.defence.get(away_team_id, 0.0)
+        log_away = self.intercept + self.attack.get(away_team_id, 0.0) + self.defence.get(home_team_id, 0.0)
+        return math.exp(log_home), math.exp(log_away)
+
+
+def fit_ratings_from_rows(
+    days_before: np.ndarray,
+    home_ids: np.ndarray,
+    away_ids: np.ndarray,
+    home_goals: np.ndarray,
+    away_goals: np.ndarray,
+    penalty: float = RATING_PENALTY,
+    half_life_days: float = RATING_HALF_LIFE_DAYS,
+) -> TeamRatings | None:
+    """Time-weighted, L2-penalised Poisson MLE for one league's history.
+
+    ``days_before`` is each match's age relative to the prediction time. The
+    fit is convex, so L-BFGS from league average converges to the unique
+    optimum; the analytic gradient keeps it to milliseconds for a decade of
+    one league. Returns None when there is nothing to fit."""
+
+    if len(days_before) == 0:
+        return None
+
+    weights = 0.5 ** (np.asarray(days_before, dtype=float) / half_life_days)
+    teams, inverse = np.unique(np.concatenate([home_ids, away_ids]), return_inverse=True)
+    n_matches, n_teams = len(home_ids), len(teams)
+    home_idx, away_idx = inverse[:n_matches], inverse[n_matches:]
+    y_home = np.asarray(home_goals, dtype=float)
+    y_away = np.asarray(away_goals, dtype=float)
+
+    def objective(params: np.ndarray) -> tuple[float, np.ndarray]:
+        intercept, home_adv = params[0], params[1]
+        attack, defence = params[2:2 + n_teams], params[2 + n_teams:]
+        log_home = intercept + home_adv + attack[home_idx] + defence[away_idx]
+        log_away = intercept + attack[away_idx] + defence[home_idx]
+        lam_home, lam_away = np.exp(log_home), np.exp(log_away)
+        nll = float(np.sum(weights * (lam_home - y_home * log_home + lam_away - y_away * log_away)))
+        nll += 0.5 * penalty * float(np.sum(attack**2) + np.sum(defence**2))
+
+        resid_home = weights * (lam_home - y_home)
+        resid_away = weights * (lam_away - y_away)
+        grad = np.empty_like(params)
+        grad[0] = resid_home.sum() + resid_away.sum()
+        grad[1] = resid_home.sum()
+        grad[2:2 + n_teams] = (
+            np.bincount(home_idx, resid_home, n_teams) + np.bincount(away_idx, resid_away, n_teams) + penalty * attack
+        )
+        grad[2 + n_teams:] = (
+            np.bincount(away_idx, resid_home, n_teams) + np.bincount(home_idx, resid_away, n_teams) + penalty * defence
+        )
+        return nll, grad
+
+    x0 = np.zeros(2 + 2 * n_teams)
+    x0[0] = math.log(max(float(np.average(y_away, weights=weights)), 0.3))
+    x0[1] = 0.2
+    params = minimize(objective, x0, jac=True, method="L-BFGS-B").x
+    ids = [int(t) for t in teams]
+    return TeamRatings(
+        intercept=float(params[0]),
+        home_advantage=float(params[1]),
+        attack=dict(zip(ids, params[2:2 + n_teams].tolist())),
+        defence=dict(zip(ids, params[2 + n_teams:].tolist())),
+    )
+
+
+# Each league's finished matches are fetched once per change to them and
+# filtered by date in memory, rather than once per prediction: a backtest
+# predicts thousands of matches per league, and refetching a decade of rows
+# for each is exactly the egress problem _finished_before's docstring
+# describes. Fits are cached per (league, as_of), which same-day fixtures
+# share. Both are keyed on a fingerprint of the league's finished matches, so
+# a newly settled result or a corrected score invalidates them.
+_ROW_CACHE: "OrderedDict[tuple, tuple]" = OrderedDict()
+_FIT_CACHE: "OrderedDict[tuple, TeamRatings | None]" = OrderedDict()
+_ROW_CACHE_SIZE = 128
+_FIT_CACHE_SIZE = 2048
+_cache_lock = threading.Lock()
+
+
+def _cache_put(cache: OrderedDict, key, value, limit: int) -> None:
+    with _cache_lock:
+        cache[key] = value
+        cache.move_to_end(key)
+        while len(cache) > limit:
+            cache.popitem(last=False)
+
+
+def _cache_get(cache: OrderedDict, key):
+    with _cache_lock:
+        if key in cache:
+            cache.move_to_end(key)
+            return True, cache[key]
+    return False, None
+
+
+def clear_rating_cache() -> None:
+    with _cache_lock:
+        _ROW_CACHE.clear()
+        _FIT_CACHE.clear()
+
+
+def _league_fingerprint(db: Session, league: str) -> tuple:
+    finished = and_(Match.league == league, Match.home_score.is_not(None), Match.away_score.is_not(None))
+    row = db.execute(
+        select(
+            func.count(Match.id),
+            func.max(Match.id),
+            func.sum(Match.id * (Match.home_score + 1)),
+            func.sum(Match.id * (Match.away_score + 1)),
+            func.sum(Match.home_team_id + 2 * Match.away_team_id),
+        ).where(finished)
+    ).one()
+    return (id(db.get_bind()), league, *(int(v or 0) for v in row))
+
+
+def _league_rows(db: Session, league: str, fingerprint: tuple) -> tuple:
+    hit, rows = _cache_get(_ROW_CACHE, fingerprint)
+    if hit:
+        return rows
+    fetched = db.execute(
+        select(Match.date, Match.home_team_id, Match.away_team_id, Match.home_score, Match.away_score)
+        .where(Match.league == league, Match.home_score.is_not(None), Match.away_score.is_not(None))
+        .order_by(Match.date)
+    ).all()
+    dates = np.array([r[0] for r in fetched], dtype="datetime64[s]")
+    rows = (
+        dates,
+        np.array([r[1] for r in fetched], dtype=np.int64),
+        np.array([r[2] for r in fetched], dtype=np.int64),
+        np.array([r[3] for r in fetched], dtype=float),
+        np.array([r[4] for r in fetched], dtype=float),
+    )
+    _cache_put(_ROW_CACHE, fingerprint, rows, _ROW_CACHE_SIZE)
+    return rows
+
+
+def fit_team_ratings(db: Session, league: str, as_of, penalty: float | None = None) -> TeamRatings | None:
+    """Opponent-adjusted attack/defence ratings for ``league`` from its
+    finished matches strictly before ``as_of``.
+
+    The ratio ratings in ``team_attack_defense`` divide a team's goals by the
+    league average, so they credit a side for a soft run of fixtures and
+    penalise it for a hard one. The joint fit here explains every scoreline
+    by both teams' ratings at once, which removes that schedule bias -- see
+    ROADMAP.md 1f for the measured effect."""
+
+    if penalty is None:
+        penalty = EUROPEAN_RATING_PENALTY if league in EUROPEAN_COMPETITIONS else RATING_PENALTY
+
+    fingerprint = _league_fingerprint(db, league)
+    key = (fingerprint, as_of, penalty)
+    hit, cached = _cache_get(_FIT_CACHE, key)
+    if hit:
+        return cached
+
+    dates, home_ids, away_ids, home_goals, away_goals = _league_rows(db, league, fingerprint)
+    as_of64 = np.datetime64(as_of.replace(tzinfo=None) if getattr(as_of, "tzinfo", None) else as_of, "s")
+    age_days = (as_of64 - dates).astype("timedelta64[s]").astype(float) / 86400.0
+    window = (age_days > 0) & (age_days <= RATING_HORIZON_DAYS)
+    ratings = fit_ratings_from_rows(
+        age_days[window], home_ids[window], away_ids[window], home_goals[window], away_goals[window], penalty
+    )
+    _cache_put(_FIT_CACHE, key, ratings, _FIT_CACHE_SIZE)
+    return ratings
+
+
 def expected_goals(
     db: Session, home_team_id: int, away_team_id: int, league: str, as_of
 ) -> tuple[float, float]:
-    avg_home_goals, avg_away_goals = league_goal_averages(db, league, as_of)
-    shrinkage = EUROPEAN_SHRINKAGE_MATCHES if league in EUROPEAN_COMPETITIONS else SHRINKAGE_MATCHES
-
-    h_attack, h_defense, _, _ = team_attack_defense(
-        db, home_team_id, league, as_of, avg_home_goals, avg_away_goals, shrinkage
-    )
-    _, _, a_attack, a_defense = team_attack_defense(
-        db, away_team_id, league, as_of, avg_home_goals, avg_away_goals, shrinkage
-    )
-
-    lambda_home = avg_home_goals * h_attack * a_defense
-    lambda_away = avg_away_goals * a_attack * h_defense
+    ratings = fit_team_ratings(db, league, as_of)
+    if ratings is None:
+        # Reasonable top-flight European default when there's no history yet.
+        lambda_home, lambda_away = 1.45, 1.15
+    else:
+        lambda_home, lambda_away = ratings.lambdas(home_team_id, away_team_id)
 
     # Keep expectations in a sane range even for teams with almost no history.
     return max(min(lambda_home, 6.0), 0.1), max(min(lambda_away, 6.0), 0.1)
