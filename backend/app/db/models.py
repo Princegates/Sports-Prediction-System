@@ -16,6 +16,7 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from app.request_context import current_client_ip
 from app.timeutil import utcnow
 
 
@@ -210,6 +211,10 @@ class AuditLog(Base):
     action: Mapped[str] = mapped_column(String(48), index=True)
     target_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     detail: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Address of the request that caused the entry (see app.request_context);
+    # NULL for work the server did on its own and for rows from before this
+    # column existed.
+    ip: Mapped[str | None] = mapped_column(String(64), nullable=True, default=current_client_ip)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 

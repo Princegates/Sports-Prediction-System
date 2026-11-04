@@ -647,6 +647,7 @@ export interface AuditLogEntry {
   action: string;
   target_user_id: number | null;
   detail: Record<string, unknown> | null;
+  ip?: string | null;
   created_at: string;
 }
 

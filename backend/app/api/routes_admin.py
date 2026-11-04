@@ -191,6 +191,7 @@ def audit_log(
                 action=row.action,
                 target_user_id=row.target_user_id,
                 detail=row.detail,
+                ip=row.ip,
                 created_at=row.created_at,
             )
             for row in rows

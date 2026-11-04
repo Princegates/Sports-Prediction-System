@@ -111,6 +111,7 @@ export function ActivityLog() {
     if (!q) return true;
     return (
       (entry.actor_email ?? "").toLowerCase().includes(q) ||
+      (entry.ip ?? "").toLowerCase().includes(q) ||
       targetLabel(entry).toLowerCase().includes(q) ||
       (ACTION_LABELS[entry.action] ?? entry.action).toLowerCase().includes(q)
     );
@@ -178,7 +179,7 @@ export function ActivityLog() {
             Search this page
             <input
               type="search"
-              placeholder="Actor, target, or action"
+              placeholder="Actor, target, action or IP"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -194,18 +195,19 @@ export function ActivityLog() {
               <th>Actor</th>
               <th>Action</th>
               <th>Target user</th>
+              <th>IP address</th>
               <th>Detail</th>
             </tr>
           </thead>
           <tbody>
             {entries === null && (
               <tr>
-                <td colSpan={5}>Loading...</td>
+                <td colSpan={6}>Loading...</td>
               </tr>
             )}
             {entries !== null && visibleEntries.length === 0 && (
               <tr>
-                <td colSpan={5}>No entries match these filters.</td>
+                <td colSpan={6}>No entries match these filters.</td>
               </tr>
             )}
             {visibleEntries.map((entry) => (
@@ -214,6 +216,7 @@ export function ActivityLog() {
                 <td>{entry.actor_email ?? "--"}</td>
                 <td>{ACTION_LABELS[entry.action] ?? entry.action}</td>
                 <td>{targetLabel(entry)}</td>
+                <td>{entry.ip ?? "--"}</td>
                 <td className="admin-audit-detail">
                   {entry.detail
                     ? Object.entries(entry.detail)

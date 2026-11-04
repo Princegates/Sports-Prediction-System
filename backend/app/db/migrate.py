@@ -140,6 +140,8 @@ _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     ("users", "ai_unlimited_until", "TIMESTAMP"),
     # payments shipped before it could sell anything but access.
     ("payments", "product", "VARCHAR(32) DEFAULT 'access'"),
+    # Caller address on each audit-log entry.
+    ("audit_log", "ip", "VARCHAR(64)"),
 ]
 
 

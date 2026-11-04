@@ -211,6 +211,7 @@ class AuditLogOut(BaseModel):
     action: str
     target_user_id: int | None = None
     detail: dict | None = None
+    ip: str | None = None
     created_at: dt.datetime
 
 

@@ -12,6 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.timeutil import utcnow
+from app import request_context
 from app.api import rate_limit
 from app.api.deps import require_active_access, require_not_paused
 from app.api.routes_access import router as access_router
@@ -395,6 +396,14 @@ app = FastAPI(
 # outside it. CORS needs to wrap this, not the other way round, or a
 # throttled browser request would show as a CORS failure instead of the
 # actual 429 + Retry-After.
+@app.middleware("http")
+async def _remember_client_ip(request: Request, call_next):
+    """Makes the caller's address available to the audit log for this request."""
+
+    request_context.set_client_ip(rate_limit.client_ip(request))
+    return await call_next(request)
+
+
 @app.middleware("http")
 async def _global_rate_limit(request: Request, call_next):
     """Blanket per-IP throttle -- see Settings.global_rate_limit_requests.
