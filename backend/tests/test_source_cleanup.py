@@ -18,7 +18,7 @@ import pytest
 from app.timeutil import utcnow
 from app.data.api_football_ingest import TeamIndex, import_fixtures
 from app.data.source_cleanup import retire_free_fixtures
-from app.db.models import AdminPick, FeaturedPick, Match, Prediction, Team
+from app.db.models import AdminPick, FeaturedPick, Match, MatchLineup, PlayerAbsence, Player, Prediction, Team
 from tests.test_api_football import FakeClient
 
 PT = "Portuguese Primeira Liga"
@@ -144,6 +144,32 @@ def test_what_people_chose_follows_the_match(db_session, portugal):
 
     assert db_session.query(FeaturedPick).one().match_id == api_id
     assert db_session.query(AdminPick).one().legs[0]["match_id"] == api_id
+
+
+def test_injury_reports_and_lineups_do_not_block_removing_a_duplicate(db_session, portugal):
+    """Production regression: a player_absences row on the dropped duplicate
+    violated its foreign key (Postgres enforces it) and aborted the whole
+    league's fixture import -- every league after it went unrefreshed."""
+
+    from sqlalchemy import text
+
+    db = db_session
+    free, api = portugal["free"], portugal["api"]
+    player = Player(api_player_id=9001, name="A. Player", team_id=portugal["braga_long"].id)
+    db.add(player)
+    db.flush()
+    db.add(PlayerAbsence(player_id=player.id, team_id=portugal["braga_long"].id, match_id=free.id, reason="Knee"))
+    db.add(MatchLineup(match_id=free.id, team_id=portugal["braga_long"].id, player_id=player.id))
+    db.commit()
+    free_id, api_id = free.id, api.id
+    db.execute(text("PRAGMA foreign_keys=ON"))  # SQLite ignores FKs unless told, unlike Postgres
+
+    retire_free_fixtures(db, PT)
+    db.commit()
+
+    assert db.get(Match, free_id) is None
+    assert db.query(PlayerAbsence).one().match_id == api_id
+    assert db.query(MatchLineup).one().match_id == api_id
 
 
 def test_a_free_fixture_api_football_does_not_list_is_removed_but_a_result_is_kept(db_session, portugal):

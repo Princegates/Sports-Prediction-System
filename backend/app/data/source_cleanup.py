@@ -56,8 +56,10 @@ from app.db.models import (
     FeaturedPick,
     LivePrediction,
     Match,
+    MatchLineup,
     MatchOdds,
     MatchView,
+    PlayerAbsence,
     Prediction,
     Team,
 )
@@ -193,6 +195,11 @@ def _remove_dependents(db: Session, match_id: int) -> None:
     db.execute(delete(EloHistory).where(EloHistory.match_id == match_id))
     db.execute(delete(MatchView).where(MatchView.match_id == match_id))
     db.execute(delete(FeaturedPick).where(FeaturedPick.match_id == match_id))
+    # Both reference the match with a plain foreign key: left in place they
+    # make the DELETE below fail on Postgres and abort the whole league's
+    # fixture import (and every league after it).
+    db.execute(delete(PlayerAbsence).where(PlayerAbsence.match_id == match_id))
+    db.execute(delete(MatchLineup).where(MatchLineup.match_id == match_id))
     db.execute(update(ChatMessage).where(ChatMessage.context_match_id == match_id).values(context_match_id=None))
 
 
@@ -220,6 +227,11 @@ def fold_fixture(db: Session, keep: Match, drop: Match, admin_picks: list[AdminP
         legs = pick.legs or []
         if any(leg.get("match_id") == drop.id for leg in legs):
             pick.legs = [{**leg, "match_id": keep.id} if leg.get("match_id") == drop.id else leg for leg in legs]
+    # Injury reports and lineups describe the match, not the row -- carry them
+    # over (lineups only if the survivor has none: one row per player).
+    db.execute(update(PlayerAbsence).where(PlayerAbsence.match_id == drop.id).values(match_id=keep.id))
+    if not db.execute(select(MatchLineup.id).where(MatchLineup.match_id == keep.id).limit(1)).first():
+        db.execute(update(MatchLineup).where(MatchLineup.match_id == drop.id).values(match_id=keep.id))
     keep_has_odds = db.execute(select(MatchOdds.id).where(MatchOdds.match_id == keep.id).limit(1)).first()
     if not keep_has_odds:
         db.execute(update(MatchOdds).where(MatchOdds.match_id == drop.id).values(match_id=keep.id))

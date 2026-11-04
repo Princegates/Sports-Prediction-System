@@ -157,18 +157,26 @@ def main() -> None:
             # season regardless of what --seasons was given, with its own
             # ceiling and its own failure (a quota hiccup here shouldn't be
             # read as the fixture import above having failed).
-            run(
-                "Capturing market odds",
-                [
-                    "scripts/import_api_football.py",
-                    "--leagues", *api_leagues,
-                    "--seasons", str(current_season_start()),
-                    "--odds",
-                    "--days-ahead", str(args.days_ahead),
-                    "--max-requests", str(ODDS_MAX_REQUESTS),
-                ],
-                required=False,
-            )
+            # Only the leagues anything prices (AI Picks, booking codes, the
+            # market benchmark). With all ~55 tracked leagues this asked for
+            # ~600 requests, tripped the ceiling above, and the step aborted
+            # before making a single call -- so no match ever had a price.
+            from app.betcode.selection import AI_PICKS_LEAGUES
+
+            odds_leagues = [lg for lg in api_leagues if lg in AI_PICKS_LEAGUES]
+            if odds_leagues:
+                run(
+                    "Capturing market odds",
+                    [
+                        "scripts/import_api_football.py",
+                        "--leagues", *odds_leagues,
+                        "--seasons", str(current_season_start()),
+                        "--odds",
+                        "--days-ahead", str(args.days_ahead),
+                        "--max-requests", str(ODDS_MAX_REQUESTS),
+                    ],
+                    required=False,
+                )
         # Folds what the free feeds stored into API-Football's rows, for every
         # league rather than just this run's: it spends no API requests, and a
         # league API-Football has never returned fixtures for is left exactly
