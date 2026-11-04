@@ -205,8 +205,8 @@ def weekly_picks_message(labels: list[str], site_url: str | None = None) -> tupl
     """Subject and body for the weekly "this week's picks are up" nudge.
 
     Takes each live AdminPick's own ``label`` verbatim (already a readable
-    one-liner -- "Low Risk -- Weekly 10-Leg Accumulator (5-10 odds)" and
-    similar) rather than recomputing anything from the legs. Names what's
+    one-liner -- "Low Risk -- Weekly Accumulator" and similar) rather than
+    recomputing anything from the legs. Names what's
     live and its shape only -- never the legs themselves. Those are the
     product, behind the login; an email is somewhere this project doesn't
     control what happens to it once sent (forwarded, left in an inbox
