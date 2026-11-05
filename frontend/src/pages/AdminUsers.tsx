@@ -70,6 +70,9 @@ export function AdminUsers() {
   const [msgSubject, setMsgSubject] = useState("");
   const [msgBody, setMsgBody] = useState("");
   const [msgBusy, setMsgBusy] = useState(false);
+  const [msgProgress, setMsgProgress] = useState<string | null>(null);
+  // Accounts ticked in the table, to message together.
+  const [selected, setSelected] = useState<Set<number>>(new Set());
   const [msgError, setMsgError] = useState<string | null>(null);
   const [msgResult, setMsgResult] = useState<AdminMessageResponse | null>(null);
   const msgCardRef = useRef<HTMLDivElement>(null);
@@ -246,6 +249,7 @@ export function AdminUsers() {
     await withBusy(u.id, () => deleteUser(u.id));
   }
 
+  const recipientCount = msgTo.split(/[\s,;]+/).filter(Boolean).length;
   const pendingUsers = (users ?? []).filter((u) => u.activation_pending);
   const shownUsers = onlyPending ? pendingUsers : users;
 
@@ -272,10 +276,34 @@ export function AdminUsers() {
     });
   }
 
-  // Fills the message form for everyone not yet activated -- at most the 25
-  // a single send allows -- with a starting draft if nothing's been written.
+  function toggleSelected(id: number) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAllShown() {
+    const ids = (shownUsers ?? []).map((u) => u.id);
+    setSelected((prev) => (ids.length > 0 && ids.every((id) => prev.has(id)) ? new Set() : new Set(ids)));
+  }
+
+  // Puts every ticked account in the message form.
+  function messageSelected() {
+    const emails = (users ?? []).filter((u) => selected.has(u.id)).map((u) => u.email);
+    if (emails.length === 0) return;
+    setMsgTo(emails.join(", "));
+    setMsgResult(null);
+    setMsgError(null);
+    msgCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  // Fills the message form for everyone not yet activated, with a starting
+  // draft if nothing's been written.
   function messageEveryonePending() {
-    setMsgTo(pendingUsers.slice(0, 25).map((u) => u.email).join(", "));
+    setMsgTo(pendingUsers.map((u) => u.email).join(", "));
     setMsgResult(null);
     setMsgError(null);
     if (!msgSubject.trim()) setMsgSubject("Activate your account to start your free trial");
@@ -309,19 +337,39 @@ export function AdminUsers() {
       return;
     }
     setMsgBusy(true);
+    // The server takes 25 addresses per request, so a bigger list goes out
+    // in batches, one after another, and the outcome is combined.
+    const BATCH = 25;
+    const combined: AdminMessageResponse = { results: [], not_registered: [] };
     try {
-      const result = await sendAdminMessage({ recipients, subject: msgSubject.trim(), message: msgBody.trim() });
-      setMsgResult(result);
+      for (let i = 0; i < recipients.length; i += BATCH) {
+        setMsgProgress(
+          recipients.length > BATCH ? `Sending ${Math.min(i + BATCH, recipients.length)} of ${recipients.length}...` : null,
+        );
+        const part = await sendAdminMessage({
+          recipients: recipients.slice(i, i + BATCH),
+          subject: msgSubject.trim(),
+          message: msgBody.trim(),
+        });
+        combined.results.push(...part.results);
+        combined.not_registered.push(...part.not_registered);
+      }
       // Keep the form for anything that didn't go out (so it can be fixed and
       // resent); clear it once every recipient got the message.
-      if (result.results.every((r) => r.sent) && result.not_registered.length === 0) {
+      if (combined.results.every((r) => r.sent) && combined.not_registered.length === 0) {
         setMsgTo("");
         setMsgSubject("");
         setMsgBody("");
+        setSelected(new Set());
       }
     } catch (err) {
-      setMsgError(String(err instanceof Error ? err.message : err));
+      const sentSoFar = combined.results.filter((r) => r.sent).length;
+      setMsgError(
+        (sentSoFar > 0 ? `Stopped after ${sentSoFar} sent: ` : "") + String(err instanceof Error ? err.message : err),
+      );
     } finally {
+      if (combined.results.length > 0 || combined.not_registered.length > 0) setMsgResult(combined);
+      setMsgProgress(null);
       setMsgBusy(false);
     }
   }
@@ -428,11 +476,24 @@ export function AdminUsers() {
         </div>
       )}
 
+      {selected.size > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 12 }}>
+          <span className="meta">{selected.size} selected</span>
+          <button className="btn" onClick={messageSelected}>
+            Message selected
+          </button>
+          <button className="btn ghost" onClick={() => setSelected(new Set())}>
+            Clear selection
+          </button>
+        </div>
+      )}
+
       <div className="card card-pad" ref={msgCardRef} style={{ marginBottom: 16 }}>
         <h3 style={{ marginTop: 0, fontSize: 15 }}>Send a message</h3>
         <p className="setting-note" style={{ marginTop: 0 }}>
-          Emails registered members directly from the site's own sender. Separate several addresses with commas or
-          spaces. Anyone without an account here is skipped, not emailed.
+          Emails registered members directly from the site's own sender. Tick several members in the table below and
+          press "Message selected", or type addresses separated by commas or spaces. Long lists go out in batches.
+          Anyone without an account here is skipped, not emailed.
         </p>
         <form onSubmit={handleSendMessage} className="auth-form">
           <label>
@@ -465,7 +526,10 @@ export function AdminUsers() {
             <div role="status" className="setting-note">
               {msgResult.results.filter((r) => r.sent).length > 0 && (
                 <p style={{ margin: "0 0 4px" }}>
-                  Sent to {msgResult.results.filter((r) => r.sent).map((r) => r.email).join(", ")}.
+                  {(() => {
+                    const sent = msgResult.results.filter((r) => r.sent).map((r) => r.email);
+                    return sent.length > 5 ? `Sent to ${sent.length} members.` : `Sent to ${sent.join(", ")}.`;
+                  })()}
                 </p>
               )}
               {msgResult.results.filter((r) => !r.sent).map((r) => (
@@ -481,7 +545,7 @@ export function AdminUsers() {
             </div>
           )}
           <button className="btn" type="submit" disabled={msgBusy || !msgTo.trim() || !msgSubject.trim() || !msgBody.trim()}>
-            {msgBusy ? "Sending..." : "Send message"}
+            {msgBusy ? msgProgress ?? "Sending..." : `Send message${recipientCount > 1 ? ` to ${recipientCount}` : ""}`}
           </button>
         </form>
       </div>
@@ -491,6 +555,14 @@ export function AdminUsers() {
         <table className="admin-table">
           <thead>
             <tr>
+              <th style={{ width: 32 }}>
+                <input
+                  type="checkbox"
+                  aria-label="Select all users in this view"
+                  checked={(shownUsers ?? []).length > 0 && (shownUsers ?? []).every((u) => selected.has(u.id))}
+                  onChange={toggleAllShown}
+                />
+              </th>
               <th>Name</th>
               <th>Email</th>
               <th>Status</th>
@@ -503,15 +575,23 @@ export function AdminUsers() {
           <tbody>
             {users === null && (
               <tr>
-                <td colSpan={7}>Loading...</td>
+                <td colSpan={8}>Loading...</td>
               </tr>
             )}
-            {shownUsers !== null && shownUsers.length === 0 && <tr><td colSpan={7}>No users in this view.</td></tr>}
+            {shownUsers !== null && shownUsers.length === 0 && <tr><td colSpan={8}>No users in this view.</td></tr>}
             {shownUsers?.map((u) => {
               const isSelf = u.id === currentUser?.id;
               const busy = busyId === u.id;
               return (
                 <tr key={u.id}>
+                  <td>
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${u.email}`}
+                      checked={selected.has(u.id)}
+                      onChange={() => toggleSelected(u.id)}
+                    />
+                  </td>
                   <td>{u.name}</td>
                   <td>{u.email}</td>
                   <td>
