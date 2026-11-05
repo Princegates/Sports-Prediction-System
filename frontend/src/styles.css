@@ -76,6 +76,32 @@ select option {
   color: var(--text-primary);
 }
 
+/* Text fields with no styling of their own (the Settings page's inputs, the
+   admin message box) fell back to the browser's white box with the page's
+   light text on it -- faint in night mode. Same surface and ink as the
+   styled forms, and a placeholder that's still readable. Anything with its
+   own rule is more specific and wins. */
+.setting-field input:not([type="checkbox"]):not([type="radio"]),
+textarea {
+  background-color: var(--bg-surface-2);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+}
+
+.setting-field input:not([type="checkbox"]):not([type="radio"]):focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.setting-field input::placeholder,
+textarea::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
 /* iOS Safari (and most mobile Chromium builds) auto-zoom the page on focus
    of any text input/select/textarea whose computed font-size is under
    16px -- most of ours are 13-15px for layout reasons that have nothing to
