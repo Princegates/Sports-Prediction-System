@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import {
   changePassword, fetchBranding, fetchMatchHistory, fetchReferralStats, pauseAccount, redeemAccessCode, revokeOtherSessions,
 } from "../api";
+import { InstallAppCard } from "../components/InstallAppCard";
 import { Mascot } from "../components/Mascot";
 import { CopyButton } from "../components/CopyButton";
 import { EmptyState } from "../components/EmptyState";
@@ -387,6 +388,8 @@ export function Profile() {
         <h2>Your profile</h2>
         <span className="meta">Personal account details and analysis history</span>
       </div>
+
+      <InstallAppCard />
 
       <div className="card card-pad" style={{ display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap", marginBottom: 24 }}>
         <Mascot pose="idle" size={72} />

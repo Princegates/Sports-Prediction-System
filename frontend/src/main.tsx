@@ -7,9 +7,15 @@ import { AuthProvider } from "./lib/AuthContext";
 import { fetchBranding } from "./api";
 import { isPageTitleActive } from "./lib/pageMeta";
 import { THEME_OVERRIDE_KEY } from "./components/ThemeToggle";
+import { listenForInstallOffer, registerServiceWorker } from "./lib/pwa";
 import "./base.scss";
 import "./custom.scss";
 import "./styles.css";
+
+// Installable app: capture the browser's install offer immediately (it can fire
+// before React mounts) and register the offline/caching worker -- see lib/pwa.ts.
+listenForInstallOffer();
+registerServiceWorker();
 
 // Accent is admin-controlled, site-wide, with no personal override -- a
 // separate axis from day/night theme, picked in Settings > Appearance from

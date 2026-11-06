@@ -14,6 +14,7 @@ import { useAuth } from "../lib/AuthContext";
 import { isHighConfidence, dateOffset } from "../lib/filters";
 import type { FreePick, MatchSummary, Prediction, WinningSlip } from "../types";
 import { WinningSlipsGallery } from "../components/WinningSlipsGallery";
+import { InstallAppCard } from "../components/InstallAppCard";
 
 interface Row {
   prediction: Prediction;
@@ -168,6 +169,7 @@ export function Dashboard() {
   return (
     <div>
       <NoticeBanner />
+      <InstallAppCard dismissible />
       <section className="hero">
         <h1>Every match, every angle, one probability.</h1>
         <p>Analyze matches, discover patterns and understand what the data says -- with the reasoning always shown alongside the number.</p>

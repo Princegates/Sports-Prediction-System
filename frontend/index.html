@@ -21,6 +21,15 @@
     <link rel="canonical" href="https://soccaintel.com/" />
     <meta name="theme-color" content="#161616" />
 
+    <!-- Installable app (PWA): see public/manifest.webmanifest and public/sw.js.
+         The apple-* tags are what iOS reads when someone uses Add to Home
+         Screen -- it ignores most of the manifest. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Socca" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+
     <!-- Open Graph, so a shared link renders as something other than a bare URL. -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Socca Intelligence" />
