@@ -1171,9 +1171,17 @@ export function BetCodes() {
             <div
               key={pick.id}
               className="match-meta-row"
-              style={{ justifyContent: "space-between", padding: "8px 0", borderTop: "1px solid var(--border)" }}
+              style={{
+                justifyContent: "space-between",
+                padding: "8px 0",
+                borderTop: "1px solid var(--border)",
+                // Phone widths: the buttons drop below the text instead of
+                // pushing past the card's edge.
+                flexWrap: "wrap",
+                gap: 8,
+              }}
             >
-              <span>
+              <span style={{ flex: "1 1 220px", minWidth: 0 }}>
                 {pick.label ? <strong>{pick.label}</strong> : <span className="sub">Untitled slip</span>}{" "}
                 {pick.source?.startsWith("system_weekly_") && (
                   <span className="sub" style={{ fontStyle: "italic" }}>
@@ -1213,7 +1221,7 @@ export function BetCodes() {
                   </span>
                 )}
               </span>
-              <div style={{ display: "flex", gap: 6 }}>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {pick.result === "pending" && (
                   <button
                     className="btn ghost"
