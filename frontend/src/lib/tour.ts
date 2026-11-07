@@ -104,38 +104,53 @@ export const TOUR_STEPS: TourStep[] = [
   },
 ];
 
-/** Bump to show the tour again to everyone after a big redesign. */
+/** Bump to bring the tour back for people who had switched it off. */
 const TOUR_VERSION = 1;
 
-/** Only accounts this young get the tour on their own: it's for people
- * finding their way in, not for the existing members. Anyone can still open
- * it from the account menu. */
-const NEW_ACCOUNT_DAYS = 14;
+const optOutKey = (userId: number) => `tour_optout_v${TOUR_VERSION}_${userId}`;
+const sessionKey = (userId: number) => `tour_session_v${TOUR_VERSION}_${userId}`;
 
-const seenKey = (userId: number) => `tour_seen_v${TOUR_VERSION}_${userId}`;
-
-export function hasSeenTour(userId: number): boolean {
+/** "Don't show this again" -- the only thing that stops it for good. */
+export function hasOptedOutOfTour(userId: number): boolean {
   try {
-    return localStorage.getItem(seenKey(userId)) === "1";
+    return localStorage.getItem(optOutKey(userId)) === "1";
   } catch {
-    return true; // storage blocked: don't risk showing it on every page load
+    return false;
   }
 }
 
-export function markTourSeen(userId: number): void {
+export function setTourOptOut(userId: number, optedOut: boolean): void {
   try {
-    localStorage.setItem(seenKey(userId), "1");
+    if (optedOut) localStorage.setItem(optOutKey(userId), "1");
+    else localStorage.removeItem(optOutKey(userId));
   } catch {
     // ignore
   }
 }
 
-export function shouldAutoShowTour(user: { id: number; role: string; created_at: string }, now = Date.now()): boolean {
-  if (user.role === "superadmin") return false;
-  if (hasSeenTour(user.id)) return false;
-  const created = Date.parse(user.created_at.endsWith("Z") ? user.created_at : `${user.created_at}Z`);
-  if (Number.isNaN(created)) return false;
-  return now - created < NEW_ACCOUNT_DAYS * 24 * 60 * 60 * 1000;
+/** Per visit (tab or installed-app launch), so a refresh or a click to another
+ * page doesn't bring it straight back, but opening the app again does. */
+function shownThisVisit(userId: number): boolean {
+  try {
+    return sessionStorage.getItem(sessionKey(userId)) === "1";
+  } catch {
+    return true; // storage blocked: don't risk showing it on every page load
+  }
+}
+
+export function markTourShownThisVisit(userId: number): void {
+  try {
+    sessionStorage.setItem(sessionKey(userId), "1");
+  } catch {
+    // ignore
+  }
+}
+
+/** Every member sees the tour each time they open the app, until they tick
+ * "Don't show this again". Admins run the place and don't need it. Anyone can
+ * also open it from the account menu. */
+export function shouldAutoShowTour(user: { id: number; role: string }): boolean {
+  return user.role !== "superadmin" && !hasOptedOutOfTour(user.id) && !shownThisVisit(user.id);
 }
 
 /** Event the account menu fires to reopen the tour from anywhere. */

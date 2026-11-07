@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { TOUR_STEPS, markTourSeen, OPEN_TOUR_EVENT, shouldAutoShowTour, type TourStep } from "../lib/tour";
+import {
+  TOUR_STEPS,
+  OPEN_TOUR_EVENT,
+  hasOptedOutOfTour,
+  markTourShownThisVisit,
+  setTourOptOut,
+  shouldAutoShowTour,
+  type TourStep,
+} from "../lib/tour";
 import { useAuth } from "../lib/AuthContext";
 import { AiGenerate, ChartLine, Close, Home, Live, Locked, PinFilled, ShoppingCatalog } from "./icons";
 import { Mascot } from "./Mascot";
@@ -18,8 +26,9 @@ const ICONS: Record<TourStep["icon"], (p: { size?: number }) => JSX.Element> = {
 };
 
 /**
- * First-run walkthrough. Opens by itself once for a brand-new account (see
- * lib/tour.shouldAutoShowTour) and on demand from the account menu.
+ * Walkthrough of the platform. Opens by itself each time a member opens the
+ * app until they tick "Don't show this again" (see lib/tour.shouldAutoShowTour),
+ * and on demand from the account menu.
  *
  * A dialog rather than spotlight bubbles over the real page on purpose: the
  * navigation is a top bar on desktop and a bottom bar on phones, and
@@ -31,6 +40,7 @@ export function TourDialog() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [index, setIndex] = useState(0);
+  const [dontShow, setDontShow] = useState(false);
   const primaryRef = useRef<HTMLButtonElement>(null);
   const decided = useRef<number | null>(null);
 
@@ -46,7 +56,9 @@ export function TourDialog() {
     }
     const timer = window.setTimeout(() => {
       decided.current = user.id;
+      markTourShownThisVisit(user.id);
       setIndex(0);
+      setDontShow(false);
       setOpen(true);
     }, 900);
     return () => window.clearTimeout(timer);
@@ -59,16 +71,20 @@ export function TourDialog() {
   useEffect(() => {
     function onOpen() {
       setIndex(0);
+      setDontShow(user ? hasOptedOutOfTour(user.id) : false);
       setOpen(true);
     }
     window.addEventListener(OPEN_TOUR_EVENT, onOpen);
     return () => window.removeEventListener(OPEN_TOUR_EVENT, onOpen);
-  }, []);
+  }, [user]);
 
   const close = useCallback(() => {
     setOpen(false);
-    if (user) markTourSeen(user.id);
-  }, [user]);
+    if (user) {
+      markTourShownThisVisit(user.id);
+      setTourOptOut(user.id, dontShow);
+    }
+  }, [user, dontShow]);
 
   const last = TOUR_STEPS.length - 1;
   const next = useCallback(() => setIndex((i) => Math.min(i + 1, last)), [last]);
@@ -133,6 +149,11 @@ export function TourDialog() {
             <span key={s.id} className={`tour-dot${i === index ? " active" : i < index ? " done" : ""}`} />
           ))}
         </div>
+
+        <label className="tour-optout">
+          <input type="checkbox" checked={dontShow} onChange={(e) => setDontShow(e.target.checked)} />
+          Don&apos;t show this again
+        </label>
 
         <div className="tour-actions">
           {index > 0 ? (
