@@ -161,3 +161,13 @@ export function Trophy(props: IconProps) {
     </svg>
   );
 }
+
+export function Help(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.6 9.4a2.5 2.5 0 114 2c-.9.6-1.6 1.1-1.6 2.1" />
+      <path d="M12 16.9v.1" />
+    </svg>
+  );
+}

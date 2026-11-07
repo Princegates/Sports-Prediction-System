@@ -2,12 +2,14 @@ import { AIGenerationCount } from "./AIGenerationCount";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { NewsBanner } from "./NewsBanner";
-import { Search, UserAvatar, SettingsIcon, Locked, UserFollow, Trophy } from "./icons";
+import { Search, UserAvatar, SettingsIcon, Locked, UserFollow, Trophy, Help } from "./icons";
 import { SearchCommand } from "./SearchCommand";
 import { AccountBanners } from "./AccountBanners";
 import { ChatDock } from "./ChatDock";
 import { MobileBottomNav } from "./MobileBottomNav";
 import { ThemeToggle } from "./ThemeToggle";
+import { TourDialog } from "./TourDialog";
+import { OPEN_TOUR_EVENT } from "../lib/tour";
 import { useAuth } from "../lib/AuthContext";
 
 const LEAGUES = [
@@ -289,6 +291,16 @@ export function AppShell() {
                     </button>
                   </>
                 )}
+                <button
+                  type="button"
+                  className="account-menu-item"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    window.dispatchEvent(new Event(OPEN_TOUR_EVENT));
+                  }}
+                >
+                  <Help size={16} /> Take the tour
+                </button>
                 <button type="button" className="account-menu-item" onClick={handleLogout}>
                   <UserFollow size={16} /> Sign out
                 </button>
@@ -310,6 +322,8 @@ export function AppShell() {
           survives navigation between matches -- which is the whole point of
           being able to ask a follow-up about the fixture you just opened. */}
       <ChatDock />
+
+      <TourDialog />
 
       <MobileBottomNav />
     </LeagueContext.Provider>

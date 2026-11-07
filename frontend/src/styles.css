@@ -6848,3 +6848,143 @@ table.admin-table {
     justify-self: center;
   }
 }
+
+/* ---- First-run walkthrough (components/TourDialog.tsx) ---- */
+.tour-backdrop {
+  position: fixed;
+  inset: 0;
+  /* Above the sticky topbar, cookie strip, bottom nav and chat dock. */
+  z-index: 100000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.62);
+}
+
+.tour-card {
+  position: relative;
+  width: min(460px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 28px 24px 20px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+}
+
+.tour-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.tour-close:hover {
+  background: var(--bg-surface-2);
+  color: var(--text-primary);
+}
+
+.tour-icon {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 14px;
+  border-radius: 18px;
+  color: #fff;
+  background: var(--accent);
+  overflow: hidden;
+}
+
+.tour-step-count {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.tour-title {
+  margin: 0 0 10px;
+  font-family: var(--font-display);
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.tour-body {
+  margin: 0 0 10px;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.tour-points {
+  margin: 0 0 6px;
+  padding-left: 18px;
+  list-style: disc; /* the global reset removes bullets */
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.tour-points li + li {
+  margin-top: 4px;
+}
+
+.tour-dots {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  margin: 18px 0 14px;
+}
+
+.tour-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--border);
+}
+
+.tour-dot.done {
+  background: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+.tour-dot.active {
+  width: 20px;
+  border-radius: 4px;
+  background: var(--accent);
+}
+
+.tour-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Next/Start sits at the end; "Take me there" fills the middle. */
+.tour-actions .btn:last-child {
+  margin-left: auto;
+}
+
+@media (max-width: 480px) {
+  .tour-card {
+    padding: 24px 18px 16px;
+  }
+  .tour-title {
+    font-size: 20px;
+  }
+}
