@@ -1,8 +1,8 @@
 """Deleting an account from the platform entirely (Admin -> Users -> Delete).
 
 Everything that is the person's own goes with them: the account row, its
-access grants and code redemptions, chat history, viewed-match history and
-saved booking slips. Records that belong to the platform rather than the
+access grants and code redemptions, chat history, viewed-match history,
+saved booking slips and saved selections. Records that belong to the platform rather than the
 person stay, but stop pointing at them:
 
 - access codes assigned to them are revoked if still usable (an unassigned
@@ -37,6 +37,7 @@ from app.db.models import (
     FeaturedPick,
     MatchView,
     Payment,
+    SavedSelection,
     User,
     WinningSlip,
 )
@@ -56,7 +57,7 @@ def delete_user_account(db: Session, admin: User, target: User) -> None:
     user_id, role = target.id, target.role
     now = utcnow()
 
-    for model in (AccessRedemption, AccessGrant, ChatMessage, MatchView, BookingSlip):
+    for model in (AccessRedemption, AccessGrant, ChatMessage, MatchView, BookingSlip, SavedSelection):
         db.execute(delete(model).where(model.user_id == user_id))
 
     db.execute(

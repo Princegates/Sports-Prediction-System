@@ -925,6 +925,28 @@ export interface BetCodePick {
   selection: string;
 }
 
+export interface SavedGame {
+  match_id: number;
+  league: string;
+  home_team: string;
+  away_team: string;
+  kickoff: string | null;
+  market: string;
+  selection: string;
+  /** False once the game has started or finished -- it can't go on a code any more. */
+  upcoming: boolean;
+}
+
+export interface SavedSelection {
+  id: number;
+  name: string;
+  created_at: string;
+  games: SavedGame[];
+  upcoming_count: number;
+  /** Said when some picks were left out on saving. */
+  warnings: string[];
+}
+
 
 // --- News banner -------------------------------------------------------------
 

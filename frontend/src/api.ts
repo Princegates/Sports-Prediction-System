@@ -8,6 +8,7 @@ import type {
   SuggestCriteria,
   SuggestRandomCriteria,
   SuggestedPicks,
+  SavedSelection,
   OutcomesResponse,
   Branding,
   SettingsPayload,
@@ -1070,4 +1071,22 @@ export function updateBannerItem(
 
 export function deleteBannerItem(id: number): Promise<{ message: string }> {
   return del(`/api/admin/banner-items/${id}`);
+}
+
+/** Picks a member keeps to turn into a booking code later. Only the picks are
+ * stored; using one re-checks it against today's predictions (resolvePicks). */
+export function fetchSavedSelections(): Promise<SavedSelection[]> {
+  return get("/api/betcodes/saved");
+}
+
+export function saveSelection(picks: BetCodePick[], name?: string): Promise<SavedSelection> {
+  return post("/api/betcodes/saved", { name: name?.trim() || null, picks });
+}
+
+export function renameSavedSelection(id: number, name: string): Promise<SavedSelection> {
+  return patch(`/api/betcodes/saved/${id}`, { name });
+}
+
+export function deleteSavedSelection(id: number): Promise<void> {
+  return del(`/api/betcodes/saved/${id}`);
 }

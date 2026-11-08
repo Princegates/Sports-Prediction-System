@@ -1084,6 +1084,41 @@ class ResolvePicksIn(BaseModel):
     picks: list[BetCodePickIn]
 
 
+class SavedSelectionIn(BaseModel):
+    """Picks to keep for later. ``name`` is optional; one is made up if blank."""
+
+    name: str | None = Field(default=None, max_length=80)
+    picks: list[BetCodePickIn] = Field(min_length=1, max_length=40)
+
+
+class RenameSavedSelectionIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+
+
+class SavedGameOut(BaseModel):
+    match_id: int
+    league: str
+    home_team: str
+    away_team: str
+    kickoff: dt.datetime | None
+    market: str
+    selection: str
+    # False once the game has started or finished (or no longer exists):
+    # such a game can't go on a booking code any more.
+    upcoming: bool
+
+
+class SavedSelectionOut(BaseModel):
+    id: int
+    name: str
+    created_at: dt.datetime
+    games: list[SavedGameOut]
+    upcoming_count: int
+    # Said when some picks were left out on saving (a game already started,
+    # an outcome that doesn't exist) -- empty when everything was kept.
+    warnings: list[str] = []
+
+
 class BettingSiteOut(BaseModel):
     key: str
     name: str

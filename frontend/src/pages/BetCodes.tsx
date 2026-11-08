@@ -25,6 +25,7 @@ import { FixtureCalendar } from "../components/FixtureCalendar";
 import { LeaguePicker } from "../components/LeaguePicker";
 import { MarketPicker, type MarketPreset } from "../components/MarketPicker";
 import { MyCodesHistory } from "../components/MyCodesHistory";
+import { SavedSelections, SaveSelectionControl } from "../components/SavedSelections";
 import { SiteCodes } from "../components/SiteCodes";
 import { StickySlipBar } from "../components/StickySlipBar";
 import { LEAGUES, useLeague } from "../components/AppShell";
@@ -291,6 +292,8 @@ export function BetCodes() {
   // (or another page) rather than the criteria form below -- changes the
   // result card's framing, not how it's resolved.
   const [fromExternalPicks, setFromExternalPicks] = useState(false);
+  // Bumped after a slip is saved, so the Saved selections list reloads.
+  const [savedReload, setSavedReload] = useState(0);
   // Which search produced the current preview -- activeRisk alone can't
   // tell a custom-criteria run apart from a random draw, since both leave
   // it null (every form control already clears it on touch). Refresh reads
@@ -430,6 +433,18 @@ export function BetCodes() {
     runPreview(() => resolvePicks(picks), true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.state]);
+
+  // Puts a saved selection back through the normal check: today's
+  // predictions, games that have started dropped (and said so in the warnings
+  // below), then the usual betting-site buttons make the code. Doesn't use up
+  // a run -- nothing is searched, only re-checked.
+  async function loadSavedSelection(picks: BetCodePick[]) {
+    setActiveRisk(null);
+    setLastRunWasRandom(false);
+    setFromExternalPicks(true);
+    await runPreview(() => resolvePicks(picks), true);
+    window.setTimeout(() => resultsCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
+  }
 
   // `exclude` is only ever non-empty when Refresh calls this -- a plain
   // click (every other call site) passes none, which is also what decides
@@ -1133,6 +1148,12 @@ export function BetCodes() {
           {editedLegs.length > 0 && (
             <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
               <CopyButton text={formatLegsForCopy(editedLegs, editedCombinedProbability)} label="Copy selections" />
+              {editingPickId === null && (
+                <SaveSelectionControl
+                  picks={editedLegs.map((l) => ({ match_id: l.match_id, market: l.market, selection: l.selection }))}
+                  onSaved={() => setSavedReload((n) => n + 1)}
+                />
+              )}
               {user?.role === "superadmin" && (
                 <button className="btn ghost" onClick={handleFeatureOrSave} disabled={featuring}>
                   {featuring
@@ -1168,6 +1189,8 @@ export function BetCodes() {
           onView={() => resultsCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
         />
       )}
+
+      <SavedSelections reloadKey={savedReload} onUse={(picks) => loadSavedSelection(picks)} />
 
       {user?.role === "superadmin" && adminPicks.length > 0 && (
         <div className="card card-pad" style={{ marginTop: 20 }}>

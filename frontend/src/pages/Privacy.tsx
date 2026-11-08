@@ -25,7 +25,7 @@ const COLLECTED: { what: string; detail: string; why: string }[] = [
   {
     what: "How you use the service",
     detail:
-      "Matches you looked at, your AI Generation runs and settings, slips you saved, and picks you chose. Your referral code and who you referred.",
+      "Matches you looked at, your AI Generation runs and settings, slips and selections you saved, and picks you chose. Your referral code and who you referred.",
     why: "To run the features you use, enforce run limits, and show your history.",
   },
   {
@@ -148,7 +148,7 @@ export function Privacy() {
           <li>Your account information, history and messages are kept while your account exists.</li>
           <li>
             When an account is deleted, we remove the account, its access records, chat history, viewing
-            history and saved slips.
+            history, saved slips and saved selections.
           </li>
           <li>
             Some records stay after deletion but are no longer linked to you: payment records (we must keep

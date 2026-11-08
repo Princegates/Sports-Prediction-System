@@ -16,11 +16,12 @@ from __future__ import annotations
 import datetime as dt
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app import ai_generation_quota
 from app.api.deps import get_db, require_active_access
+from app.api.rate_limit import enforce_key
 from app.api.schemas import (
     AIGenerationQuotaOut,
     BettingSiteOut,
@@ -29,7 +30,11 @@ from app.api.schemas import (
     PickedLegOut,
     PicksBookingIn,
     PicksBookingOut,
+    RenameSavedSelectionIn,
     ResolvePicksIn,
+    SavedGameOut,
+    SavedSelectionIn,
+    SavedSelectionOut,
     SiteCodeOut,
     SuggestCriteriaIn,
     SuggestedPicksOut,
@@ -46,7 +51,8 @@ from app.betcode.selection import (
     select_legs_featuring_every_market,
     select_random_legs,
 )
-from app.db.models import AuditLog, BookingSlip, User
+from app.db.models import AuditLog, BookingSlip, Match, SavedSelection, User
+from app.timeutil import utcnow
 from app.pick_settlement import frozen_booking_slip_legs, settle_booking_slip
 
 router = APIRouter(
@@ -372,3 +378,134 @@ def list_sites() -> list[BettingSiteOut]:
     connection is built. The booking step only offers connected ones."""
 
     return [BettingSiteOut(key=s.key, name=s.name, connected=s.connected) for s in betting_sites.SITES]
+
+
+# --- Saved selections ------------------------------------------------------------
+#
+# A member can keep a set of picks to turn into a booking code later. Only the
+# picks are stored; "using" one runs it back through POST /resolve, so it always
+# shows today's numbers and drops any game that has started.
+
+MAX_SAVED_SELECTIONS = 30
+
+
+def _saved_to_out(
+    db: Session, saved: SavedSelection, warnings: list[str] | None = None
+) -> SavedSelectionOut:
+    picks = saved.picks or []
+    ids = {p["match_id"] for p in picks}
+    matches = {m.id: m for m in db.execute(select(Match).where(Match.id.in_(ids))).scalars()} if ids else {}
+    now = utcnow()
+    games: list[SavedGameOut] = []
+    for pick in picks:
+        match = matches.get(pick["match_id"])
+        if match is None:
+            games.append(
+                SavedGameOut(
+                    match_id=pick["match_id"], league="", home_team="Game no longer available", away_team="",
+                    kickoff=None, market=pick["market"], selection=pick["selection"], upcoming=False,
+                )
+            )
+            continue
+        games.append(
+            SavedGameOut(
+                match_id=match.id,
+                league=match.league,
+                home_team=match.home_team.name,
+                away_team=match.away_team.name,
+                kickoff=match.date,
+                market=pick["market"],
+                selection=pick["selection"],
+                upcoming=match.status != "FINISHED" and match.date > now,
+            )
+        )
+    return SavedSelectionOut(
+        id=saved.id,
+        name=saved.name,
+        created_at=saved.created_at,
+        games=games,
+        upcoming_count=sum(1 for g in games if g.upcoming),
+        warnings=warnings or [],
+    )
+
+
+def _clean_name(raw: str | None) -> str:
+    name = " ".join((raw or "").split())[:80]
+    return name or f"Saved {utcnow():%d %b %H:%M}"
+
+
+def _owned_saved(db: Session, user: User, saved_id: int) -> SavedSelection:
+    saved = db.get(SavedSelection, saved_id)
+    # Another member's selection is a 404, not a 403, so ids can't be probed.
+    if saved is None or saved.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Saved selection not found.")
+    return saved
+
+
+@router.get("/saved", response_model=list[SavedSelectionOut])
+def list_saved_selections(
+    user: User = Depends(require_active_access), db: Session = Depends(get_db)
+) -> list[SavedSelectionOut]:
+    rows = db.execute(
+        select(SavedSelection).where(SavedSelection.user_id == user.id).order_by(SavedSelection.created_at.desc())
+    ).scalars().all()
+    return [_saved_to_out(db, row) for row in rows]
+
+
+@router.post("/saved", response_model=SavedSelectionOut)
+def save_selection(
+    payload: SavedSelectionIn, user: User = Depends(require_active_access), db: Session = Depends(get_db)
+) -> SavedSelectionOut:
+    """Keeps these picks for later. Each one is checked first (a real upcoming
+    game, an outcome that exists, one pick per game), and only the valid ones
+    are saved -- the rest come back as warnings, so nothing unusable is kept."""
+
+    enforce_key(f"saved_selection-user:{user.id}", 30, 600)
+    count = db.execute(select(func.count(SavedSelection.id)).where(SavedSelection.user_id == user.id)).scalar_one()
+    if count >= MAX_SAVED_SELECTIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"You can keep up to {MAX_SAVED_SELECTIONS} saved selections. Delete one to save another.",
+        )
+
+    refs: list[tuple[int, str, str]] = []
+    for pick in payload.picks:
+        ref = (pick.match_id, pick.market, pick.selection)
+        if ref not in refs:
+            refs.append(ref)
+    legs, warnings = resolve_legs_unpriced(db, refs)
+    if not legs:
+        raise HTTPException(
+            status_code=422, detail=" ".join(warnings) or "None of these picks can be saved: they are not upcoming games."
+        )
+
+    saved = SavedSelection(
+        user_id=user.id,
+        name=_clean_name(payload.name),
+        picks=[{"match_id": leg.match_id, "market": leg.market, "selection": leg.selection} for leg in legs],
+    )
+    db.add(saved)
+    db.commit()
+    db.refresh(saved)
+    return _saved_to_out(db, saved, warnings)
+
+
+@router.patch("/saved/{saved_id}", response_model=SavedSelectionOut)
+def rename_saved_selection(
+    saved_id: int,
+    payload: RenameSavedSelectionIn,
+    user: User = Depends(require_active_access),
+    db: Session = Depends(get_db),
+) -> SavedSelectionOut:
+    saved = _owned_saved(db, user, saved_id)
+    saved.name = _clean_name(payload.name)
+    db.commit()
+    return _saved_to_out(db, saved)
+
+
+@router.delete("/saved/{saved_id}", status_code=204)
+def delete_saved_selection(
+    saved_id: int, user: User = Depends(require_active_access), db: Session = Depends(get_db)
+) -> None:
+    db.delete(_owned_saved(db, user, saved_id))
+    db.commit()

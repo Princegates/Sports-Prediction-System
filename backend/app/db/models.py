@@ -941,6 +941,24 @@ class MatchOdds(Base):
 
 
 
+class SavedSelection(Base):
+    """A set of picks a member keeps to turn into a booking code later.
+
+    Only the picks are stored -- (match, market, selection) -- never
+    probabilities: a saved selection is re-checked against each match's
+    current prediction when it is used (POST /api/betcodes/resolve), so it
+    always shows today's numbers and drops any game that has started.
+    """
+
+    __tablename__ = "saved_selections"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    picks: Mapped[list] = mapped_column(JSON)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
 class BookingSlip(Base):
     """A multi-match selection assembled toward a target combined price, and
     whatever a booking-code aggregator returned for it.
