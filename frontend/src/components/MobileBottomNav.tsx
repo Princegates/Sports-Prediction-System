@@ -1,5 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { AIGenerationCount } from "./AIGenerationCount";
+import { tourTargetFor } from "../lib/tour";
 import { Home, ChartLine, ShoppingCatalog, AiGenerate, Live as LiveIcon, PinFilled, Trophy } from "./icons";
 
 const ITEMS: { to: string; label: string; end?: boolean; icon?: typeof Home }[] = [
@@ -30,6 +31,7 @@ export function MobileBottomNav() {
           key={item.to}
           to={item.to}
           end={item.end}
+          data-tour={tourTargetFor(item.to)}
           className={({ isActive }) => `mobile-bottom-nav-link${isActive ? " active" : ""}`}
         >
           <span className="mobile-bottom-nav-icon" aria-hidden>

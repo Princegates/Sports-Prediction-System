@@ -9,98 +9,231 @@
 export interface TourStep {
   id: string;
   title: string;
+  /** One or two short sentences, in plain English. */
   body: string;
-  /** Short extra points shown under the body. */
+  /** "What you can do here": short, one idea each. */
   points?: string[];
-  /** Where "Take me there" goes; omitted for steps that are only explanation. */
-  to?: string;
-  toLabel?: string;
-  /** Which icon to show (see TourDialog's ICONS). */
-  icon: "mascot" | "home" | "chart" | "markets" | "picks" | "generate" | "live" | "guda" | "access";
+  /** Where to tap, said simply. Shown with the glowing spot on screen. */
+  tryIt?: string;
+  /** Said instead of `tryIt` when the thing isn't on screen (a phone has no top tabs, say). */
+  tryItElse?: string;
+  /** `data-tour` names of the real button to light up, best first; the first
+   * one actually visible wins (a phone shows the bottom bar, a computer the top tabs). */
+  target?: string[];
+  /** Page to be on for the target to exist; the tour opens it for you. */
+  route?: string;
+  icon: "mascot" | "home" | "league" | "search" | "chart" | "markets" | "picks" | "generate" | "live" | "share" | "access" | "theme" | "menu";
+}
+
+/** Which `data-tour` name each main page's button wears, in both the top tabs
+ * (computer) and the bottom bar (phone). */
+const TARGET_BY_PATH: Record<string, string> = {
+  "/app": "nav-dashboard",
+  "/app/ai-picks": "nav-ai-picks",
+  "/app/predictions": "nav-predictions",
+  "/app/markets": "nav-markets",
+  "/app/betcodes": "nav-generate",
+  "/app/live": "nav-live",
+  "/app/share-win": "nav-share",
+  "/app/access": "nav-access",
+};
+
+export function tourTargetFor(path: string): string | undefined {
+  return TARGET_BY_PATH[path];
 }
 
 export const TOUR_STEPS: TourStep[] = [
   {
     id: "welcome",
     icon: "mascot",
-    title: "Welcome to Socca Intelligence",
+    title: "Welcome! Let's take a quick look around",
     body:
-      "We turn match data into probabilities: for each game, how likely every outcome is, with the reasoning shown next to the number. This quick tour (under a minute) shows where everything is.",
-    points: ["Predictions are probabilities, not guarantees.", "You can reopen this tour any time from the account menu."],
+      "This app helps you pick football games. For every game, we work out how likely each result is, and we show you why. This guide takes about two minutes.",
+    points: [
+      "Nobody can promise a win. We show chances, not guarantees.",
+      "A glowing spot will show you exactly where to tap.",
+      "You can stop any time and come back later from the account menu.",
+    ],
   },
   {
     id: "dashboard",
     icon: "home",
-    title: "Dashboard: your starting point",
-    body: "Today's most confident picks and the slips we've featured, across the leagues you choose.",
+    title: "Dashboard: your home page",
+    body: "This is the first page you see every time you open the app.",
     points: [
-      "Use the league menu at the top to narrow to one competition.",
-      "The search icon (or Ctrl/⌘ + K) jumps straight to any team.",
+      "“Today's headline picks” shows our best pick in each league today.",
+      "With full access you also get “Match discovery”. Use Today and Tomorrow to find games.",
+      "The search bar at the top finds any team.",
     ],
-    to: "/app",
-    toLabel: "Open the Dashboard",
+    tryIt: "Tap the glowing button to come back to this page at any time.",
+    target: ["nav-dashboard"],
+    route: "/app",
+  },
+  {
+    id: "league",
+    icon: "league",
+    title: "League menu: choose a league",
+    body: "A league is a competition, like the Premier League or La Liga. This menu shows games from one league only.",
+    points: ["Choose “All leagues” to see every game again."],
+    tryIt: "Tap the glowing menu and pick a league.",
+    tryItElse: "Look for the league menu at the top of the Dashboard.",
+    target: ["league-select"],
+    route: "/app",
+  },
+  {
+    id: "search",
+    icon: "search",
+    title: "Search: find any team",
+    body: "Type a team's name to open its full profile and see how we rate it.",
+    points: ["On a computer you can also press Ctrl + K (or ⌘ + K on a Mac)."],
+    tryIt: "Tap the glowing magnifying glass.",
+    target: ["search"],
   },
   {
     id: "predictions",
     icon: "chart",
-    title: "Predictions: every upcoming match",
-    body:
-      "Win, draw and loss probabilities for each fixture, plus a confidence rating so you can see where the model is surest.",
-    points: ["Sort by kickoff, probability or confidence.", "Tap any match for the full breakdown and why the model thinks what it does."],
-    to: "/app/predictions",
-    toLabel: "See predictions",
+    title: "Predictions: our pick for every game",
+    body: "A list of coming games. Each one shows our top pick and how likely it is, as a percentage.",
+    points: [
+      "“Confidence” tells you how sure we are: High, Medium or Low.",
+      "Use the buttons at the top to show only High, Medium or Low games.",
+      "“Table” shows a simple list. “Confidence tiers” groups the games from safest to riskiest.",
+      "Tap any game to read why we chose that pick.",
+      "Tick some games and press “Send to AI Generation” to turn them into a slip.",
+    ],
+    tryIt: "Tap the glowing button, then try the confidence buttons.",
+    target: ["nav-predictions"],
   },
   {
     id: "markets",
     icon: "markets",
-    title: "Markets: beyond win/draw/lose",
+    title: "Markets: see every possible result",
     body:
-      "A bookmaker-style coupon, priced by our model instead of a bookmaker: goals totals, both teams to score, double chance, correct score and more.",
-    to: "/app/markets",
-    toLabel: "Browse markets",
+      "You can bet on many things in one game: who wins, how many goals, and more. Each kind of bet is called a market. Here you can see all of them, with our chances.",
+    points: [
+      "Tap a result to add it to “My picks”. A bar shows your picks and how likely it is that all of them win.",
+      "Switch between “Coupon” and “List by probability” with the two buttons at the top.",
+      "“Choose markets” shows only the kinds of bets you care about.",
+      "“Browse by date” lets you pick a day.",
+      "Press Copy to copy your picks.",
+    ],
+    tryIt: "Tap the glowing button.",
+    target: ["nav-markets"],
   },
   {
     id: "picks",
     icon: "picks",
-    title: "AI Picks: ready-made slips",
+    title: "AI Picks: slips made for you",
     body:
-      "Multi-match slips put together for you every day and every week, in Low, Medium and High risk. Low risk slips use only very likely legs; High risk reaches further and is much harder to land.",
-    points: ["More legs means a smaller chance that all of them come in.", "Each slip shows its combined probability, so you know what you're looking at."],
-    to: "/app/ai-picks",
-    toLabel: "See AI Picks",
+      "A slip is a group of games you choose together. For a slip to win, every game in it must win. We make new slips for you every day and every week.",
+    points: [
+      "Low risk: only games we think are very likely (85% or more). Safer.",
+      "Medium risk: likely games (70% to 85%).",
+      "High risk: less sure games (55% to 70%). Much harder to win.",
+      "More games in a slip means a smaller chance that all of them win. Each slip shows its chance as a percentage.",
+    ],
+    tryIt: "Tap the glowing button to see today's and this week's slips.",
+    target: ["nav-ai-picks"],
   },
   {
     id: "generate",
     icon: "generate",
-    title: "AI Generation: build your own",
-    body:
-      "Choose the leagues, how many matches and how safe you want it, and we'll assemble the selections for you. Where a betting site is supported you can also get a booking code to load the slip.",
-    points: ["Each run uses one of your daily runs. The count is shown on the page.", "Need more? Extra runs can be added when you run out."],
-    to: "/app/betcodes",
-    toLabel: "Try AI Generation",
+    title: "AI Generation: build your own slip",
+    body: "Tell us what you want, and we pick the games for you.",
+    points: [
+      "Tap Low, Medium or High risk to fill in the settings for you. Or set them yourself.",
+      "Choose the leagues, the days to look at, how many games you want, and the lowest chance you will accept (like 65% or more).",
+      "Look over the games we found. Remove any you don't like.",
+      "Copy your games, or get a booking code. A booking code is a short code you type into a betting site to load all your games at once. It works on the sites we support.",
+      "Each time you generate, you use 1 run. The number of runs you have left today is shown on the page.",
+    ],
+    tryIt: "Tap the glowing button, then try “Low risk”.",
+    target: ["nav-generate"],
   },
   {
     id: "live",
     icon: "live",
-    title: "Live scores and Guda",
-    body:
-      "Follow matches as they happen on the Live tab. And whenever you have a question, tap Guda, the chat assistant in the corner: ask about a match, compare two teams or find a safer pick.",
-    points: ["Guda's full conversations are part of full access."],
-    to: "/app/live",
-    toLabel: "Open Live",
+    title: "Live: scores as they happen",
+    body: "Follow games while they are being played.",
+    points: [
+      "Choose Yesterday, Today or Tomorrow.",
+      "Choose “All” to see every game, or “Live” to see only the games being played right now.",
+    ],
+    tryIt: "Tap the glowing button.",
+    target: ["nav-live"],
+  },
+  {
+    id: "share",
+    icon: "share",
+    title: "Share a win: show off your win",
+    body: "Won with our picks? Post your winning ticket so other people can see it.",
+    points: [
+      "A screenshot or a PDF of your ticket both work. For PDFs we remove your account link and IP address.",
+      "Our team checks each one before it shows on the site. This usually takes less than a day.",
+    ],
+    tryIt: "Tap the glowing button when you have a win to share.",
+    target: ["nav-share"],
   },
   {
     id: "access",
     icon: "access",
-    title: "Your access, and playing it safe",
+    title: "Access code: keep full access",
     body:
-      "New accounts get a free trial. Confirm your email to start it. To keep full access afterwards, redeem an access code on the Access code page, or ask the admin on WhatsApp.",
+      "New accounts get a free trial. It starts when you confirm your email, so check your inbox (and your spam folder).",
     points: [
-      "Won with our picks? Share it from “Share a win”.",
-      "These are analyses, not promises. Only ever stake what you can afford to lose, and take a break if it stops being fun. 18+ only.",
+      "When the trial ends, type an access code here to keep full access.",
+      "Don't have a code? Message the admin on WhatsApp.",
     ],
-    to: "/app/access",
-    toLabel: "Go to Access code",
+    tryIt: "On a computer, tap the glowing “Access code” button. On a phone, open the account menu and choose “Access code”.",
+    target: ["nav-access", "account-menu"],
+  },
+  {
+    id: "theme",
+    icon: "theme",
+    title: "Light mode and dark mode",
+    body: "Choose the one that is easier on your eyes. We remember your choice.",
+    tryIt: "Tap the glowing sun or moon button to switch.",
+    target: ["theme-toggle"],
+  },
+  {
+    id: "menu",
+    icon: "menu",
+    title: "Account menu: your profile and more",
+    body: "Tap your picture at the top right to open this menu.",
+    points: [
+      "Profile: change your name or password, choose your emails, and take a break from the app.",
+      "Access code: enter a code to unlock more.",
+      "Share a win: post a winning ticket.",
+      "Take the tour: see this guide again.",
+      "Sign out: leave your account.",
+    ],
+    tryIt: "Tap the glowing picture.",
+    target: ["account-menu"],
+  },
+  {
+    id: "guda",
+    icon: "mascot",
+    title: "Guda: your helper",
+    body: "Guda is our helper. Tap the “Ask Guda” button at the bottom right and type a question, like you would send a message to a friend.",
+    points: [
+      "Try: “Who is likely to win Arsenal vs Chelsea?” or “Compare Barcelona and Real Madrid.”",
+      "If the button is in the way, drag it somewhere else.",
+      "The full chat is part of full access.",
+    ],
+    tryIt: "Look for the glowing button.",
+    target: ["guda"],
+  },
+  {
+    id: "safe",
+    icon: "mascot",
+    title: "Before you start: play it safe",
+    body: "These are chances, not promises. Nobody can know for sure who will win a game.",
+    points: [
+      "Only use money you can afford to lose.",
+      "You must be 18 or older.",
+      "If it stops being fun, take a break. You can pause your account from your Profile.",
+      "To see this guide again, open the account menu and tap “Take the tour”.",
+    ],
   },
 ];
 

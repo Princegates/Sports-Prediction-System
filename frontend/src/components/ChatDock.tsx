@@ -382,6 +382,7 @@ export function ChatDock() {
       <button
         ref={fab.ref}
         className="chat-fab"
+        data-tour="guda"
         style={fab.style}
         onPointerDown={fab.onPointerDown}
         onPointerMove={fab.onPointerMove}

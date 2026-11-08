@@ -6849,7 +6849,7 @@ table.admin-table {
   }
 }
 
-/* ---- First-run walkthrough (components/TourDialog.tsx) ---- */
+/* ---- Walkthrough (components/TourDialog.tsx) ---- */
 .tour-backdrop {
   position: fixed;
   inset: 0;
@@ -6862,24 +6862,52 @@ table.admin-table {
   background: rgba(0, 0, 0, 0.62);
 }
 
+/* With a button lit up, the dimming is drawn by the spotlight itself (a huge
+   shadow around a hole), so the backdrop only has to catch clicks. */
+.tour-backdrop--spot {
+  background: transparent;
+}
+
 .tour-card {
   position: relative;
+  display: flex;
+  flex-direction: column;
   width: min(460px, 100%);
-  max-height: 100%;
-  overflow-y: auto;
+  max-height: calc(100vh - 32px);
   box-sizing: border-box;
-  padding: 28px 24px 20px;
   border-radius: var(--radius-lg);
   background: var(--bg-surface);
   color: var(--text-primary);
   border: 1px solid var(--border);
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+/* Next to a lit-up button: pinned above or below it, centred across the screen. */
+.tour-card--placed {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(460px, calc(100vw - 32px));
+}
+
+.tour-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 22px 22px 6px;
+}
+
+.tour-foot {
+  padding: 8px 22px 18px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-surface);
 }
 
 .tour-close {
   position: absolute;
   top: 10px;
   right: 10px;
+  z-index: 1;
   display: grid;
   place-items: center;
   width: 36px;
@@ -6896,21 +6924,28 @@ table.admin-table {
   color: var(--text-primary);
 }
 
+.tour-head {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin: 0 28px 12px 0;
+}
+
 .tour-icon {
+  flex-shrink: 0;
   display: grid;
   place-items: center;
-  width: 64px;
-  height: 64px;
-  margin-bottom: 14px;
-  border-radius: 18px;
+  width: 52px;
+  height: 52px;
+  border-radius: 15px;
   color: #fff;
   background: var(--accent);
   overflow: hidden;
 }
 
 .tour-step-count {
-  margin: 0 0 4px;
-  font-size: 12px;
+  margin: 0 0 2px;
+  font-size: 11.5px;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -6918,54 +6953,66 @@ table.admin-table {
 }
 
 .tour-title {
-  margin: 0 0 10px;
+  margin: 0;
   font-family: var(--font-display);
-  font-size: 22px;
+  font-size: 19px;
   line-height: 1.25;
 }
 
 .tour-body {
   margin: 0 0 10px;
-  font-size: 14.5px;
+  font-size: 15px;
   line-height: 1.6;
+  color: var(--text-primary);
+}
+
+.tour-label {
+  margin: 12px 0 4px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: var(--text-secondary);
 }
 
 .tour-points {
-  margin: 0 0 6px;
-  padding-left: 18px;
+  margin: 0 0 8px;
+  padding-left: 20px;
   list-style: disc; /* the global reset removes bullets */
-  font-size: 13.5px;
+  font-size: 14px;
   line-height: 1.55;
   color: var(--text-secondary);
 }
 
 .tour-points li + li {
-  margin-top: 4px;
+  margin-top: 5px;
 }
 
-.tour-dots {
-  display: flex;
-  gap: 6px;
-  justify-content: center;
-  margin: 18px 0 14px;
+.tour-tryit {
+  margin: 12px 0 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  line-height: 1.5;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--text-primary);
 }
 
-.tour-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
+.tour-progress {
+  height: 4px;
+  margin: 10px 0 12px;
+  border-radius: 2px;
   background: var(--border);
+  overflow: hidden;
 }
 
-.tour-dot.done {
-  background: color-mix(in srgb, var(--accent) 45%, var(--border));
-}
-
-.tour-dot.active {
-  width: 20px;
-  border-radius: 4px;
+.tour-progress span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
   background: var(--accent);
+  transition: width 0.25s ease;
 }
 
 .tour-optout {
@@ -6987,21 +7034,104 @@ table.admin-table {
 
 .tour-actions {
   display: flex;
-  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
 }
 
-/* Next/Start sits at the end; "Take me there" fills the middle. */
+/* Next/Start sits at the end. */
 .tour-actions .btn:last-child {
   margin-left: auto;
 }
 
+/* ---- The animated directive: a glowing spot on the real button, a pulse
+   that "taps" it, and a hand that points at it. ---- */
+.tour-spot {
+  position: fixed;
+  pointer-events: none;
+  /* The hole: everything outside this box is dimmed by the shadow. */
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.66);
+  outline: 3px solid var(--accent);
+  outline-offset: 0;
+  transition: left 0.28s ease, top 0.28s ease, width 0.28s ease, height 0.28s ease, border-radius 0.28s ease;
+  animation: tour-glow 1.6s ease-in-out infinite;
+}
+
+@keyframes tour-glow {
+  0%, 100% { outline-color: var(--accent); filter: drop-shadow(0 0 4px var(--accent)); }
+  50% { outline-color: color-mix(in srgb, var(--accent) 55%, white); filter: drop-shadow(0 0 14px var(--accent)); }
+}
+
+.tour-ripple {
+  position: fixed;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  border: 3px solid #fff;
+  pointer-events: none;
+  opacity: 0;
+  animation: tour-ripple 1.6s ease-out infinite;
+}
+
+@keyframes tour-ripple {
+  0%, 45% { opacity: 0; transform: scale(0.6); }
+  55% { opacity: 0.95; transform: scale(1); }
+  100% { opacity: 0; transform: scale(4.2); }
+}
+
+.tour-pointer {
+  position: fixed;
+  pointer-events: none;
+  width: 34px;
+  height: 44px;
+}
+
+/* Fingertip at the top-centre: below the button, pointing up. */
+.tour-pointer--below {
+  transform: translateX(-50%);
+}
+
+/* Above the button: the same hand, turned to point down. */
+.tour-pointer--above {
+  transform: translate(-50%, -100%) rotate(180deg);
+}
+
+.tour-pointer-hand {
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.5));
+  animation: tour-tap 1.6s ease-in-out infinite;
+}
+
+/* Slides toward the button, presses (shrinks a touch), then eases back. */
+@keyframes tour-tap {
+  0%, 100% { transform: translateY(10px) scale(1); }
+  45% { transform: translateY(-2px) scale(1); }
+  55% { transform: translateY(-2px) scale(0.9); }
+  70% { transform: translateY(-2px) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tour-spot,
+  .tour-pointer-hand,
+  .tour-progress span {
+    animation: none;
+    transition: none;
+  }
+  .tour-ripple {
+    display: none;
+  }
+}
+
 @media (max-width: 480px) {
-  .tour-card {
-    padding: 24px 18px 16px;
+  .tour-scroll {
+    padding: 18px 16px 4px;
+  }
+  .tour-foot {
+    padding: 6px 16px 14px;
   }
   .tour-title {
-    font-size: 20px;
+    font-size: 17.5px;
+  }
+  .tour-body {
+    font-size: 14.5px;
   }
 }

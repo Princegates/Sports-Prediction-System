@@ -9,7 +9,7 @@ import { ChatDock } from "./ChatDock";
 import { MobileBottomNav } from "./MobileBottomNav";
 import { ThemeToggle } from "./ThemeToggle";
 import { TourDialog } from "./TourDialog";
-import { OPEN_TOUR_EVENT } from "../lib/tour";
+import { OPEN_TOUR_EVENT, tourTargetFor } from "../lib/tour";
 import { useAuth } from "../lib/AuthContext";
 
 const LEAGUES = [
@@ -215,6 +215,7 @@ export function AppShell() {
               key={item.to}
               to={item.to}
               end={item.to === "/app"}
+              data-tour={tourTargetFor(item.to)}
               className={({ isActive }) => `topbar-tab${isActive ? " active" : ""}`}
             >
               {item.label}
@@ -228,6 +229,7 @@ export function AppShell() {
         {isDashboard && (
           <select
             aria-label="League"
+            data-tour="league-select"
             className="topbar-league-select"
             value={league}
             onChange={(e) => setLeague(e.target.value)}
@@ -244,7 +246,7 @@ export function AppShell() {
         <div className="topbar-actions">
           <ThemeToggle />
 
-          <button type="button" className="topbar-icon-btn" aria-label="Search teams" onClick={() => setSearchOpen(true)}>
+          <button type="button" className="topbar-icon-btn" data-tour="search" aria-label="Search teams" onClick={() => setSearchOpen(true)}>
             <Search size={18} />
           </button>
 
@@ -252,6 +254,7 @@ export function AppShell() {
             <button
               type="button"
               className="topbar-avatar"
+              data-tour="account-menu"
               aria-label="Account menu"
               aria-expanded={menuOpen}
               onClick={() => setMenuOpen((v) => !v)}

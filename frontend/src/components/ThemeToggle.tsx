@@ -42,7 +42,7 @@ export function ThemeToggle() {
   const label = theme === "dark" ? "Switch to day mode" : "Switch to night mode";
 
   return (
-    <button type="button" className="theme-toggle" onClick={toggle} aria-label={label} title={label}>
+    <button type="button" className="theme-toggle" data-tour="theme-toggle" onClick={toggle} aria-label={label} title={label}>
       {theme === "dark" ? "☀️" : "🌙"}
     </button>
   );
