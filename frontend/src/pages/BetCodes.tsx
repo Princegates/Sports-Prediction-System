@@ -34,6 +34,7 @@ import { useIsMobile } from "../lib/useIsMobile";
 import { takePendingSlip } from "../lib/pendingSlip";
 import type { AdminPick, BetCodePick, ExcludedLeg, MarketSummary, MatchSummary, PublicTeaserPick, SuggestCriteria, SuggestedLeg, SuggestedPicks } from "../types";
 import { chanceLabel } from "../lib/odds";
+import { ResultRiskNotice, SettingsRiskNotice } from "../components/RiskNotice";
 import { marketLabel } from "../lib/marketLabel";
 
 /** Plain-text description of one selected combo, meant to be pasted
@@ -951,6 +952,12 @@ export function BetCodes() {
           </div>
         )}
 
+        {(!isMobile || step === WIZARD_STEPS.length - 1) && (
+          <div style={{ marginTop: 14 }}>
+            <SettingsRiskNotice maxLegs={maxLegs} minProbability={minProbability} />
+          </div>
+        )}
+
         {/* Back/Next only step through the form above -- Generate always runs
             the search against whatever criteria are currently set,
             regardless of which step that leaves visible on mobile. */}
@@ -1003,6 +1010,7 @@ export function BetCodes() {
               </button>
             </p>
           )}
+          <ResultRiskNotice legCount={editedLegs.length} probability={editedCombinedProbability} />
           <div className="section-header" style={{ marginBottom: 12 }}>
             <h3 style={{ margin: 0 }}>
               {editedLegs.length} leg{editedLegs.length === 1 ? "" : "s"}

@@ -7135,3 +7135,41 @@ table.admin-table {
     font-size: 14.5px;
   }
 }
+
+/* ---- Heads-up for risky slips (components/RiskNotice.tsx). Informs only. ---- */
+.risk-notice {
+  margin: 0 0 14px;
+  padding: 11px 14px;
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--warning);
+  background: var(--warning-soft);
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text-primary);
+}
+
+.risk-notice.high {
+  border-left-color: var(--critical);
+  background: var(--critical-soft);
+}
+
+.risk-notice > strong {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 13.5px;
+}
+
+.risk-notice p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.risk-notice p strong {
+  color: var(--text-primary);
+}
+
+.risk-notice a {
+  color: var(--accent-strong);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
