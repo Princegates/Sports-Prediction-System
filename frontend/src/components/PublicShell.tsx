@@ -157,6 +157,9 @@ export function PublicShell({
             <h4>Transparency</h4>
             <Link to="/how-it-works">Model methodology</Link>
             <Link to="/responsible">Responsible use</Link>
+            <Link to="/terms">Terms of Service</Link>
+            <Link to="/privacy">Privacy Policy</Link>
+            <Link to="/refunds">Refund Policy</Link>
           </div>
 
           <div className="public-footer-col">

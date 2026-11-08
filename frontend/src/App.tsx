@@ -19,6 +19,9 @@ const AdminWinningSlips = lazy(() => import("./pages/AdminWinningSlips").then((m
 const AIPicks = lazy(() => import("./pages/AIPicks").then((m) => ({ default: m.AIPicks })));
 const BetCodes = lazy(() => import("./pages/BetCodes").then((m) => ({ default: m.BetCodes })));
 const CookiePolicy = lazy(() => import("./pages/CookiePolicy").then((m) => ({ default: m.CookiePolicy })));
+const Terms = lazy(() => import("./pages/Terms").then((m) => ({ default: m.Terms })));
+const Privacy = lazy(() => import("./pages/Privacy").then((m) => ({ default: m.Privacy })));
+const Refunds = lazy(() => import("./pages/Refunds").then((m) => ({ default: m.Refunds })));
 const Dashboard = lazy(() => import("./pages/Dashboard").then((m) => ({ default: m.Dashboard })));
 const ForgotPassword = lazy(() => import("./pages/ForgotPassword").then((m) => ({ default: m.ForgotPassword })));
 const FixturePreview = lazy(() => import("./pages/FixturePreview").then((m) => ({ default: m.FixturePreview })));
@@ -85,6 +88,9 @@ export default function App() {
         <Route path="/predictions/:leagueSlug" element={<LeaguePredictions />} />
         <Route path="/responsible" element={<Responsible />} />
         <Route path="/cookie-policy" element={<CookiePolicy />} />
+        <Route path="/terms" element={<Terms />} />
+        <Route path="/privacy" element={<Privacy />} />
+        <Route path="/refunds" element={<Refunds />} />
         <Route path="/account-status" element={<AccountStatus />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />

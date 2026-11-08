@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   fetchBranding,
   fetchPaymentOptions,
@@ -150,6 +150,9 @@ function PayNow({ options, label }: { options: PaymentOptions | null; label: str
         {options.currency}
         {options.amount.toLocaleString()} for {options.days} day{options.days === 1 ? "" : "s"} -- mobile money or
         card, confirmed automatically.
+      </span>
+      <span className="meta">
+        By paying you agree to our <Link to="/terms">Terms</Link> and <Link to="/refunds">Refund Policy</Link>.
       </span>
       {error && <p className="auth-error">{error}</p>}
     </div>

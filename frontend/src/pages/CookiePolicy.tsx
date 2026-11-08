@@ -35,6 +35,9 @@ const STORAGE_ITEMS: { key: string; purpose: string; necessary: boolean }[] = [
   { key: "market_picks", purpose: "Selections you've saved to \"My Picks.\"", necessary: false },
   { key: "chat_dock_open", purpose: "Whether the AI assistant panel is open or closed.", necessary: false },
   { key: "chat_fab_pos", purpose: "Where you last dragged the assistant's floating button.", necessary: false },
+  { key: "tour_optout_v1_<your id>", purpose: "Remembers that you chose not to see the welcome guide again.", necessary: false },
+  { key: "tour_session_v1_<your id>", purpose: "Remembers (for this visit only) that the welcome guide already showed, so it doesn't reappear on every page.", necessary: false },
+  { key: "install_card_dismissed", purpose: "Remembers that you closed the \"Install the app\" suggestion.", necessary: false },
 ];
 
 export function CookiePolicy() {
@@ -107,6 +110,16 @@ export function CookiePolicy() {
             </tbody>
           </table>
         </div>
+      </section>
+
+      <section className="doc-section">
+        <h2>If you install the app</h2>
+        <p>
+          The site can be installed on your phone or computer. When it is, your browser also keeps a copy of
+          the site's own files (pages, images and code) so it loads faster and can show an "offline" message
+          without a connection. It never stores predictions, odds or your account information this way, and
+          clearing the site's data in your browser removes it.
+        </p>
       </section>
 
       <section className="doc-section">

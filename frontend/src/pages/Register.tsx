@@ -231,6 +231,12 @@ export function Register() {
 
           {error && <p className="auth-error">{error}</p>}
 
+          <p style={{ fontSize: 12.5, color: "var(--text-secondary)", margin: "4px 0 0", lineHeight: 1.5 }}>
+            By creating an account you confirm you are 18 or older and agree to our{" "}
+            <Link to="/terms" target="_blank">Terms of Service</Link> and{" "}
+            <Link to="/privacy" target="_blank">Privacy Policy</Link>.
+          </p>
+
           <button className="btn" type="submit" disabled={busy} style={{ marginTop: 8 }}>
             {busy ? "Creating account..." : "Create account"}
           </button>
