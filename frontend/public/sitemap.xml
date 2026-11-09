@@ -1723,4 +1723,19 @@
     <changefreq>hourly</changefreq>
     <priority>0.7</priority>
   </url>
+  <url>
+    <loc>https://soccaintel.com/predict/16737-basaksehir-vs-corum-fk</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/38522-krasava-ypsonas-vs-anorthosis</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/6579-ac-monza-vs-acf-fiorentina</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
 </urlset>
