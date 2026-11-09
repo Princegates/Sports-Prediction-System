@@ -69,20 +69,68 @@ class InjuryImportReport:
     league: str
     considered: int = 0
     stored: int = 0
+    # Reports about games already played: predictions only ever look at the
+    # upcoming game, so these are left out (see import_injuries).
+    skipped_past: int = 0
     unresolved_teams: list[str] = field(default_factory=list)
 
 
+# A report tied to a game that kicked off more than this long ago can no
+# longer affect any prediction we make.
+PAST_FIXTURE_GRACE = dt.timedelta(days=1)
+# Rows per ``IN (...)`` lookup -- well under every database's parameter limit.
+_LOOKUP_CHUNK = 500
+
+
+def _fixture_is_current(fixture_block: dict, cutoff: dt.datetime) -> bool:
+    """False only for a report tied to a game that was played before
+    ``cutoff``. No fixture, or a date we can't read, counts as current: it is
+    better to keep a row than to drop one that mattered."""
+
+    raw = fixture_block.get("date")
+    if fixture_block.get("id") is None or not raw:
+        return True
+    try:
+        when = dt.datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except ValueError:
+        return True
+    if when.tzinfo is not None:
+        when = when.astimezone(dt.timezone.utc).replace(tzinfo=None)
+    return when >= cutoff
+
+
+def _chunks(values: list, size: int = _LOOKUP_CHUNK):
+    for i in range(0, len(values), size):
+        yield values[i : i + size]
+
+
 def import_injuries(
-    db: Session, client: ApiFootballClient, *, league_id: int, league_name: str, season: int
+    db: Session,
+    client: ApiFootballClient,
+    *,
+    league_id: int,
+    league_name: str,
+    season: int,
+    index: TeamIndex | None = None,
+    now: dt.datetime | None = None,
 ) -> InjuryImportReport:
     """Overwrites this league's stored absences wholesale with the provider's
     current list -- see PlayerAbsence's own docstring for why diffing isn't
     worth it: a recovered player just stops appearing, there's no event to
-    react to instead."""
+    react to instead.
+
+    The provider answers with the whole season's absences, most of them for
+    games already played. Only the upcoming game's absences are ever read
+    (app.features.squad_strength), so the past ones are skipped, and the
+    lookups that remain (matches, players) are done in bulk rather than one
+    query per row -- against a remote database that difference is minutes per
+    league, and it used to eat the whole daily-refresh time budget.
+    """
 
     report = InjuryImportReport(league=league_name)
     rows = client.injuries(league_id=league_id, season=season)
-    index = TeamIndex(db)
+    index = index or TeamIndex(db)
+    cutoff = (now or utcnow()) - PAST_FIXTURE_GRACE
 
     db.execute(
         PlayerAbsence.__table__.delete().where(
@@ -90,8 +138,25 @@ def import_injuries(
         )
     )
 
-    for row in rows:
-        report.considered += 1
+    report.considered = len(rows)
+    current = [row for row in rows if _fixture_is_current(row.get("fixture") or {}, cutoff)]
+    report.skipped_past = len(rows) - len(current)
+
+    fixture_ids = sorted({(row.get("fixture") or {}).get("id") for row in current} - {None})
+    match_by_fixture: dict[int, int] = {}
+    for chunk in _chunks(fixture_ids):
+        match_by_fixture.update(
+            db.execute(select(Match.api_fixture_id, Match.id).where(Match.api_fixture_id.in_(chunk))).all()
+        )
+
+    player_ids = sorted({(row.get("player") or {}).get("id") for row in current} - {None})
+    players: dict[int, Player] = {}
+    for chunk in _chunks(player_ids):
+        for player in db.execute(select(Player).where(Player.api_player_id.in_(chunk))).scalars():
+            players[player.api_player_id] = player
+
+    pending: list[tuple[Player, int, int | None, str | None]] = []
+    for row in current:
         player_block = row.get("player") or {}
         team_block = row.get("team") or {}
         fixture_block = row.get("fixture") or {}
@@ -107,23 +172,31 @@ def import_injuries(
             report.unresolved_teams.append(team_name)
             continue
 
-        match = None
-        fixture_id = fixture_block.get("id")
-        if fixture_id is not None:
-            match = db.execute(select(Match).where(Match.api_fixture_id == fixture_id)).scalar_one_or_none()
+        player = players.get(api_player_id)
+        if player is None:
+            player = Player(api_player_id=api_player_id, name=player_name, team_id=team.id)
+            db.add(player)
+            players[api_player_id] = player
+        else:
+            # Keep current rather than historical: a transfer or a provider
+            # spelling fix should take effect immediately, not leave a stale label.
+            player.name = player_name
+            player.team_id = team.id
 
-        player = _get_or_create_player(db, api_player_id, player_name, team)
         reason = player_block.get("reason") or player_block.get("type")
+        pending.append((player, team.id, match_by_fixture.get(fixture_block.get("id")), reason))
 
-        db.add(
-            PlayerAbsence(
-                player_id=player.id,
-                team_id=team.id,
-                match_id=match.id if match else None,
-                reason=reason,
-            )
+    db.flush()  # new players get their ids in one go
+    if pending:
+        # One bulk INSERT for every absence, rather than one round trip each.
+        db.execute(
+            PlayerAbsence.__table__.insert(),
+            [
+                {"player_id": player.id, "team_id": team_id, "match_id": match_id, "reason": reason, "fetched_at": utcnow()}
+                for player, team_id, match_id, reason in pending
+            ],
         )
-        report.stored += 1
+        report.stored = len(pending)
 
     db.commit()
     return report
@@ -154,12 +227,15 @@ def import_injuries_from_settings(
     )
     season = season or _current_season_start()
     reports: list[InjuryImportReport] = []
+    index = TeamIndex(db)  # once for the whole run, not once per league
     for league_name in league_names or list(LEAGUE_IDS):
         league_id = LEAGUE_IDS.get(league_name)
         if league_id is None:
             continue
         try:
-            reports.append(import_injuries(db, client, league_id=league_id, league_name=league_name, season=season))
+            reports.append(
+                import_injuries(db, client, league_id=league_id, league_name=league_name, season=season, index=index)
+            )
         except (ApiFootballError, QuotaExceeded) as exc:
             logger.warning("Injury import stopped at %s: %s", league_name, exc)
             break

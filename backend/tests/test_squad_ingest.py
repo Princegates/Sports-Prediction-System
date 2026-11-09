@@ -379,3 +379,122 @@ class TestRunLineupCheckFromSettings:
         run = run_lineup_check_from_settings(db_session, window_minutes=90)
 
         assert run.newly_confirmed == [fixture_match.id]
+
+
+class TestInjuryImportIsFastAndFocused:
+    """The provider returns the whole season's absences, nearly all for games
+    already played. Importing them one query at a time against a remote
+    database took ~55 minutes for every league and used up the daily refresh's
+    whole time budget, so it was cancelled before it could refresh anything."""
+
+    NOW = dt.datetime(2026, 11, 9, 12, 0)
+
+    def _row(self, player_id, fixture_id=None, date=None, team="Arsenal"):
+        fixture = {}
+        if fixture_id is not None:
+            fixture = {"id": fixture_id, **({"date": date} if date else {})}
+        return {
+            "player": {"id": player_id, "name": f"Player {player_id}", "reason": "Knee Injury"},
+            "team": {"name": team},
+            "fixture": fixture,
+        }
+
+    def test_reports_about_games_already_played_are_skipped(self, db_session, clubs):
+        client = FakeClient({
+            "injuries": [
+                self._row(1, 901, "2026-11-01T15:00:00+00:00"),   # played last week
+                self._row(2, 902, "2026-11-08T15:00:00+00:00"),   # yesterday: still within the grace day
+                self._row(3, 903, "2026-11-14T15:00:00+00:00"),   # upcoming
+                self._row(4),                                      # no fixture: "out right now"
+                self._row(5, 904),                                 # fixture, but no readable date: keep
+                self._row(6, 905, "not a date"),
+            ]
+        })
+
+        report = import_injuries(db_session, client, league_id=39, league_name=LEAGUE, season=2025, now=self.NOW)
+
+        assert report.considered == 6
+        assert report.skipped_past == 1
+        assert report.stored == 5
+        stored_players = {p.api_player_id for p in db_session.query(Player).all()}
+        assert stored_players == {2, 3, 4, 5, 6}
+
+    def test_an_absence_is_still_tied_to_its_upcoming_match(self, db_session, clubs, fixture_match):
+        client = FakeClient({"injuries": [self._row(7, fixture_match.api_fixture_id, "2026-11-14T15:00:00+00:00")]})
+
+        import_injuries(db_session, client, league_id=39, league_name=LEAGUE, season=2025, now=self.NOW)
+
+        absence = db_session.query(PlayerAbsence).one()
+        assert absence.match_id == fixture_match.id
+
+    def test_the_same_player_missing_two_games_is_one_player_two_absences(self, db_session, clubs):
+        client = FakeClient({
+            "injuries": [
+                self._row(8, 910, "2026-11-14T15:00:00+00:00"),
+                self._row(8, 911, "2026-11-21T15:00:00+00:00"),
+            ]
+        })
+
+        import_injuries(db_session, client, league_id=39, league_name=LEAGUE, season=2025, now=self.NOW)
+
+        assert db_session.query(Player).count() == 1
+        assert db_session.query(PlayerAbsence).count() == 2
+
+    def test_an_existing_player_is_updated_not_duplicated(self, db_session, clubs):
+        home, away = clubs
+        db_session.add(Player(api_player_id=9, name="Old Spelling", team_id=away.id))
+        db_session.commit()
+        client = FakeClient({"injuries": [self._row(9, None, team="Arsenal")]})
+
+        import_injuries(db_session, client, league_id=39, league_name=LEAGUE, season=2025, now=self.NOW)
+
+        player = db_session.query(Player).one()
+        assert (player.name, player.team_id) == ("Player 9", home.id)
+
+    def test_database_queries_do_not_grow_with_the_number_of_rows(self, db_session, clubs):
+        from sqlalchemy import event
+
+        from app.db.session import engine
+
+        rows = [self._row(1000 + i, 5000 + i, "2026-11-20T15:00:00+00:00") for i in range(300)]
+        client = FakeClient({"injuries": rows})
+        statements: list[str] = []
+
+        def count(conn, cursor, statement, *args):
+            statements.append(statement)
+
+        event.listen(engine, "before_cursor_execute", count)
+        try:
+            report = import_injuries(db_session, client, league_id=39, league_name=LEAGUE, season=2025, now=self.NOW)
+        finally:
+            event.remove(engine, "before_cursor_execute", count)
+
+        assert report.stored == 300
+        selects = [s for s in statements if s.lstrip().upper().startswith("SELECT")]
+        absence_inserts = [s for s in statements if "INSERT INTO player_absences" in s]
+        # Was a lookup or two per row (hundreds here); now a handful per run,
+        # and every absence goes in as one bulk INSERT.
+        assert len(selects) < 12, len(selects)
+        assert len(absence_inserts) == 1, len(absence_inserts)
+
+    def test_the_team_list_is_loaded_once_for_a_whole_run_not_once_per_league(self, db_session, clubs, monkeypatch):
+        monkeypatch.setattr(
+            app_settings, "all_values",
+            lambda db: {"api_football_key": "k", "api_football_host": "h", "api_football_daily_budget": 7500, "api_football_per_minute": 300},
+        )
+        monkeypatch.setattr(squad_ingest, "ApiFootballClient", lambda key, **kw: FakeClient({"injuries": []}, **kw))
+        built = []
+        real = squad_ingest.TeamIndex
+
+        class Counting(real):
+            def __init__(self, db):
+                built.append(1)
+                super().__init__(db)
+
+        monkeypatch.setattr(squad_ingest, "TeamIndex", Counting)
+
+        import_injuries_from_settings(
+            db_session, league_names=[LEAGUE, "Spanish La Liga", "German Bundesliga"], season=2025
+        )
+
+        assert len(built) == 1
