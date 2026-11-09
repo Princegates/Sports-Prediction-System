@@ -144,3 +144,22 @@ def test_a_match_already_started_is_never_used(db_session):
     db_session.commit()
 
     assert started.id not in {leg.match_id for leg in band(db_session, 0.70, 0.85).legs}
+
+
+def test_a_very_long_exclusion_list_is_applied_without_sending_it_to_the_database(db_session):
+    """More than SQL_EXCLUDE_LIMIT ids are filtered in Python (a single NOT IN
+    that long exceeds PostgreSQL's parameter limit); the result must be the
+    same as a short list would give."""
+
+    from app.betcode.selection import SQL_EXCLUDE_LIMIT
+
+    matches = add_matches(db_session, 14, 0.75, 0.15, 0.10)
+    banned = {m.id for m in matches[:4]}
+    padding = set(range(1_000_000, 1_000_000 + SQL_EXCLUDE_LIMIT + 200))  # ids that match nothing
+
+    short = band(db_session, 0.70, 1.01, exclude_match_ids=frozenset(banned))
+    long = band(db_session, 0.70, 1.01, exclude_match_ids=frozenset(banned | padding))
+
+    assert len(banned | padding) > SQL_EXCLUDE_LIMIT
+    assert {leg.match_id for leg in long.legs}.isdisjoint(banned)
+    assert [leg.match_id for leg in long.legs] == [leg.match_id for leg in short.legs]

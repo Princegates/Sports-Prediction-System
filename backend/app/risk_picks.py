@@ -168,7 +168,16 @@ def generate(
     # stale (see _is_current) on the very next run. Measured on the real
     # clock, which is what the match search itself runs on (``now`` only
     # decides whether a slip is from today).
-    avoid = set(db.execute(select(Match.id).where(Match.date <= utcnow() + KICKOFF_BUFFER)).scalars())
+    # Only games that are starting right now. Without the lower bound this
+    # collected every match ever played (~70,000 ids), and the search then
+    # sent them all as one NOT IN -- over PostgreSQL's 65,535-parameter limit,
+    # which failed every weekly slip build in production.
+    real_now = utcnow()
+    avoid = set(
+        db.execute(
+            select(Match.id).where(Match.date >= real_now - dt.timedelta(hours=1), Match.date <= real_now + KICKOFF_BUFFER)
+        ).scalars()
+    )
 
     for tier, low, high in TIERS:
         source = f"{cadence.prefix}{tier}"

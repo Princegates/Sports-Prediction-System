@@ -170,6 +170,10 @@ AI_PICKS_LEAGUES = (
 )
 
 
+# Above this many excluded matches the exclusion is applied in Python, not SQL.
+SQL_EXCLUDE_LIMIT = 500
+
+
 @dataclass(frozen=True)
 class SlipCriteria:
     bookmaker: str                          # who the code is generated for
@@ -919,9 +923,15 @@ def build_confidence_candidates(
         match_query = match_query.where(Match.league.in_(leagues))
     elif league:
         match_query = match_query.where(Match.league == league)
-    if exclude_match_ids:
+    # A short exclusion list goes to the database; a long one is applied here
+    # instead, because a single NOT IN with tens of thousands of ids exceeds
+    # PostgreSQL's 65,535-parameter limit and fails the whole search.
+    exclude_in_sql = bool(exclude_match_ids) and len(exclude_match_ids) <= SQL_EXCLUDE_LIMIT
+    if exclude_in_sql:
         match_query = match_query.where(Match.id.notin_(exclude_match_ids))
     matches = list(db.execute(match_query).scalars())
+    if exclude_match_ids and not exclude_in_sql:
+        matches = [m for m in matches if m.id not in exclude_match_ids]
     if not matches:
         return []
 
@@ -1279,9 +1289,15 @@ def _build_random_pool(
         match_query = match_query.where(Match.league.in_(leagues))
     elif league:
         match_query = match_query.where(Match.league == league)
-    if exclude_match_ids:
+    # A short exclusion list goes to the database; a long one is applied here
+    # instead, because a single NOT IN with tens of thousands of ids exceeds
+    # PostgreSQL's 65,535-parameter limit and fails the whole search.
+    exclude_in_sql = bool(exclude_match_ids) and len(exclude_match_ids) <= SQL_EXCLUDE_LIMIT
+    if exclude_in_sql:
         match_query = match_query.where(Match.id.notin_(exclude_match_ids))
     matches = list(db.execute(match_query).scalars())
+    if exclude_match_ids and not exclude_in_sql:
+        matches = [m for m in matches if m.id not in exclude_match_ids]
     if not matches:
         return {}
 

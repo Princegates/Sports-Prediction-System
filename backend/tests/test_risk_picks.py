@@ -219,3 +219,47 @@ def test_the_slips_reach_members_through_the_ai_picks_endpoint(db_session, auth_
     assert set(daily) == {"system_daily_low", "system_daily_medium", "system_daily_high"}
     for pick in daily.values():
         assert not pick["locked"] and MIN_LEGS <= len(pick["legs"]) <= MAX_LEGS and pick["priced"] is False
+
+
+def test_a_long_match_history_never_turns_into_a_huge_query(db_session, plenty):
+    """Production regression: the weekly slip build failed on PostgreSQL with
+    ~70,000 bound parameters (every match ever played was passed as an
+    exclusion), over its 65,535 limit. SQLite is more forgiving, so this checks
+    the thing that mattered -- how many parameters one statement carries --
+    with a large history in the table."""
+
+    from sqlalchemy import event, insert
+
+    from app.db.session import engine
+
+    team_row = db_session.query(Match.home_team_id, Match.away_team_id).first()
+    long_ago = utcnow() - dt.timedelta(days=400)
+    db_session.execute(
+        insert(Match),
+        [
+            {
+                "league": "English Premier League", "season": "2024-25", "date": long_ago - dt.timedelta(hours=i),
+                "home_team_id": team_row[0], "away_team_id": team_row[1], "status": "FINISHED",
+                "home_score": 1, "away_score": 0,
+            }
+            for i in range(3000)
+        ],
+    )
+    db_session.commit()
+
+    widest = 0
+
+    def watch(conn, cursor, statement, parameters, context, executemany):
+        nonlocal widest
+        if not executemany:
+            widest = max(widest, len(parameters))
+
+    event.listen(engine, "before_cursor_execute", watch)
+    try:
+        generate_daily(db_session)
+        db_session.commit()
+    finally:
+        event.remove(engine, "before_cursor_execute", watch)
+
+    assert len(rows(db_session)) == 3  # still builds every tier
+    assert widest < 1500, widest  # was 3,000+ here, ~70,000 in production
