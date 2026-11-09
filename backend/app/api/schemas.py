@@ -684,6 +684,11 @@ class TestEmailOut(BaseModel):
     detail: str
 
 
+class TestGithubOut(BaseModel):
+    ok: bool
+    detail: str
+
+
 class SystemStatusOut(BaseModel):
     database_reachable: bool
     matches: int

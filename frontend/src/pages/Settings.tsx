@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { checkBettingSites, fetchSettings, fetchSystemStatus, saveSettings, sendTestEmail } from "../api";
+import { checkBettingSites, fetchSettings, fetchSystemStatus, saveSettings, sendTestEmail, testGithubConnection } from "../api";
 import { ACCENT_PROFILES } from "../lib/accentProfiles";
 import { ErrorState } from "../components/ErrorState";
 import { MARKET_PRESETS } from "./Markets";
@@ -9,7 +9,9 @@ type Draft = Record<string, string | number | boolean>;
 
 /** Groups in the order an operator actually needs them: turn email on, set
  *  how access works, make it look right, and only then touch the model. */
-const GROUP_ORDER = ["data", "email", "access", "appearance", "notice", "picks", "markets", "model", "betcode", "assistant"];
+const GROUP_ORDER = [
+  "data", "email", "access", "payments", "automation", "appearance", "notice", "picks", "markets", "model", "betcode", "assistant",
+];
 
 const GROUP_NOTES: Record<string, string> = {
   data:
@@ -17,6 +19,10 @@ const GROUP_NOTES: Record<string, string> = {
   email:
     "Leave the host blank to keep email off — access codes still work, you just send them yourself.",
   access: "Defaults for issuing codes, and whether new people can sign up at all.",
+  payments:
+    "Lets members pay with mobile money or card through Hubtel. Nothing shows until it's switched on and the credentials are filled in. Admin-issued access codes keep working either way.",
+  automation:
+    "GitHub's own schedule starts the daily refresh hours late. With this on, this server starts it on time instead (06:00 UTC daily, plus the weekly retrain on Mondays at 03:00 UTC). GitHub's schedule stays on as a backup and skips a run this server already started. Every start is recorded in the Activity Log.",
   appearance: "Theme and accent color for the whole platform -- there's no per-user override.",
   notice: "A dismissible banner shown on the Dashboard to every signed-in account — for an outage, a new league going live, or anything else worth a heads-up.",
   picks: "Feature outcomes from a match's Markets tab to promote them on every Dashboard.",
@@ -47,6 +53,8 @@ export function Settings() {
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
+  const [githubTesting, setGithubTesting] = useState(false);
+  const [githubResult, setGithubResult] = useState<{ ok: boolean; detail: string } | null>(null);
   const [siteChecks, setSiteChecks] = useState<BettingSiteCheck[] | null>(null);
   const [checkingSites, setCheckingSites] = useState(false);
   const [siteCheckError, setSiteCheckError] = useState<string | null>(null);
@@ -128,6 +136,18 @@ export function Settings() {
       setTestResult(String(e instanceof Error ? e.message : e));
     } finally {
       setTesting(false);
+    }
+  }
+
+  async function handleTestGithub() {
+    setGithubTesting(true);
+    setGithubResult(null);
+    try {
+      setGithubResult(await testGithubConnection());
+    } catch (e) {
+      setGithubResult({ ok: false, detail: String(e instanceof Error ? e.message : e) });
+    } finally {
+      setGithubTesting(false);
     }
   }
 
@@ -279,6 +299,20 @@ export function Settings() {
           {GROUP_NOTES[group] && <p className="setting-note">{GROUP_NOTES[group]}</p>}
 
           <div className="settings-grid">{payload.specs.filter((s) => s.group === group).map(renderField)}</div>
+
+          {group === "automation" && (
+            <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <button type="button" className="btn btn-secondary" onClick={handleTestGithub} disabled={githubTesting || dirty}>
+                {githubTesting ? "Checking…" : "Check GitHub connection"}
+              </button>
+              {dirty && <span className="setting-help">Save your changes first — the check uses what's saved.</span>}
+              {githubResult && (
+                <span className={githubResult.ok ? "setting-help" : "auth-error"} role="status">
+                  {githubResult.detail}
+                </span>
+              )}
+            </div>
+          )}
 
           {group === "email" && (
             <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>

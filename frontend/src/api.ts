@@ -914,6 +914,10 @@ export function saveSettings(payload: {
   return patch("/api/admin/settings", payload);
 }
 
+export function testGithubConnection(): Promise<{ ok: boolean; detail: string }> {
+  return post("/api/admin/settings/test-github", {});
+}
+
 export function sendTestEmail(to?: string): Promise<TestEmailResult> {
   return post("/api/admin/settings/test-email", { to });
 }

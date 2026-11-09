@@ -39,6 +39,12 @@
 # admin account is created; they are ignored once it exists.
 name: Refresh predictions
 
+# The mode is in every run's title ("mode:refresh" / "mode:retrain" / "mode:seed")
+# so the backend's scheduler (app/github_dispatch.py), which starts this
+# workflow on time because GitHub's own schedule starts hours late, can tell
+# whether today's run of each kind already exists.
+run-name: "Refresh predictions mode:${{ inputs.mode || (github.event.schedule == '0 3 * * 1' && 'retrain') || 'refresh' }}"
+
 on:
   schedule:
     # 06:00 UTC daily -- before most European kickoffs.
@@ -90,14 +96,35 @@ on:
 jobs:
   # Resolved once so every job below gates on the same value, rather than
   # each repeating "inputs.mode || (schedule == ... && 'retrain') || 'refresh'".
+  #
+  # A run started by GitHub's own (late) schedule resolves to "skip" when the
+  # backend has already started today's run of the same kind, so the backup
+  # schedule can't double up on the on-time one.
   setup:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      actions: read
     outputs:
       mode: ${{ steps.resolve.outputs.mode }}
     steps:
       - id: resolve
-        run: echo "mode=${{ inputs.mode || (github.event.schedule == '0 3 * * 1' && 'retrain') || 'refresh' }}" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MODE: ${{ inputs.mode || (github.event.schedule == '0 3 * * 1' && 'retrain') || 'refresh' }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" = "schedule" ]; then
+            TODAY=$(date -u +%F)
+            STARTED=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow refresh-predictions.yml \
+              --event workflow_dispatch --created ">=$TODAY" --limit 50 --json displayTitle,status,conclusion \
+              | jq --arg m "mode:$MODE" '[.[] | select(.displayTitle | endswith($m)) | select(.status != "completed" or .conclusion == "success")] | length' || echo 0)
+            if [ "${STARTED:-0}" -gt 0 ]; then
+              echo "Today's $MODE run was already started on time -- skipping this late scheduled copy."
+              MODE=skip
+            fi
+          fi
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
 
   # The daily refresh and the one-off seed import -- unchanged from before
   # the retrain was sharded, since neither trains at the scale that stopped
@@ -107,7 +134,7 @@ jobs:
   # rather than the weekly production path, that it isn't sharded here too.)
   refresh:
     needs: setup
-    if: needs.setup.outputs.mode != 'retrain'
+    if: needs.setup.outputs.mode == 'refresh' || needs.setup.outputs.mode == 'seed'
     runs-on: ubuntu-latest
     # The refresh step alone takes ~40 minutes across the 55 leagues, so 60 left
     # no margin once anything upstream ran long.

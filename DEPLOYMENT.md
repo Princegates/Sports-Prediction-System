@@ -247,6 +247,33 @@ jobs:
 Add `DATABASE_URL` under the repo's Settings → Secrets → Actions. On Option A
 (a VM with its own disk) use a plain `cron` entry on the box instead.
 
+### Starting the refresh on time (recommended)
+
+GitHub's own `schedule:` trigger is unreliable: it has started the 06:00 UTC run
+at 10:52 and at 13:49. A `workflow_dispatch` request starts immediately, and the
+backend already runs a scheduler, so the backend can start the workflow itself:
+
+1. On GitHub, create a **fine-grained personal access token**
+   (github.com/settings/personal-access-tokens → *Generate new token*):
+   - Repository access: **Only select repositories** → this one.
+   - Repository permissions: **Actions → Read and write** (Metadata read is added
+     automatically). Nothing else.
+   - Set an expiry and put a reminder in your calendar to renew it.
+2. In the app: **Admin → Settings → Automatic refresh**. Paste the token, leave
+   the repository as `owner/name`, switch **Start the daily refresh from this
+   server** on, and **Save**.
+3. Press **Check GitHub connection**. It confirms the token can see the
+   repository and the workflow.
+
+From then on the backend starts the daily refresh at 06:00 UTC and the weekly
+retrain on Mondays at 03:00 UTC. Each start (or failure) appears in **Admin →
+Activity Log** — "daily refresh started on GitHub". If the backend was down at
+the time it starts the run as soon as it is back, up to 18 hours late.
+
+GitHub's own schedule stays on as a backup and skips itself when the backend has
+already started that day's run, so you won't get two. Rotate the token by
+pasting a new one; it is stored write-only and never shown again.
+
 ---
 
 ## Emailing access codes (optional)

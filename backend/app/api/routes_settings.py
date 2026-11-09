@@ -20,7 +20,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.timeutil import utcnow
-from app import app_settings, mailer
+from app import app_settings, github_dispatch, mailer
 from app.api.deps import get_db, require_superadmin
 from app.api.schemas import (
     BettingSiteCheckOut,
@@ -30,6 +30,7 @@ from app.api.schemas import (
     SystemStatusOut,
     TestEmailIn,
     TestEmailOut,
+    TestGithubOut,
 )
 from app.betcode import reachability
 from app.db.models import AccessCode, AccessGrant, AppSetting, AuditLog, Match, Prediction, User
@@ -153,6 +154,17 @@ def send_test_email(
         sent=result.sent,
         detail=f"Sent to {to}." if result.sent else (result.error or "Unknown error."),
     )
+
+
+@router.post("/settings/test-github", response_model=TestGithubOut)
+def test_github_connection(
+    admin: User = Depends(require_superadmin), db: Session = Depends(get_db)
+) -> TestGithubOut:
+    """Proves the saved GitHub token and repository can see the refresh
+    workflow, before a real 06:00 start depends on them. Never returns the token."""
+
+    ok, detail = github_dispatch.check_connection(github_dispatch.resolve_config(db))
+    return TestGithubOut(ok=ok, detail=detail)
 
 
 @router.post("/betting-sites/check", response_model=list[BettingSiteCheckOut])

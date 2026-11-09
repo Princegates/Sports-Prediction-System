@@ -29,7 +29,7 @@ from app.api.routes_public import router as public_router
 from app.api.routes_settings import router as settings_router
 from app.api.routes_teams import router as teams_router
 from app.config import get_settings
-from app import scheduler_lease
+from app import github_dispatch, scheduler_lease
 from app.access_reminders import send_expiry_reminders
 from app.data.api_football_ingest import LIVE_WINDOW_BEFORE_KICKOFF, run_live_sync_from_settings
 from app.data.providers.api_football import ApiFootballError, QuotaExceeded
@@ -217,6 +217,23 @@ def _run_risk_picks_once() -> float:
     return RISK_PICKS_INTERVAL_SECONDS
 
 
+# Starts the GitHub refresh workflow on time (app.github_dispatch), because
+# GitHub's own cron starts hours late. Every five minutes: each pass is one or
+# two cheap database reads unless a slot is actually due, and a slot is only
+# ever started once.
+GITHUB_DISPATCH_INTERVAL_SECONDS = 300.0
+
+
+def _run_github_dispatch_once() -> float:
+    db = SessionLocal()
+    try:
+        for line in github_dispatch.check_and_dispatch(db):
+            logger.info("Automatic refresh: %s", line)
+    finally:
+        db.close()
+    return GITHUB_DISPATCH_INTERVAL_SECONDS
+
+
 ACCESS_REMINDER_INTERVAL_SECONDS = 3600.0
 
 
@@ -273,6 +290,7 @@ _LOOPS = (
         RISK_PICKS_INTERVAL_SECONDS,
     ),
     ("access_reminders", _run_access_reminders_once, LEASE_TTL, ACCESS_REMINDER_INTERVAL_SECONDS),
+    ("github_dispatch", _run_github_dispatch_once, LEASE_TTL, GITHUB_DISPATCH_INTERVAL_SECONDS),
 )
 
 

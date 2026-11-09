@@ -360,6 +360,23 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 "everyone, same as the rest of the Dashboard.",
                 default=True),
 
+    # --- Automatic refresh (GitHub) ----------------------------------------
+    SettingSpec("github_dispatch_enabled", "bool", "automation", "Start the daily refresh from this server",
+                "Starts the daily refresh at 06:00 UTC and the weekly retrain on Mondays at 03:00 UTC "
+                "from this server, instead of waiting for GitHub's schedule, which starts hours late. "
+                "GitHub's own schedule stays on as a backup and skips a run this server already started.",
+                default=False),
+    SettingSpec("github_dispatch_token", "str", "automation", "GitHub token",
+                "A fine-grained personal access token limited to this one repository, with "
+                "Actions: Read and write. Create it at github.com/settings/personal-access-tokens.",
+                secret=True, env_attr="github_dispatch_token"),
+    SettingSpec("github_dispatch_repo", "str", "automation", "Repository",
+                "owner/name, for example Princegates/Sports-Prediction-System.",
+                env_attr="github_dispatch_repo"),
+    SettingSpec("github_dispatch_ref", "str", "automation", "Branch to run (optional)",
+                "Leave blank to use the repository's default branch, which is the one GitHub's own "
+                "schedule runs from.", default=""),
+
     # --- Betting markets page ---------------------------------------------
     SettingSpec("default_market_tab", "choice", "markets", "Default markets",
                 "Which markets the Betting Markets page's dropdown starts with for every "
@@ -375,6 +392,7 @@ GROUP_LABELS = {
     "email": "Email",
     "access": "Access & registration",
     "payments": "Online payments",
+    "automation": "Automatic refresh",
     "appearance": "Appearance",
     "model": "Model defaults",
     "notice": "Site notice",

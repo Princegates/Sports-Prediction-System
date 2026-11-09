@@ -156,6 +156,12 @@ class Settings(BaseSettings):
     # Where Hubtel can reach this backend (the callback URL is built from it).
     public_api_url: str = ""
 
+    # Starting the GitHub refresh workflow from this server (app.github_dispatch).
+    # The token needs Actions read+write on the repository below; it is normally
+    # set in Settings -> Automatic refresh rather than here.
+    github_dispatch_token: str = ""
+    github_dispatch_repo: str = "Princegates/Sports-Prediction-System"
+
     @property
     def normalized_database_url(self) -> str:
         """``database_url`` in a form SQLAlchemy 2 actually accepts.
