@@ -451,3 +451,24 @@ def test_the_agent_settings_appear_in_the_admin_settings():
     assert {"assistant_agent_enabled", "assistant_agent_api_key", "assistant_agent_model", "assistant_agent_effort",
             "assistant_agent_daily_per_user", "assistant_agent_daily_total", "assistant_agent_timeout"} <= keys
     assert app_settings.BY_KEY["assistant_agent_api_key"].secret is True
+
+
+def test_numbers_inside_dates_and_times_are_not_evidence_for_a_percentage():
+    # A tool result carries kickoff times. Their digits must not vouch for an
+    # invented percentage: 07 seconds made "93%" look grounded (100 - 7), so the
+    # check passed or failed with the time of day the tests happened to run.
+    from app.assistant import agent as ag
+
+    for stamp in ("2026-11-12T18:09:07", "2026-11-07 07:07:07.5Z", "kickoff 19:07", "2026-11-12T18:09:07+00:00"):
+        evidence: list[float] = []
+        ag._numbers({"kickoff": stamp, "home_win_pct": 52.0}, evidence)
+        assert ag.unverified_percentages("Arsenal win 93%.", evidence) == ["93%"], stamp
+        assert ag.unverified_percentages("Arsenal win 52%.", evidence) == []  # real figures still count
+
+
+def test_figures_inside_text_still_count_as_evidence():
+    from app.assistant import agent as ag
+
+    evidence: list[float] = []
+    ag._numbers({"note": "Over 2.5 at 57% after a 2-1 win on 2026-11-07"}, evidence)
+    assert ag.unverified_percentages("Over 2.5 lands 57% of the time.", evidence) == []

@@ -145,6 +145,12 @@ def _jsonable(value: Any) -> Any:
     return value
 
 
+_DATE_OR_TIME = re.compile(
+    r"\d{4}-\d{2}-\d{2}(?:[T ]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?)?(?:Z|[+-]\d{2}:?\d{2})?"  # 2026-11-12T18:09:07.5+00:00
+    r"|\b\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?\b"  # 18:09 or 18:09:07
+)
+
+
 def _numbers(value: Any, out: list[float]) -> None:
     if isinstance(value, bool):
         return
@@ -157,7 +163,11 @@ def _numbers(value: Any, out: list[float]) -> None:
         for v in value:
             _numbers(v, out)
     elif isinstance(value, str):
-        # Numbers inside strings ("2-1", "Over 2.5 at 57%") are evidence too.
+        # Numbers inside strings ("2-1", "Over 2.5 at 57%") are evidence too --
+        # but not the digits of a date or clock time. A kickoff of "18:09:07"
+        # would otherwise vouch for 7%, 9%, 18% and, as the complement of 7,
+        # 93%: an invented figure passed or failed with the time of day.
+        value = _DATE_OR_TIME.sub(" ", value)
         out.extend(float(m) for m in re.findall(r"\d+(?:\.\d+)?", value))
 
 
