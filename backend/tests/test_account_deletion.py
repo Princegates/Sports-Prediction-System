@@ -74,3 +74,53 @@ def test_only_a_superadmin_can_delete(db_session):
     assert client.delete(f"/api/admin/users/{victim.id}", headers=_headers(plain)).status_code == 403
     db_session.expire_all()
     assert db_session.get(User, victim.id) is not None
+
+
+def test_a_member_who_used_ai_generation_can_be_deleted_on_a_database_that_enforces_foreign_keys(db_session):
+    # The real database refuses to delete a user something still points at;
+    # SQLite only does the same when told to. AI Generation's usage log pointed
+    # at the member and the delete code never cleared it, so deleting anyone who
+    # had ever generated a slip failed.
+    from sqlalchemy import text
+
+    from app.db.models import AIGenerationLog, BannerItem, SavedSelection
+
+    admin = _make_user(db_session, "admin@example.com", role="superadmin")
+    target = _make_user(db_session, "used-ai@example.com")
+    db_session.add_all([
+        AIGenerationLog(user_id=target.id),
+        AIGenerationLog(user_id=target.id),
+        SavedSelection(user_id=target.id, name="mine", picks=[]),
+        BannerItem(sponsor="s", headline="h", link_url="https://x.test", created_by_user_id=target.id),
+    ])
+    db_session.commit()
+    target_id = target.id
+    db_session.execute(text("PRAGMA foreign_keys=ON"))
+    try:
+        response = client.delete(f"/api/admin/users/{target_id}", headers=_headers(admin))
+
+        assert response.status_code == 200, response.text
+        db_session.expire_all()
+        assert db_session.get(User, target_id) is None
+        assert db_session.execute(select(AIGenerationLog).where(AIGenerationLog.user_id == target_id)).first() is None
+        assert db_session.query(BannerItem).one().created_by_user_id is None  # kept, without the author
+    finally:
+        # The setting belongs to the connection, which later tests share: leaving
+        # it on makes unrelated tests that use made-up user ids fail.
+        db_session.execute(text("PRAGMA foreign_keys=OFF"))
+
+
+def test_every_table_that_points_at_users_is_cleared_on_delete():
+    """Guards the future: whatever table is added next, deleting a user must
+    not be blocked by it. The sweep finds links from the schema itself."""
+    from app.account_deletion import _clear_remaining_references  # noqa: F401  (the sweep exists)
+    from app.db.models import Base
+
+    linked = {
+        (table.name, column.name)
+        for table in Base.metadata.tables.values()
+        for column in table.columns
+        if any(fk.column.table.name == "users" and fk.column.name == "id" for fk in column.foreign_keys)
+    }
+    assert ("ai_generation_log", "user_id") in linked  # the one that was missed
+    assert len(linked) >= 15

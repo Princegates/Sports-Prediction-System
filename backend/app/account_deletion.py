@@ -25,6 +25,8 @@ from __future__ import annotations
 from sqlalchemy import delete, update
 from sqlalchemy.orm import Session
 
+from app.db.models import Base
+
 from app.db.models import (
     AccessCode,
     AccessGrant,
@@ -82,6 +84,16 @@ def delete_user_account(db: Session, admin: User, target: User) -> None:
     db.execute(update(AuditLog).where(AuditLog.actor_user_id == user_id).values(actor_user_id=None, actor_email=None))
     db.execute(update(AuditLog).where(AuditLog.target_user_id == user_id).values(target_user_id=None))
 
+    # Whatever else points at the account. Every table with a link to users is
+    # found from the schema itself, so a table added later can't leave a
+    # reference behind (the database refuses to delete a user something still
+    # points at -- AI Generation's usage log did exactly that, which made any
+    # member who had ever used AI Generation impossible to delete). A required
+    # link means the row is the person's own, so it goes; an optional one is
+    # just cleared. Everything above has already been dealt with, so this only
+    # catches what was missed.
+    _clear_remaining_references(db, user_id)
+
     db.delete(target)
     db.add(
         AuditLog(
@@ -93,3 +105,16 @@ def delete_user_account(db: Session, admin: User, target: User) -> None:
         )
     )
     db.commit()
+
+
+def _clear_remaining_references(db: Session, user_id: int) -> None:
+    for table in Base.metadata.sorted_tables:
+        if table.name == "users":
+            continue
+        for column in table.columns:
+            if not any(fk.column.table.name == "users" and fk.column.name == "id" for fk in column.foreign_keys):
+                continue
+            if column.nullable:
+                db.execute(update(table).where(column == user_id).values({column.name: None}))
+            else:
+                db.execute(delete(table).where(column == user_id))
