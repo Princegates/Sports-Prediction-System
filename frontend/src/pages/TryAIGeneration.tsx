@@ -52,14 +52,14 @@ export function TryAIGeneration() {
   return (
     <PublicShell
       title="Try AI Generation — Socca Intelligence"
-      description="Pick leagues, markets, how many legs and how sure each leg must be -- the same controls members use to build a slip from live predictions. Free to try, no account needed."
+      description="Pick leagues, types of bet, how many games and how sure we must be about each one -- the same controls members use to build a slip from live predictions. Free to try, no account needed."
     >
       <section className="doc-hero">
         <span className="eyebrow">AI Generation</span>
         <h1>Try AI Generation</h1>
         <p className="lede">
-          Pick leagues, markets, how many legs and how sure each leg must be -- the same controls members use
-          to build a slip from live predictions.
+          Pick leagues, types of bet, how many games, and how sure we must be about each one -- the same controls
+          members use to build a slip from live predictions.
         </p>
       </section>
 
@@ -82,7 +82,7 @@ export function TryAIGeneration() {
           </div>
 
           <div className="meta" style={{ marginBottom: 6 }}>
-            Markets
+            Types of bet
           </div>
           <div className="filter-bar" style={{ marginBottom: 14 }}>
             {DEMO_MARKETS.map((m) => (
@@ -98,7 +98,7 @@ export function TryAIGeneration() {
           </div>
 
           <div className="meta" style={{ marginBottom: 6 }}>
-            Number of legs
+            How many games in your slip?
           </div>
           <div className="filter-bar" style={{ marginBottom: 14 }}>
             {DEMO_LEG_OPTIONS.map((n) => (
@@ -109,7 +109,7 @@ export function TryAIGeneration() {
           </div>
 
           <div className="meta" style={{ marginBottom: 6 }}>
-            Minimum chance per leg
+            Minimum chance for each game
           </div>
           <div className="filter-bar">
             {DEMO_ACCURACY_OPTIONS.map((o) => (
@@ -129,7 +129,7 @@ export function TryAIGeneration() {
           {demoGenerateClicked ? (
             <div className="state-card" style={{ maxWidth: 420, margin: "0 auto" }}>
               <p style={{ margin: "0 0 12px" }}>
-                Generating needs an account -- every leg comes from live predictions, not a demo.
+                Generating needs an account -- every game comes from live predictions, not a demo.
                 {trialDays > 0 ? ` Your ${trialDays}-day free trial includes it.` : ""}
               </p>
               <Link className="btn btn-lg" to="/register">

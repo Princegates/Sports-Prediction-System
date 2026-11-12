@@ -42,7 +42,7 @@ import { marketLabel } from "../lib/marketLabel";
  * wherever the user places bets themselves. No bookmaker code, no odds
  * figure -- nothing here is priced, see this file's module docstring. */
 function formatLegsForCopy(legs: SuggestedLeg[], combinedProbability: number): string {
-  const header = `AI Generation -- ${legs.length} leg combo, ${(combinedProbability * 100).toFixed(0)}% combined probability (copied ${new Date().toLocaleString()})`;
+  const header = `AI Generation -- ${legs.length} game${legs.length === 1 ? "" : "s"}, ${(combinedProbability * 100).toFixed(0)}% chance they all win (copied ${new Date().toLocaleString()})`;
   const lines = legs.map((leg) => {
     const kickoff = new Date(leg.kickoff).toLocaleString(undefined, {
       weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
@@ -157,21 +157,21 @@ const RISK_PRESETS: Record<
 > = {
   low: {
     label: "Low risk",
-    description: "85%+ picks only, up to 3 legs, mixed markets",
+    description: "Very likely games only (85%+), up to 3 games",
     minProbability: 0.85,
     maxLegs: 3,
     markets: [],
   },
   medium: {
     label: "Medium risk",
-    description: "65%+ picks, up to 5 legs",
+    description: "Likely games (65%+), up to 5 games",
     minProbability: 0.65,
     maxLegs: 5,
     markets: [],
   },
   high: {
     label: "High risk",
-    description: "50%+ picks, up to 8 legs",
+    description: "Less sure games (50%+), up to 8 games",
     minProbability: 0.5,
     maxLegs: 8,
     // Each leg uses a different market, and the default set only has five
@@ -191,7 +191,7 @@ const RISK_PRESETS: Record<
 // into these steps with Back/Next controls instead; desktop keeps every
 // section visible at once, unchanged. The risk-preset card above stays a
 // single always-visible fast path on both -- it isn't part of this form.
-const WIZARD_STEPS = ["When & where", "Legs & accuracy", "Markets", "Review & generate"] as const;
+const WIZARD_STEPS = ["When & where", "Games & chance", "Bet types", "Review & generate"] as const;
 
 // Labels the *result*, independent of which preset (if any) produced it --
 // a "High risk" generate that only found 2 very safe legs is honestly a
@@ -682,7 +682,7 @@ export function BetCodes() {
           )}
         </h2>
         <span className="meta">
-          Combine matches by model confidence -- scoped to{" "}
+          Built from the games we're surest about -- using{" "}
           <strong>
             {selectedLeagues.length === 0
               ? "the Big 8"
@@ -695,11 +695,10 @@ export function BetCodes() {
       </div>
 
       <p className="setting-note" style={{ marginBottom: 16 }}>
-        Every leg here is model probability, not a bookmaker price -- combining matches multiplies the
-        risk exactly as fast as it would multiply a price: three legs each 70% likely land around a
-        34% chance of all three coming in. Nothing here is priced or estimated. Pick a betting site
-        under the legs and it books the slip (and prices it) at its own odds, or copy the selections
-        and add them yourself.
+        Every game here is chosen by how likely our model thinks it is to win, not by a bookmaker's price.
+        Adding games multiplies the risk: three games that are each 70% likely have only about a 34% chance
+        of all three winning. Nothing here is priced. Pick a betting site under the slip and it books the
+        slip at its own odds, or copy the selections and add them yourself.
       </p>
 
       {outOfRuns && (
@@ -735,13 +734,13 @@ export function BetCodes() {
             disabled={previewing || outOfRuns}
           >
             <span className="risk-preset-label">Random slip</span>
-            <span className="risk-preset-description">10-20 legs, drawn at random -- not ranked by risk level</span>
+            <span className="risk-preset-description">10-20 games picked at random, not ranked by how likely they are</span>
           </button>
         </div>
         <p className="setting-note" style={{ marginTop: 10, marginBottom: 0 }}>
-          Fills in (and runs) the fields below -- feel free to adjust anything afterward and generate again. Every
-          leg uses a different market. Random slip generates straight away and ignores the fields below except
-          league and date range.
+          Pressing one fills in the settings below and builds a slip straight away. You can change any setting
+          afterwards and build it again. Each game uses a different type of bet. Random slip ignores the settings
+          below, except the leagues and dates.
         </p>
       </div>
 
@@ -763,7 +762,7 @@ export function BetCodes() {
           <>
             <div className="auth-form" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
               <label>
-                Window{selectedDate ? <span style={{ fontWeight: 400 }}> (overridden by the date below)</span> : null}
+                How far ahead to look{selectedDate ? <span style={{ fontWeight: 400 }}> (replaced by the day you picked below)</span> : null}
                 <select
                   value={daysAhead}
                   disabled={!!selectedDate}
@@ -783,7 +782,7 @@ export function BetCodes() {
 
             <div style={{ marginTop: 14 }}>
               <div className="meta" style={{ marginBottom: 6 }}>
-                Or pick a specific date <span style={{ fontWeight: 400 }}>(overrides the window above)</span>
+                Or pick one day <span style={{ fontWeight: 400 }}>(this replaces the setting above)</span>
               </div>
               {selectedDate ? (
                 <div className="filter-bar">
@@ -828,7 +827,7 @@ export function BetCodes() {
             <div style={{ marginTop: 14 }}>
               <div className="meta" style={{ marginBottom: 6 }}>
                 Leagues{" "}
-                <span style={{ fontWeight: 400 }}>(every league this deployment tracks -- none selected = the usual Big 8)</span>
+                <span style={{ fontWeight: 400 }}>(leave empty to use the 8 biggest)</span>
               </div>
               <LeaguePicker
                 leagues={LEAGUES}
@@ -847,9 +846,12 @@ export function BetCodes() {
         {(!isMobile || step === 1) && (
           <>
             <div style={{ marginTop: isMobile ? 0 : 14 }}>
-              <div className="meta" style={{ marginBottom: 6 }}>
-                Number of legs
+              <div className="meta" style={{ marginBottom: 2 }}>
+                How many games in your slip?
               </div>
+              <p className="setting-note" style={{ margin: "0 0 8px" }}>
+                The most games we'll put in. More games means a smaller chance that all of them win.
+              </p>
               <div className="filter-bar">
                 {LEG_COUNT_OPTIONS.map((n) => (
                   <button
@@ -867,9 +869,13 @@ export function BetCodes() {
             </div>
 
             <div style={{ marginTop: 14 }}>
-              <div className="meta" style={{ marginBottom: 6 }}>
-                Minimum accuracy per leg
+              <div className="meta" style={{ marginBottom: 2 }}>
+                Minimum chance for each game
               </div>
+              <p className="setting-note" style={{ margin: "0 0 8px" }}>
+                We only pick games we think are at least this likely to win. A higher number gives safer picks, but fewer
+                games to choose from. For example, 85%+ means about 85 in 100, or better.
+              </p>
               <div className="filter-bar">
                 {ACCURACY_OPTIONS.map((o) => (
                   <button
@@ -891,9 +897,9 @@ export function BetCodes() {
         {(!isMobile || step === 2) && (
           <div style={{ marginTop: isMobile ? 0 : 14 }}>
             <div className="meta" style={{ marginBottom: 6 }}>
-              Markets{" "}
+              Types of bet{" "}
               <span style={{ fontWeight: 400 }}>
-                (every market the system currently prices -- search or browse by group; none selected = the default six)
+                (like who wins, or how many goals -- search or browse by group; leave empty and we'll use the usual ones)
               </span>
             </div>
             <MarketPicker
@@ -957,7 +963,7 @@ export function BetCodes() {
               </li>
               <li>{selectedLeagues.length === 0 ? "Big 8 (default)" : selectedLeagues.join(", ")}</li>
               <li>
-                Up to {maxLegs} legs, {(minProbability * 100).toFixed(0)}%+ accuracy each
+                Up to {maxLegs} games, each at least {(minProbability * 100).toFixed(0)}% likely
               </li>
               <li>
                 {markets.length === 0 ? DEFAULT_MARKET_PRESET.label : markets.join(", ")}
@@ -1028,13 +1034,14 @@ export function BetCodes() {
           <ResultRiskNotice legCount={editedLegs.length} probability={editedCombinedProbability} />
           <div className="section-header" style={{ marginBottom: 12 }}>
             <h3 style={{ margin: 0 }}>
-              {editedLegs.length} leg{editedLegs.length === 1 ? "" : "s"}
+              {editedLegs.length} game{editedLegs.length === 1 ? "" : "s"}
               {editedLegs.length !== preview.legs.length ? ` -- edited from ${preview.legs.length}` : ""}
             </h3>
             <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
               {editedLegs.length > 0 && (
                 <span className="meta tabular-nums" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  {(editedCombinedProbability * 100).toFixed(0)}% combined probability -- lands {chanceLabel(editedCombinedProbability)}
+                  Chance they all win: {chanceLabel(editedCombinedProbability)}
+                  {editedCombinedProbability < 0.5 ? ` (${(editedCombinedProbability * 100).toFixed(0)}%)` : ""}
                   <span className={`risk-tag ${resultRiskLabel(editedCombinedProbability).tone}`}>
                     {resultRiskLabel(editedCombinedProbability).label}
                   </span>
@@ -1184,7 +1191,7 @@ export function BetCodes() {
 
       {editedLegs.length > 0 && (
         <StickySlipBar
-          summary={`${editedLegs.length} leg${editedLegs.length === 1 ? "" : "s"} · ${(editedCombinedProbability * 100).toFixed(0)}% combined`}
+          summary={`${editedLegs.length} game${editedLegs.length === 1 ? "" : "s"} · ${(editedCombinedProbability * 100).toFixed(0)}% chance all win`}
           copyText={formatLegsForCopy(editedLegs, editedCombinedProbability)}
           onView={() => resultsCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
         />
