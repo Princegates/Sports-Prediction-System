@@ -33,6 +33,21 @@ from app.timeutil import utcnow
 STATUS_CHECK_MIN_INTERVAL = dt.timedelta(seconds=15)
 GLOBAL_STATUS_CHECKS_PER_MINUTE = 4
 
+# Hubtel reports "Unpaid" both for a payment that failed and for one the
+# customer simply hasn't approved yet, so "Unpaid" alone must not cancel a
+# payment -- a cancelled payment is never looked at again, and a late approval
+# would be lost. It cancels only after this long; Hubtel's unambiguous answers
+# (failed, declined, expired...) cancel at once.
+UNPAID_GRACE = dt.timedelta(minutes=30)
+
+# The background sweep (``sweep_pending``): asks Hubtel about payments whose
+# callback never arrived. Gives the callback a head start, then re-asks
+# unsettled payments every few minutes for up to three days.
+SWEEP_MIN_AGE = dt.timedelta(minutes=2)
+SWEEP_RECHECK_EVERY = dt.timedelta(minutes=2)
+SWEEP_MAX_AGE = dt.timedelta(days=3)
+SWEEP_BATCH = 10
+
 
 class PaymentError(Exception):
     """Something the member should be told, verbatim."""
@@ -261,9 +276,50 @@ def reconcile(db: Session, payment: Payment, *, force: bool = False) -> Payment:
             return payment
         _fulfil(db, payment)
     elif result.state == "unpaid":
-        payment.status = "cancelled"
-        _audit(db, None, "payment.cancelled", payment)
-        db.commit()
+        definitive = str(result.raw.get("status") or "").strip().lower() not in hubtel.AMBIGUOUS_UNPAID
+        if definitive or now - payment.created_at >= UNPAID_GRACE:
+            payment.status = "cancelled"
+            _audit(db, None, "payment.cancelled", payment)
+            db.commit()
 
     db.refresh(payment)
     return payment
+
+
+def sweep_pending(db: Session) -> list[str]:
+    """Settles payments whose callback never arrived (a lost callback, or a
+    customer who closed the page): asks Hubtel about each unsettled payment
+    and acts on the answer exactly as the callback would. Does nothing until
+    the gateway is configured. Returns a line per payment that changed, or a
+    single line if Hubtel couldn't be reached (the rest are tried next pass)."""
+
+    config = hubtel.resolve_config(db)
+    if not config.configured:
+        return []
+    now = utcnow()
+    due = (
+        db.query(Payment)
+        .filter(
+            Payment.status == "pending",
+            Payment.created_at <= now - SWEEP_MIN_AGE,
+            Payment.created_at >= now - SWEEP_MAX_AGE,
+            (Payment.last_checked_at.is_(None)) | (Payment.last_checked_at <= now - SWEEP_RECHECK_EVERY),
+        )
+        .order_by(func.coalesce(Payment.last_checked_at, Payment.created_at))
+        .limit(SWEEP_BATCH)
+        .all()
+    )
+    lines: list[str] = []
+    for payment in due:
+        before = payment.status
+        try:
+            reconcile(db, payment, force=True)
+        except hubtel.HubtelError:
+            lines.append("Hubtel couldn't be reached; will try again")
+            break
+        except AccessCodeError as exc:
+            lines.append(f"{payment.client_reference}: paid but access couldn't be granted ({exc})")
+            continue
+        if payment.status != before:
+            lines.append(f"{payment.client_reference}: {before} -> {payment.status}")
+    return lines

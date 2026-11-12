@@ -136,6 +136,9 @@ def create_checkout(
 
 _PAID = {"paid", "success", "successful", "completed"}
 _FAILED = {"unpaid", "failed", "cancelled", "canceled", "declined", "expired"}
+# "Unpaid" is also what Hubtel says while a customer is still approving the
+# prompt, so on its own it doesn't prove the payment is dead.
+AMBIGUOUS_UNPAID = {"unpaid"}
 
 
 def check_status(config: HubtelConfig, client_reference: str) -> StatusResult:

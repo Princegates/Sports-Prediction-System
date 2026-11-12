@@ -30,6 +30,7 @@ from app.api.routes_settings import router as settings_router
 from app.api.routes_teams import router as teams_router
 from app.config import get_settings
 from app import github_dispatch, scheduler_lease
+from app.payments import service as payment_service
 from app.access_reminders import send_expiry_reminders
 from app.data.api_football_ingest import LIVE_WINDOW_BEFORE_KICKOFF, run_live_sync_from_settings
 from app.data.providers.api_football import ApiFootballError, QuotaExceeded
@@ -234,6 +235,24 @@ def _run_github_dispatch_once() -> float:
     return GITHUB_DISPATCH_INTERVAL_SECONDS
 
 
+# Settles payments whose Hubtel callback never arrived (app.payments.service.
+# sweep_pending). Hubtel expects the merchant to run a status check when no
+# callback comes; without this a lost callback left a paid customer without
+# access until they or an admin noticed. Every two minutes; each pass is one
+# cheap query unless a payment is actually waiting.
+PAYMENT_SWEEP_INTERVAL_SECONDS = 120.0
+
+
+def _run_payment_sweep_once() -> float:
+    db = SessionLocal()
+    try:
+        for line in payment_service.sweep_pending(db):
+            logger.info("Payment sweep: %s", line)
+    finally:
+        db.close()
+    return PAYMENT_SWEEP_INTERVAL_SECONDS
+
+
 ACCESS_REMINDER_INTERVAL_SECONDS = 3600.0
 
 
@@ -291,6 +310,7 @@ _LOOPS = (
     ),
     ("access_reminders", _run_access_reminders_once, LEASE_TTL, ACCESS_REMINDER_INTERVAL_SECONDS),
     ("github_dispatch", _run_github_dispatch_once, LEASE_TTL, GITHUB_DISPATCH_INTERVAL_SECONDS),
+    ("payment_sweep", _run_payment_sweep_once, LEASE_TTL, PAYMENT_SWEEP_INTERVAL_SECONDS),
 )
 
 

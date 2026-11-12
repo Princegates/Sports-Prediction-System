@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from app import app_settings
 from app.db.models import AccessCode, AuditLog, Payment, User
 from app.main import app
-from app.payments import hubtel
+from app.payments import hubtel, service
 
 client = TestClient(app)
 
@@ -47,7 +47,7 @@ def fake_hubtel(monkeypatch):
         state["checks"].append(reference)
         if state["fail_status"]:
             raise hubtel.HubtelError("unreachable")
-        return hubtel.StatusResult(state=state["status"], amount=state["amount"], raw={"status": state["status"]})
+        return hubtel.StatusResult(state=state["status"], amount=state["amount"], raw={"status": state.get("raw_status", state["status"])})
 
     monkeypatch.setattr(hubtel, "create_checkout", create_checkout)
     monkeypatch.setattr(hubtel, "check_status", check_status)
@@ -97,6 +97,18 @@ def _checkout(auth_headers):
     response = client.post("/api/payments/checkout", headers=auth_headers)
     assert response.status_code == 200, response.text
     return response.json()
+
+
+def _age(db_session, reference: str, *, minutes: float, checked_minutes_ago: float | None = None):
+    """Make a payment look ``minutes`` old (and last asked about that long ago, if given)."""
+    import datetime as dt
+
+    from app.timeutil import utcnow
+
+    payment = db_session.query(Payment).filter_by(client_reference=reference).one()
+    payment.created_at = utcnow() - dt.timedelta(minutes=minutes)
+    payment.last_checked_at = None if checked_minutes_ago is None else utcnow() - dt.timedelta(minutes=checked_minutes_ago)
+    db_session.commit()
 
 
 def _callback(reference: str):
@@ -220,9 +232,36 @@ def test_a_short_payment_is_not_granted(db_session, auth_headers, configured, fa
     assert db_session.query(AuditLog).filter(AuditLog.action == "payment.amount_mismatch").count() == 1
 
 
-def test_hubtel_saying_unpaid_cancels_the_payment(db_session, auth_headers, configured, fake_hubtel):
+def test_hubtel_saying_unpaid_does_not_cancel_a_payment_still_being_approved(db_session, auth_headers, configured, fake_hubtel):
+    # "Unpaid" is also what Hubtel says while the customer is still on the
+    # mobile-money prompt; cancelling now would lose a payment approved a minute later.
     reference = _checkout(auth_headers)["reference"]
     fake_hubtel["status"] = "unpaid"
+    _callback(reference)
+    db_session.expire_all()
+    payment = db_session.query(Payment).one()
+    assert payment.status == "pending" and payment.last_checked_at is not None
+
+    fake_hubtel["status"] = "paid"
+    fake_hubtel["raw_status"] = "Paid"
+    _callback(reference)
+    db_session.expire_all()
+    assert db_session.query(Payment).one().status == "completed"
+
+
+def test_an_unpaid_payment_is_cancelled_once_the_grace_period_passes(db_session, auth_headers, configured, fake_hubtel):
+    reference = _checkout(auth_headers)["reference"]
+    _age(db_session, reference, minutes=service.UNPAID_GRACE.total_seconds() / 60 + 1)
+    fake_hubtel["status"] = "unpaid"
+    _callback(reference)
+    db_session.expire_all()
+    assert db_session.query(Payment).one().status == "cancelled"
+
+
+def test_a_definite_failure_from_hubtel_cancels_at_once(db_session, auth_headers, configured, fake_hubtel):
+    reference = _checkout(auth_headers)["reference"]
+    fake_hubtel["status"] = "unpaid"  # how our code reads any failed state
+    fake_hubtel["raw_status"] = "Declined"
     _callback(reference)
     db_session.expire_all()
     assert db_session.query(Payment).one().status == "cancelled"
@@ -597,3 +636,72 @@ def test_a_huge_callback_body_is_truncated_not_stored_whole(db_session, auth_hea
     client.post("/api/payments/hubtel/callback", json={"Data": {"ClientReference": reference}, "pad": "x" * 50000})
     row = db_session.query(AuditLog).filter_by(action="payment.callback_received").one()
     assert set(row.detail["body"]) == {"truncated"} and len(row.detail["body"]["truncated"]) == 6000
+
+
+# --- the background sweep: settling payments whose callback never arrived -----------
+
+
+def test_the_sweep_settles_a_paid_payment_whose_callback_never_came(db_session, auth_headers, configured, fake_hubtel):
+    reference = _checkout(auth_headers)["reference"]
+    _age(db_session, reference, minutes=5)
+    fake_hubtel["status"] = "paid"
+    lines = service.sweep_pending(db_session)
+    db_session.expire_all()
+    assert db_session.query(Payment).one().status == "completed"
+    assert _hubtel_codes(db_session) == 1
+    assert lines == [f"{reference}: pending -> completed"]
+    assert service.sweep_pending(db_session) == []  # settled: not asked again
+
+
+def test_the_sweep_gives_the_callback_a_head_start_and_does_not_nag(db_session, auth_headers, configured, fake_hubtel):
+    reference = _checkout(auth_headers)["reference"]  # just created
+    assert service.sweep_pending(db_session) == [] and fake_hubtel["checks"] == []
+
+    _age(db_session, reference, minutes=10, checked_minutes_ago=1)  # asked a minute ago
+    service.sweep_pending(db_session)
+    assert fake_hubtel["checks"] == []
+
+    _age(db_session, reference, minutes=10, checked_minutes_ago=5)  # due again
+    service.sweep_pending(db_session)
+    assert fake_hubtel["checks"] == [reference]  # still pending, so it stays on the list
+
+
+def test_the_sweep_leaves_very_old_payments_to_the_admin(db_session, auth_headers, configured, fake_hubtel):
+    reference = _checkout(auth_headers)["reference"]
+    _age(db_session, reference, minutes=60 * 24 * 4)
+    service.sweep_pending(db_session)
+    assert fake_hubtel["checks"] == []
+
+
+def test_the_sweep_stops_quietly_when_hubtel_is_unreachable(db_session, auth_headers, configured, fake_hubtel):
+    reference = _checkout(auth_headers)["reference"]
+    _age(db_session, reference, minutes=5)
+    fake_hubtel["fail_status"] = True
+    assert service.sweep_pending(db_session) == ["Hubtel couldn't be reached; will try again"]
+    db_session.expire_all()
+    assert db_session.query(Payment).one().status == "pending"
+
+
+def test_the_sweep_does_nothing_before_the_gateway_is_set_up(db_session, fake_hubtel):
+    assert service.sweep_pending(db_session) == [] and fake_hubtel["checks"] == []
+
+
+def test_the_sweep_is_capped_per_pass(db_session, configured, fake_hubtel):
+    import datetime as dt
+
+    from app.timeutil import utcnow
+
+    for i in range(service.SWEEP_BATCH + 3):
+        db_session.add(Payment(
+            user_id=None, client_reference=f"SI-CAP-{i:03d}", amount=20.0, access_days=5, status="pending",
+            created_at=utcnow() - dt.timedelta(minutes=5),
+        ))
+    db_session.commit()
+    service.sweep_pending(db_session)
+    assert len(fake_hubtel["checks"]) == service.SWEEP_BATCH
+
+
+def test_the_sweep_runs_in_the_background():
+    from app import main
+
+    assert "payment_sweep" in [loop[0] for loop in main._LOOPS]
