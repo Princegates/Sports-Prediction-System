@@ -9,6 +9,8 @@ payment, and the payment's real state is then asked of Hubtel directly.
 
 from __future__ import annotations
 
+import json
+
 import logging
 
 from typing import Any
@@ -95,6 +97,7 @@ def hubtel_callback(
         logger.info("Hubtel callback for unknown reference %s", reference[:40])
         return {"ok": False}
 
+    _record_callback(db, payment, body)
     try:
         service.reconcile(db, payment, force=True)
     except hubtel.HubtelError as exc:
@@ -103,6 +106,21 @@ def hubtel_callback(
         logger.error("Payment %s confirmed but access couldn't be granted: %s", reference, exc)
         raise HTTPException(status_code=500, detail="Couldn't record the payment yet.") from exc
     return {"ok": True}
+
+
+_CALLBACK_KEEP_CHARS = 6000
+
+
+def _record_callback(db: Session, payment: Payment, body: dict[str, Any]) -> None:
+    """Keep exactly what Hubtel sent, for debugging with them (Activity Log,
+    "payment callback received from Hubtel"). Only for payments we know -- the
+    endpoint is public, so unknown references must not be able to fill the
+    log. Never trusted for anything; purely a record."""
+
+    raw = json.dumps(body, default=str)
+    kept = body if len(raw) <= _CALLBACK_KEEP_CHARS else {"truncated": raw[:_CALLBACK_KEEP_CHARS]}
+    service._audit(db, None, "payment.callback_received", payment, {"body": kept})
+    db.commit()
 
 
 def _product_label(payment: Payment) -> str:

@@ -572,3 +572,28 @@ def test_members_cannot_recheck_payments(db_session, auth_headers, configured, f
     payment = db_session.query(Payment).filter_by(client_reference=reference).one()
     assert client.post(f"/api/admin/payments/{payment.id}/recheck", headers=auth_headers).status_code == 403
     assert fake_hubtel["checks"] == []
+
+
+def test_a_callback_is_kept_exactly_as_hubtel_sent_it(db_session, auth_headers, configured, fake_hubtel):
+    reference = _checkout(auth_headers)["reference"]
+    sent = {
+        "ResponseCode": "0000",
+        "Status": "Success",
+        "Data": {"ClientReference": reference, "Status": "Success", "Amount": 30.0, "CheckoutId": "abc"},
+    }
+    client.post("/api/payments/hubtel/callback", json=sent)
+    rows = db_session.query(AuditLog).filter_by(action="payment.callback_received").all()
+    assert len(rows) == 1 and rows[0].detail["body"] == sent and rows[0].detail["reference"] == reference
+
+
+def test_callbacks_for_unknown_references_leave_no_record(db_session, configured, fake_hubtel):
+    client.post("/api/payments/hubtel/callback", json={"Data": {"ClientReference": "nope"}})
+    client.post("/api/payments/hubtel/callback", json={"junk": True})
+    assert db_session.query(AuditLog).filter_by(action="payment.callback_received").count() == 0
+
+
+def test_a_huge_callback_body_is_truncated_not_stored_whole(db_session, auth_headers, configured, fake_hubtel):
+    reference = _checkout(auth_headers)["reference"]
+    client.post("/api/payments/hubtel/callback", json={"Data": {"ClientReference": reference}, "pad": "x" * 50000})
+    row = db_session.query(AuditLog).filter_by(action="payment.callback_received").one()
+    assert set(row.detail["body"]) == {"truncated"} and len(row.detail["body"]["truncated"]) == 6000

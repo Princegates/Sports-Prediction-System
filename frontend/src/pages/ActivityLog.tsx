@@ -23,6 +23,7 @@ export const ACTION_LABELS: Record<string, string> = {
   "access_grant.extended": "access extended",
   "access_grant.revoked": "access revoked",
   "payment.rechecked_by_admin": "payment checked with Hubtel by an admin",
+  "payment.callback_received": "payment callback received from Hubtel",
   "referral.bonus_granted": "referral bonus granted",
   "booking_code.generated": "booking code generated",
   "automation.refresh_started": "daily refresh started on GitHub",
@@ -228,7 +229,7 @@ export function ActivityLog() {
                   {entry.detail
                     ? Object.entries(entry.detail)
                         .filter(([, v]) => v !== null && v !== "")
-                        .map(([k, v]) => `${k}: ${v}`)
+                        .map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : v}`)
                         .join(", ") || "--"
                     : "--"}
                 </td>
