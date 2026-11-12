@@ -21,6 +21,7 @@ Unverified against a live account, so flagged rather than assumed:
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -92,6 +93,14 @@ def resolve_config(db: Session | None = None) -> HubtelConfig:
     )
 
 
+def _plain_description(text: str) -> str:
+    """Hubtel rejects special characters in ``description`` (its own list of
+    failure causes names & * ! % @), so keep letters, digits and spaces."""
+
+    cleaned = " ".join(re.sub(r"[^A-Za-z0-9 ]+", " ", text).split())
+    return cleaned or "Payment"
+
+
 def create_checkout(
     config: HubtelConfig,
     *,
@@ -103,8 +112,8 @@ def create_checkout(
     cancellation_url: str,
 ) -> CheckoutResult:
     body = {
-        "totalAmount": amount,
-        "description": description,
+        "totalAmount": round(float(amount), 2),  # Hubtel allows two decimal places only
+        "description": _plain_description(description),
         "callbackUrl": callback_url,
         "returnUrl": return_url,
         "cancellationUrl": cancellation_url,
@@ -135,7 +144,7 @@ def create_checkout(
 
 
 _PAID = {"paid", "success", "successful", "completed"}
-_FAILED = {"unpaid", "failed", "cancelled", "canceled", "declined", "expired"}
+_FAILED = {"unpaid", "failed", "cancelled", "canceled", "declined", "expired", "refunded"}
 # "Unpaid" is also what Hubtel says while a customer is still approving the
 # prompt, so on its own it doesn't prove the payment is dead.
 AMBIGUOUS_UNPAID = {"unpaid"}

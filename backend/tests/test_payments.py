@@ -747,3 +747,59 @@ def test_the_sweep_runs_in_the_background():
     from app import main
 
     assert "payment_sweep" in [loop[0] for loop in main._LOOPS]
+
+
+# --- checked against Hubtel's Online Checkout document ----------------------------
+
+
+def test_the_checkout_request_follows_hubtels_rules(monkeypatch):
+    sent = {}
+
+    class Resp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"data": {"checkoutUrl": "https://pay.hubtel.test/x", "checkoutId": "c1"}}
+
+    monkeypatch.setattr(hubtel.requests, "post", lambda url, json=None, **k: sent.update(json) or Resp())
+    config = hubtel.HubtelConfig("id", "secret", "11684", "https://x.test/init", "https://s.test", "https://api.test")
+    hubtel.create_checkout(
+        config, amount=12.3456, description="5-day access to Socca & Co! (50% off)", client_reference="SIREF",
+        callback_url="https://api.test/cb", return_url="https://s.test/r", cancellation_url="https://s.test/c",
+    )
+    assert sent["totalAmount"] == 12.35  # two decimal places at most
+    assert sent["description"] == "5 day access to Socca Co 50 off"  # no special characters
+    assert sent["merchantAccountNumber"] == "11684" and sent["clientReference"] == "SIREF"
+
+
+def test_a_description_of_only_symbols_still_gets_a_description():
+    assert hubtel._plain_description("&*!%@") == "Payment"
+
+
+def test_references_fit_hubtels_32_character_limit():
+    assert len(service._new_reference()) <= 32
+
+
+def test_a_refunded_payment_is_not_left_pending_forever(monkeypatch):
+    body = {"message": "Successful", "responseCode": "0000",
+            "data": {"status": "Refunded", "clientReference": "SIREF", "amount": 0.1}}
+    assert _fake_status_response(monkeypatch, body).state == "unpaid"
+
+
+def test_hubtels_documented_paid_and_unpaid_responses_are_understood(monkeypatch):
+    base = {"date": "2024-04-25T21:45:48.4740964Z", "transactionId": "7fd01221", "externalTransactionId": "0000006824852622",
+            "paymentMethod": "mobilemoney", "clientReference": "SIREF", "currencyCode": None, "amount": 0.1,
+            "charges": 0.02, "amountAfterCharges": 0.08, "isFulfilled": None}
+    paid = _fake_status_response(monkeypatch, {"message": "Successful", "responseCode": "0000", "data": {**base, "status": "Paid"}})
+    unpaid = _fake_status_response(monkeypatch, {"message": "Successful", "responseCode": "0000", "data": {**base, "status": "Unpaid"}})
+    assert (paid.state, paid.amount) == ("paid", 0.1) and unpaid.state == "unpaid"
+
+
+def test_the_documented_sample_callback_names_our_payment():
+    sample = {"ResponseCode": "0000", "Status": "Success", "Data": {
+        "CheckoutId": "59e2fbbff4e443b98e09346881ac7e9a", "SalesInvoiceId": "e96ccfb4746045bba13f425bd573a31c",
+        "ClientReference": "Kaks545253", "Status": "Success", "Amount": 0.5, "CustomerPhoneNumber": "233242825109",
+        "PaymentDetails": {"MobileMoneyNumber": "233242825109", "PaymentType": "mobilemoney", "Channel": "mtn-gh"},
+        "Description": "The MTN Mobile Money payment has been approved and processed successfully."}}
+    assert hubtel.callback_reference(sample) == "Kaks545253"
