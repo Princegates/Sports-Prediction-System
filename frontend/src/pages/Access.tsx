@@ -152,7 +152,7 @@ function PayNow({ options, label }: { options: PaymentOptions | null; label: str
         card, confirmed automatically.
       </span>
       <span className="meta">
-        By paying you agree to our <Link to="/terms">Terms</Link> and <Link to="/refunds">Refund Policy</Link>.
+        All sales are final, with no refunds. By paying you agree to our <Link to="/terms">Terms</Link> and <Link to="/refunds">No-Refund Policy</Link>.
       </span>
       {error && <p className="auth-error">{error}</p>}
     </div>

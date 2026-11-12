@@ -7173,3 +7173,72 @@ table.admin-table {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+
+/* Admin Payments: the details row under a payment. */
+.payment-detail {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px 16px;
+  margin: 0 0 12px;
+}
+.payment-detail dt {
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+.payment-detail dd {
+  margin: 0;
+}
+.payment-raw {
+  margin: 6px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(127, 127, 127, 0.12);
+  overflow-x: auto;
+  font-size: 0.8rem;
+  max-width: 100%;
+}
+
+.payments-actions {
+  white-space: nowrap;
+}
+@media (max-width: 700px) {
+  table.admin-table.payments-table {
+    min-width: 0;
+  }
+  .payments-table thead {
+    display: none;
+  }
+  .payments-table,
+  .payments-table tbody,
+  .payments-table tr,
+  .payments-table td {
+    display: block;
+    width: 100%;
+  }
+  .payments-table tr {
+    padding: 10px 14px;
+    border-bottom: 1px solid rgba(127, 127, 127, 0.25);
+  }
+  .admin-table.payments-table td {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 0;
+    border: 0;
+    text-align: right;
+  }
+  .payments-table td[data-label]::before {
+    content: attr(data-label);
+    opacity: 0.65;
+    text-align: left;
+  }
+  .payments-table td.payments-actions {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    padding-top: 8px;
+  }
+  .payments-table td.payments-detail-cell {
+    display: block;
+    text-align: left;
+  }
+}

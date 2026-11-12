@@ -25,6 +25,7 @@ import type {
   AccountStatus,
   AdminOverview,
   AdminUser,
+  AdminPayment,
   AuditLogPage,
   ChatAnswer,
   ChatMessage,
@@ -467,6 +468,15 @@ export function fetchAuditLog(filters: AuditLogFilters = {}): Promise<AuditLogPa
   if (filters.since) params.set("since", filters.since);
   if (filters.until) params.set("until", filters.until);
   return get(`/api/admin/audit-log?${params.toString()}`);
+}
+
+export function fetchAdminPayments(status?: string): Promise<AdminPayment[]> {
+  return get(`/api/admin/payments?limit=200${status ? `&status=${encodeURIComponent(status)}` : ""}`);
+}
+
+/** Ask Hubtel what happened to a payment, and act on the answer. */
+export function recheckPayment(paymentId: number): Promise<AdminPayment> {
+  return post(`/api/admin/payments/${paymentId}/recheck`, {});
 }
 
 export function reinstateUser(userId: number): Promise<AdminUser> {

@@ -22,6 +22,7 @@ export const ACTION_LABELS: Record<string, string> = {
   "access_code.revealed": "access code revealed",
   "access_grant.extended": "access extended",
   "access_grant.revoked": "access revoked",
+  "payment.rechecked_by_admin": "payment checked with Hubtel by an admin",
   "referral.bonus_granted": "referral bonus granted",
   "booking_code.generated": "booking code generated",
   "automation.refresh_started": "daily refresh started on GitHub",

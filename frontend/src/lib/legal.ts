@@ -11,11 +11,11 @@ export const LEGAL = {
   /** Who runs it -- as the footer already says: "Powered by Anknovate IT Services". */
   operator: "Anknovate IT Services",
   /** When the three documents were last changed. Update this with any wording change. */
-  updated: "8 November 2026",
+  updated: "12 November 2026",
   /** Public support email, if there is one. Leave empty to show WhatsApp only. */
   contactEmail: "",
   /** Governing law and the data-protection authority that goes with it. */
   country: "Ghana",
-  /** How long a refund request can be made after a payment. */
-  refundWindowDays: 14,
+  /** How long after a payment a problem (missing access, double charge) can be reported. */
+  problemWindowDays: 14,
 };

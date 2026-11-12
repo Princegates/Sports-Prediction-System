@@ -283,6 +283,9 @@ export function AppShell() {
                     <button type="button" className="account-menu-item" onClick={() => navigate("/app/admin/activity-log")}>
                       <SettingsIcon size={16} /> Activity Log
                     </button>
+                    <button type="button" className="account-menu-item" onClick={() => navigate("/app/admin/payments")}>
+                      <SettingsIcon size={16} /> Payments
+                    </button>
                     <button type="button" className="account-menu-item" onClick={() => navigate("/app/admin/settings")}>
                       <SettingsIcon size={16} /> Settings
                     </button>

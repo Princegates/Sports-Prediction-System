@@ -486,3 +486,89 @@ def test_changing_a_price_in_settings_changes_the_offer_and_the_charge(db_sessio
 
     assert _ai_checkout(auth_headers, "ai_pack_3").status_code == 200
     assert fake_hubtel["created"][-1]["amount"] == 12.5
+
+
+# --- the admin Payments page ---------------------------------------------------
+
+
+def _admin_headers(db_session):
+    from app.auth.passwords import hash_password
+    from app.auth.tokens import create_token
+    from app.config import get_settings
+
+    admin = User(
+        email="payments-admin@example.com", name="Admin", password_hash=hash_password("a-good-password"),
+        role="superadmin", status="active",
+    )
+    db_session.add(admin)
+    db_session.commit()
+    db_session.refresh(admin)
+    settings = get_settings()
+    return {"Authorization": f"Bearer {create_token({'user_id': admin.id, 'role': admin.role}, settings.secret_key, settings.session_ttl_seconds)}"}
+
+
+def test_the_admin_list_says_what_was_bought_and_what_hubtel_said(db_session, auth_headers, configured, fake_hubtel):
+    admin = _admin_headers(db_session)
+    _checkout(auth_headers)
+    client.post("/api/payments/checkout", json={"product": "ai_pack_3"}, headers=auth_headers)
+    rows = client.get("/api/admin/payments", headers=admin).json()
+    labels = {r["product"]: r["product_label"] for r in rows}
+    assert labels["access"] == "Access, 5 days"
+    assert "extra AI Generation runs" in labels.get("ai_pack_3", "extra AI Generation runs")  # pack only if offered
+    assert all(r["provider_detail"] is None and r["last_checked_at"] is None for r in rows)  # Hubtel not asked yet
+
+    # Once Hubtel has been asked, its raw answer is visible for debugging.
+    reference = rows[-1]["reference"]
+    fake_hubtel["status"] = "pending"
+    client.post(f"/api/admin/payments/{rows[-1]['id']}/recheck", headers=admin)
+    refreshed = {r["reference"]: r for r in client.get("/api/admin/payments", headers=admin).json()}[reference]
+    assert refreshed["provider_detail"] == {"status": "pending"} and refreshed["last_checked_at"] is not None
+
+
+def test_the_admin_list_can_be_filtered_by_status(db_session, auth_headers, configured, fake_hubtel):
+    admin = _admin_headers(db_session)
+    _checkout(auth_headers)
+    assert len(client.get("/api/admin/payments?status=pending", headers=admin).json()) == 1
+    assert client.get("/api/admin/payments?status=completed", headers=admin).json() == []
+
+
+def test_checking_a_stuck_payment_with_hubtel_grants_it_once_paid(db_session, auth_headers, configured, fake_hubtel):
+    admin = _admin_headers(db_session)
+    reference = _checkout(auth_headers)["reference"]
+    payment = db_session.query(Payment).filter_by(client_reference=reference).one()
+
+    fake_hubtel["status"] = "paid"  # the callback never arrived
+    response = client.post(f"/api/admin/payments/{payment.id}/recheck", headers=admin)
+
+    assert response.status_code == 200 and response.json()["status"] == "completed"
+    db_session.expire_all()
+    assert db_session.query(Payment).get(payment.id).status == "completed"
+    assert _hubtel_codes(db_session) == 1
+    assert db_session.query(AuditLog).filter_by(action="payment.rechecked_by_admin").count() == 1
+
+    # Pressing it again changes nothing and doesn't ask Hubtel again.
+    checks_before = len(fake_hubtel["checks"])
+    assert client.post(f"/api/admin/payments/{payment.id}/recheck", headers=admin).json()["status"] == "completed"
+    assert len(fake_hubtel["checks"]) == checks_before
+    assert _hubtel_codes(db_session) == 1
+
+
+def test_rechecking_survives_hubtel_being_unreachable_and_unknown_ids(db_session, auth_headers, configured, fake_hubtel):
+    admin = _admin_headers(db_session)
+    reference = _checkout(auth_headers)["reference"]
+    payment = db_session.query(Payment).filter_by(client_reference=reference).one()
+
+    fake_hubtel["fail_status"] = True
+    response = client.post(f"/api/admin/payments/{payment.id}/recheck", headers=admin)
+    assert response.status_code == 502 and "Hubtel" in response.json()["detail"]
+    db_session.expire_all()
+    assert db_session.query(Payment).get(payment.id).status == "pending"  # untouched
+
+    assert client.post("/api/admin/payments/999999/recheck", headers=admin).status_code == 404
+
+
+def test_members_cannot_recheck_payments(db_session, auth_headers, configured, fake_hubtel):
+    reference = _checkout(auth_headers)["reference"]
+    payment = db_session.query(Payment).filter_by(client_reference=reference).one()
+    assert client.post(f"/api/admin/payments/{payment.id}/recheck", headers=auth_headers).status_code == 403
+    assert fake_hubtel["checks"] == []

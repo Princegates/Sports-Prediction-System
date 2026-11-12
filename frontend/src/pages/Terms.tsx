@@ -110,7 +110,8 @@ export function Terms() {
           <li>Every purchase is a one-off payment. Nothing renews automatically.</li>
           <li>Access or extra runs are added once Hubtel confirms the payment.</li>
           <li>
-            Refunds are covered in our <Link to="/refunds">Refund Policy</Link>, which is part of these terms.
+            All sales are final and not refundable, as set out in our <Link to="/refunds">No-Refund Policy</Link>,
+            which is part of these terms. If a payment goes wrong we fix your access instead.
           </li>
         </ul>
       </section>
@@ -135,7 +136,7 @@ export function Terms() {
           <li>Use the service for anything illegal, or pretend to be someone else.</li>
           <li>Post fake, edited or someone else's winning tickets in "Share a win".</li>
         </ul>
-        <p>We can suspend or close accounts that break these rules, without a refund.</p>
+        <p>We can suspend or close accounts that break these rules, with no refund.</p>
       </section>
 
       <section className="doc-section">

@@ -564,6 +564,13 @@ class AdminPaymentOut(BaseModel):
     status: str
     created_at: dt.datetime
     completed_at: dt.datetime | None = None
+    # What was bought, in words ("Access, 5 days", "3 extra AI Generation runs").
+    product: str = "access"
+    product_label: str = ""
+    # When we last asked Hubtel about it, and the raw answer -- so an admin
+    # (or Hubtel's engineers) can see exactly what their status API said.
+    last_checked_at: dt.datetime | None = None
+    provider_detail: dict | None = None
 
 
 class AdminMessageIn(BaseModel):

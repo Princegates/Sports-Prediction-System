@@ -105,19 +105,65 @@ def hubtel_callback(
     return {"ok": True}
 
 
+def _product_label(payment: Payment) -> str:
+    if payment.product == products.ACCESS:
+        days = payment.access_days
+        return f"Access, {days} day{'s' if days != 1 else ''}"
+    product = products.BY_KEY.get(payment.product)
+    return product.label if product else payment.product
+
+
+def _payment_out(payment: Payment, email: str | None) -> AdminPaymentOut:
+    return AdminPaymentOut(
+        id=payment.id, user_id=payment.user_id, user_email=email, reference=payment.client_reference,
+        amount=payment.amount, access_days=payment.access_days, status=payment.status,
+        created_at=payment.created_at, completed_at=payment.completed_at,
+        product=payment.product, product_label=_product_label(payment),
+        last_checked_at=payment.last_checked_at,
+        provider_detail=payment.provider_detail if isinstance(payment.provider_detail, dict) else None,
+    )
+
+
 @admin_router.get("", response_model=list[AdminPaymentOut])
-def list_payments(limit: int = 100, db: Session = Depends(get_db)) -> list[AdminPaymentOut]:
-    """Newest first -- for spotting a payment stuck short of "completed",
-    which the admin can resolve by issuing a code by hand."""
+def list_payments(limit: int = 200, status: str | None = None, db: Session = Depends(get_db)) -> list[AdminPaymentOut]:
+    """Newest first -- for spotting a payment stuck short of "completed"
+    (press "Check with Hubtel" on it, or issue a code by hand)."""
 
     limit = max(1, min(limit, 500))
-    rows = db.execute(select(Payment).order_by(Payment.created_at.desc()).limit(limit)).scalars().all()
+    query = select(Payment).order_by(Payment.created_at.desc()).limit(limit)
+    if status:
+        query = query.where(Payment.status == status)
+    rows = db.execute(query).scalars().all()
     emails = {u.id: u.email for u in db.execute(select(User).where(User.id.in_({p.user_id for p in rows if p.user_id}))).scalars()}
-    return [
-        AdminPaymentOut(
-            id=p.id, user_id=p.user_id, user_email=emails.get(p.user_id), reference=p.client_reference,
-            amount=p.amount, access_days=p.access_days, status=p.status,
-            created_at=p.created_at, completed_at=p.completed_at,
-        )
-        for p in rows
-    ]
+    return [_payment_out(p, emails.get(p.user_id)) for p in rows]
+
+
+@admin_router.post("/{payment_id}/recheck", response_model=AdminPaymentOut)
+def recheck_payment(
+    payment_id: int, admin: User = Depends(require_superadmin), db: Session = Depends(get_db)
+) -> AdminPaymentOut:
+    """Asks Hubtel again about a payment still waiting, and grants whatever it
+    was for if Hubtel now says it was paid -- exactly the rules a member's own
+    status poll follows (a payment that isn't pending is left alone). For a
+    payment whose callback never arrived, or while testing the connection."""
+
+    # Hubtel allows only a handful of status checks a minute.
+    enforce_key(f"payment_recheck-admin:{admin.id}", 10, 600)
+    payment = db.get(Payment, payment_id)
+    if payment is None:
+        raise HTTPException(status_code=404, detail="Payment not found.")
+
+    before = payment.status
+    try:
+        payment = service.reconcile(db, payment, force=True)
+    except hubtel.HubtelError as exc:
+        raise HTTPException(status_code=502, detail=f"Couldn't get an answer from Hubtel: {exc}") from exc
+    except AccessCodeError as exc:
+        logger.error("Payment %s confirmed but access couldn't be granted: %s", payment_id, exc)
+        raise HTTPException(status_code=500, detail="Hubtel says it was paid, but granting it failed. Issue a code by hand.") from exc
+
+    if before == "pending":  # only when Hubtel was actually asked
+        service._audit(db, admin, "payment.rechecked_by_admin", payment, {"before": before, "after": payment.status})
+        db.commit()
+    email = db.get(User, payment.user_id).email if payment.user_id else None
+    return _payment_out(payment, email)

@@ -4,43 +4,46 @@ import { PublicShell } from "../components/PublicShell";
 import { LEGAL } from "../lib/legal";
 
 /**
- * Refund Policy. What is sold here is digital and switched on the moment a
- * payment is confirmed, so the policy is built around that: no refunds for
- * something already delivered, but a clear promise to fix payments that go
- * wrong. Have it reviewed by a lawyer before relying on it.
+ * No-Refund Policy. Everything sold here is digital and switched on the moment
+ * a payment is confirmed, so every sale is final. The one thing we do promise
+ * is to put right a payment that went wrong by delivering what was paid for
+ * (that is fixing our service, not refunding money). Have it reviewed by a
+ * lawyer before relying on it -- consumer-protection law in Ghana may give
+ * buyers rights this page cannot remove.
  */
 
 const PRODUCTS: { name: string; rule: string }[] = [
   {
     name: "Access time (for example 7 or 30 days)",
-    rule: "Starts as soon as payment is confirmed. Not refundable once it has started, except in the cases listed below.",
+    rule: "Starts as soon as payment is confirmed. Final sale, no refund.",
   },
   {
     name: "Packs of extra AI Generation runs",
-    rule: "Refundable only if the runs were never added to your account or none have been used. Runs already used are not refundable.",
+    rule: "Final sale, no refund, whether the runs are used or not.",
   },
   {
     name: "24-hour unlimited AI Generation pass",
-    rule: "Not refundable once it has started.",
+    rule: "Final sale, no refund.",
   },
   {
     name: "Access codes bought from an admin (for example on WhatsApp)",
-    rule: "Same rules as access time. Not refundable once the code has been redeemed.",
+    rule: "Final sale, no refund, whether the code has been redeemed or not.",
   },
 ];
 
 export function Refunds() {
   return (
     <PublicShell
-      title="Refund Policy — Socca Intelligence"
-      description="When Socca Intelligence refunds a payment and how to ask: failed, duplicate or wrong payments are fixed or refunded; access already delivered is not."
+      title="No-Refund Policy — Socca Intelligence"
+      description="All sales on Socca Intelligence are final and not refundable. If a payment goes wrong we fix your access instead."
     >
       <section className="doc-hero">
         <span className="eyebrow">Legal</span>
-        <h1>Refund Policy</h1>
+        <h1>No-Refund Policy</h1>
         <p className="lede">
-          What you buy on {LEGAL.site} is digital and works straight away, so we can't take it back once
-          you have it. But if a payment goes wrong, we will fix it or refund you. Last updated {LEGAL.updated}.
+          Everything you buy on {LEGAL.site} is digital and works straight away, so <strong>all sales are
+          final and we do not give refunds</strong>. Please check what you are buying before you pay. Last
+          updated {LEGAL.updated}.
         </p>
       </section>
 
@@ -49,16 +52,16 @@ export function Refunds() {
           <h4>In short</h4>
           <ul>
             <li>
-              <strong>We will fix or refund:</strong> a payment that was taken but did not give you access, a
-              duplicate payment, a wrong amount, or a charge you did not make.
+              <strong>No refunds.</strong> Once you pay, the purchase is final, including if you change your
+              mind or a prediction or slip does not win.
             </li>
             <li>
-              <strong>We will not refund:</strong> access or runs that are already active or used, or
-              because a prediction or slip did not win.
+              <strong>We will still fix mistakes.</strong> If a payment goes through but your access or runs
+              do not appear, we add what you paid for.
             </li>
             <li>
-              <strong>Ask within {LEGAL.refundWindowDays} days</strong> of paying, and have your payment
-              reference ready.
+              <strong>Tell us within {LEGAL.problemWindowDays} days</strong> and have your payment reference
+              ready.
             </li>
           </ul>
         </div>
@@ -71,7 +74,7 @@ export function Refunds() {
             <thead>
               <tr>
                 <th>Purchase</th>
-                <th>Refund rule</th>
+                <th>Rule</th>
               </tr>
             </thead>
             <tbody>
@@ -86,51 +89,48 @@ export function Refunds() {
             </tbody>
           </table>
         </div>
-        <p>The free trial costs nothing, so there is nothing to refund.</p>
+        <p>The free trial costs nothing, so there is nothing to pay for or refund.</p>
       </section>
 
       <section className="doc-section">
-        <h2>When we will refund you</h2>
+        <h2>Why we do not refund</h2>
         <ul className="doc-list">
+          <li>Access, runs and passes are digital. They are switched on the moment Hubtel confirms your payment and cannot be taken back.</li>
           <li>
-            <strong>Your payment went through but access or runs did not appear.</strong> We will first try to
-            fix it and add what you paid for. If we cannot, we refund you.
+            Predictions are chances, never guarantees (see our <Link to="/terms">Terms</Link>). A pick or
+            slip that does not win is not a fault in the service.
           </li>
-          <li>
-            <strong>You were charged twice</strong> for the same thing. We refund the extra payment.
-          </li>
-          <li>
-            <strong>You paid the wrong amount</strong> because of a mistake on our side.
-          </li>
-          <li>
-            <strong>You did not make the payment.</strong> Tell us straight away so we can look into it.
-          </li>
-          <li>
-            <strong>The service could not be provided</strong> at all because of a fault on our side, and we could not fix it.
-          </li>
+          <li>Every price and what it includes is shown before you pay, and nothing renews automatically.</li>
         </ul>
       </section>
 
       <section className="doc-section">
-        <h2>When we will not refund</h2>
+        <h2>If a payment goes wrong</h2>
+        <p>
+          We do not refund, but we do not leave you without what you paid for. We will fix it by adding the
+          access or runs to your account:
+        </p>
         <ul className="doc-list">
-          <li>The access time has started, or the runs or pass have been used.</li>
           <li>
-            A prediction, pick or slip did not win. Predictions are chances, never guarantees (see our{" "}
-            <Link to="/terms">Terms</Link>).
+            <strong>You paid but nothing appeared.</strong> We check the payment with Hubtel and add what you paid for.
           </li>
-          <li>You changed your mind, or you did not read what was included.</li>
-          <li>Your account was suspended or closed for breaking our <Link to="/terms">Terms</Link>.</li>
-          <li>The problem came from your phone network, wallet or bank, and the payment never reached us.</li>
+          <li>
+            <strong>You were charged twice</strong> for the same thing. We add the extra payment to your
+            account as more access time or runs, so it is not lost.
+          </li>
+          <li>
+            <strong>You did not make the payment.</strong> Tell us straight away so we can look into it. You
+            can also report it to your mobile money provider or bank.
+          </li>
         </ul>
         <p>Nothing in this policy limits any right you have by law.</p>
       </section>
 
       <section className="doc-section">
-        <h2>How to ask for a refund</h2>
+        <h2>How to report a payment problem</h2>
         <ol className="doc-list">
           <li>
-            Contact us on WhatsApp or email within {LEGAL.refundWindowDays} days of the payment (details below).
+            Contact us on WhatsApp or email within {LEGAL.problemWindowDays} days of the payment (details below).
           </li>
           <li>
             Send your <strong>payment reference</strong> (it is shown on the Access page after you pay), the
@@ -139,14 +139,8 @@ export function Refunds() {
           <li>
             We check the payment with Hubtel and tell you what we found, usually within 2 working days.
           </li>
-          <li>
-            If you are due a refund, we send it back to the way you paid (mobile money or card). This usually
-            takes 5 to 10 working days after we approve it, depending on your network or bank.
-          </li>
+          <li>If the payment was made and your access is missing, an admin adds it to your account.</li>
         </ol>
-        <p>
-          If a payment is stuck, an admin can also fix your access by hand, without waiting for a refund.
-        </p>
       </section>
 
       <section className="doc-section">
@@ -157,7 +151,7 @@ export function Refunds() {
         </p>
       </section>
 
-      <LegalContact topic="Refund Policy" />
+      <LegalContact topic="No-Refund Policy" />
     </PublicShell>
   );
 }

@@ -159,7 +159,7 @@ export function PublicShell({
             <Link to="/responsible">Responsible use</Link>
             <Link to="/terms">Terms of Service</Link>
             <Link to="/privacy">Privacy Policy</Link>
-            <Link to="/refunds">Refund Policy</Link>
+            <Link to="/refunds">No-Refund Policy</Link>
           </div>
 
           <div className="public-footer-col">

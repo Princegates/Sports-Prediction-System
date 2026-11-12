@@ -11,6 +11,7 @@ import { RequireAccess, RequireAuth, RequireSuperadmin } from "./components/Requ
 // actually navigate to.
 const Access = lazy(() => import("./pages/Access").then((m) => ({ default: m.Access })));
 const AccountStatus = lazy(() => import("./pages/AccountStatus").then((m) => ({ default: m.AccountStatus })));
+const AdminPayments = lazy(() => import("./pages/AdminPayments").then((m) => ({ default: m.AdminPayments })));
 const ActivityLog = lazy(() => import("./pages/ActivityLog").then((m) => ({ default: m.ActivityLog })));
 const AdminUsers = lazy(() => import("./pages/AdminUsers").then((m) => ({ default: m.AdminUsers })));
 const MyWinningSlips = lazy(() => import("./pages/MyWinningSlips").then((m) => ({ default: m.MyWinningSlips })));
@@ -119,6 +120,7 @@ export default function App() {
             <Route element={<RequireSuperadmin />}>
               <Route path="admin" element={<AdminUsers />} />
               <Route path="admin/activity-log" element={<ActivityLog />} />
+              <Route path="admin/payments" element={<AdminPayments />} />
               <Route path="admin/settings" element={<Settings />} />
               <Route path="admin/winning-slips" element={<AdminWinningSlips />} />
               <Route path="admin/banner" element={<AdminBanner />} />

@@ -465,6 +465,24 @@ export interface PaymentStatus {
   access_expires_at: string | null;
 }
 
+/** One row of the admin Payments page. */
+export interface AdminPayment {
+  id: number;
+  user_id: number | null;
+  user_email: string | null;
+  reference: string;
+  amount: number;
+  access_days: number;
+  status: PaymentStatus["status"];
+  created_at: string;
+  completed_at: string | null;
+  product: string;
+  product_label: string;
+  last_checked_at: string | null;
+  /** Hubtel's own answer the last time we asked, kept for debugging. */
+  provider_detail: Record<string, unknown> | null;
+}
+
 export interface SiteNotice {
   enabled: boolean;
   message: string;

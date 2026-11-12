@@ -58,7 +58,7 @@ export function AIGenerationExtras({ heading = "Need more AI Generation runs?" }
         ))}
       </div>
       <p className="setting-note" style={{ margin: "10px 0 0" }}>
-        By paying you agree to our <Link to="/terms">Terms</Link> and <Link to="/refunds">Refund Policy</Link>.
+        All sales are final, with no refunds. By paying you agree to our <Link to="/terms">Terms</Link> and <Link to="/refunds">No-Refund Policy</Link>.
       </p>
       {error && <p className="auth-error" style={{ marginBottom: 0 }}>{error}</p>}
     </div>
