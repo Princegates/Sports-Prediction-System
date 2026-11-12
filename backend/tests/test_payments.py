@@ -381,6 +381,48 @@ def test_check_status_parses_paid_and_unpaid_and_unknown(monkeypatch):
         assert hubtel.check_status(config, "SIREF").state == expected
 
 
+def _fake_status_response(monkeypatch, body):
+    class Resp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return body
+
+    monkeypatch.setattr(hubtel.requests, "get", lambda *a, **k: Resp())
+    config = hubtel.HubtelConfig("id", "secret", "11684", "https://x.test/init", "https://s.test", "https://api.test")
+    return hubtel.check_status(config, "SIREF")
+
+
+def test_check_status_reads_a_list_shaped_response_and_picks_our_transaction(monkeypatch):
+    body = {"Message": "Successful", "ResponseCode": "0000", "Data": [
+        {"ClientReference": "SIOTHER", "Status": "Paid", "Amount": 999},
+        {"ClientReference": "SIREF", "Status": "Paid", "Amount": 20},
+    ]}
+    result = _fake_status_response(monkeypatch, body)
+    assert result.state == "paid" and result.amount == 20
+
+
+def test_check_status_never_believes_someone_elses_transaction(monkeypatch):
+    other_only = {"data": [{"clientReference": "SIOTHER", "status": "Paid", "amount": 20}]}
+    assert _fake_status_response(monkeypatch, other_only).state == "pending"
+    assert _fake_status_response(monkeypatch, {"data": []}).state == "pending"
+    wrong_object = {"data": {"clientReference": "SIOTHER", "status": "Paid", "amount": 20}}
+    assert _fake_status_response(monkeypatch, wrong_object).state == "pending"
+
+
+def test_check_status_reads_capitalised_object_responses(monkeypatch):
+    result = _fake_status_response(monkeypatch, {"Data": {"ClientReference": "SIREF", "Status": "Unpaid"}})
+    assert result.state == "unpaid"
+
+
+def test_check_status_still_rejects_a_response_with_no_data(monkeypatch):
+    import pytest as _pytest
+
+    with _pytest.raises(hubtel.HubtelError):
+        _fake_status_response(monkeypatch, {"message": "error"})
+
+
 def test_deleting_an_account_keeps_its_payment_record(db_session, auth_headers, configured, fake_hubtel):
     from app.account_deletion import delete_user_account
     from app.auth.passwords import hash_password

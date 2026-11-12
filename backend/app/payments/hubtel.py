@@ -141,6 +141,37 @@ _FAILED = {"unpaid", "failed", "cancelled", "canceled", "declined", "expired"}
 AMBIGUOUS_UNPAID = {"unpaid"}
 
 
+def _field(obj: dict, *names: str) -> Any:
+    """A value from ``obj`` by any of ``names``, ignoring letter case -- Hubtel's
+    own documents and responses mix ``data``/``Data`` and ``status``/``Status``."""
+
+    lowered = {str(k).lower(): v for k, v in obj.items()}
+    for name in names:
+        if name.lower() in lowered:
+            return lowered[name.lower()]
+    return None
+
+
+def _transaction_for(payload: Any, client_reference: str) -> dict | None:
+    """The one transaction in a status response that belongs to
+    ``client_reference``. The response's ``data`` has been seen as a single
+    object and as a list of transactions; either way only an entry that names
+    our reference (or a lone object that names none) is believed, so another
+    customer's payment can never be mistaken for ours. Raises HubtelError when
+    the response has no usable shape at all."""
+
+    data = _field(payload, "data") if isinstance(payload, dict) else None
+    if isinstance(data, dict):
+        named = _field(data, "clientReference")
+        return data if named in (None, "") or str(named) == client_reference else None
+    if isinstance(data, list):
+        for entry in data:
+            if isinstance(entry, dict) and str(_field(entry, "clientReference") or "") == client_reference:
+                return entry
+        return None
+    raise HubtelError("Hubtel's status response wasn't understood.")
+
+
 def check_status(config: HubtelConfig, client_reference: str) -> StatusResult:
     """Ask Hubtel directly whether ``client_reference`` was paid. Raises
     HubtelError when the answer can't be obtained -- the caller must treat
@@ -160,12 +191,14 @@ def check_status(config: HubtelConfig, client_reference: str) -> StatusResult:
         logger.warning("Hubtel status check failed for %s: %s", client_reference, exc)
         raise HubtelError("Couldn't confirm the payment with Hubtel.") from exc
 
-    data = payload.get("data") if isinstance(payload, dict) else None
-    if not isinstance(data, dict):
-        raise HubtelError("Hubtel's status response wasn't understood.")
+    data = _transaction_for(payload, client_reference)
+    if data is None:
+        # Hubtel answered but has no transaction for this reference (yet): not
+        # paid as far as anyone can tell, and not a reason to cancel either.
+        return StatusResult(state="pending", amount=None, raw={"note": "Hubtel returned no matching transaction"})
 
-    status = str(data.get("status") or "").strip().lower()
-    amount_raw = data.get("amount")
+    status = str(_field(data, "status", "transactionStatus") or "").strip().lower()
+    amount_raw = _field(data, "amount")
     try:
         amount = float(amount_raw) if amount_raw is not None else None
     except (TypeError, ValueError):
