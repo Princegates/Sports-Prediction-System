@@ -7242,3 +7242,12 @@ table.admin-table {
     text-align: left;
   }
 }
+
+/* Share link box under a slip or a saved selection. */
+.share-box {
+  flex-basis: 100%;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-surface-2);
+}

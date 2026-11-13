@@ -965,6 +965,18 @@ export interface SavedSelection {
   warnings: string[];
 }
 
+/** A slip shared by link: what the person who opens it sees. */
+export interface SharedSelection {
+  token: string;
+  name: string;
+  /** The sender's first name, never an email. Null if they have none. */
+  shared_by: string | null;
+  created_at: string;
+  expires_at: string;
+  games: SavedGame[];
+  upcoming_count: number;
+  warnings: string[];
+}
 
 // --- News banner -------------------------------------------------------------
 

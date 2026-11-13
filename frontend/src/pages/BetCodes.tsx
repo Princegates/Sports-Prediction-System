@@ -26,6 +26,7 @@ import { LeaguePicker } from "../components/LeaguePicker";
 import { MarketPicker, type MarketPreset } from "../components/MarketPicker";
 import { MyCodesHistory } from "../components/MyCodesHistory";
 import { SavedSelections, SaveSelectionControl } from "../components/SavedSelections";
+import { ShareSelectionControl } from "../components/ShareSelection";
 import { SiteCodes } from "../components/SiteCodes";
 import { StickySlipBar } from "../components/StickySlipBar";
 import { LEAGUES, useLeague } from "../components/AppShell";
@@ -206,6 +207,8 @@ export function BetCodes() {
   const { league } = useLeague();
   const { user } = useAuth();
   const location = useLocation();
+  // Set when the picks arrived from someone's share link (pages/SharedSlip).
+  const sharedWith = (location.state as { shared?: { name: string; by: string | null } } | null)?.shared ?? null;
   const [maxLegs, setMaxLegs] = useState(DEFAULT_MAX_LEGS);
   const [markets, setMarkets] = useState<string[]>([]);
   // Off by default: each match contributes its single strongest qualifying
@@ -1016,7 +1019,16 @@ export function BetCodes() {
 
       {preview && (
         <div className="card card-pad" style={{ marginBottom: 20 }} ref={resultsCardRef}>
-          {fromExternalPicks && (
+          {sharedWith && (
+            <p className="setting-note" style={{ marginBottom: 12 }}>
+              <strong>
+                Shared with you{sharedWith.by ? ` by ${sharedWith.by}` : ""}: &ldquo;{sharedWith.name}&rdquo;.
+              </strong>{" "}
+              Change it however you like: remove games with the ✕ or press Refresh for different ones. Then make
+              your code with the buttons below. Nothing you do changes their slip.
+            </p>
+          )}
+          {fromExternalPicks && !sharedWith && (
             <p className="setting-note" style={{ marginBottom: 12 }}>
               Resolved from your selected picks -- checked against each match's current prediction, just
               not run through the criteria form below.
@@ -1155,6 +1167,11 @@ export function BetCodes() {
           {editedLegs.length > 0 && (
             <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
               <CopyButton text={formatLegsForCopy(editedLegs, editedCombinedProbability)} label="Copy selections" />
+              {editingPickId === null && (
+                <ShareSelectionControl
+                  picks={editedLegs.map((l) => ({ match_id: l.match_id, market: l.market, selection: l.selection }))}
+                />
+              )}
               {editingPickId === null && (
                 <SaveSelectionControl
                   picks={editedLegs.map((l) => ({ match_id: l.match_id, market: l.market, selection: l.selection }))}

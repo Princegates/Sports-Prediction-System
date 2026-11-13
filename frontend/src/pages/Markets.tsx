@@ -13,6 +13,7 @@ import { StickySlipBar } from "../components/StickySlipBar";
 import { dateKeyFromIso, FixtureCalendar } from "../components/FixtureCalendar";
 import { LEAGUES, TOP_LEAGUES } from "../components/AppShell";
 import { formatPicksForCopy, readStoredPicks, storePicks } from "../lib/myPicks";
+import { ShareSelectionControl } from "../components/ShareSelection";
 import { isHotPick } from "../lib/filters";
 import { useAuth } from "../lib/AuthContext";
 import type { BettingOutcome, MarketSummary, MatchSummary, OutcomesResponse } from "../types";
@@ -949,6 +950,9 @@ export function Markets() {
 
           <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
             <CopyButton text={formatPicksForCopy(picks)} label="Copy selections" />
+            <ShareSelectionControl
+              picks={picks.map((o) => ({ match_id: o.match_id, market: o.market, selection: o.selection }))}
+            />
             {user?.role === "superadmin" && (
               <button
                 type="button"

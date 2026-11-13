@@ -1131,6 +1131,22 @@ class SavedSelectionOut(BaseModel):
     warnings: list[str] = []
 
 
+class SharedSelectionOut(BaseModel):
+    """A shared slip as the person who opens the link sees it. ``shared_by`` is
+    the sender's first name only (never an email), empty if they have none."""
+
+    token: str
+    name: str
+    shared_by: str | None = None
+    created_at: dt.datetime
+    expires_at: dt.datetime
+    games: list[SavedGameOut]
+    upcoming_count: int
+    # Said on creating a share when some picks were left out (a game already
+    # started, an outcome that doesn't exist).
+    warnings: list[str] = []
+
+
 class BettingSiteOut(BaseModel):
     key: str
     name: str

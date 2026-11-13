@@ -14,6 +14,7 @@ a stored bookmaker quote, a target price, or a booking-code aggregator.
 from __future__ import annotations
 
 import datetime as dt
+import secrets
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import delete, func, select
@@ -35,6 +36,7 @@ from app.api.schemas import (
     SavedGameOut,
     SavedSelectionIn,
     SavedSelectionOut,
+    SharedSelectionOut,
     SiteCodeOut,
     SuggestCriteriaIn,
     SuggestedPicksOut,
@@ -51,7 +53,7 @@ from app.betcode.selection import (
     select_legs_featuring_every_market,
     select_random_legs,
 )
-from app.db.models import AuditLog, BookingSlip, Match, SavedSelection, User
+from app.db.models import AuditLog, BookingSlip, Match, SavedSelection, SharedSelection, User
 from app.timeutil import utcnow
 from app.pick_settlement import frozen_booking_slip_legs, settle_booking_slip
 
@@ -389,10 +391,10 @@ def list_sites() -> list[BettingSiteOut]:
 MAX_SAVED_SELECTIONS = 30
 
 
-def _saved_to_out(
-    db: Session, saved: SavedSelection, warnings: list[str] | None = None
-) -> SavedSelectionOut:
-    picks = saved.picks or []
+def _games_for(db: Session, picks: list[dict]) -> list[SavedGameOut]:
+    """Each pick with its game's details and whether it can still go on a
+    booking code (not started, not finished, still exists)."""
+
     ids = {p["match_id"] for p in picks}
     matches = {m.id: m for m in db.execute(select(Match).where(Match.id.in_(ids))).scalars()} if ids else {}
     now = utcnow()
@@ -419,6 +421,13 @@ def _saved_to_out(
                 upcoming=match.status != "FINISHED" and match.date > now,
             )
         )
+    return games
+
+
+def _saved_to_out(
+    db: Session, saved: SavedSelection, warnings: list[str] | None = None
+) -> SavedSelectionOut:
+    games = _games_for(db, saved.picks or [])
     return SavedSelectionOut(
         id=saved.id,
         name=saved.name,
@@ -509,3 +518,93 @@ def delete_saved_selection(
 ) -> None:
     db.delete(_owned_saved(db, user, saved_id))
     db.commit()
+
+
+# --- Sharing a slip ---------------------------------------------------------------
+#
+# A member can share the picks of a generated slip (or a saved selection) by
+# link. Whoever opens it -- another member with access -- sees the games, can
+# edit them (remove games, refresh, add their own) and only then makes their
+# own booking code. The share is a copy of the picks taken at that moment, so the
+# sender editing or deleting theirs later changes nothing for the recipient,
+# and nothing the recipient does touches the sender's.
+
+SHARE_LINK_DAYS = 14
+MAX_ACTIVE_SHARES = 20
+
+
+def _share_out(db: Session, share: SharedSelection, warnings: list[str] | None = None) -> SharedSelectionOut:
+    owner = db.get(User, share.owner_user_id)
+    first = (owner.name or "").split()[0] if owner is not None and (owner.name or "").strip() else None
+    games = _games_for(db, share.picks or [])
+    return SharedSelectionOut(
+        token=share.token,
+        name=share.name,
+        shared_by=first,
+        created_at=share.created_at,
+        expires_at=share.expires_at,
+        games=games,
+        upcoming_count=sum(1 for g in games if g.upcoming),
+        warnings=warnings or [],
+    )
+
+
+@router.post("/shared", response_model=SharedSelectionOut)
+def share_selection(
+    payload: SavedSelectionIn, user: User = Depends(require_active_access), db: Session = Depends(get_db)
+) -> SharedSelectionOut:
+    """Makes a link for these picks. Each one is checked first, exactly as when
+    saving (a real upcoming game, an outcome that exists, one pick per game);
+    only valid ones are shared and the rest come back as warnings."""
+
+    enforce_key(f"share_selection-user:{user.id}", 20, 600)
+    now = utcnow()
+    active = db.execute(
+        select(func.count(SharedSelection.id)).where(
+            SharedSelection.owner_user_id == user.id, SharedSelection.expires_at > now
+        )
+    ).scalar_one()
+    if active >= MAX_ACTIVE_SHARES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"You have {MAX_ACTIVE_SHARES} share links still active. Wait for one to expire before sharing another.",
+        )
+
+    refs: list[tuple[int, str, str]] = []
+    for pick in payload.picks:
+        ref = (pick.match_id, pick.market, pick.selection)
+        if ref not in refs:
+            refs.append(ref)
+    legs, warnings = resolve_legs_unpriced(db, refs)
+    if not legs:
+        raise HTTPException(
+            status_code=422, detail=" ".join(warnings) or "None of these picks can be shared: they are not upcoming games."
+        )
+
+    share = SharedSelection(
+        token=secrets.token_urlsafe(16),
+        owner_user_id=user.id,
+        name=_clean_name(payload.name),
+        picks=[{"match_id": leg.match_id, "market": leg.market, "selection": leg.selection} for leg in legs],
+        created_at=now,
+        expires_at=now + dt.timedelta(days=SHARE_LINK_DAYS),
+    )
+    db.add(share)
+    db.add(AuditLog(actor_user_id=user.id, actor_email=user.email, action="betcode.shared", detail={"games": len(legs)}))
+    db.commit()
+    db.refresh(share)
+    return _share_out(db, share, warnings)
+
+
+@router.get("/shared/{token}", response_model=SharedSelectionOut)
+def open_shared_selection(
+    token: str, user: User = Depends(require_active_access), db: Session = Depends(get_db)
+) -> SharedSelectionOut:
+    """What was shared. An unknown, mistyped or expired link is the same plain
+    404, so there is nothing to learn by guessing."""
+
+    enforce_key(f"open_shared-user:{user.id}", 60, 600)
+    share = db.execute(select(SharedSelection).where(SharedSelection.token == token[:64])).scalar_one_or_none()
+    if share is None or share.expires_at <= utcnow():
+        raise HTTPException(status_code=404, detail="This share link isn't valid any more. Ask for a new one.")
+    return _share_out(db, share)

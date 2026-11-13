@@ -9,6 +9,7 @@ import type {
   SuggestRandomCriteria,
   SuggestedPicks,
   SavedSelection,
+  SharedSelection,
   OutcomesResponse,
   Branding,
   SettingsPayload,
@@ -1095,6 +1096,15 @@ export function fetchSavedSelections(): Promise<SavedSelection[]> {
 
 export function saveSelection(picks: BetCodePick[], name?: string): Promise<SavedSelection> {
   return post("/api/betcodes/saved", { name: name?.trim() || null, picks });
+}
+
+/** Makes a link to these picks that another member can open, edit and book. */
+export function shareSelection(picks: BetCodePick[], name?: string): Promise<SharedSelection> {
+  return post("/api/betcodes/shared", { name: name?.trim() || null, picks });
+}
+
+export function fetchSharedSelection(token: string): Promise<SharedSelection> {
+  return get(`/api/betcodes/shared/${encodeURIComponent(token)}`);
 }
 
 export function renameSavedSelection(id: number, name: string): Promise<SavedSelection> {

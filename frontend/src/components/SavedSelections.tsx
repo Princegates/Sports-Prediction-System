@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { deleteSavedSelection, fetchSavedSelections, renameSavedSelection, saveSelection } from "../api";
 import type { BetCodePick, SavedSelection } from "../types";
 import { ErrorState } from "./ErrorState";
+import { ShareSelectionControl } from "./ShareSelection";
 
 /**
  * Saved selections for AI Generation: keep a set of picks now, turn it into a
@@ -186,6 +187,15 @@ export function SavedSelections({
                 >
                   Use
                 </button>
+                {!allGone && (
+                  <ShareSelectionControl
+                    small
+                    name={item.name}
+                    picks={item.games
+                      .filter((g) => g.upcoming)
+                      .map((g) => ({ match_id: g.match_id, market: g.market, selection: g.selection }))}
+                  />
+                )}
                 <button
                   type="button"
                   className="btn ghost"

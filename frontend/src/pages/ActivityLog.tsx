@@ -26,6 +26,7 @@ export const ACTION_LABELS: Record<string, string> = {
   "payment.callback_received": "payment callback received from Hubtel",
   "referral.bonus_granted": "referral bonus granted",
   "booking_code.generated": "booking code generated",
+  "betcode.shared": "slip shared by link",
   "automation.refresh_started": "daily refresh started on GitHub",
   "automation.refresh_already_running": "daily refresh already running on GitHub",
   "automation.refresh_failed": "daily refresh couldn't be started",

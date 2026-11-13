@@ -959,6 +959,28 @@ class SavedSelection(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
+class SharedSelection(Base):
+    """A snapshot of picks a member shared by link, so someone else can open
+    them, edit them and make their own booking code.
+
+    Like SavedSelection it holds only the picks -- (match, market, selection) --
+    and the recipient's copy is re-checked against today's predictions when it
+    is opened. It is a copy taken at share time: the sender changing or
+    deleting their own slip afterwards does not change it. The link is the
+    random ``token``; it stops working at ``expires_at``.
+    """
+
+    __tablename__ = "shared_selections"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    owner_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    picks: Mapped[list] = mapped_column(JSON)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    expires_at: Mapped[dt.datetime] = mapped_column(DateTime, index=True)
+
+
 class BookingSlip(Base):
     """A multi-match selection assembled toward a target combined price, and
     whatever a booking-code aggregator returned for it.

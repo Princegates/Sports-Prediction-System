@@ -12,6 +12,7 @@ import { RequireAccess, RequireAuth, RequireSuperadmin } from "./components/Requ
 const Access = lazy(() => import("./pages/Access").then((m) => ({ default: m.Access })));
 const AccountStatus = lazy(() => import("./pages/AccountStatus").then((m) => ({ default: m.AccountStatus })));
 const AdminPayments = lazy(() => import("./pages/AdminPayments").then((m) => ({ default: m.AdminPayments })));
+const SharedSlip = lazy(() => import("./pages/SharedSlip").then((m) => ({ default: m.SharedSlip })));
 const ActivityLog = lazy(() => import("./pages/ActivityLog").then((m) => ({ default: m.ActivityLog })));
 const AdminUsers = lazy(() => import("./pages/AdminUsers").then((m) => ({ default: m.AdminUsers })));
 const MyWinningSlips = lazy(() => import("./pages/MyWinningSlips").then((m) => ({ default: m.MyWinningSlips })));
@@ -113,6 +114,7 @@ export default function App() {
               <Route path="predictions" element={<Predictions />} />
               <Route path="markets" element={<Markets />} />
               <Route path="betcodes" element={<BetCodes />} />
+              <Route path="shared/:token" element={<SharedSlip />} />
               <Route path="live" element={<Live />} />
               <Route path="teams/:id" element={<TeamPage />} />
             </Route>

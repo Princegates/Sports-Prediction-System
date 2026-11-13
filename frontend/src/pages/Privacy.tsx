@@ -148,7 +148,11 @@ export function Privacy() {
           <li>Your account information, history and messages are kept while your account exists.</li>
           <li>
             When an account is deleted, we remove the account, its access records, chat history, viewing
-            history, saved slips and saved selections.
+            history, saved slips, saved selections and the links they shared.
+          </li>
+          <li>
+            A slip shared by link keeps only its picks, with the sender's first name, and stops working after
+            14 days. The person who opens it sees the games, never the sender's email.
           </li>
           <li>
             Some records stay after deletion but are no longer linked to you: payment records (we must keep
