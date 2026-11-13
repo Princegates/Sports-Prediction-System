@@ -55,6 +55,7 @@ export function SaveSelectionControl({ picks, onSaved }: { picks: BetCodePick[];
       {asking && (
         <form onSubmit={handleSave} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <input
+            className="field-input"
             aria-label="Name for this saved selection"
             placeholder="Name (optional)"
             maxLength={80}

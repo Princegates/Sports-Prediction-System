@@ -74,6 +74,7 @@ export function ShareSelectionControl({
           {link.note && <p className="setting-note" style={{ margin: "0 0 6px" }}>{link.note}</p>}
           <input
             readOnly
+            className="field-input"
             aria-label="Share link"
             value={link.url}
             onFocus={(e) => e.currentTarget.select()}

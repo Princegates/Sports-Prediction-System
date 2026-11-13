@@ -96,6 +96,26 @@ textarea:focus {
   border-color: var(--accent);
 }
 
+/* Small inline text fields next to buttons (the share link, the name box on
+   "Save for later"): same surface and ink as the forms, readable in night mode. */
+input.field-input {
+  background-color: var(--bg-surface-2);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+}
+
+input.field-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+input.field-input::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
 .setting-field input::placeholder,
 textarea::placeholder {
   color: var(--text-muted);
