@@ -102,8 +102,8 @@ export function SharedSlip() {
           <button type="button" className="btn" disabled={allGone} onClick={handleEdit}>
             Edit and make my code
           </button>
-          <Link className="btn ghost" to="/app/betcodes">
-            Make my own instead
+          <Link className="btn ghost" to="/app/betcodes" style={{ textDecoration: "none" }}>
+            Build my own slip
           </Link>
         </div>
       </div>
