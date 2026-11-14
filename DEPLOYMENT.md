@@ -47,10 +47,13 @@ retry over a few days.
 
 ### 1. Backend on the VM
 
-Create an **Ampere A1 (ARM)** instance running Ubuntu, and open port 8000 in
-both the OCI security list *and* the instance firewall (Oracle images ship with
-iptables rules that silently drop traffic otherwise — this is the single most
-common thing people get stuck on).
+Create an **Ampere A1 (ARM)** instance running Ubuntu, and open ports 80 and
+443 in both the OCI security list *and* the instance firewall (Oracle images
+ship with iptables rules that silently drop traffic otherwise — this is the
+single most common thing people get stuck on). Do **not** open port 8000: the
+API listens on 127.0.0.1 only and is reached through nginx, which is what makes
+the client address in `X-Real-IP` trustworthy (rate limits and the Activity
+Log use it). If an earlier setup opened 8000, close it again in both places.
 
 ```bash
 sudo apt update && sudo apt install -y python3-venv git nginx certbot python3-certbot-nginx
@@ -104,7 +107,7 @@ EnvironmentFile=/home/ubuntu/Sports-Prediction-System/backend/.env
 # threadpool to cover blocking DB calls without over-committing 12 GB RAM.
 # Raise it if `htop` shows CPU to spare under real load; each extra worker
 # also opens its own DB pool (see the Supabase note above).
-ExecStart=/home/ubuntu/Sports-Prediction-System/backend/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+ExecStart=/home/ubuntu/Sports-Prediction-System/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 4
 Restart=always
 
 [Install]
@@ -125,6 +128,16 @@ block rather than inventing one:
 server {
     listen 80;
     server_name api.yourdomain.com;
+
+    # Uploads (winning-slip images, chat attachments) stay well under this.
+    client_max_body_size 8m;
+
+    # Only if Cloudflare proxies this hostname (orange cloud): trust its edge
+    # addresses and take the visitor's address from CF-Connecting-IP, so
+    # $remote_addr below is the real visitor. Without Cloudflare, leave these
+    # out -- a client could then forge CF-Connecting-IP.
+    # set_real_ip_from 173.245.48.0/20;   # ...one line per range listed at
+    # real_ip_header CF-Connecting-IP;    # https://www.cloudflare.com/ips/
 
     location / {
         proxy_pass http://127.0.0.1:8000;
@@ -372,10 +385,13 @@ Two deliberate behaviours worth knowing:
 6. **Check the model artifacts exist** on the running host. Their absence
    degrades predictions silently.
 7. **Check `CLIENT_IP_HEADER` matches your host.** Per-IP rate limits read the
-   client address from this header first (default `cf-connecting-ip`, which
-   Cloudflare sets and clients can't forge), then `X-Forwarded-For`. The
-   limits that matter most -- failed passwords per account, code redemption
-   and chat per user -- don't depend on it.
+   client address from this header first (default `x-real-ip`, which the nginx
+   block above overwrites with the address it saw), then `X-Forwarded-For`.
+   That is only trustworthy while uvicorn binds to 127.0.0.1 and port 8000 is
+   closed -- otherwise a client can call uvicorn directly and send any
+   `X-Real-IP` it likes. On Render, leave it unset (Render sets
+   `X-Forwarded-For`). The limits that matter most -- failed passwords per
+   account, code redemption and chat per user -- don't depend on it.
 
 ---
 

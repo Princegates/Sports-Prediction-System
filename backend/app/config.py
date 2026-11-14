@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     register_global_window_seconds: int = 3600
     # Header an edge proxy sets to the real client IP, overwriting any value
     # the client sent (Cloudflare's CF-Connecting-IP). Blank to skip it.
-    client_ip_header: str = "cf-connecting-ip"
+    client_ip_header: str = "x-real-ip"
     chat_rate_limit_messages: int = 40
     chat_rate_limit_window_seconds: int = 300
     access_redeem_rate_limit_attempts: int = 10

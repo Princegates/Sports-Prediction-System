@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.access import AccessCodeError, current_grant
 from app.api.deps import get_current_user, get_db, require_superadmin
-from app.api.rate_limit import check as rate_limit_check, enforce, enforce_key
+from app.api.rate_limit import enforce, enforce_key, shared_check
 from app.api.schemas import AdminPaymentOut, CheckoutIn, CheckoutOut, PaymentOptionsOut, PaymentStatusOut
 from app.db.models import AuditLog, Payment, User
 from app.payments import hubtel, products, service
@@ -118,7 +118,7 @@ def hubtel_callback(
         return {"ok": True}
     # Across all payments too: a 503 has Hubtel send a genuine notification
     # again, and the sweep settles it either way.
-    allowed, _ = rate_limit_check("hubtel:callback-status", CALLBACK_CHECKS_PER_MINUTE, 60)
+    allowed, _ = shared_check(db, "hubtel:callback-status", CALLBACK_CHECKS_PER_MINUTE, 60)
     if not allowed:
         raise HTTPException(status_code=503, detail="Busy confirming payments; try again shortly.")
     try:

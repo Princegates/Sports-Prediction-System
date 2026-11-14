@@ -117,3 +117,72 @@ def record_generation(db: Session, user: User, now: dt.datetime | None = None) -
         return
     db.add(AIGenerationLog(user_id=user.id, created_at=now or utcnow()))
     db.commit()
+
+
+# What ``reserve`` took, so ``release`` can give exactly that back.
+FREE = "free"      # superadmin or a running day pass: nothing to give back
+CREDIT = "credit"  # one bought credit
+
+
+def reserve(db: Session, user: User, now: dt.datetime | None = None) -> str | int | None:
+    """Takes one run *before* the engine is called, or returns ``None`` when
+    there is none left. Returns what was taken (a log row id, ``CREDIT`` or
+    ``FREE``) for ``release``.
+
+    Taking first and checking after is what makes this safe against several
+    requests at once: the run is written and committed, then counted in the
+    order the rows were written, so of two requests racing for the last run
+    exactly one sees itself within the allowance -- the other gives its row
+    back and falls through to a credit, which is itself an atomic decrement
+    that only one of them can win."""
+
+    now = now or utcnow()
+    if is_unlimited_now(user, now) and user.role != "superadmin":
+        return FREE
+    limit = daily_limit(db, user)
+    row = AIGenerationLog(user_id=user.id, created_at=now)
+    db.add(row)
+    db.commit()
+    if limit is None:
+        return row.id
+    position = db.execute(
+        select(func.count(AIGenerationLog.id)).where(
+            AIGenerationLog.user_id == user.id,
+            AIGenerationLog.created_at >= now - dt.timedelta(hours=24),
+            AIGenerationLog.id <= row.id,
+        )
+    ).scalar_one()
+    if position <= limit:
+        return row.id
+
+    # Past the daily allowance: this run is paid for by a credit instead, and
+    # isn't logged against the allowance (it would delay its recovery).
+    db.delete(row)
+    spent = db.execute(
+        update(User)
+        .where(User.id == user.id, User.ai_generation_credits > 0)
+        .values(ai_generation_credits=User.ai_generation_credits - 1)
+    )
+    db.commit()
+    db.expire(user)
+    return CREDIT if spent.rowcount == 1 else None
+
+
+def release(db: Session, user: User, taken: str | int | None) -> None:
+    """Gives back what ``reserve`` took, for a run that failed before it
+    produced anything."""
+
+    if taken is None or taken == FREE:
+        return
+    if taken == CREDIT:
+        db.execute(
+            update(User)
+            .where(User.id == user.id)
+            .values(ai_generation_credits=func.coalesce(User.ai_generation_credits, 0) + 1)
+        )
+    else:
+        row = db.get(AIGenerationLog, taken)
+        if row is not None:
+            db.delete(row)
+    db.commit()
+    db.expire(user)

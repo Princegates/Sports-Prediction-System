@@ -20,7 +20,7 @@ from app.timeutil import utcnow
 from app import app_settings
 from app.assistant import agent, llm, memory, nlu, responder
 from app.assistant.responder import Answer
-from app.db.models import ChatMessage
+from app.db.models import AssistantUsage, ChatMessage
 
 MAX_MESSAGE_LENGTH = 1000
 HISTORY_LIMIT = 100
@@ -28,6 +28,7 @@ HISTORY_LIMIT = 100
 # Words per streamed chunk. Small enough to feel progressive, large enough
 # that a long answer doesn't become hundreds of SSE frames.
 STREAM_CHUNK_WORDS = 4
+LLM_USAGE_KIND = "llm"  # AssistantUsage.kind for the rewrite / general-chat LLM
 
 
 def _validate(message: str) -> str:
@@ -48,15 +49,21 @@ def llm_quota_left(db: Session, user_id: int, now: dt.datetime | None = None) ->
 
     limit = int(app_settings.get_value(db, "assistant_llm_daily_per_user") or 0)
     now = now or utcnow()
+    # Counted from AssistantUsage, not chat history: history can be cleared.
     used = db.execute(
-        select(func.count(ChatMessage.id)).where(
-            ChatMessage.user_id == user_id,
-            ChatMessage.role == "assistant",
-            or_(ChatMessage.rewritten.is_(True), ChatMessage.general_chat.is_(True)),
-            ChatMessage.created_at >= now - dt.timedelta(hours=24),
+        select(func.count(AssistantUsage.id)).where(
+            AssistantUsage.user_id == user_id,
+            AssistantUsage.kind == LLM_USAGE_KIND,
+            AssistantUsage.created_at >= now - dt.timedelta(hours=24),
         )
     ).scalar_one()
     return used < limit
+
+
+def _count_llm_call(db: Session, user_id: int | None, now: dt.datetime | None) -> None:
+    if user_id is not None:
+        db.add(AssistantUsage(user_id=user_id, kind=LLM_USAGE_KIND, created_at=now or utcnow()))
+        db.commit()
 
 
 def compose(
@@ -87,6 +94,7 @@ def compose(
     result = responder.respond(db, parsed, now=now)
 
     if allow_rewrite and llm.is_enabled(db) and (user_id is None or llm_quota_left(db, user_id)):
+        _count_llm_call(db, user_id, now)
         if result.intent == nlu.Intent.UNKNOWN:
             # Nothing grounded to rewrite -- let the LLM answer the message
             # itself rather than only ever handing back the capability menu.

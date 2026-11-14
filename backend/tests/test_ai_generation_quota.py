@@ -120,3 +120,36 @@ def test_next_free_at_waits_for_every_excess_run_when_the_limit_was_lowered(db_s
     db_session.commit()
 
     assert ai_generation_quota.next_free_at(db_session, user, now) == times[2] + dt.timedelta(hours=24)
+
+
+def test_a_run_is_taken_before_the_engine_and_only_once_for_the_last_slot(db_session):
+    # Two requests racing for the last run: the one written first gets it.
+    from app.db.models import User
+
+    app_settings.set_values(db_session, {"ai_generation_daily_limit": 1})
+    user = User(email="race@example.com", name="R", password_hash="x", role="user", status="active")
+    db_session.add(user)
+    db_session.commit()
+
+    first = ai_generation_quota.reserve(db_session, user)
+    second = ai_generation_quota.reserve(db_session, user)
+
+    assert first is not None and second is None
+    assert ai_generation_quota.quota_remaining(db_session, user) == 0
+
+
+def test_past_the_allowance_a_reserved_run_spends_one_credit_and_release_gives_it_back(db_session):
+    from app.db.models import User
+
+    user = User(email="credit@example.com", name="C", password_hash="x", role="user", status="active",
+                ai_generation_credits=1, daily_ai_generation_limit_override=0)
+    db_session.add(user)
+    db_session.commit()
+
+    taken = ai_generation_quota.reserve(db_session, user)
+    assert taken == ai_generation_quota.CREDIT
+    assert db_session.get(User, user.id).ai_generation_credits == 0
+    assert ai_generation_quota.reserve(db_session, user) is None
+
+    ai_generation_quota.release(db_session, user, taken)
+    assert db_session.get(User, user.id).ai_generation_credits == 1

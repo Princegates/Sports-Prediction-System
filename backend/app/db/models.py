@@ -137,6 +137,36 @@ class AIGenerationLog(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
+class RateLimitHit(Base):
+    """One counted event for a limit that must hold across every worker and
+    survive a restart -- see app.api.rate_limit's shared_* functions. Only a
+    few limits use it (failed passwords per account, Hubtel status checks);
+    the rest stay in memory, where being counted per worker is acceptable."""
+
+    __tablename__ = "rate_limit_hits"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(160), index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
+class AssistantUsage(Base):
+    """One row per paid model call the chat assistant is about to make --
+    smart mode ("agent") or the optional rewrite/general-chat LLM ("llm").
+    The daily caps in app.assistant count these, not chat history: a member
+    can delete their own history, and the spend has happened either way.
+    Written *before* the call, so a call that times out or errors still
+    counts, and so do several sent at once.
+    """
+
+    __tablename__ = "assistant_usage"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(16), index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
 class MatchView(Base):
     """Records that a user opened a match's AI analysis, for their personal
     'recently viewed' history. Upserted per (user, match) so re-opening a

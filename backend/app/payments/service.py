@@ -283,11 +283,11 @@ def reconcile(db: Session, payment: Payment, *, force: bool = False) -> Payment:
     if not force:
         if payment.last_checked_at is not None and now - payment.last_checked_at < STATUS_CHECK_MIN_INTERVAL:
             return payment
-        allowed, _ = rate_limit.check("hubtel:status", GLOBAL_STATUS_CHECKS_PER_MINUTE, 60)
+        allowed, _ = rate_limit.shared_check(db, "hubtel:status", GLOBAL_STATUS_CHECKS_PER_MINUTE, 60)
         if not allowed:
             return payment
     else:
-        rate_limit.check("hubtel:status", GLOBAL_STATUS_CHECKS_PER_MINUTE, 60)
+        rate_limit.shared_check(db, "hubtel:status", GLOBAL_STATUS_CHECKS_PER_MINUTE, 60)
 
     config = hubtel.resolve_config(db)
     result = hubtel.check_status(config, payment.client_reference)

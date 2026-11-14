@@ -113,12 +113,15 @@ def _ai_picks_markets(requested: tuple[str, ...]) -> tuple[str, ...]:
     return requested or DEFAULT_MARKETS
 
 
-def _ensure_ai_generation_quota(db: Session, user: User) -> None:
+def _reserve_ai_generation_run(db: Session, user: User) -> str | int:
     """Shared by /suggest and /suggest-random -- the Refresh button on AI
     Generation hits /suggest again with exclude_match_ids set, so it must
-    count the same way a fresh search does."""
+    count the same way a fresh search does. The run is taken before the
+    engine runs (see ai_generation_quota.reserve), so requests sent together
+    can't all slip past a check made before any of them was counted."""
 
-    if not ai_generation_quota.has_quota_left(db, user):
+    taken = ai_generation_quota.reserve(db, user)
+    if taken is None:
         limit = ai_generation_quota.daily_limit(db, user)
         raise HTTPException(
             status_code=429,
@@ -127,6 +130,7 @@ def _ensure_ai_generation_quota(db: Session, user: User) -> None:
                 "it resets on a rolling 24-hour basis. Buy extra runs on the Access page, or contact a Super Admin."
             ),
         )
+    return taken
 
 
 @router.get("/quota", response_model=AIGenerationQuotaOut)
@@ -149,22 +153,25 @@ def ai_generation_quota_status(
 def suggest(
     payload: SuggestCriteriaIn, db: Session = Depends(get_db), user: User = Depends(require_active_access)
 ) -> SuggestedPicksOut:
-    _ensure_ai_generation_quota(db, user)
-    engine = select_legs_featuring_every_market if payload.feature_all_markets else select_legs_by_confidence
-    pick: ConfidencePick = engine(
-        db,
-        min_probability=payload.min_probability if payload.min_probability is not None else 0.65,
-        max_legs=payload.max_legs if payload.max_legs is not None else 8,
-        markets=_ai_picks_markets(tuple(payload.markets)),
-        leagues=_ai_picks_leagues(tuple(payload.leagues)),
-        days_ahead=payload.days_ahead,
-        date_from=payload.date_from,
-        date_to=payload.date_to,
-        exclude_match_ids=frozenset(payload.exclude_match_ids),
-        exclude_legs=frozenset((leg.match_id, leg.market) for leg in payload.exclude_legs),
-        user_salt=user.id,
-    )
-    ai_generation_quota.record_generation(db, user)
+    taken = _reserve_ai_generation_run(db, user)
+    try:
+        engine = select_legs_featuring_every_market if payload.feature_all_markets else select_legs_by_confidence
+        pick: ConfidencePick = engine(
+            db,
+            min_probability=payload.min_probability if payload.min_probability is not None else 0.65,
+            max_legs=payload.max_legs if payload.max_legs is not None else 8,
+            markets=_ai_picks_markets(tuple(payload.markets)),
+            leagues=_ai_picks_leagues(tuple(payload.leagues)),
+            days_ahead=payload.days_ahead,
+            date_from=payload.date_from,
+            date_to=payload.date_to,
+            exclude_match_ids=frozenset(payload.exclude_match_ids),
+            exclude_legs=frozenset((leg.match_id, leg.market) for leg in payload.exclude_legs),
+            user_salt=user.id,
+        )
+    except Exception:
+        ai_generation_quota.release(db, user, taken)
+        raise
     return SuggestedPicksOut(
         legs=_picked_legs_to_out(pick.legs),
         combined_probability=pick.combined_probability,
@@ -185,23 +192,26 @@ def suggest_random(
     between min_legs and max_legs rather than one fixed count. Same preview
     contract as /suggest: book the result with POST /picks."""
 
-    _ensure_ai_generation_quota(db, user)
-    min_legs = max(MIN_RANDOM_LEGS, min(payload.min_legs, MAX_RANDOM_LEGS))
-    max_legs = max(min_legs, min(payload.max_legs, MAX_RANDOM_LEGS))
-    pick: ConfidencePick = select_random_legs(
-        db,
-        min_probability=payload.min_probability if payload.min_probability is not None else 0.60,
-        min_legs=min_legs,
-        max_legs=max_legs,
-        markets=_ai_picks_markets(tuple(payload.markets)),
-        leagues=_ai_picks_leagues(tuple(payload.leagues)),
-        days_ahead=payload.days_ahead,
-        date_from=payload.date_from,
-        date_to=payload.date_to,
-        exclude_match_ids=frozenset(payload.exclude_match_ids),
-        exclude_legs=frozenset((leg.match_id, leg.market) for leg in payload.exclude_legs),
-    )
-    ai_generation_quota.record_generation(db, user)
+    taken = _reserve_ai_generation_run(db, user)
+    try:
+        min_legs = max(MIN_RANDOM_LEGS, min(payload.min_legs, MAX_RANDOM_LEGS))
+        max_legs = max(min_legs, min(payload.max_legs, MAX_RANDOM_LEGS))
+        pick: ConfidencePick = select_random_legs(
+            db,
+            min_probability=payload.min_probability if payload.min_probability is not None else 0.60,
+            min_legs=min_legs,
+            max_legs=max_legs,
+            markets=_ai_picks_markets(tuple(payload.markets)),
+            leagues=_ai_picks_leagues(tuple(payload.leagues)),
+            days_ahead=payload.days_ahead,
+            date_from=payload.date_from,
+            date_to=payload.date_to,
+            exclude_match_ids=frozenset(payload.exclude_match_ids),
+            exclude_legs=frozenset((leg.match_id, leg.market) for leg in payload.exclude_legs),
+        )
+    except Exception:
+        ai_generation_quota.release(db, user, taken)
+        raise
     return SuggestedPicksOut(
         legs=_picked_legs_to_out(pick.legs),
         combined_probability=pick.combined_probability,

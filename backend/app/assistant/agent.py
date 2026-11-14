@@ -57,12 +57,14 @@ from app.assistant import nlu, retrieval
 from app.assistant.responder import Answer, PickRef, Source
 from app.assistant.understanding import understand
 from app.betcode.selection import select_legs_by_confidence
-from app.db.models import ChatMessage, Match, Team
+from app import ai_generation_quota
+from app.db.models import AssistantUsage, ChatMessage, Match, Team, User
 from app.outcomes.registry import outcomes_from_prediction
 from app.timeutil import utcnow
 
 logger = logging.getLogger(__name__)
 
+USAGE_KIND = "agent"  # AssistantUsage.kind for smart-mode runs
 MAX_STEPS = 8  # model calls per question, the last one forbidden from using tools
 DEADLINE_SECONDS = 80.0  # whole question; the hosting proxy gives up at ~100
 MAX_TOKENS = 4096
@@ -118,6 +120,7 @@ class ToolError(Exception):
 class Trace:
     db: Session
     now: dt.datetime
+    user_id: int | None = None
     teams: list[Team] = field(default_factory=list)
     matches: dict[int, str] = field(default_factory=dict)  # match id -> "Home vs Away"
     picks: list[PickRef] = field(default_factory=list)
@@ -411,10 +414,21 @@ def _t_build_slip(args: dict, trace: Trace) -> Any:
         raise ToolError("date_to needs date_from")
     markets = tuple(str(m) for m in (args.get("markets") or []))
     league = _league(trace, str(args["league"])) if args.get("league") else None
-    pick = select_legs_by_confidence(
-        trace.db, min_probability=floor, max_legs=legs, markets=markets, league=league, days_ahead=7,
-        date_from=start, date_to=end,
-    )
+    # The same engine as the AI Generation page, so it costs a run the same
+    # way -- otherwise asking Guda would be a free way around the daily limit.
+    user = trace.db.get(User, trace.user_id) if trace.user_id is not None else None
+    taken = ai_generation_quota.reserve(trace.db, user) if user is not None else None
+    if taken is None:
+        raise ToolError("The member has no AI Generation runs left today, so no slip can be built. Tell them so, "
+                        "and that runs come back on a rolling 24 hours or can be bought on the Access page.")
+    try:
+        pick = select_legs_by_confidence(
+            trace.db, min_probability=floor, max_legs=legs, markets=markets, league=league, days_ahead=7,
+            date_from=start, date_to=end,
+        )
+    except Exception:
+        ai_generation_quota.release(trace.db, user, taken)
+        raise
     trace.used_slip_builder = True
     rows = []
     for leg in pick.legs:
@@ -610,17 +624,18 @@ def is_enabled(db: Session) -> bool:
 
 def within_limits(db: Session, user_id: int, now: dt.datetime | None = None) -> bool:
     """Whether this user, and the site as a whole, still have smart-mode
-    answers left today. Counted from the chat history itself (smart-mode answers
-    are stored with intent "agent"), so there is nothing extra to keep in step."""
+    answers left today. Counted from AssistantUsage, which is written before
+    each run and which members can't delete -- not from chat history, which
+    they can clear, and which only ever held the runs that succeeded."""
 
     v = _settings(db)
     since = (now or utcnow()) - dt.timedelta(hours=24)
-    base = select(func.count(ChatMessage.id)).where(
-        ChatMessage.role == "assistant", ChatMessage.intent == nlu.Intent.AGENT.value, ChatMessage.created_at >= since
+    base = select(func.count(AssistantUsage.id)).where(
+        AssistantUsage.kind == USAGE_KIND, AssistantUsage.created_at >= since
     )
     if db.execute(base).scalar_one() >= int(v.get("assistant_agent_daily_total") or 0):
         return False
-    return db.execute(base.where(ChatMessage.user_id == user_id)).scalar_one() < int(v.get("assistant_agent_daily_per_user") or 0)
+    return db.execute(base.where(AssistantUsage.user_id == user_id)).scalar_one() < int(v.get("assistant_agent_daily_per_user") or 0)
 
 
 def _history(db: Session, user_id: int, now: dt.datetime) -> list[dict]:
@@ -699,10 +714,14 @@ def run(
     now = now or utcnow()
     if not within_limits(db, user_id, now):
         return None
+    # Counted now, before anything is sent: a run that times out, is refused
+    # or errors has still been paid for.
+    db.add(AssistantUsage(user_id=user_id, kind=USAGE_KIND, created_at=now))
+    db.commit()
 
     model = str(values.get("assistant_agent_model") or "claude-haiku-5-5")
     effort = str(values.get("assistant_agent_effort") or "medium")
-    trace = Trace(db=db, now=now)
+    trace = Trace(db=db, now=now, user_id=user_id)
     client = _client(values)
 
     framing = f"[Today is {now.strftime('%A %d %B %Y')} (UTC).]"

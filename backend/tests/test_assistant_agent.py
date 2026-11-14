@@ -16,7 +16,7 @@ import pytest
 from app import app_settings
 from app.assistant import agent, engine
 from app.assistant.nlu import Intent
-from app.db.models import ChatMessage
+from app.db.models import AssistantUsage, ChatMessage
 from app.timeutil import utcnow
 from tests.test_chat_api import _ask, _with_half_time_rates, fixture_data  # noqa: F401  (fixture re-export)
 
@@ -73,6 +73,17 @@ def _reset_module_state():
     agent._fallbacks_rejected = False
     yield
     agent._fallbacks_rejected = False
+
+
+@pytest.fixture(autouse=True)
+def _member_one(db_session):
+    """The member most tests ask as (user_id=1): building a slip costs them
+    an AI Generation run, so they have to exist."""
+    from app.db.models import User
+
+    if db_session.get(User, 1) is None:
+        db_session.add(User(id=1, email="member-one@example.com", name="One", password_hash="x", role="user", status="active"))
+        db_session.commit()
 
 
 def enable(db, fake, **settings):
@@ -325,7 +336,7 @@ def test_an_unknown_tool_is_an_error_result_not_a_crash(db_session, claude):
 
 def _agent_answers(db, user_id, n):
     for _ in range(n):
-        db.add(ChatMessage(user_id=user_id, role="assistant", content="x", intent="agent", created_at=utcnow()))
+        db.add(AssistantUsage(user_id=user_id, kind="agent", created_at=utcnow()))
     db.commit()
 
 
@@ -346,10 +357,50 @@ def test_the_whole_site_daily_cap_applies_to_everyone(db_session, claude):
 
 def test_old_answers_do_not_count_against_todays_limit(db_session, claude):
     claude(reply(text("hi")), assistant_agent_daily_per_user=1)
-    db_session.add(ChatMessage(user_id=1, role="assistant", content="x", intent="agent", created_at=utcnow() - dt.timedelta(hours=30)))
+    db_session.add(AssistantUsage(user_id=1, kind="agent", created_at=utcnow() - dt.timedelta(hours=30)))
     db_session.commit()
 
     assert run(db_session, user_id=1) is not None
+
+
+def test_clearing_chat_history_does_not_give_smart_mode_answers_back(db_session, claude):
+    # The limit used to be counted from chat history, which members can delete.
+    from app.assistant import engine
+
+    claude(reply(text("one")), reply(text("two")), assistant_agent_daily_per_user=1)
+    assert run(db_session, user_id=1) is not None
+    engine.clear_history(db_session, 1)
+
+    assert run(db_session, user_id=1) is None
+
+
+def test_a_run_that_fails_still_counts(db_session, claude):
+    # The call is paid for whether or not it produced an answer.
+    claude(reply(text(""), stop="refusal"), assistant_agent_daily_per_user=1)
+    assert run(db_session, user_id=1) is None
+
+    assert not agent.within_limits(db_session, 1)
+
+
+def test_building_a_slip_in_chat_costs_an_ai_generation_run(db_session, claude, fixture_data):
+    from app import ai_generation_quota
+    from app.db.models import User
+
+    user = User(email="slip@example.com", name="S", password_hash="x", role="user", status="active")
+    db_session.add(user)
+    db_session.commit()
+    app_settings.set_values(db_session, {"ai_generation_daily_limit": 1})
+    claude(
+        reply(tool("build_slip", legs=3, min_probability_pct=60), stop="tool_use"), reply(text("Here.")),
+        reply(tool("build_slip", legs=3, min_probability_pct=60), stop="tool_use"), reply(text("None left.")),
+    )
+
+    first = run(db_session, "build me a slip", user_id=user.id)
+    assert first.picks
+    assert ai_generation_quota.quota_remaining(db_session, user) == 0
+
+    second = run(db_session, "another one", user_id=user.id)
+    assert second.picks == []
 
 
 # --- what is sent to the API ----------------------------------------------------------------------------

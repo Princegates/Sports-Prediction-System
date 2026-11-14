@@ -372,14 +372,14 @@ def login(payload: LoginIn, request: Request, db: Session = Depends(get_db)) -> 
     # forged addresses gets nowhere. Only failures count -- checked here,
     # recorded below.
     account_key = _account_key("login", email)
-    rate_limit.raise_if_limited(
-        account_key, settings.login_account_failure_limit, settings.login_account_failure_window_seconds
+    rate_limit.shared_raise_if_limited(
+        db, account_key, settings.login_account_failure_limit, settings.login_account_failure_window_seconds
     )
     user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
     ip = _client_ip(request)
 
     if not _password_matches(user, payload.password):
-        rate_limit.check(account_key, settings.login_account_failure_limit, settings.login_account_failure_window_seconds)
+        rate_limit.shared_check(db, account_key, settings.login_account_failure_limit, settings.login_account_failure_window_seconds)
         db.add(
             AuditLog(
                 actor_user_id=user.id if user else None,
@@ -442,13 +442,13 @@ def account_status(payload: LoginIn, request: Request, db: Session = Depends(get
     # Same account-level failure counter as login: this endpoint checks a
     # password too, so it must not be a side door around that limit.
     account_key = _account_key("login", email)
-    rate_limit.raise_if_limited(
-        account_key, settings.login_account_failure_limit, settings.login_account_failure_window_seconds
+    rate_limit.shared_raise_if_limited(
+        db, account_key, settings.login_account_failure_limit, settings.login_account_failure_window_seconds
     )
     user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
 
     if not _password_matches(user, payload.password):
-        rate_limit.check(account_key, settings.login_account_failure_limit, settings.login_account_failure_window_seconds)
+        rate_limit.shared_check(db, account_key, settings.login_account_failure_limit, settings.login_account_failure_window_seconds)
         return AccountStatusOut(status="no_access", message=NO_ACCESS_MESSAGE)
 
     if user.status == "suspended":

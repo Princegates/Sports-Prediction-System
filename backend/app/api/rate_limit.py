@@ -13,19 +13,23 @@ request. The limits that matter are therefore keyed on something the client
 cannot rotate for free: the account email being guessed at (login, status
 checks, password resets) or the authenticated user (code redemption, chat,
 password change). The per-IP limit stays as a second layer; ``client_ip``
-prefers ``CF-Connecting-IP`` (set by Cloudflare at the edge, which overwrites
-any client-sent value -- configurable as ``CLIENT_IP_HEADER``) before falling
-back to the forwarded chain.
+prefers ``X-Real-IP`` (which the nginx in front of the API overwrites with the
+address it actually saw -- configurable as ``CLIENT_IP_HEADER``) before falling
+back to the forwarded chain. That only holds while the API is reachable
+through nginx alone: uvicorn binds to 127.0.0.1 (see DEPLOYMENT.md).
 
-**What it is not:** a distributed limiter. State lives in this process's
-memory, so it resets on restart and is counted per-worker. That is the right
-trade-off for the single instance this deploys as; the upgrade path, once
-there's more than one, is to back ``_HITS`` with a shared store and keep this
-interface.
+**Two stores.** The ordinary limits live in this process's memory: they
+reset on restart and are counted per worker, so with N workers each is
+effectively N times looser. That is fine for the per-IP and per-user limits.
+The few that must hold exactly -- failed passwords per account, and the
+status checks Hubtel allows us -- use the ``shared_*`` functions instead,
+which count in the database (RateLimitHit), so every worker sees the same
+count and a deploy doesn't reset it.
 """
 
 from __future__ import annotations
 
+import datetime as dt
 import threading
 import time
 from collections import defaultdict
@@ -144,6 +148,68 @@ def raise_if_limited(key: str, limit: int, window_seconds: float) -> None:
     request -- pair with ``check``/``enforce_key`` on the failure path."""
 
     allowed, retry_after = peek(key, limit, window_seconds)
+    if not allowed:
+        raise _too_many(retry_after)
+
+
+def _shared_hits(db, key: str, window_seconds: float) -> list:
+    from sqlalchemy import select
+
+    from app.db.models import RateLimitHit
+    from app.timeutil import utcnow
+
+    since = utcnow() - dt.timedelta(seconds=window_seconds)
+    return list(
+        db.execute(
+            select(RateLimitHit.created_at)
+            .where(RateLimitHit.key == key, RateLimitHit.created_at >= since)
+            .order_by(RateLimitHit.created_at)
+        ).scalars()
+    )
+
+
+def _retry_after(oldest, window_seconds: float) -> float:
+    from app.timeutil import utcnow
+
+    return max(0.0, window_seconds - (utcnow() - oldest).total_seconds())
+
+
+def shared_peek(db, key: str, limit: int, window_seconds: float) -> tuple[bool, float]:
+    """``peek`` against the shared (database) count."""
+
+    hits = _shared_hits(db, key, window_seconds)
+    if len(hits) >= limit:
+        return False, _retry_after(hits[0], window_seconds)
+    return True, 0.0
+
+
+def shared_check(db, key: str, limit: int, window_seconds: float) -> tuple[bool, float]:
+    """``check`` against the shared (database) count: records this hit if it
+    is allowed. Commits. Also drops this key's hits older than the window, so
+    the table holds only what is still being counted."""
+
+    from sqlalchemy import delete
+
+    from app.db.models import RateLimitHit
+    from app.timeutil import utcnow
+
+    now = utcnow()
+    db.execute(
+        delete(RateLimitHit).where(
+            RateLimitHit.key == key, RateLimitHit.created_at < now - dt.timedelta(seconds=window_seconds)
+        )
+    )
+    hits = _shared_hits(db, key, window_seconds)
+    if len(hits) >= limit:
+        db.commit()
+        return False, _retry_after(hits[0], window_seconds)
+    db.add(RateLimitHit(key=key, created_at=now))
+    db.commit()
+    return True, 0.0
+
+
+def shared_raise_if_limited(db, key: str, limit: int, window_seconds: float) -> None:
+    allowed, retry_after = shared_peek(db, key, limit, window_seconds)
     if not allowed:
         raise _too_many(retry_after)
 
