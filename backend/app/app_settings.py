@@ -25,6 +25,7 @@ operations.
 from __future__ import annotations
 
 import datetime as dt
+import re
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -69,7 +70,8 @@ THEME_CHOICES = ("dark", "light")
 REGISTRY: tuple[SettingSpec, ...] = (
     # --- Email -----------------------------------------------------------
     SettingSpec("smtp_host", "str", "email", "SMTP host",
-                "Leave blank to disable sending. Codes still work; you just send them yourself.",
+                "Leave blank to disable sending. Codes still work; you just send them yourself. "
+                "Changing it clears the SMTP password, so enter it again in the same save.",
                 env_attr="smtp_host"),
     SettingSpec("smtp_port", "int", "email", "SMTP port",
                 "587 for STARTTLS, 465 for implicit TLS.", env_attr="smtp_port", minimum=1, maximum=65535),
@@ -117,7 +119,8 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 secret=True, env_attr="api_football_key"),
     SettingSpec("api_football_host", "str", "data", "API host",
                 "v3.football.api-sports.io direct, or the RapidAPI host if your key is from "
-                "there. The auth style follows from this.",
+                "there. The auth style follows from this. Changing it clears the key above, so enter "
+                "the key again in the same save.",
                 env_attr="api_football_host"),
     SettingSpec("api_football_daily_budget", "int", "data", "Daily request budget",
                 "Pro allows 7,500/day, Free 100. Set lower to leave headroom for manual runs.",
@@ -217,10 +220,12 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 "Where Hubtel can reach this backend, e.g. https://api.soccaintel.com -- the payment "
                 "notification (callback) URL is built from it.", env_attr="public_api_url"),
     SettingSpec("hubtel_initiate_url", "str", "payments", "Hubtel checkout URL",
-                "Leave as-is unless Hubtel tells you otherwise.", env_attr="hubtel_initiate_url"),
+                "Leave as-is unless Hubtel tells you otherwise. Must be a hubtel.com address; changing it "
+                "clears the API ID and secret, so enter them again in the same save.", env_attr="hubtel_initiate_url"),
     SettingSpec("hubtel_status_url", "str", "payments", "Hubtel status-check URL",
                 "Base URL of the Transaction Status Check API. Your server's IP must be whitelisted "
-                "by Hubtel before it will answer.", env_attr="hubtel_status_url"),
+                "by Hubtel before it will answer. Must be a hubtel.com address; changing it clears the API "
+                "ID and secret, so enter them again in the same save.", env_attr="hubtel_status_url"),
 
     SettingSpec("ai_pack_3_price", "float", "payments", "AI Generation pack: 3 extra runs (price)",
                 "Bought with Hubtel on top of the daily limit; spent once the day's runs are used up and "
@@ -282,7 +287,8 @@ REGISTRY: tuple[SettingSpec, ...] = (
     SettingSpec("assistant_llm_base_url", "str", "assistant", "API base URL",
                 "Any OpenAI-compatible /chat/completions endpoint. Defaults to Google AI Studio's "
                 "Gemini API, which has a genuine free tier (no card needed) -- get a key at "
-                "aistudio.google.com/apikey and paste it below.",
+                "aistudio.google.com/apikey and paste it below. Changing it clears the API key below, so "
+                "enter the key again in the same save.",
                 env_attr="assistant_llm_base_url"),
     SettingSpec("assistant_llm_model", "str", "assistant", "Model name",
                 "Must match the base URL's provider -- e.g. gemini-3.5-flash-lite for the Gemini "
@@ -511,6 +517,62 @@ def validate(spec: SettingSpec, value: Any) -> str:
     return text
 
 
+# Settings that say where a secret is sent. A stolen admin session could
+# otherwise point one at its own server and collect the key on the next call,
+# so each is held to its provider's hosts (where there's a fixed provider),
+# must use TLS, and changing it clears the secrets that go with it unless the
+# same save enters them again -- the key has to be known, not just reused.
+_ENDPOINTS: dict[str, tuple[str, tuple[str, ...] | None]] = {
+    # key: ("url" | "host", allowed host suffixes or None for any host)
+    "hubtel_initiate_url": ("url", ("hubtel.com",)),
+    "hubtel_status_url": ("url", ("hubtel.com",)),
+    "assistant_llm_base_url": ("url", None),
+    "api_football_host": ("host", ("api-sports.io", "rapidapi.com")),
+    "smtp_host": ("host", None),
+}
+PAIRED_SECRETS: dict[str, tuple[str, ...]] = {
+    "hubtel_initiate_url": ("hubtel_client_id", "hubtel_client_secret"),
+    "hubtel_status_url": ("hubtel_client_id", "hubtel_client_secret"),
+    "assistant_llm_base_url": ("assistant_llm_api_key",),
+    "api_football_host": ("api_football_key",),
+    "smtp_host": ("smtp_password",),
+}
+_LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
+_HOSTNAME = re.compile(r"^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
+
+
+def _host_allowed(host: str, suffixes: tuple[str, ...] | None) -> bool:
+    if suffixes is None:
+        return True
+    return any(host == s or host.endswith("." + s) for s in suffixes)
+
+
+def _check_endpoint(spec: SettingSpec, text: str) -> None:
+    if not text or spec.key not in _ENDPOINTS:
+        return
+    form, suffixes = _ENDPOINTS[spec.key]
+    if form == "host":
+        host = text.lower()
+        if not _HOSTNAME.match(host):
+            raise SettingError(f"{spec.label} must be a host name only, like smtp.example.com (no https:// or path).")
+    else:
+        from urllib.parse import urlsplit
+
+        try:
+            parts = urlsplit(text)
+            host = (parts.hostname or "").lower()
+            parts.port  # raises on a malformed port
+        except ValueError:
+            raise SettingError(f"{spec.label} isn't a valid URL.") from None
+        if parts.username or parts.password or not host:
+            raise SettingError(f"{spec.label} must be a plain https:// URL.")
+        local = host in _LOCAL_HOSTS and suffixes is None
+        if parts.scheme != "https" and not (parts.scheme == "http" and local):
+            raise SettingError(f"{spec.label} must start with https://.")
+    if not _host_allowed(host, suffixes):
+        raise SettingError(f"{spec.label} must be on {' or '.join(suffixes or ())}.")
+
+
 def set_values(db: Session, updates: dict[str, Any], *, updated_by_user_id: int | None = None) -> list[str]:
     """Apply several overrides at once. Returns the keys actually changed.
 
@@ -525,6 +587,15 @@ def set_values(db: Session, updates: dict[str, Any], *, updated_by_user_id: int 
     prepared: dict[str, str] = {}
     for key, value in updates.items():
         prepared[key] = validate(BY_KEY[key], value)
+        _check_endpoint(BY_KEY[key], prepared[key])
+
+    # A moved endpoint doesn't take the old secrets with it (see _ENDPOINTS).
+    current = all_values(db)
+    for key, secrets_ in PAIRED_SECRETS.items():
+        if key in prepared and prepared[key] and prepared[key] != str(current.get(key) or ""):
+            for secret_key in secrets_:
+                if secret_key not in prepared and current.get(secret_key):
+                    prepared[secret_key] = ""
 
     changed: list[str] = []
     now = utcnow()

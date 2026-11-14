@@ -9,6 +9,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 _tmp_dir = tempfile.mkdtemp(prefix="sports_prediction_tests_")
 os.environ["DATABASE_URL"] = f"sqlite:///{_tmp_dir}/test.db"
+# Real hashes use 600k PBKDF2 rounds; the suite makes thousands of them.
+os.environ.setdefault("PASSWORD_HASH_ITERATIONS", "1000")
 
 import pytest
 

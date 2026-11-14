@@ -130,6 +130,9 @@ _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     # Per-user override of the global ai_generation_daily_limit setting --
     # see User.daily_ai_generation_limit_override / app.ai_generation_quota.
     ("users", "daily_ai_generation_limit_override", "INTEGER"),
+    # One trial per inbox -- see User.email_canonical; filled and indexed in
+    # _backfill_email_canonical.
+    ("users", "email_canonical", "VARCHAR(255)"),
     # Winning slips any member can share, held for review before they show
     # (see models.WinningSlip).
     ("winning_slips", "pending_review", "BOOLEAN DEFAULT FALSE"),
@@ -353,6 +356,25 @@ def _backfill_access_code_kinds(engine: Engine) -> None:
         ))
 
 
+def _backfill_email_canonical(engine: Engine) -> None:
+    """Fills User.email_canonical on accounts that predate it, then indexes
+    it. Idempotent: only rows still NULL are touched."""
+
+    inspector = inspect(engine)
+    if "users" not in inspector.get_table_names():
+        return
+    from app.email_identity import canonical_email
+
+    with engine.begin() as conn:
+        rows = conn.execute(text("SELECT id, email FROM users WHERE email_canonical IS NULL")).fetchall()
+        for user_id, email in rows:
+            conn.execute(
+                text("UPDATE users SET email_canonical = :c WHERE id = :id"),
+                {"c": canonical_email(email or ""), "id": user_id},
+            )
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_users_email_canonical ON users (email_canonical)"))
+
+
 def _index_team_provider_ids(engine: Engine) -> None:
     inspector = inspect(engine)
     if "teams" not in inspector.get_table_names():
@@ -415,6 +437,7 @@ def init_db(engine: Engine) -> None:
     _migrate_pending_users_to_active(engine)
     _backfill_referral_codes(engine)
     _backfill_access_code_kinds(engine)
+    _backfill_email_canonical(engine)
     _index_team_provider_ids(engine)
     _structure_mistyped_price_label(engine)
     _enable_row_level_security(engine)

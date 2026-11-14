@@ -36,7 +36,8 @@
 #
 # Set DATABASE_URL under Settings -> Secrets and variables -> Actions.
 # For the first run, also set SUPERADMIN_EMAIL and SUPERADMIN_PASSWORD so the
-# admin account is created; they are ignored once it exists.
+# admin account is created; they are ignored once any superadmin exists, and
+# you should delete both secrets after that first run.
 name: Refresh predictions
 
 # The mode is in every run's title ("mode:refresh" / "mode:retrain" / "mode:seed")

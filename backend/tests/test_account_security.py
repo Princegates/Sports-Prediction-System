@@ -323,3 +323,62 @@ def test_input_size_limits(db_session):
     )
     assert response.status_code == 422
     assert client.post("/api/auth/login", json={"email": "x@example.com", "password": huge}).status_code == 422
+
+
+# --- One account per inbox ----------------------------------------------------
+
+
+def _try_register(email: str):
+    payload = {"email": email, "name": "x", "password": "a-good-password", "date_of_birth": ADULT_DOB}
+    return client.post("/api/auth/register", json=payload, headers={"X-Forwarded-For": f"198.18.1.{next(_signup_ips)}"})
+
+
+def test_gmail_dots_and_plus_tags_are_the_same_inbox(db_session):
+    _register("jane.doe@gmail.com")
+    for variant in ("janedoe@gmail.com", "Jane.Doe+trial2@gmail.com", "j.a.n.e.d.o.e@googlemail.com"):
+        assert _try_register(variant).status_code == 409, variant
+
+    _register("sam@company.example")
+    assert _try_register("sam+again@company.example").status_code == 409
+    # Dots are only folded for Gmail: elsewhere they are different people.
+    assert _try_register("s.am@company.example").status_code == 200
+
+
+def test_temporary_inboxes_are_refused(db_session):
+    response = _try_register("someone@mailinator.com")
+    assert response.status_code == 400
+    assert "permanent email" in response.json()["detail"]
+    assert _try_register("x@sub.yopmail.com").status_code == 400
+
+
+def test_a_double_click_on_the_link_starts_one_trial(db_session, outbox):
+    """Both requests can read "not verified yet" before either writes; only
+    the one whose conditional UPDATE lands may start the trial."""
+
+    _register("racer@example.com")
+    token = _link(outbox, "racer@example.com", "/verify-email")
+    db_session.expire_all()
+    user = db_session.query(User).filter(User.email == "racer@example.com").one()
+    # Simulate the other request having just claimed it.
+    from app.timeutil import utcnow
+
+    user.email_verified_at = utcnow()
+    db_session.commit()
+    response = client.post("/api/auth/verify-email", json={"token": token})
+    assert response.json()["already_verified"] is True
+    assert db_session.query(AccessGrant).filter(AccessGrant.user_id == user.id).count() == 0
+
+
+def test_login_upgrades_an_old_password_hash(db_session):
+    import hashlib
+
+    salt = "ab" * 16
+    legacy = f"{salt}${hashlib.pbkdf2_hmac('sha256', b'old-password-1', bytes.fromhex(salt), 200_000).hex()}"
+    db_session.add(User(email="legacy@example.com", name="L", password_hash=legacy, role="user", status="active"))
+    db_session.commit()
+
+    _login("legacy@example.com", "old-password-1")
+    db_session.expire_all()
+    stored = db_session.query(User).filter(User.email == "legacy@example.com").one().password_hash
+    assert stored.startswith("pbkdf2_sha256$")
+    _login("legacy@example.com", "old-password-1")  # and the new hash works

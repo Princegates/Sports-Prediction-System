@@ -638,3 +638,40 @@ def test_system_status_reports_the_layers(db_session, admin):
     assert body["email_configured"] is False
     for key in ("matches", "predictions", "users", "active_grants", "unredeemed_codes"):
         assert isinstance(body[key], int)
+
+
+def test_endpoint_settings_must_use_tls_and_known_hosts(db_session):
+    for key, value in [
+        ("hubtel_status_url", "https://evil.example.com"),
+        ("hubtel_status_url", "http://api-txnstatus.hubtel.com"),
+        ("hubtel_initiate_url", "https://hubtel.com.evil.example/x"),
+        ("assistant_llm_base_url", "http://llm.example.com/v1"),
+        ("assistant_llm_base_url", "https://user:pw@llm.example.com/v1"),
+        ("api_football_host", "attacker.example"),
+        ("api_football_host", "https://v3.football.api-sports.io"),
+        ("smtp_host", "smtp.example.com/path"),
+    ]:
+        with pytest.raises(app_settings.SettingError):
+            app_settings.set_values(db_session, {key: value})
+
+    # What real setups use is still accepted.
+    app_settings.set_values(db_session, {
+        "hubtel_status_url": "https://api-txnstatus.hubtel.com",
+        "assistant_llm_base_url": "http://localhost:11434/v1",
+        "api_football_host": "api-football-v1.p.rapidapi.com",
+        "smtp_host": "smtp.gmail.com",
+    })
+
+
+def test_moving_an_endpoint_clears_its_secret_unless_given_again(db_session):
+    app_settings.set_values(db_session, {"assistant_llm_api_key": "real-key", "smtp_password": "pw"})
+
+    app_settings.set_values(db_session, {"assistant_llm_base_url": "https://other-llm.example.com/v1"})
+    assert app_settings.get_value(db_session, "assistant_llm_api_key") == ""
+
+    app_settings.set_values(db_session, {"smtp_host": "smtp.new.example.com", "smtp_password": "new-pw"})
+    assert app_settings.get_value(db_session, "smtp_password") == "new-pw"
+
+    # Saving the same value again (a form sends every field) clears nothing.
+    app_settings.set_values(db_session, {"smtp_host": "smtp.new.example.com"})
+    assert app_settings.get_value(db_session, "smtp_password") == "new-pw"

@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 
 from sqlalchemy import (
+    event,
     JSON,
     Boolean,
     Date,
@@ -37,6 +38,11 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    # The address with Gmail dots and "+tags" folded away (app.email_identity),
+    # kept in step with ``email`` by the listener below -- what stops one
+    # inbox registering many free trials. Indexed but not unique: accounts
+    # made before it existed may share one.
+    email_canonical: Mapped[str | None] = mapped_column(String(255), index=True, nullable=True)
     name: Mapped[str] = mapped_column(String(120))
     password_hash: Mapped[str] = mapped_column(String(255))
 
@@ -1104,3 +1110,11 @@ class SchedulerLease(Base):
     name: Mapped[str] = mapped_column(String(64), primary_key=True)
     holder: Mapped[str] = mapped_column(String(64))
     expires_at: Mapped[dt.datetime] = mapped_column(DateTime)
+
+
+@event.listens_for(User, "before_insert")
+@event.listens_for(User, "before_update")
+def _sync_email_canonical(_mapper, _connection, user: User) -> None:
+    from app.email_identity import canonical_email
+
+    user.email_canonical = canonical_email(user.email) if user.email else None

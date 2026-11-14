@@ -52,3 +52,21 @@ def test_token_survives_until_expiry():
     assert verify_token(token, secret="test-secret") is not None
     time.sleep(2.2)
     assert verify_token(token, secret="test-secret") is None
+
+
+def test_hashes_record_their_iterations_and_old_ones_still_verify():
+    import hashlib
+
+    from app.auth import passwords
+
+    new = passwords.hash_password("secret-pass")
+    assert new.startswith(f"pbkdf2_sha256${passwords.ITERATIONS}$")
+    assert passwords.verify_password("secret-pass", new)
+    assert not passwords.needs_rehash(new)
+
+    salt = "cd" * 16
+    legacy = f"{salt}${hashlib.pbkdf2_hmac('sha256', b'secret-pass', bytes.fromhex(salt), 200_000).hex()}"
+    assert passwords.verify_password("secret-pass", legacy)
+    assert not passwords.verify_password("wrong-pass", legacy)
+    assert passwords.needs_rehash(legacy)
+    assert not passwords.verify_password("x", "pbkdf2_sha256$notanumber$aa$bb")

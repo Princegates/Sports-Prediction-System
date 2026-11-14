@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.timeutil import utcnow
@@ -40,7 +40,8 @@ from app.api.schemas import (
     VerifyEmailOut,
 )
 from app.api.serializers import match_view_to_schema, user_to_schema
-from app.auth.passwords import hash_password, verify_password
+from app.email_identity import canonical_email, is_disposable
+from app.auth.passwords import hash_password, needs_rehash, verify_password
 from app.auth.tokens import (
     RESET_PASSWORD,
     VERIFY_EMAIL,
@@ -137,7 +138,16 @@ def register(payload: RegisterIn, request: Request, db: Session = Depends(get_db
             detail=f"You must be at least {MINIMUM_AGE_YEARS} years old to create an account.",
         )
 
-    existing = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
+    # One account per inbox: the free trial is per person, and Gmail dots or
+    # "+tags" would otherwise make every new spelling a new trial.
+    if is_disposable(email):
+        raise HTTPException(
+            status_code=400, detail="Please sign up with a permanent email address, not a temporary inbox."
+        )
+    canonical = canonical_email(email)
+    existing = db.execute(
+        select(User.id).where((User.email == email) | (User.email_canonical == canonical)).limit(1)
+    ).scalar_one_or_none()
     if existing is not None:
         raise HTTPException(status_code=409, detail="An account with this email already exists")
 
@@ -310,10 +320,16 @@ def verify_email(payload: TokenIn, db: Session = Depends(get_db)) -> VerifyEmail
     if data is None or user is None or user.email != data.get("email"):
         raise HTTPException(status_code=400, detail="This confirmation link is invalid or has expired. Sign in to get a new one.")
 
-    if user.email_verified_at is not None:
+    # Claimed with a conditional UPDATE: two clicks arriving together (mail
+    # scanners often fetch a link twice) must not both start a free trial.
+    claimed = db.execute(
+        update(User).where(User.id == user.id, User.email_verified_at.is_(None)).values(email_verified_at=utcnow())
+    ).rowcount
+    db.commit()
+    if claimed != 1:
         return VerifyEmailOut(message="Your email is already confirmed.", already_verified=True)
 
-    user.email_verified_at = utcnow()
+    db.refresh(user)
     db.add(AuditLog(actor_user_id=user.id, actor_email=user.email, action="account.email_verified", target_user_id=user.id))
     db.commit()
 
@@ -403,6 +419,12 @@ def login(payload: LoginIn, request: Request, db: Session = Depends(get_db)) -> 
         )
         db.commit()
         raise HTTPException(status_code=403, detail="Your account has been suspended.")
+
+    # The password is known to be right here, so an older, cheaper hash can be
+    # replaced with the current one. Sessions don't depend on the hash; only
+    # an outstanding reset link does, and logging in makes that moot.
+    if needs_rehash(user.password_hash):
+        user.password_hash = hash_password(payload.password)
 
     db.add(
         AuditLog(

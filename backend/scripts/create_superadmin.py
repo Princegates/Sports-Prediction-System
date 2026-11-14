@@ -11,6 +11,12 @@ Interactive by default. On a hosted box there is often no TTY to type a
 password into, so ``SUPERADMIN_PASSWORD`` in the environment is accepted as
 an alternative -- that is what ``scripts/bootstrap.py`` uses.
 
+It only ever bootstraps: once any superadmin exists it changes nothing, so a
+SUPERADMIN_* secret left in a scheduled workflow can't re-promote an account
+that was demoted or reactivate one that was suspended. Pass ``--force`` to
+promote by hand anyway (for example, to recover after the only admin account
+is lost).
+
 Example:
     python scripts/create_superadmin.py --email admin@example.com --name "Site Admin"
     SUPERADMIN_PASSWORD=... python scripts/create_superadmin.py --email admin@example.com
@@ -38,12 +44,21 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--email", required=True)
     parser.add_argument("--name", default=None)
+    parser.add_argument("--force", action="store_true",
+                        help="promote/create even though a superadmin already exists")
     args = parser.parse_args()
 
     init_db(engine)
     db = SessionLocal()
     try:
         email = args.email.strip().lower()
+        if not args.force:
+            admin = db.execute(select(User).where(User.role == "superadmin").limit(1)).scalar_one_or_none()
+            if admin is not None:
+                print("A superadmin already exists -- nothing changed. Manage admins from the Users page, "
+                      "or pass --force to promote this account by hand. You can now delete the "
+                      "SUPERADMIN_EMAIL / SUPERADMIN_PASSWORD secrets.")
+                return
         existing = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
 
         if existing is not None:
