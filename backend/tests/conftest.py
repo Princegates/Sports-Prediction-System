@@ -8,7 +8,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 _tmp_dir = tempfile.mkdtemp(prefix="sports_prediction_tests_")
-os.environ["DATABASE_URL"] = f"sqlite:///{_tmp_dir}/test.db"
+# SQLite by default; CI's Postgres job sets TEST_DATABASE_URL so the suite
+# also runs against the engine production uses.
+os.environ["DATABASE_URL"] = os.environ.get("TEST_DATABASE_URL") or f"sqlite:///{_tmp_dir}/test.db"
 # Real hashes use 600k PBKDF2 rounds; the suite makes thousands of them.
 os.environ.setdefault("PASSWORD_HASH_ITERATIONS", "1000")
 
@@ -49,7 +51,16 @@ def _reset_rate_limits():
 
 @pytest.fixture()
 def db_session():
-    Base.metadata.create_all(bind=engine)
+    if engine.dialect.name == "postgresql":
+        # The full migration, not just create_all: it also enables row-level
+        # security, so when the app runs init_db again mid-test it skips the
+        # ALTER TABLE (an exclusive lock that would wait forever behind this
+        # session's open transaction).
+        from app.db.migrate import init_db
+
+        init_db(engine)
+    else:
+        Base.metadata.create_all(bind=engine)
     session = SessionLocal()
     try:
         yield session

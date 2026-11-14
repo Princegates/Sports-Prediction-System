@@ -9,15 +9,15 @@
 # img-src also names media.api-sports.io: team crests are loaded straight
 # from the data provider's public image CDN (see serializers.team_to_schema).
 #
-# connect-src and img-src name *.onrender.com and api.soccaintel.com --
-# the backend moved from Render's own subdomain to the Oracle VM behind
-# api.soccaintel.com (see DEPLOYMENT.md's Option A), and this file is
-# static (no build step reads VITE_API_URL into it), so the move had to be
-# mirrored here by hand. *.onrender.com is kept rather than removed: Render
-# stays up as a rollback target during the migration, and this header is
-# what silently breaks every API call -- with no network request even
-# reaching the backend to show an error -- the moment it's out of sync with
-# wherever the frontend is actually configured to call.
+# connect-src and img-src name api.soccaintel.com, the backend on the
+# Oracle VM (see DEPLOYMENT.md's Option A). This file is static (no build
+# step reads VITE_API_URL into it), so a move of the API has to be mirrored
+# here by hand -- this header is what silently breaks every API call, with no
+# request even reaching the backend, the moment it's out of sync. The old
+# *.onrender.com allowance is gone: any site on Render could otherwise be a
+# place to send data from these pages.
+#
+# form-action 'self': no form on these pages posts anywhere else.
 #
 # style-src needs 'unsafe-inline': the app uses React's inline style={{...}}
 # extensively (every page in src/pages, src/components), which CSP treats as
@@ -45,7 +45,7 @@
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
   Strict-Transport-Security: max-age=31536000; includeSubDomains
-  Content-Security-Policy: default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://*.onrender.com https://api.soccaintel.com https://media.api-sports.io; connect-src 'self' https://*.onrender.com https://api.soccaintel.com https://cloudflareinsights.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; worker-src 'self'; manifest-src 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://api.soccaintel.com https://media.api-sports.io; connect-src 'self' https://api.soccaintel.com https://cloudflareinsights.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; worker-src 'self'; manifest-src 'self'; form-action 'self'
 
 # The landing page's promo video: large and unchanging, so let browsers and
 # the CDN keep it a day rather than refetching it on every visit. (Range

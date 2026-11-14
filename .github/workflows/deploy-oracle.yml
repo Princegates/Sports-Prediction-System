@@ -1,8 +1,11 @@
-# Deploys the backend to the Oracle VM on every push to main, so a merge is
-# live without anyone needing to SSH in and run `git pull` by hand.
+# Deploys the backend to the Oracle VM once the Tests workflow has passed on a
+# push to main, so a merge is live without anyone needing to SSH in -- and a
+# commit that fails its tests never is. It deploys exactly the commit that was
+# tested, one deploy at a time, and if the new version doesn't come up healthy
+# (process up AND database ready) it puts the previous commit back.
 #
 # The VM is the actual production backend (see DEPLOYMENT.md's Option A) --
-# this workflow only ever fast-forwards it to origin/main's own history
+# this workflow only ever moves it to a commit on origin/main
 # (`git fetch` + `git reset --hard`), it never pushes anything back, so a
 # local change made directly on the VM outside this workflow would simply be
 # discarded on the next deploy. That's intentional: the VM is a deploy
@@ -23,12 +26,26 @@
 name: Deploy to Oracle
 
 on:
-  push:
+  workflow_run:
+    workflows: [Tests]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-oracle
+  cancel-in-progress: false
+
 jobs:
   deploy:
+    # Only a Tests run on a push to main that passed; a manual run deploys
+    # origin/main as it stands.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     steps:
       - name: Deploy over SSH
@@ -36,6 +53,7 @@ jobs:
           SSH_KEY: ${{ secrets.ORACLE_SSH_KEY }}
           SSH_HOST: ${{ secrets.ORACLE_HOST }}
           SSH_USER: ${{ secrets.ORACLE_SSH_USER }}
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha || '' }}
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh
@@ -43,29 +61,50 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
-          ssh -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" bash -s <<'REMOTE'
+          ssh -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" "TARGET_SHA='$TARGET_SHA' bash -s" <<'REMOTE'
             set -euo pipefail
             cd ~/Sports-Prediction-System
             git fetch origin main
-            git reset --hard origin/main
-            cd backend
-            source .venv/bin/activate
-            pip install -r requirements.txt
-            sudo systemctl restart predictions
-            # systemd reports a Type=simple service "active" as soon as the
-            # process forks, not once it's actually ready -- 4 workers
-            # cold-starting (reloading scipy/pandas/sklearn, connecting to
-            # Supabase from scratch) routinely takes longer than that. Poll
-            # instead of a single fixed sleep, so a slightly slow start
-            # doesn't fail the deploy outright.
-            for i in $(seq 1 30); do
-              if curl -fsS --max-time 2 http://localhost:8000/api/health > /dev/null 2>&1; then
-                echo "Healthy after ${i}s"
-                exit 0
-              fi
-              sleep 1
-            done
-            echo "Service did not become healthy within 30s"
+            TARGET="${TARGET_SHA:-$(git rev-parse origin/main)}"
+            # Never deploy something that isn't on main, and never go
+            # backwards: a slower run for an older commit is skipped.
+            if ! git merge-base --is-ancestor "$TARGET" origin/main; then
+              echo "$TARGET is not on origin/main -- not deploying"; exit 1
+            fi
+            PREVIOUS="$(git rev-parse HEAD)"
+            if [ "$PREVIOUS" != "$TARGET" ] && git merge-base --is-ancestor "$TARGET" "$PREVIOUS"; then
+              echo "Already running $PREVIOUS, which includes $TARGET -- nothing to do"; exit 0
+            fi
+
+            install_and_restart() {
+              git reset --hard "$1"
+              (cd backend && .venv/bin/pip install -q -r requirements.txt)
+              sudo systemctl restart predictions
+            }
+
+            # systemd reports the service "active" as soon as it forks, not
+            # once it is ready -- 4 workers cold-starting take a while -- so
+            # poll. Healthy means the process answers AND its database is
+            # ready: a version that can't migrate or reach the database is
+            # not a successful deploy.
+            wait_healthy() {
+              for i in $(seq 1 60); do
+                body="$(curl -fsS --max-time 2 http://127.0.0.1:8000/api/health 2>/dev/null || true)"
+                if echo "$body" | grep -q '"database":"ready"'; then
+                  echo "Healthy after ${i}s"; return 0
+                fi
+                sleep 1
+              done
+              echo "Last health answer: ${body:-none}"; return 1
+            }
+
+            echo "Deploying $TARGET (was $PREVIOUS)"
+            install_and_restart "$TARGET"
+            if wait_healthy; then exit 0; fi
+
+            echo "New version did not become healthy -- rolling back to $PREVIOUS"
             sudo systemctl status predictions --no-pager || true
+            install_and_restart "$PREVIOUS"
+            wait_healthy || echo "Previous version is not healthy either -- check the VM"
             exit 1
           REMOTE
