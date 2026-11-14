@@ -181,6 +181,15 @@ def _transaction_for(payload: Any, client_reference: str) -> dict | None:
     raise HubtelError("Hubtel's status response wasn't understood.")
 
 
+def says_paid(raw: Any) -> bool:
+    """Whether a stored status-check answer (``Payment.provider_detail``)
+    reported the payment as paid."""
+
+    if not isinstance(raw, dict):
+        return False
+    return str(_field(raw, "status", "transactionStatus") or "").strip().lower() in _PAID
+
+
 def check_status(config: HubtelConfig, client_reference: str) -> StatusResult:
     """Ask Hubtel directly whether ``client_reference`` was paid. Raises
     HubtelError when the answer can't be obtained -- the caller must treat

@@ -29,7 +29,7 @@ from app.api.routes_public import router as public_router
 from app.api.routes_settings import router as settings_router
 from app.api.routes_teams import router as teams_router
 from app.config import get_settings
-from app import github_dispatch, scheduler_lease
+from app import admin_alerts, github_dispatch, scheduler_lease
 from app.payments import service as payment_service
 from app.access_reminders import send_expiry_reminders
 from app.data.api_football_ingest import LIVE_WINDOW_BEFORE_KICKOFF, run_live_sync_from_settings
@@ -72,10 +72,14 @@ LIVE_SYNC_INTERVAL_SECONDS = 60.0
 # five minutes means it never gets to. Capped at an hour so fixtures
 # imported in the meantime are noticed.
 IDLE_RECHECK_MAX_SECONDS = 3600.0
-# How long a loop's lease lasts without renewal -- longer than the longest
-# sleep, so the holder keeps it across an idle hour. A clean shutdown
-# releases it at once (see lifespan); this only matters if a process dies.
-LEASE_TTL = dt.timedelta(seconds=IDLE_RECHECK_MAX_SECONDS + 600)
+# A loop's lease is held in two steps: LEASE_TTL covers a run (longer than
+# any run takes), and once the run says how long it will sleep the lease is
+# extended to exactly that sleep plus LEASE_MARGIN. So if the holder dies,
+# another process takes over a couple of minutes after the holder's next run
+# was due -- not an idle hour later. A clean shutdown releases it at once
+# (see lifespan); this only matters if a process dies.
+LEASE_TTL = dt.timedelta(minutes=30)
+LEASE_MARGIN = dt.timedelta(minutes=2)
 # A process that finds another holding the lease checks back this often, so
 # after a deploy the new instance takes over within minutes of the old one
 # stopping.
@@ -248,6 +252,11 @@ def _run_payment_sweep_once() -> float:
     try:
         for line in payment_service.sweep_pending(db):
             logger.info("Payment sweep: %s", line)
+        try:
+            admin_alerts.send_alerts(db)
+        except Exception:  # noqa: BLE001 -- an alert failing must not stop the sweep
+            db.rollback()
+            logger.warning("Admin alert check failed", exc_info=True)
     finally:
         db.close()
     return PAYMENT_SWEEP_INTERVAL_SECONDS
@@ -275,7 +284,15 @@ def _run_if_lease_held(name: str, run_once, ttl: dt.timedelta) -> float:
         db.close()
     if not held:
         return LEASE_RETRY_SECONDS
-    return run_once()
+    delay = run_once()
+    db = SessionLocal()
+    try:
+        scheduler_lease.acquire(db, name, dt.timedelta(seconds=delay) + LEASE_MARGIN)
+    except Exception:  # noqa: BLE001 -- the run lease still stands; next run renews
+        logger.warning("Could not extend the %s lease", name, exc_info=True)
+    finally:
+        db.close()
+    return delay
 
 
 async def _scheduled_loop(name: str, run_once, ttl: dt.timedelta, error_delay: float) -> None:
@@ -299,13 +316,13 @@ _LOOPS = (
     (
         "random_daily_picks",
         _run_random_daily_picks_once,
-        dt.timedelta(seconds=RANDOM_PICKS_INTERVAL_SECONDS + 600),
+        LEASE_TTL,
         RANDOM_PICKS_INTERVAL_SECONDS,
     ),
     (
         "risk_picks",
         _run_risk_picks_once,
-        dt.timedelta(seconds=RISK_PICKS_INTERVAL_SECONDS + 600),
+        LEASE_TTL,
         RISK_PICKS_INTERVAL_SECONDS,
     ),
     ("access_reminders", _run_access_reminders_once, LEASE_TTL, ACCESS_REMINDER_INTERVAL_SECONDS),

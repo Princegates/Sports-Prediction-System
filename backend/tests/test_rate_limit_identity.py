@@ -111,8 +111,12 @@ def _request(headers: dict[str, str], peer: str = "192.0.2.10") -> Request:
     return Request(scope)
 
 
-def test_client_ip_prefers_the_edge_header_over_the_forwarded_chain():
-    request = _request({"CF-Connecting-IP": "203.0.113.5", "X-Forwarded-For": "6.6.6.6, 203.0.113.5"})
+def test_client_ip_prefers_the_proxy_header_over_the_forwarded_chain():
+    # X-Real-IP is what the nginx in front of the API overwrites (DEPLOYMENT.md);
+    # a client-sent CF-Connecting-IP is not trusted by default.
+    request = _request({
+        "X-Real-IP": "203.0.113.5", "CF-Connecting-IP": "9.9.9.9", "X-Forwarded-For": "6.6.6.6, 203.0.113.5",
+    })
     assert rate_limit.client_ip(request) == "203.0.113.5"
 
 

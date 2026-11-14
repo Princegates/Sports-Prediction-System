@@ -7,7 +7,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.timeutil import utcnow
-from app.api.deps import get_db, get_match_or_404, require_superadmin
+from app.api.deps import get_current_user, get_db, get_match_or_404, require_superadmin
 from app.api.schemas import (
     LeagueOutcomesOut,
     LiveEventIn,
@@ -97,7 +97,13 @@ def get_match_prediction(
     match: Match = Depends(get_match_or_404),
     force_refresh: bool = False,
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> PredictionOut:
+    # Rebuilding runs the whole model for the match and writes a new row, so
+    # only an admin may ask for it; for anyone else the flag is ignored and
+    # the stored prediction is served.
+    if force_refresh and user.role != "superadmin":
+        force_refresh = False
     prediction = None
     if not force_refresh:
         prediction = db.execute(

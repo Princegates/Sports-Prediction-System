@@ -39,6 +39,7 @@ from dataclasses import dataclass
 import requests
 
 from app.betcode.selection import Leg
+from app.betcode import budget
 from app.betcode.sites import BookingCodeError, ConnectorResult
 from app.data.team_matching import name_match_score
 from app.outcomes.registry import _ASIAN_HANDICAP_LINES, HANDICAP_LINES
@@ -398,7 +399,7 @@ class _EventList:
         try:
             response = self._session.post(
                 LEAGUE_EVENTS_URL, json=body, headers={**_API_HEADERS, "Content-Type": "application/json"},
-                timeout=TIMEOUT_SECONDS,
+                timeout=budget.request_timeout(SITE_NAME, TIMEOUT_SECONDS),
             )
             if response.status_code != 200:
                 raise BookingCodeError(f"HTTP {response.status_code}")
@@ -416,7 +417,7 @@ class _EventList:
             "pageNum": page, "option": 1, "_t": int(time.time() * 1000),
         }
         try:
-            response = self._session.get(EVENTS_URL, params=params, headers=_API_HEADERS, timeout=TIMEOUT_SECONDS)
+            response = self._session.get(EVENTS_URL, params=params, headers=_API_HEADERS, timeout=budget.request_timeout(SITE_NAME, TIMEOUT_SECONDS))
         except requests.RequestException as exc:
             raise BookingCodeError(f"Couldn't reach {SITE_NAME} from this server ({type(exc).__name__}).") from exc
         if response.status_code != 200:
@@ -430,7 +431,8 @@ class _EventList:
         """match_id -> SportyBet eventId for every leg found: first in each
         league's own list, then the rest in the cross-league one."""
 
-        with self._lock:
+        budget.acquire(self._lock, SITE_NAME)
+        try:
             if time.monotonic() - self._fetched_at > EVENTS_CACHE_SECONDS:
                 self._reset()
             found: dict[int, str] = {}
@@ -443,6 +445,8 @@ class _EventList:
             if rest:
                 found.update(self._find_upcoming(rest))
             return found
+        finally:
+            self._lock.release()
 
     def _find_upcoming(self, legs: list[Leg]) -> dict[int, str]:
         found = _match_legs(legs, self.events)
@@ -531,6 +535,21 @@ class SportyBetConnector:
             self._session, self._events = session, _EventList(session)
 
     def create_code(self, legs: list[Leg]) -> ConnectorResult:
+        """Bounded as a whole (see app.betcode.budget): a slow or unreachable
+        site fails this booking within the deadline, and repeated failures
+        make the next ones fail at once."""
+
+        BREAKER.check()
+        try:
+            with budget.deadline():
+                result = self._create_code(legs)
+        except BookingCodeError as exc:
+            BREAKER.record(exc)
+            raise
+        BREAKER.record(None)
+        return result
+
+    def _create_code(self, legs: list[Leg]) -> ConnectorResult:
         translated = {leg.match_id: translate(leg.market, leg.selection) for leg in legs}
         known = [leg for leg in legs if translated[leg.match_id] is not None]
         event_ids = self._events.find_all(known) if known else {}
@@ -625,7 +644,7 @@ class SportyBetConnector:
         try:
             response = self._session.post(
                 SHARE_URL, json={"selections": selections},
-                headers={**_API_HEADERS, "Content-Type": "application/json;charset=UTF-8"}, timeout=TIMEOUT_SECONDS,
+                headers={**_API_HEADERS, "Content-Type": "application/json;charset=UTF-8"}, timeout=budget.request_timeout(SITE_NAME, TIMEOUT_SECONDS),
             )
         except requests.RequestException as exc:
             raise BookingCodeError(f"Couldn't reach {SITE_NAME} from this server ({type(exc).__name__}).") from exc
@@ -638,6 +657,9 @@ class SportyBetConnector:
         if payload.get("bizCode") != _OK:
             raise _BizRejected(f"{SITE_NAME} wouldn't book this slip: {payload.get('message') or 'no reason given'}.")
         return payload.get("data") or {}
+
+
+BREAKER = budget.Breaker(SITE_NAME)
 
 
 # One session and one event list per process, so the five-minute reuse above

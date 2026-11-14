@@ -748,7 +748,9 @@ class WinningSlip(Base):
     __tablename__ = "winning_slips"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    image: Mapped[bytes] = mapped_column(LargeBinary)
+    # Deferred: listing slips (the landing page, the admin queue) must not
+    # pull a few hundred KB per row; only the image endpoint loads it.
+    image: Mapped[bytes] = mapped_column(LargeBinary, deferred=True)
     content_type: Mapped[str] = mapped_column(String(32))
     width: Mapped[int | None] = mapped_column(Integer, nullable=True)
     height: Mapped[int | None] = mapped_column(Integer, nullable=True)

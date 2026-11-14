@@ -265,3 +265,18 @@ def test_root_needs_no_authentication(db_session):
     client = TestClient(app)
     assert "Authorization" not in client.headers
     assert client.get("/").status_code == 200
+
+
+def test_only_an_admin_can_force_a_prediction_rebuild(db_session, auth_headers):
+    from app.db.models import Prediction
+    from app.main import app
+
+    _, upcoming = _seed_league(db_session)
+    client = TestClient(app)
+    client.get(f"/api/matches/{upcoming.id}/prediction", headers=auth_headers)
+    count = lambda: db_session.query(Prediction).filter(Prediction.match_id == upcoming.id).count()  # noqa: E731
+    before = count()
+
+    client.get(f"/api/matches/{upcoming.id}/prediction?force_refresh=true", headers=auth_headers)
+    db_session.expire_all()
+    assert count() == before  # a member's flag is ignored

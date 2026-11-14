@@ -690,3 +690,46 @@ def test_second_half_exact_goals_only_books_the_bands_sportybet_has():
 
     booked = {sel for (m, sel) in sb._MARKETS if m == "2H Exact Goals"}
     assert booked == {"0", "1"}
+
+
+def test_a_booking_has_one_overall_deadline_and_repeated_failures_fail_fast(monkeypatch):
+    import requests as _requests
+
+    from app.betcode import budget
+
+    calls = []
+
+    class _Stalled:
+        def get(self, *a, timeout=None, **k):
+            calls.append(timeout)
+            raise _requests.ConnectTimeout("stalled")
+
+        post = get
+
+    monkeypatch.setattr(budget, "BOOKING_DEADLINE_SECONDS", 20.0)
+    connector = sb.SportyBetConnector(session=_Stalled())
+    leg = _leg_for_breaker()
+    for _ in range(budget.BREAKER_FAILURES):
+        with pytest.raises(sb.BookingCodeError):
+            connector.create_code([leg])
+    assert calls and all(t is not None and t <= sb.TIMEOUT_SECONDS for t in calls)
+
+    calls.clear()
+    with pytest.raises(sb.BookingCodeError, match="isn't answering"):
+        connector.create_code([leg])
+    assert calls == []  # failed without another request
+
+
+def test_request_timeouts_shrink_to_what_is_left_of_the_deadline():
+    from app.betcode import budget
+
+    with budget.deadline(3.0):
+        assert budget.request_timeout("X", 10.0) <= 3.0
+    with budget.deadline(0.1):
+        with pytest.raises(budget.DeadlineExceeded):
+            budget.request_timeout("X", 10.0)
+    assert budget.request_timeout("X", 10.0) == 10.0
+
+
+def _leg_for_breaker() -> Leg:
+    return _leg(1, "Arsenal", "Chelsea", dt.datetime(2030, 1, 1, 15, 0))

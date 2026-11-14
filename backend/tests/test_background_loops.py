@@ -71,3 +71,20 @@ def test_live_sync_with_no_key_sleeps_until_the_next_window(db_session, teams):
     _fixture(db_session, teams, dt.timedelta(minutes=70))
     delay = main._run_live_sync_once()
     assert 59 * 60 <= delay <= 60 * 60
+
+
+def test_lease_after_a_run_lasts_only_the_sleep_plus_a_margin(db_session):
+    """A holder that dies mid-sleep is replaced shortly after its next run
+    was due, not an idle hour later."""
+
+    from app.db.models import SchedulerLease
+    from app.timeutil import utcnow
+
+    main._run_if_lease_held("payment_sweep", lambda: 600.0, main.LEASE_TTL)
+    db_session.expire_all()
+    lease = db_session.get(SchedulerLease, "payment_sweep")
+    left = (lease.expires_at - utcnow()).total_seconds()
+    assert 600 + 100 <= left <= 600 + 125
+
+    later = utcnow() + dt.timedelta(seconds=600 + 130)
+    assert scheduler_lease.acquire(db_session, "payment_sweep", main.LEASE_TTL, holder="other", now=later)

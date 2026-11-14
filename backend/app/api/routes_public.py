@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
+import threading
+import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import and_, func, or_, select
@@ -745,10 +747,37 @@ def public_winning_slip_image(slip_id: int, db: Session = Depends(get_db)) -> Re
     )
 
 
+# The home page is the most-hit URL and its payload takes a dozen queries, so
+# each worker keeps the last one this long. Everything on it changes at most
+# every few minutes (predictions, results, approved slips).
+LANDING_CACHE_SECONDS = 90.0
+_landing_cache: tuple[float, LandingOut] | None = None
+_landing_lock = threading.Lock()
+
+
+def clear_landing_cache() -> None:
+    global _landing_cache
+    _landing_cache = None
+
+
 @router.get("/landing", response_model=LandingOut)
 def public_landing(db: Session = Depends(get_db)) -> LandingOut:
     """Everything the public home page shows, in one call -- see LandingOut."""
 
+    global _landing_cache
+    cached = _landing_cache
+    if cached is not None and time.monotonic() - cached[0] < LANDING_CACHE_SECONDS:
+        return cached[1]
+    with _landing_lock:  # one rebuild at a time per worker, not one per request
+        cached = _landing_cache
+        if cached is not None and time.monotonic() - cached[0] < LANDING_CACHE_SECONDS:
+            return cached[1]
+        payload = _build_landing(db)
+        _landing_cache = (time.monotonic(), payload)
+        return payload
+
+
+def _build_landing(db: Session) -> LandingOut:
     return LandingOut(
         branding=public_branding(db),
         stats=public_stats(db),

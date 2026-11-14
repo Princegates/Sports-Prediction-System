@@ -35,6 +35,7 @@ from dataclasses import dataclass
 import requests
 
 from app.betcode.selection import Leg
+from app.betcode import budget
 from app.betcode.sites import BookingCodeError, ConnectorResult
 from app.betcode.sportybet import _MARKETS as _SPORTYBET_MARKETS
 from app.data.team_matching import name_match_score
@@ -141,7 +142,7 @@ class _EventList:
     def _fetch(self) -> list[Event]:
         try:
             response = self._session.get(
-                EVENTS_URL, params={"sportId": FOOTBALL}, headers=_API_HEADERS, timeout=TIMEOUT_SECONDS,
+                EVENTS_URL, params={"sportId": FOOTBALL}, headers=_API_HEADERS, timeout=budget.request_timeout(SITE_NAME, TIMEOUT_SECONDS),
             )
         except requests.RequestException as exc:
             raise BookingCodeError(f"Couldn't reach {SITE_NAME} from this server ({type(exc).__name__}).") from exc
@@ -153,11 +154,14 @@ class _EventList:
             raise BookingCodeError(f"{SITE_NAME} sent a match list this connection can't read.") from exc
 
     def find_all(self, legs: list[Leg]) -> dict[int, str]:
-        with self._lock:
+        budget.acquire(self._lock, SITE_NAME)
+        try:
             if self._fetched_at is None or time.monotonic() - self._fetched_at > EVENTS_CACHE_SECONDS:
                 self.events = self._fetch()
                 self._fetched_at = time.monotonic()
             return _match_legs(legs, self.events)
+        finally:
+            self._lock.release()
 
 
 def _match_legs(legs: list[Leg], events: list[Event]) -> dict[int, str]:
@@ -225,6 +229,21 @@ class MSportConnector:
             self._session, self._events = session, _EventList(session)
 
     def create_code(self, legs: list[Leg]) -> ConnectorResult:
+        """Bounded as a whole (see app.betcode.budget): a slow or unreachable
+        site fails this booking within the deadline, and repeated failures
+        make the next ones fail at once."""
+
+        BREAKER.check()
+        try:
+            with budget.deadline():
+                result = self._create_code(legs)
+        except BookingCodeError as exc:
+            BREAKER.record(exc)
+            raise
+        BREAKER.record(None)
+        return result
+
+    def _create_code(self, legs: list[Leg]) -> ConnectorResult:
         translated = {leg.match_id: translate(leg.market, leg.selection) for leg in legs}
         known = [leg for leg in legs if translated[leg.match_id] is not None]
         event_ids = self._events.find_all(known) if known else {}
@@ -311,7 +330,7 @@ class MSportConnector:
         try:
             response = self._session.post(
                 SHARE_URL, json={"selections": selections},
-                headers={**_API_HEADERS, "Content-Type": "application/json"}, timeout=TIMEOUT_SECONDS,
+                headers={**_API_HEADERS, "Content-Type": "application/json"}, timeout=budget.request_timeout(SITE_NAME, TIMEOUT_SECONDS),
             )
         except requests.RequestException as exc:
             raise BookingCodeError(f"Couldn't reach {SITE_NAME} from this server ({type(exc).__name__}).") from exc
@@ -324,6 +343,9 @@ class MSportConnector:
         if payload.get("bizCode") != _OK:
             raise _BizRejected(f"{SITE_NAME} wouldn't book this slip: {payload.get('message') or 'no reason given'}.")
         return payload.get("data") or {}
+
+
+BREAKER = budget.Breaker(SITE_NAME)
 
 
 # One session and one event list per process, so the five-minute reuse above

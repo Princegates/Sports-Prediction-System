@@ -33,9 +33,18 @@ def _reset_rate_limits():
     worst kind to debug. Tests that want to assert the limiter *does* fire
     call it deliberately instead."""
 
-    rate_limit.reset()
+    from app.api.routes_public import clear_landing_cache
+    from app.betcode import msport, sportybet
+
+    def _clear():
+        rate_limit.reset()
+        clear_landing_cache()
+        sportybet.BREAKER.reset()
+        msport.BREAKER.reset()
+
+    _clear()
     yield
-    rate_limit.reset()
+    _clear()
 
 
 @pytest.fixture()
