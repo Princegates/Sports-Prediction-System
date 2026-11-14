@@ -87,9 +87,9 @@ function PointerHand() {
 }
 
 /**
- * Walkthrough of the platform. Opens by itself each time a member opens the
- * app until they tick "Don't show this again" (see lib/tour.shouldAutoShowTour),
- * and on demand from the account menu.
+ * Walkthrough of the platform. Opens by itself once on a device -- closing it
+ * in any way opts out (see lib/tour.shouldAutoShowTour) -- and on demand from
+ * "Take the tour" in the account menu.
  *
  * A dialog rather than spotlight bubbles over the real page on purpose: the
  * navigation is a top bar on desktop and a bottom bar on phones, and

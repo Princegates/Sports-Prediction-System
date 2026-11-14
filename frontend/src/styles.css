@@ -1008,6 +1008,15 @@ h1, h2, h3, h4 {
     font-size: 12px;
     padding: 2px 6px;
   }
+
+  /* Two cards a row leaves ~140px for the header: the slip title
+     ("85%+ games · Daily slip") and its risk tag side by side wrapped the
+     title a word per line. Stacked, the title gets the full width. */
+  .picks-grid .match-card-top {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
 }
 
 .card {
