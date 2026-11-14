@@ -79,7 +79,13 @@ def delete_user_account(db: Session, admin: User, target: User) -> None:
     db.execute(update(AppSetting).where(AppSetting.updated_by_user_id == user_id).values(updated_by_user_id=None))
     db.execute(update(WinningSlip).where(WinningSlip.created_by_user_id == user_id).values(created_by_user_id=None))
     db.execute(update(User).where(User.referred_by_user_id == user_id).values(referred_by_user_id=None))
-    db.execute(update(Payment).where(Payment.user_id == user_id).values(user_id=None))
+    # The payment itself is a financial record and stays. What Hubtel sent
+    # about the customer (their mobile-money number and name, in the status
+    # answer and in the stored callback bodies) is the person's own and goes.
+    db.execute(update(Payment).where(Payment.user_id == user_id).values(user_id=None, provider_detail=None))
+    db.execute(
+        delete(AuditLog).where(AuditLog.action == "payment.callback_received", AuditLog.target_user_id == user_id)
+    )
 
     db.execute(update(AuditLog).where(AuditLog.actor_user_id == user_id).values(actor_user_id=None, actor_email=None))
     db.execute(update(AuditLog).where(AuditLog.target_user_id == user_id).values(target_user_id=None))

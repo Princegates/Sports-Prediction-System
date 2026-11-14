@@ -244,9 +244,103 @@ def test_hubtel_saying_unpaid_does_not_cancel_a_payment_still_being_approved(db_
 
     fake_hubtel["status"] = "paid"
     fake_hubtel["raw_status"] = "Paid"
+    _age(db_session, reference, minutes=1, checked_minutes_ago=1)
     _callback(reference)
     db_session.expire_all()
     assert db_session.query(Payment).one().status == "completed"
+
+
+def test_repeating_a_callback_does_not_ask_hubtel_again_or_fill_the_log(db_session, auth_headers, configured, fake_hubtel):
+    # The endpoint is public and a member knows their own reference.
+    reference = _checkout(auth_headers)["reference"]
+    fake_hubtel["status"] = "unpaid"
+    for _ in range(10):
+        assert _callback(reference).status_code == 200
+    assert len(fake_hubtel["checks"]) == 1  # the rest fell inside the per-payment interval
+    received = db_session.query(AuditLog).filter(AuditLog.action == "payment.callback_received")
+    assert received.count() == 5
+    assert all(row.detail["verified"] is False for row in received)
+
+    fake_hubtel["status"] = "paid"
+    _age(db_session, reference, minutes=1, checked_minutes_ago=1)
+    _callback(reference)
+    checks = len(fake_hubtel["checks"])
+    for _ in range(5):
+        _callback(reference)  # settled: nothing to confirm, nothing recorded
+    db_session.expire_all()
+    assert db_session.query(Payment).one().status == "completed"
+    assert len(fake_hubtel["checks"]) == checks
+    assert received.count() == 5
+
+
+def test_a_payment_interrupted_while_granting_is_finished_by_the_sweep(db_session, auth_headers, configured, fake_hubtel):
+    # Hubtel said paid, the claim was written, then the process died.
+    reference = _checkout(auth_headers)["reference"]
+    payment = db_session.query(Payment).one()
+    payment.status = "fulfilling"
+    db_session.commit()
+    _age(db_session, reference, minutes=10, checked_minutes_ago=10)
+    fake_hubtel["status"] = "paid"
+
+    service.sweep_pending(db_session)
+
+    db_session.expire_all()
+    assert db_session.query(Payment).one().status == "completed"
+    assert _hubtel_codes(db_session) == 1
+
+
+def test_a_payment_only_just_claimed_is_left_alone_by_the_sweep(db_session, auth_headers, configured, fake_hubtel):
+    reference = _checkout(auth_headers)["reference"]
+    payment = db_session.query(Payment).one()
+    payment.status = "fulfilling"
+    db_session.commit()
+    _age(db_session, reference, minutes=10, checked_minutes_ago=1)
+
+    service.sweep_pending(db_session)
+
+    db_session.expire_all()
+    assert db_session.query(Payment).one().status == "fulfilling"
+    assert fake_hubtel["checks"] == []
+
+
+def test_granting_again_after_a_half_finished_grant_does_not_double_the_access(db_session, auth_headers, configured, fake_hubtel, monkeypatch):
+    # The code was cut and redeemed, then marking the payment completed failed.
+    from app.access import current_grant
+
+    reference = _checkout(auth_headers)["reference"]
+    fake_hubtel["status"] = "paid"
+    _callback(reference)
+    db_session.expire_all()
+    user = db_session.get(User, _user_id(db_session))
+    expires = current_grant(db_session, user).expires_at
+    payment = db_session.query(Payment).one()
+    payment.status = "pending"
+    payment.completed_at = None
+    payment.access_code_id = None
+    db_session.commit()
+
+    _age(db_session, reference, minutes=10, checked_minutes_ago=10)
+    service.sweep_pending(db_session)
+
+    db_session.expire_all()
+    assert db_session.query(Payment).one().status == "completed"
+    assert _hubtel_codes(db_session) == 1
+    assert current_grant(db_session, db_session.get(User, _user_id(db_session))).expires_at == expires
+
+
+def test_any_failure_while_granting_puts_the_payment_back_to_pending(db_session, auth_headers, configured, fake_hubtel, monkeypatch):
+    reference = _checkout(auth_headers)["reference"]
+    fake_hubtel["status"] = "paid"
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("database went away")
+
+    monkeypatch.setattr(service, "redeem_access_code", boom)
+    _age(db_session, reference, minutes=10)
+    service.sweep_pending(db_session)
+
+    db_session.expire_all()
+    assert db_session.query(Payment).one().status == "pending"
 
 
 def test_an_unpaid_payment_is_cancelled_once_the_grace_period_passes(db_session, auth_headers, configured, fake_hubtel):

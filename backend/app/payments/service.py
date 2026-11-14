@@ -18,13 +18,13 @@ from __future__ import annotations
 import datetime as dt
 import secrets
 
-from sqlalchemy import func, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app import app_settings
 from app.access import AccessCodeError, create_access_code, current_grant, redeem_access_code
 from app.api import rate_limit
-from app.db.models import AuditLog, Payment, User
+from app.db.models import AccessCode, AccessRedemption, AuditLog, Payment, User
 from app.payments import hubtel, products
 from app.timeutil import utcnow
 
@@ -47,6 +47,13 @@ SWEEP_MIN_AGE = dt.timedelta(minutes=2)
 SWEEP_RECHECK_EVERY = dt.timedelta(minutes=2)
 SWEEP_MAX_AGE = dt.timedelta(days=3)
 SWEEP_BATCH = 10
+
+# A payment is "fulfilling" only for the moment between Hubtel saying it was
+# paid and the grant being written. One still there after this long was
+# interrupted (a restart, a database error) and would otherwise stay paid
+# without access for good, so the sweep puts it back to "pending" to be
+# confirmed and granted again -- granting is safe to repeat, see ``_fulfil``.
+FULFILLING_STUCK_AFTER = dt.timedelta(minutes=5)
 
 
 class PaymentError(Exception):
@@ -159,10 +166,19 @@ def start_checkout(db: Session, user: User, product_key: str = products.ACCESS) 
     return payment
 
 
+def _payment_note(payment: Payment) -> str:
+    return f"Hubtel payment {payment.client_reference}"
+
+
 def _fulfil(db: Session, payment: Payment) -> None:
     """Cuts and redeems the access code for a confirmed payment. Exactly one
     caller wins the pending -> fulfilling claim, so two callbacks (Hubtel
-    retries) racing each other can't grant twice."""
+    retries) racing each other can't grant twice.
+
+    Safe to repeat for the same payment: the code is looked up by the
+    payment's own reference before one is cut, and a code this account has
+    already redeemed is not redeemed again -- so a grant interrupted halfway
+    is finished on the next attempt rather than doubled."""
 
     claimed = db.execute(
         update(Payment).where(Payment.id == payment.id, Payment.status == "pending").values(status="fulfilling")
@@ -183,20 +199,32 @@ def _fulfil(db: Session, payment: Payment) -> None:
         return
 
     try:
-        code = create_access_code(
-            db,
-            user,
-            duration_days=payment.access_days,
-            redemption_limit=1,
-            assigned_user_id=user.id,
-            assigned_email=user.email,
-            notes=f"Hubtel payment {payment.client_reference}",
-            kind="issued",
-        )
-        redeem_access_code(db, user, code.code)
-    except AccessCodeError:
-        # Paid but not granted: back to pending so the next callback or poll
-        # retries. The admin-issued code is the manual way out if it sticks.
+        code = db.execute(
+            select(AccessCode).where(AccessCode.notes == _payment_note(payment)).order_by(AccessCode.id)
+        ).scalars().first()
+        if code is None:
+            code = create_access_code(
+                db,
+                user,
+                duration_days=payment.access_days,
+                redemption_limit=1,
+                assigned_user_id=user.id,
+                assigned_email=user.email,
+                notes=_payment_note(payment),
+                kind="issued",
+            )
+        already_redeemed = db.execute(
+            select(AccessRedemption.id).where(
+                AccessRedemption.access_code_id == code.id, AccessRedemption.user_id == user.id
+            )
+        ).first()
+        if already_redeemed is None:
+            redeem_access_code(db, user, code.code)
+    except Exception:
+        # Paid but not granted: back to pending so the next callback, poll or
+        # sweep retries. Any failure, not only a refused code -- a database
+        # error here must not leave the payment "fulfilling" for good. The
+        # admin-issued code is the manual way out if it sticks.
         db.rollback()
         payment = db.get(Payment, payment.id)
         payment.status = "pending"
@@ -297,6 +325,22 @@ def sweep_pending(db: Session) -> list[str]:
     if not config.configured:
         return []
     now = utcnow()
+    lines: list[str] = []
+
+    # Payments interrupted mid-grant go back to "pending" first, so the query
+    # below picks them up like any other unsettled payment.
+    stuck = db.execute(
+        update(Payment)
+        .where(
+            Payment.status == "fulfilling",
+            func.coalesce(Payment.last_checked_at, Payment.created_at) <= now - FULFILLING_STUCK_AFTER,
+        )
+        .values(status="pending", last_checked_at=None)
+    )
+    db.commit()
+    if stuck.rowcount:
+        lines.append(f"{stuck.rowcount} payment(s) interrupted while granting; checking again")
+
     due = (
         db.query(Payment)
         .filter(
@@ -309,7 +353,6 @@ def sweep_pending(db: Session) -> list[str]:
         .limit(SWEEP_BATCH)
         .all()
     )
-    lines: list[str] = []
     for payment in due:
         before = payment.status
         try:
@@ -317,7 +360,8 @@ def sweep_pending(db: Session) -> list[str]:
         except hubtel.HubtelError:
             lines.append("Hubtel couldn't be reached; will try again")
             break
-        except AccessCodeError as exc:
+        except Exception as exc:  # noqa: BLE001 - one bad payment must not stop the rest
+            db.rollback()
             lines.append(f"{payment.client_reference}: paid but access couldn't be granted ({exc})")
             continue
         if payment.status != before:

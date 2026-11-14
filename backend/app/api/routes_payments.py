@@ -16,19 +16,23 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.access import AccessCodeError, current_grant
 from app.api.deps import get_current_user, get_db, require_superadmin
-from app.api.rate_limit import enforce, enforce_key
+from app.api.rate_limit import check as rate_limit_check, enforce, enforce_key
 from app.api.schemas import AdminPaymentOut, CheckoutIn, CheckoutOut, PaymentOptionsOut, PaymentStatusOut
-from app.db.models import Payment, User
+from app.db.models import AuditLog, Payment, User
 from app.payments import hubtel, products, service
+from app.timeutil import utcnow
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/payments", tags=["payments"])
+
+# Status checks a minute that callbacks may cause, over all payments.
+CALLBACK_CHECKS_PER_MINUTE = 8
 admin_router = APIRouter(prefix="/api/admin/payments", tags=["payments"], dependencies=[Depends(require_superadmin)])
 
 
@@ -97,7 +101,26 @@ def hubtel_callback(
         logger.info("Hubtel callback for unknown reference %s", reference[:40])
         return {"ok": False}
 
+    # A settled payment has nothing left to confirm, and Hubtel is asked at
+    # most once per interval per payment: the endpoint is public and a member
+    # knows their own reference, so repeating a callback must not be a way to
+    # spend Hubtel's status-check allowance or to fill the Activity Log. A
+    # notification that arrives inside the interval is picked up by the
+    # member's own polling or the background sweep a moment later.
+    if payment.status != "pending":
+        return {"ok": True}
+    recently_checked = (
+        payment.last_checked_at is not None
+        and utcnow() - payment.last_checked_at < service.STATUS_CHECK_MIN_INTERVAL
+    )
     _record_callback(db, payment, body)
+    if recently_checked:
+        return {"ok": True}
+    # Across all payments too: a 503 has Hubtel send a genuine notification
+    # again, and the sweep settles it either way.
+    allowed, _ = rate_limit_check("hubtel:callback-status", CALLBACK_CHECKS_PER_MINUTE, 60)
+    if not allowed:
+        raise HTTPException(status_code=503, detail="Busy confirming payments; try again shortly.")
     try:
         service.reconcile(db, payment, force=True)
     except hubtel.HubtelError as exc:
@@ -111,15 +134,29 @@ def hubtel_callback(
 _CALLBACK_KEEP_CHARS = 6000
 
 
-def _record_callback(db: Session, payment: Payment, body: dict[str, Any]) -> None:
-    """Keep exactly what Hubtel sent, for debugging with them (Activity Log,
-    "payment callback received from Hubtel"). Only for payments we know -- the
-    endpoint is public, so unknown references must not be able to fill the
-    log. Never trusted for anything; purely a record."""
+# How many callback bodies are kept per payment. Hubtel sends one, plus a
+# retry or two; anything past this is repetition.
+_CALLBACKS_KEPT_PER_PAYMENT = 5
 
+
+def _record_callback(db: Session, payment: Payment, body: dict[str, Any]) -> None:
+    """Keep exactly what was sent, for debugging with Hubtel (Activity Log).
+    Only for payments we know and that are still waiting, and only the first
+    few per payment -- the endpoint is public, so it must not be able to fill
+    the log. Never trusted for anything: it is recorded as unverified, since
+    nothing proves a callback came from Hubtel."""
+
+    already = db.execute(
+        select(func.count(AuditLog.id)).where(
+            AuditLog.action == "payment.callback_received", AuditLog.target_user_id == payment.user_id,
+            AuditLog.created_at >= payment.created_at,
+        )
+    ).scalar_one()
+    if already >= _CALLBACKS_KEPT_PER_PAYMENT:
+        return
     raw = json.dumps(body, default=str)
     kept = body if len(raw) <= _CALLBACK_KEEP_CHARS else {"truncated": raw[:_CALLBACK_KEEP_CHARS]}
-    service._audit(db, None, "payment.callback_received", payment, {"body": kept})
+    service._audit(db, None, "payment.callback_received", payment, {"verified": False, "body": kept})
     db.commit()
 
 
