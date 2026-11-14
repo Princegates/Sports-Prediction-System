@@ -120,29 +120,28 @@ export function Register() {
               <ol>
                 {/confirmation link/i.test(done) ? (
                   <li>
-                    Open the link we just emailed you -- your free trial starts the moment you do. You can sign in now too.
+                    Open the link we just emailed you. Your free trial starts the moment you do. You can sign in now too.
                     <br />
                     <strong>Can't find it?</strong> Check your spam or junk folder (and Promotions, on Gmail). If it's
                     there, mark it "Not spam" so our next emails reach your inbox. Still nothing? Sign in and use
                     "Resend link".
                   </li>
                 ) : (
-                  <li>Sign in right away -- there's no approval queue to wait on.</li>
+                  <li>Sign in right away. There's no approval queue to wait on.</li>
                 )}
                 <li>
-                  When your trial ends, arrange payment with a Super Admin outside the platform
-                  {price && <> -- access is <strong>{price}</strong></>}
+                  When your trial ends, pay with mobile money from the Access page, or pay our team
+                  {price && <> (access is <strong>{price}</strong>)</>}
                   {whatsapp ? (
                     <>
                       {" "}
-                      --{" "}
                       <a href={whatsappLink(whatsapp, "Hi, I'd like an access code for Socca Intelligence.")} target="_blank" rel="noreferrer noopener">
-                        contact admin on WhatsApp
-                      </a>{" "}
-                      (WhatsApp only). Once confirmed, they'll hand you an access code.
+                        on WhatsApp
+                      </a>
+                      . They'll send you an access code.
                     </>
                   ) : (
-                    ". Once confirmed, they'll hand you an access code."
+                    " on WhatsApp. They'll send you an access code."
                   )}
                 </li>
                 <li>Redeem the code from the Access page and the full platform unlocks.</li>
@@ -171,13 +170,13 @@ export function Register() {
         <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 0, marginBottom: 20 }}>
           {branding?.trial_days ? (
             <>
-              Your first {branding.trial_days} day{branding.trial_days === 1 ? "" : "s"} of full access are free -- no card, no code.
-              After that, a Super Admin issues an access code once you've paid outside the platform.
+              Your first {branding.trial_days} day{branding.trial_days === 1 ? "" : "s"} of full access are free: no card, no code.
+              After that, you pay with mobile money to keep going. The Access page shows you how.
             </>
           ) : (
             <>
-              Sign in right after creating your account. Predictions unlock once you redeem an access code, which
-              a Super Admin issues after confirming payment outside the platform.
+              Sign in right after creating your account. Predictions unlock once you pay with mobile money; the
+              Access page shows you how.
             </>
           )}
           {price && <> Access is <strong>{price}</strong>.</>}

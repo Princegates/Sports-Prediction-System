@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   fetchBranding,
   fetchPaymentOptions,
@@ -242,9 +242,29 @@ function PaymentReturn({ reference, cancelled, onSettled, onDismiss }: {
   );
 }
 
+// Page names for "X needs full access", keyed by the start of the path a
+// member was redirected from (see RequireAccess).
+const GATED_PAGES: [string, string][] = [
+  ["/app/predictions", "Predictions"],
+  ["/app/markets", "Markets"],
+  ["/app/betcodes", "AI Generation"],
+  ["/app/live", "Live"],
+  ["/app/ai-picks", "AI Picks"],
+  ["/app/match", "The match page"],
+  ["/app/team", "The team page"],
+];
+
+function gatedPageName(path: string | undefined): string | null {
+  if (!path) return null;
+  const hit = GATED_PAGES.find(([prefix]) => path.startsWith(prefix));
+  return hit ? hit[1] : "That page";
+}
+
 export function Access() {
   const { user, accessStatus, accessLoading, refreshAccessStatus } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const cameFrom = gatedPageName((location.state as { from?: string } | null)?.from);
   const tilt = useTilt<HTMLDivElement>();
   const [code, setCode] = useState("");
   const [errorKind, setErrorKind] = useState<ErrorKind | null>(null);
@@ -382,11 +402,12 @@ export function Access() {
 
           {!accessLoading && !hasAccess && (
             <>
+              {cameFrom && <p className="meta" style={{ margin: "0 0 6px" }}>{cameFrom} needs full access.</p>}
               <h1>{accessStatus?.status === "expired" ? "Your access has expired" : "No active access yet"}</h1>
               <p className="status-result-message">
                 {paymentOptions?.enabled
                   ? "Predictions, teams and matches stay locked until you pay or redeem a code."
-                  : "Predictions, teams and matches stay locked until you redeem a code. A Super Admin issues one after confirming your payment outside the platform."}
+                  : "Predictions, teams and matches stay locked until you redeem a code. Pay our team with mobile money on WhatsApp and they send you a code to enter here."}
                 {price && !paymentOptions?.enabled && <> Access is <strong>{price}</strong>.</>}
               </p>
               <PayNow options={paymentOptions} label="Pay now" />

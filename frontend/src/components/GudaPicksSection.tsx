@@ -30,7 +30,10 @@ export function GudaPicksSection({ onLoaded }: { onLoaded?: () => void } = {}) {
     load();
     // Re-fetch periodically so a pick drops off as soon as its match
     // finishes, not only on the next page load.
-    const interval = setInterval(load, 60_000);
+    // Skipped while the tab is in the background (same as Live).
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") load();
+    }, 60_000);
 
     return () => {
       cancelled = true;

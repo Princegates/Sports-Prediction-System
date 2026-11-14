@@ -23,10 +23,11 @@ export function ErrorState({ message, onRetry }: Props) {
   }, [needsAdmin]);
 
   return (
-    <div className="state-card">
+    <div className="state-card" role="alert">
       <div className="icon">⚠</div>
-      <div>Some match data is temporarily unavailable.</div>
-      <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-muted)" }}>{message}</div>
+      {/* The reason itself is the headline: it is what the person needs to
+          read, and a generic line above it only hid it. */}
+      <div>{message || "Some match data is temporarily unavailable."}</div>
       {needsAdmin && whatsapp && (
         <a
           className="btn"

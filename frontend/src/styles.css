@@ -220,7 +220,7 @@ h1, h2, h3, h4 {
   font-size: 16px;
   font-weight: 800;
   letter-spacing: -0.01em;
-  color: var(--accent);
+  color: var(--accent-ink);
   animation: brand-glow 2.6s ease-in-out infinite;
 }
 
@@ -393,7 +393,7 @@ h1, h2, h3, h4 {
 
 .hero h1 {
   font-size: clamp(28px, 4vw, 38px);
-  color: var(--accent);
+  color: var(--accent-ink);
   margin-bottom: var(--space-2);
 }
 
@@ -423,7 +423,7 @@ h1, h2, h3, h4 {
 }
 
 .ai-search .icon {
-  color: var(--ai-violet);
+  color: var(--accent-ink);
   font-size: 16px;
 }
 
@@ -742,9 +742,9 @@ h1, h2, h3, h4 {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 10px;
+  font-size: 12px;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   font-weight: 700;
   padding: 3px 8px;
   border-radius: var(--radius-sm);
@@ -753,19 +753,19 @@ h1, h2, h3, h4 {
 }
 
 .risk-tag.low {
-  color: var(--good);
+  color: var(--good-ink);
   border-color: rgba(12, 163, 12, 0.4);
   background: var(--good-soft);
 }
 
 .risk-tag.medium {
-  color: var(--warning);
+  color: var(--warning-ink);
   border-color: rgba(250, 178, 25, 0.4);
   background: var(--warning-soft);
 }
 
 .risk-tag.high {
-  color: var(--critical);
+  color: var(--critical-ink);
   border-color: rgba(230, 103, 103, 0.4);
   background: var(--critical-soft);
 }
@@ -781,9 +781,9 @@ h1, h2, h3, h4 {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 10px;
+  font-size: 12px;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   font-weight: 700;
   padding: 3px 8px;
   border-radius: var(--radius-sm);
@@ -1005,7 +1005,7 @@ h1, h2, h3, h4 {
 
   .picks-grid .result-tag,
   .picks-grid .risk-tag {
-    font-size: 9px;
+    font-size: 12px;
     padding: 2px 6px;
   }
 }
@@ -1374,9 +1374,9 @@ h1, h2, h3, h4 {
    CONFIDENCE TAG / BADGES
    ========================================================================== */
 .confidence-tag {
-  font-size: 10px;
+  font-size: 12px;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   font-weight: 700;
   padding: 3px 8px;
   border-radius: var(--radius-sm);
@@ -1385,19 +1385,19 @@ h1, h2, h3, h4 {
 }
 
 .confidence-tag.high {
-  color: var(--good);
+  color: var(--good-ink);
   border-color: rgba(12, 163, 12, 0.4);
   background: var(--good-soft);
 }
 
 .confidence-tag.medium {
-  color: var(--warning);
+  color: var(--warning-ink);
   border-color: rgba(250, 178, 25, 0.4);
   background: var(--warning-soft);
 }
 
 .confidence-tag.low {
-  color: var(--critical);
+  color: var(--critical-ink);
   border-color: rgba(230, 103, 103, 0.4);
   background: var(--critical-soft);
 }
@@ -1412,7 +1412,7 @@ h1, h2, h3, h4 {
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--accent-ink);
   background: var(--accent-soft);
   padding: 3px 9px 3px 7px;
   border-radius: var(--radius-pill);
@@ -1947,7 +1947,7 @@ table.predictions-table.odds-grid .match-col .sub {
   align-items: center;
   font-size: 12.5px;
   font-weight: 600;
-  color: var(--accent);
+  color: var(--accent-ink);
   background: none;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-pill);
@@ -2011,7 +2011,7 @@ table.predictions-table.odds-grid .match-col .sub {
   table.predictions-table.cards-on-mobile td[data-label]:not([data-label=""])::before {
     content: attr(data-label);
     display: block;
-    font-size: 10px;
+    font-size: 12px;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--text-muted);
@@ -2370,7 +2370,7 @@ table.predictions-table.odds-grid .match-col .sub {
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--ai-violet);
+  color: var(--accent-ink);
   margin-bottom: 4px;
   font-weight: 700;
 }
@@ -2390,8 +2390,8 @@ table.predictions-table.odds-grid .match-col .sub {
 }
 
 .btn {
-  background: var(--accent);
-  color: #fff;
+  background: var(--accent-ink);
+  color: var(--accent-ink-on);
   border: none;
   border-radius: var(--radius-sm);
   padding: 9px 16px;
@@ -2581,6 +2581,7 @@ table.predictions-table.odds-grid .match-col .sub {
     text-align: center;
     font-size: 10.5px;
     font-weight: 500;
+    white-space: nowrap;
     padding: 6px 2px;
     border-radius: var(--radius-sm);
     text-decoration: none;
@@ -2588,7 +2589,7 @@ table.predictions-table.odds-grid .match-col .sub {
   }
 
   .mobile-bottom-nav-link.active {
-    color: var(--accent);
+    color: var(--accent-ink);
   }
 
   .mobile-bottom-nav-icon {
@@ -2869,7 +2870,7 @@ table.admin-table {
 .btn.ghost.active {
   background: var(--accent-soft);
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 /* ==========================================================================
@@ -3324,7 +3325,7 @@ table.admin-table {
 }
 
 .site-notice-icon {
-  color: var(--accent);
+  color: var(--accent-ink);
   flex-shrink: 0;
 }
 
@@ -3680,7 +3681,7 @@ table.admin-table {
 
 .public-footer-col h4 {
   margin: 0 0 3px;
-  font-size: 11px;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
@@ -3835,7 +3836,7 @@ table.admin-table {
 }
 
 .hero-gradient {
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .lede {
@@ -3986,7 +3987,7 @@ table.admin-table {
   font-weight: 700;
   line-height: 1;
   font-variant-numeric: tabular-nums;
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .hero-panel-metric > span:last-child {
@@ -4163,7 +4164,7 @@ table.admin-table {
   line-height: 1;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .accuracy-caption {
@@ -4322,7 +4323,7 @@ table.admin-table {
   border-radius: var(--radius-md);
   background: linear-gradient(135deg, var(--accent-soft), var(--ai-violet-soft));
   box-shadow: inset 0 0 0 1px var(--border);
-  color: var(--ai-violet);
+  color: var(--accent-ink);
   font-size: 18px;
   margin-bottom: var(--space-3);
 }
@@ -5356,7 +5357,7 @@ table.admin-table {
   margin: 0;
   padding: 7px var(--space-4) var(--space-3);
   background: var(--bg-surface-2);
-  font-size: 10px;
+  font-size: 12px;
   color: var(--text-muted);
   line-height: 1.5;
   text-align: center;
@@ -5659,7 +5660,7 @@ table.admin-table {
   position: sticky;
   bottom: 0;
   padding: 14px 0;
-  background: linear-gradient(to top, var(--bg-base) 70%, transparent);
+  background: linear-gradient(to top, var(--bg-page) 70%, transparent);
 }
 
 .status-grid {
@@ -5738,7 +5739,7 @@ table.admin-table {
 }
 
 .cookie-banner a {
-  color: var(--accent);
+  color: var(--accent-ink);
   font-weight: 600;
 }
 
@@ -6101,7 +6102,7 @@ table.admin-table {
   background: var(--critical-soft);
 }
 .free-slip-status.live {
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 .potd-head {
   display: flex;
@@ -6127,7 +6128,7 @@ table.admin-table {
   font-family: var(--font-data);
   font-size: 1.6rem;
   font-weight: 700;
-  color: var(--accent);
+  color: var(--accent-ink);
   font-variant-numeric: tabular-nums;
 }
 
@@ -6333,9 +6334,12 @@ table.admin-table {
 .markets-toggle {
   margin-top: 6px;
   padding: 2px 0;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
   border: 0;
   background: none;
-  color: var(--accent);
+  color: var(--accent-ink);
   font: inherit;
   font-size: 0.8rem;
   font-weight: 600;
@@ -6345,7 +6349,7 @@ table.admin-table {
   margin: 2px 0;
   font-size: 0.82rem;
   font-weight: 600;
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 .markets-panel-row > td {
   background: var(--bg-surface-2);
@@ -6612,7 +6616,7 @@ table.admin-table {
   margin: 0 0 4px;
 }
 .wins-status.pending {
-  color: var(--accent);
+  color: var(--accent-ink);
   font-weight: 600;
 }
 .wins-status.live {
@@ -6620,12 +6624,14 @@ table.admin-table {
   font-weight: 600;
 }
 
-/* Inside the app on a phone the bottom tab bar owns the bottom edge -- the
-   cookie notice sits just above it instead of covering every tab until
-   it's dismissed. */
+/* Inside the app on a phone the bottom edge is taken: the tab bar, the
+   sticky slip bar and the "Ask Guda" launcher all live there. The cookie
+   notice drops in just under the top bar instead, so it never hides the
+   slip's Book button or the launcher until it's dismissed. */
 @media (max-width: 640px) {
   body:has(.mobile-bottom-nav) .cookie-banner {
-    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+    top: calc(var(--topbar-h) + 8px + env(safe-area-inset-top, 0px));
+    bottom: auto;
   }
 }
 
@@ -6650,7 +6656,7 @@ table.admin-table {
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 .nb-viewport {
   flex: 1;
@@ -6768,7 +6774,7 @@ table.admin-table {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 .promo-video-copy h2 {
   margin: 0 0 10px;
@@ -6893,7 +6899,7 @@ table.admin-table {
   display: flex;
   flex-direction: column;
   width: min(460px, 100%);
-  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
   box-sizing: border-box;
   border-radius: var(--radius-lg);
   background: var(--bg-surface);
@@ -7036,20 +7042,9 @@ table.admin-table {
 }
 
 .tour-optout {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   margin: 0 0 12px;
   font-size: 13px;
   color: var(--text-secondary);
-  cursor: pointer;
-}
-
-.tour-optout input {
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  accent-color: var(--accent);
 }
 
 .tour-actions {
@@ -7270,4 +7265,65 @@ table.admin-table {
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--bg-surface-2);
+}
+
+/* Icon-only buttons (remove a leg, delete a saved code): a full 44x44 tap
+   target whatever the glyph's own size. */
+.btn-icon {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Sign in / Create account buttons: a full-height tap target on phones. */
+@media (max-width: 640px) {
+  .auth-card .btn {
+    min-height: 44px;
+  }
+}
+
+/* Tap-to-show market definitions (components/MarketHint.tsx). A real
+   button, so touch screens get the explanation a hover title never shows. */
+.market-hint-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  min-height: 28px;
+  margin-left: 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+  vertical-align: middle;
+}
+.market-hint-btn span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+.market-hint-btn[aria-expanded="true"] {
+  color: var(--accent-ink);
+}
+.market-hint-text {
+  display: block;
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  text-transform: none;
+  letter-spacing: 0;
 }

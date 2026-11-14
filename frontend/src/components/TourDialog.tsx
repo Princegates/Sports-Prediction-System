@@ -3,7 +3,6 @@ import { useLocation, useNavigate } from "react-router-dom";
 import {
   TOUR_STEPS,
   OPEN_TOUR_EVENT,
-  hasOptedOutOfTour,
   markTourShownThisVisit,
   setTourOptOut,
   shouldAutoShowTour,
@@ -105,7 +104,10 @@ export function TourDialog() {
   const [spot, setSpot] = useState<Spot | null>(null);
   const [viewport, setViewport] = useState({ w: window.innerWidth, h: window.innerHeight });
   const [index, setIndex] = useState(0);
-  const [dontShow, setDontShow] = useState(false);
+  // Where the member was when the tour opened. Steps only move between pages
+  // when that was the dashboard: someone who opened a shared-slip link (or
+  // any other page) is not pulled off it.
+  const startPath = useRef<string>("/app");
   const primaryRef = useRef<HTMLButtonElement>(null);
   const decided = useRef<number | null>(null);
 
@@ -122,8 +124,8 @@ export function TourDialog() {
     const timer = window.setTimeout(() => {
       decided.current = user.id;
       markTourShownThisVisit(user.id);
+      startPath.current = window.location.pathname;
       setIndex(0);
-      setDontShow(false);
       setOpen(true);
     }, 900);
     return () => window.clearTimeout(timer);
@@ -135,21 +137,24 @@ export function TourDialog() {
   // "Take the tour" in the account menu.
   useEffect(() => {
     function onOpen() {
+      startPath.current = window.location.pathname;
       setIndex(0);
-      setDontShow(user ? hasOptedOutOfTour(user.id) : false);
       setOpen(true);
     }
     window.addEventListener(OPEN_TOUR_EVENT, onOpen);
     return () => window.removeEventListener(OPEN_TOUR_EVENT, onOpen);
   }, [user]);
 
+  // Closing it any way at all (✕, Skip, Esc, the backdrop, or finishing)
+  // means it won't open by itself again on this device; "Take the tour" in
+  // the account menu still brings it back.
   const close = useCallback(() => {
     setOpen(false);
     if (user) {
       markTourShownThisVisit(user.id);
-      setTourOptOut(user.id, dontShow);
+      setTourOptOut(user.id, true);
     }
-  }, [user, dontShow]);
+  }, [user]);
 
   const last = TOUR_STEPS.length - 1;
   const next = useCallback(() => setIndex((i) => Math.min(i + 1, last)), [last]);
@@ -169,7 +174,8 @@ export function TourDialog() {
   // Open the page a step is about, so the button it points at exists.
   const stepRoute = open ? TOUR_STEPS[index].route : undefined;
   useEffect(() => {
-    if (stepRoute && location.pathname !== stepRoute && location.pathname !== `${stepRoute}/`) navigate(stepRoute);
+    const mayMove = startPath.current === "/app" || startPath.current === "/app/";
+    if (mayMove && stepRoute && location.pathname !== stepRoute && location.pathname !== `${stepRoute}/`) navigate(stepRoute);
     // Only when the step changes; a later page change must not drag the tour back.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stepRoute, open, index]);
@@ -222,7 +228,7 @@ export function TourDialog() {
   if (spot) {
     pointerBelow = spot.top + spot.height / 2 < viewport.h / 2;
     cardStyle = pointerBelow
-      ? { top: spot.top + spot.height + POINTER_ROOM, maxHeight: `calc(100vh - ${spot.top + spot.height + POINTER_ROOM}px - 12px)` }
+      ? { top: spot.top + spot.height + POINTER_ROOM, maxHeight: `calc(100dvh - ${spot.top + spot.height + POINTER_ROOM}px - 12px)` }
       : { bottom: viewport.h - spot.top + POINTER_ROOM, maxHeight: `calc(${spot.top - POINTER_ROOM}px - 12px)` };
   }
   const tryText = found ? step.tryIt : step.tryItElse;
@@ -310,10 +316,7 @@ export function TourDialog() {
             <span style={{ width: `${((index + 1) / TOUR_STEPS.length) * 100}%` }} />
           </div>
 
-          <label className="tour-optout">
-            <input type="checkbox" checked={dontShow} onChange={(e) => setDontShow(e.target.checked)} />
-            Don&apos;t show this again
-          </label>
+          <p className="tour-optout">It won&apos;t open by itself again. Find it any time under your account menu.</p>
 
           <div className="tour-actions">
             {index > 0 ? (

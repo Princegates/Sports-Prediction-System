@@ -119,7 +119,7 @@ export function PublicShell({
             ) : (
               <>
                 <button type="button" onClick={() => go("/login")}>Sign in</button>
-                <button type="button" onClick={() => go("/register")}>Request access</button>
+                <button type="button" onClick={() => go("/register")}>Free trial</button>
               </>
             )}
           </div>

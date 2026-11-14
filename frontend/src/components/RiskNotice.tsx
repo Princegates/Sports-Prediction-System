@@ -8,7 +8,7 @@ import { chanceLabel } from "../lib/odds";
  */
 
 /** Below this combined chance a slip counts as high risk -- the same line
- * the result's own "High risk" tag uses (see BetCodes.resultRiskLabel). */
+ * the result's own "High risk" tag uses (see lib/risk.riskOf). */
 export const RISKY_BELOW = 0.2;
 /** Below this, the wording gets stronger. */
 export const VERY_RISKY_BELOW = 0.05;

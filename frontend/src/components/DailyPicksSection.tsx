@@ -25,11 +25,9 @@ function tierOf(pick: AdminPick): (typeof TIER_ORDER)[number] | null {
  * until a tier has been generated, same "no empty-state" reasoning as the
  * other pick sections.
  *
- * ``riskOverride`` is passed to the card because ``pick.risk_tier`` is
- * derived from the *combined* probability, which for a 10-15 leg slip is
- * "high" for every tier -- it would contradict the section's own Low /
- * Medium / High labelling right beside it (same reason WeeklyPicksSection
- * sets it). ``allPicks`` is the shared GET /api/predictions/admin-picks
+ * The card titles each one by that per-game floor ("85%+ games") and tags
+ * its risk from the *combined* probability, which for 10-15 games is high at
+ * every tier -- see lib/risk. ``allPicks`` is the shared GET /api/predictions/admin-picks
  * response fetched once by AIPicks. */
 export function DailyPicksSection({ picks: allPicks }: { picks: AdminPick[] | null }) {
   const { user, accessStatus } = useAuth();
@@ -57,13 +55,14 @@ export function DailyPicksSection({ picks: allPicks }: { picks: AdminPick[] | nu
       <div className="section-header">
         <h2>Today's Picks</h2>
         <span className="meta">
-          10-15 leg accumulators, refreshed daily -- Low (every leg 85%+ likely), Medium (70-85%) and High (55-70%)
+          Three slips of 10 to 15 games, new every day, grouped by how likely each game is: 85% or more, 70 to 85%,
+          and 55 to 70%. Every game must win, so each slip's own chance is shown on it.
         </span>
       </div>
       <div className="picks-grid">
         {picks.map((pick) => (
           <div key={pick.id}>
-            <AdminPickCard pick={pick} whatsapp={whatsapp} riskOverride={tierOf(pick) ?? undefined} />
+            <AdminPickCard pick={pick} whatsapp={whatsapp} />
             <PickBookingCodes pick={pick} viewerHasPremium={viewerHasPremium} />
           </div>
         ))}

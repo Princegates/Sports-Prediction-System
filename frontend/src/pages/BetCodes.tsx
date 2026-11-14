@@ -36,6 +36,7 @@ import { useIsMobile } from "../lib/useIsMobile";
 import { takePendingSlip } from "../lib/pendingSlip";
 import type { AdminPick, BetCodePick, ExcludedLeg, MarketSummary, MatchSummary, PublicTeaserPick, SuggestCriteria, SuggestedLeg, SuggestedPicks } from "../types";
 import { chanceLabel } from "../lib/odds";
+import { RISK_LABELS, riskOf, systemSlipTitle } from "../lib/risk";
 import { ResultRiskNotice, SettingsRiskNotice } from "../components/RiskNotice";
 import { marketLabel } from "../lib/marketLabel";
 
@@ -194,15 +195,6 @@ const RISK_PRESETS: Record<
 // single always-visible fast path on both -- it isn't part of this form.
 const WIZARD_STEPS = ["When & where", "Games & chance", "Bet types", "Review & generate"] as const;
 
-// Labels the *result*, independent of which preset (if any) produced it --
-// a "High risk" generate that only found 2 very safe legs is honestly a
-// low-risk result, and this says so rather than repeating the input choice.
-function resultRiskLabel(combinedProbability: number): { label: string; tone: "low" | "medium" | "high" } {
-  if (combinedProbability >= 0.5) return { label: "Low risk", tone: "low" };
-  if (combinedProbability >= 0.2) return { label: "Medium risk", tone: "medium" };
-  return { label: "High risk", tone: "high" };
-}
-
 export function BetCodes() {
   const { league } = useLeague();
   const { user } = useAuth();
@@ -289,6 +281,13 @@ export function BetCodes() {
   const [preview, setPreview] = useState<SuggestedPicks | null>(null);
   const resultsCardRef = useRef<HTMLDivElement | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  // Which control started the run that failed, so the error shows right
+  // under it instead of below the whole form, off the screen on a phone.
+  const [errorPlace, setErrorPlace] = useState<"preset" | "form">("form");
+  const errorRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (previewError) errorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [previewError]);
   const quota = useAIGenerationQuota();
   const [previewing, setPreviewing] = useState(false);
   // Set only when the current preview came from picks handed over by Guda
@@ -400,9 +399,14 @@ export function BetCodes() {
     void refreshAIGenerationQuota();
   }
 
-  async function runPreview(fetchPreview: () => Promise<SuggestedPicks>, resetExclusions: boolean) {
+  async function runPreview(
+    fetchPreview: () => Promise<SuggestedPicks>,
+    resetExclusions: boolean,
+    place: "preset" | "form" = "form",
+  ) {
     setPreviewing(true);
     setPreviewError(null);
+    setErrorPlace(place);
     setEditingPickId(null); // a fresh search is never mid-edit of an existing pick
     try {
       const result = await fetchPreview();
@@ -414,6 +418,8 @@ export function BetCodes() {
         const seen = new Set(prev.map((l) => `${l.match_id}|${l.market}`));
         return [...prev, ...shown.filter((l) => !seen.has(`${l.match_id}|${l.market}`))];
       });
+      // Bring the new slip into view: on a phone it lands below the form.
+      window.setTimeout(() => resultsCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
     } catch (e) {
       setPreview(null);
       setPreviewError(String(e instanceof Error ? e.message : e));
@@ -446,7 +452,6 @@ export function BetCodes() {
     setLastRunWasRandom(false);
     setFromExternalPicks(true);
     await runPreview(() => resolvePicks(picks), true);
-    window.setTimeout(() => resultsCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
   }
 
   // `exclude` is only ever non-empty when Refresh calls this -- a plain
@@ -480,6 +485,7 @@ export function BetCodes() {
           }),
         ),
       exclude.length === 0,
+      "preset",
     );
   }
 
@@ -497,6 +503,7 @@ export function BetCodes() {
           exclude_legs: exclude,
         }),
       exclude.length === 0,
+      "preset",
     );
   }
 
@@ -745,6 +752,11 @@ export function BetCodes() {
           afterwards and build it again. Each game uses a different type of bet. Random slip ignores the settings
           below, except the leagues and dates.
         </p>
+        {previewError && errorPlace === "preset" && (
+          <div ref={errorRef} style={{ marginTop: 12 }}>
+            <ErrorState message={previewError} />
+          </div>
+        )}
       </div>
 
       <div className="card card-pad" style={{ marginBottom: 20 }}>
@@ -1013,9 +1025,12 @@ export function BetCodes() {
           </p>
         )}
         {outOfRuns && (!isMobile || step === WIZARD_STEPS.length - 1) && <OutOfRunsPanel />}
+        {previewError && errorPlace === "form" && (
+          <div ref={errorRef} style={{ marginTop: 12 }}>
+            <ErrorState message={previewError} />
+          </div>
+        )}
       </div>
-
-      {previewError && <ErrorState message={previewError} />}
 
       {preview && (
         <div className="card card-pad" style={{ marginBottom: 20 }} ref={resultsCardRef}>
@@ -1054,8 +1069,8 @@ export function BetCodes() {
                 <span className="meta tabular-nums" style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   Chance they all win: {chanceLabel(editedCombinedProbability)}
                   {editedCombinedProbability < 0.5 ? ` (${(editedCombinedProbability * 100).toFixed(0)}%)` : ""}
-                  <span className={`risk-tag ${resultRiskLabel(editedCombinedProbability).tone}`}>
-                    {resultRiskLabel(editedCombinedProbability).label}
+                  <span className={`risk-tag ${riskOf(editedCombinedProbability).tone}`}>
+                    {riskOf(editedCombinedProbability).label}
                   </span>
                 </span>
               )}
@@ -1142,12 +1157,12 @@ export function BetCodes() {
                       </td>
                       <td data-label="">
                         <button
-                          className="btn ghost"
+                          className="btn ghost btn-icon"
                           title="Remove this leg"
-                          style={{ padding: "2px 8px", fontSize: 12 }}
+                          aria-label={`Remove ${leg.home_team} vs ${leg.away_team}`}
                           onClick={() => removeLeg(leg)}
                         >
-                          ✕
+                          <span aria-hidden>✕</span>
                         </button>
                       </td>
                     </tr>
@@ -1237,7 +1252,11 @@ export function BetCodes() {
               }}
             >
               <span style={{ flex: "1 1 220px", minWidth: 0 }}>
-                {pick.label ? <strong>{pick.label}</strong> : <span className="sub">Untitled slip</span>}{" "}
+                {systemSlipTitle(pick) ?? pick.label ? (
+                  <strong>{systemSlipTitle(pick) ?? pick.label}</strong>
+                ) : (
+                  <span className="sub">Untitled slip</span>
+                )}{" "}
                 {pick.source?.startsWith("system_weekly_") && (
                   <span className="sub" style={{ fontStyle: "italic" }}>
                     (auto-generated, weekly){" "}
@@ -1263,18 +1282,9 @@ export function BetCodes() {
                     In public track record
                   </span>
                 )}
-                {/* pick.risk_tier is combined-probability-based (see
-                    betcode.selection.risk_tier) -- correct for a hand-built
-                    slip, but not for a fixed 10-leg weekly accumulator built
-                    to a combined-*odds* target instead (see AdminPickCard's
-                    riskOverride doc). For one of those, the label's own
-                    "Low/Medium/High Risk" text is the actual tier -- this
-                    tag is only ever shown here for a hand-built slip. */}
-                {!pick.source?.startsWith("system_weekly_") && !pick.source?.startsWith("system_daily_") && (
-                  <span className={`risk-tag ${pick.risk_tier}`} style={{ marginLeft: 8 }}>
-                    {pick.risk_tier === "low" ? "Low risk" : pick.risk_tier === "medium" ? "Medium risk" : "High risk"}
-                  </span>
-                )}
+                <span className={`risk-tag ${pick.risk_tier}`} style={{ marginLeft: 8 }}>
+                  {RISK_LABELS[pick.risk_tier]}
+                </span>
               </span>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {pick.result === "pending" && (
@@ -1354,7 +1364,7 @@ export function BetCodes() {
           </div>
 
           {teaserJustPromoted && (
-            <p className="meta" style={{ color: "var(--accent)", marginBottom: 10 }}>
+            <p className="meta" style={{ color: "var(--accent-ink)", marginBottom: 10 }}>
               Promoted -- this is now live on the Welcome page.
             </p>
           )}

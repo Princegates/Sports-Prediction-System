@@ -6,12 +6,7 @@ import { CopyButton } from "./CopyButton";
 import { LedgerRow } from "./LedgerRow";
 import { whatsappLink } from "../lib/whatsapp";
 import { chanceLabel } from "../lib/odds";
-
-const RISK_LABELS: Record<AdminPick["risk_tier"], string> = {
-  low: "Low risk",
-  medium: "Medium risk",
-  high: "High risk",
-};
+import { RISK_LABELS, systemSlipTitle } from "../lib/risk";
 
 const RESULT_LABELS: Record<"won" | "lost" | "unresolved", string> = {
   won: "Won",
@@ -34,14 +29,10 @@ const COLLAPSED_LEG_COUNT = 4;
  * null -- a free-tier viewer); a premium viewer or superadmin gets the real
  * code straight from the API and never renders that branch.
  *
- * ``riskOverride`` replaces the tag ``pick.risk_tier`` would otherwise show.
- * WeeklyPicksSection sets it: ``risk_tier`` is combined-*probability*-based
- * (see betcode.selection.risk_tier) and calibrated for a variable-length AI
- * Generation slip, so a fixed 10-leg accumulator built to a Low combined-
- * *odds* target (5-10) still stacks enough legs to land at a real
- * combined-probability "high" by that unrelated scale -- showing it would
- * contradict the section's own Low/Medium/High odds-band labeling right
- * next to it.
+ * The risk tag always goes by the slip's combined probability
+ * (``pick.risk_tier``, see lib/risk). The system daily/weekly accumulators
+ * are titled by how likely each game on them is ("85%+ games"), never as
+ * "Low risk": ten games at 85% each still only all win about 1 time in 5.
  *
  * ``hideRisk`` drops the tag entirely -- RandomPicksSection sets it: a slip
  * drawn at random, deliberately not ranked or filtered by risk level, would
@@ -49,11 +40,10 @@ const COLLAPSED_LEG_COUNT = 4;
  * probability is small almost by construction), implying a ranking that was
  * never applied. */
 export function AdminPickCard({
-  pick, whatsapp, riskOverride, hideRisk,
+  pick, whatsapp, hideRisk,
 }: {
   pick: AdminPick;
   whatsapp?: string | null;
-  riskOverride?: AdminPick["risk_tier"];
   hideRisk?: boolean;
 }) {
   const tilt = useTilt<HTMLDivElement>();
@@ -61,13 +51,14 @@ export function AdminPickCard({
 
   const hiddenCount = pick.legs.length - COLLAPSED_LEG_COUNT;
   const visibleLegs = expanded || hiddenCount <= 0 ? pick.legs : pick.legs.slice(0, COLLAPSED_LEG_COUNT);
-  const riskTier = riskOverride ?? pick.risk_tier;
+  const riskTier = pick.risk_tier;
+  const title = systemSlipTitle(pick) ?? pick.label;
 
   if (pick.locked) {
     return (
       <div className="card match-card match-card-static tilt-card" ref={tilt.ref} onMouseMove={tilt.onMouseMove} onMouseLeave={tilt.onMouseLeave}>
         <div className="match-card-top">
-          <span className="match-competition">{pick.label || `${pick.leg_count}-leg slip`}</span>
+          <span className="match-competition">{title || `${pick.leg_count}-leg slip`}</span>
           {!hideRisk && (
             <span className={`risk-tag ${riskTier}`}>
               <span aria-hidden>◆</span>
@@ -97,7 +88,7 @@ export function AdminPickCard({
     >
       <div className="match-card-top">
         <span className="match-competition">
-          {pick.label || `${pick.legs.length}-leg slip`}
+          {title || `${pick.legs.length}-leg slip`}
         </span>
         <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
           {pick.result !== "pending" && (

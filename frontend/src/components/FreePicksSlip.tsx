@@ -51,8 +51,10 @@ export function FreePicksSlip({ picks, trialDays = 0 }: { picks: PublicFreePick[
   return (
     <div className="free-slip card card-pad" id="free-picks">
       <div className="potd-head">
-        <span className="eyebrow">Today's {picks.length} free picks</span>
-        <span className="meta">New picks as soon as these matches finish</span>
+        <span className="eyebrow">{picks.length === 1 ? "Today's free pick" : `Today's ${picks.length} free picks`}</span>
+        <span className="meta">
+          {picks.length === 1 ? "A new pick as soon as this match finishes" : "New picks as soon as these matches finish"}
+        </span>
       </div>
 
       <ol className="free-slip-list">
@@ -87,8 +89,17 @@ export function FreePicksSlip({ picks, trialDays = 0 }: { picks: PublicFreePick[
       </ol>
 
       <p className="meta" style={{ margin: 0 }}>
-        Each pick is the model's strongest call in its market kicking off soon. Together they land{" "}
-        {chanceLabel(combined)} of the time by the model's own numbers, so the slip can still lose.
+        {picks.length === 1 ? (
+          <>
+            It's the model's strongest call in its market kicking off soon. It lands {chanceLabel(combined)} of the
+            time by the model's own numbers, so it can still lose.
+          </>
+        ) : (
+          <>
+            Each pick is the model's strongest call in its market kicking off soon. Together they land{" "}
+            {chanceLabel(combined)} of the time by the model's own numbers, so the slip can still lose.
+          </>
+        )}
       </p>
 
       <div className="landing-cta-row" style={{ marginTop: 4 }}>
@@ -97,7 +108,7 @@ export function FreePicksSlip({ picks, trialDays = 0 }: { picks: PublicFreePick[
             Generate booking code
           </button>
         ) : (
-          !allOver && <span className="meta">These matches have kicked off -- booking is closed for this slip.</span>
+          !allOver && <span className="meta">These matches have kicked off, so booking is closed for this slip.</span>
         )}
         {!user && (
           <Link className="btn ghost" to="/register">
@@ -107,7 +118,7 @@ export function FreePicksSlip({ picks, trialDays = 0 }: { picks: PublicFreePick[
       </div>
       {!user && bookable.length > 0 && (
         <p className="meta" style={{ margin: 0 }}>
-          Booking codes need a free account -- we'll keep this slip ready for you after you sign up.
+          Booking codes need a free account. We'll keep this slip ready for you after you sign up.
         </p>
       )}
     </div>

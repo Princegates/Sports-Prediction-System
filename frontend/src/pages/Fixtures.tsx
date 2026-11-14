@@ -40,16 +40,15 @@ export function Fixtures() {
               per-page structure every other public page here follows. */}
           <h1>Upcoming Football &amp; Soccer Predictions</h1>
           <p>
-            Real fixtures from the database, over the next two weeks. Open any match for its own page --
-            the full breakdown (selection, probability, reasoning) stays behind the login, same as everywhere
-            else on this site.
+            Every match in the next two weeks. Open one to see both teams' form, their last meetings and how
+            confident the model is. The pick itself and its probability are for members.
           </p>
         </div>
 
         {fixtures === null && <p className="meta">Loading fixtures…</p>}
 
         {fixtures !== null && fixtures.length === 0 && (
-          <p className="meta">No upcoming fixtures are loaded right now -- check back soon.</p>
+          <p className="meta">No upcoming fixtures right now. Check back soon.</p>
         )}
 
         {fixtures !== null && fixtures.length > 0 && (

@@ -188,6 +188,7 @@ export function AdminUsers() {
   }
 
   async function handleRevokeCode(id: number) {
+    if (!window.confirm("Revoke this access code? Nobody will be able to redeem it after this.")) return;
     setCodeBusy(true);
     try {
       await revokeAccessCode(id);
@@ -374,8 +375,9 @@ export function AdminUsers() {
     }
   }
 
-  async function handleRevokeAccess(id: number) {
-    await withBusy(id, () => revokeUserAccess(id));
+  async function handleRevokeAccess(u: AdminUser) {
+    if (!window.confirm(`Revoke ${u.email}'s access? They lose paid features right away, even with time left.`)) return;
+    await withBusy(u.id, () => revokeUserAccess(u.id));
   }
 
   async function handleSetAIGenerationLimit(u: AdminUser) {
@@ -628,7 +630,7 @@ export function AdminUsers() {
                         </button>
                       )}
                       {u.access_status !== "none" && u.access_status !== "unlimited" && (
-                        <button className="btn ghost" disabled={busy} onClick={() => handleRevokeAccess(u.id)}>
+                        <button className="btn ghost" disabled={busy} onClick={() => handleRevokeAccess(u)}>
                           Revoke access
                         </button>
                       )}
@@ -663,7 +665,10 @@ export function AdminUsers() {
                         <button
                           className="btn ghost"
                           disabled={busy}
-                          onClick={() => withBusy(u.id, () => suspendUser(u.id))}
+                          onClick={() => {
+                            if (!window.confirm(`Suspend ${u.email}? They're signed out and can't sign in until you reinstate them.`)) return;
+                            void withBusy(u.id, () => suspendUser(u.id));
+                          }}
                         >
                           Suspend
                         </button>
@@ -681,7 +686,10 @@ export function AdminUsers() {
                           <button
                             className="btn ghost"
                             disabled={busy}
-                            onClick={() => withBusy(u.id, () => demoteUser(u.id))}
+                            onClick={() => {
+                              if (!window.confirm(`Remove admin rights from ${u.email}? They become a regular member.`)) return;
+                              void withBusy(u.id, () => demoteUser(u.id));
+                            }}
                           >
                             Revoke admin
                           </button>

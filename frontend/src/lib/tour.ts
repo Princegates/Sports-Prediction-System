@@ -127,10 +127,10 @@ export const TOUR_STEPS: TourStep[] = [
     body:
       "A slip is a group of games you choose together. For a slip to win, every game in it must win. We make new slips for you every day and every week.",
     points: [
-      "Low risk: only games we think are very likely (85% or more). Safer.",
-      "Medium risk: likely games (70% to 85%).",
-      "High risk: less sure games (55% to 70%). Much harder to win.",
-      "More games in a slip means a smaller chance that all of them win. Each slip shows its chance as a percentage.",
+      "85%+ games: only games we think are very likely to win.",
+      "70 to 85% games: likely games.",
+      "55 to 70% games: less sure games. Much harder to win.",
+      "These slips have 10 to 15 games, and more games means a smaller chance that all of them win. Each slip shows its own chance as a percentage, and its risk tag goes by that.",
     ],
     tryIt: "Tap the glowing button to see today's and this week's slips.",
     target: ["nav-ai-picks"],
@@ -279,9 +279,9 @@ export function markTourShownThisVisit(userId: number): void {
   }
 }
 
-/** Every member sees the tour each time they open the app, until they tick
- * "Don't show this again". Admins run the place and don't need it. Anyone can
- * also open it from the account menu. */
+/** Members see the tour once: closing it in any way opts them out on this
+ * device. Admins run the place and don't need it. Anyone can reopen it from
+ * "Take the tour" in the account menu. */
 export function shouldAutoShowTour(user: { id: number; role: string }): boolean {
   return user.role !== "superadmin" && !hasOptedOutOfTour(user.id) && !shownThisVisit(user.id);
 }

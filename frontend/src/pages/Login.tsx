@@ -47,7 +47,7 @@ export function Login() {
 
         <h1 style={{ fontSize: 20, marginBottom: 6 }}>Sign in</h1>
         <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 0, marginBottom: 20 }}>
-          New here? <Link to="/register">Create an account</Link> -- signing in never needs a code.
+          New here? <Link to="/register">Create an account</Link>. Signing in never needs a code.
         </p>
 
         <form onSubmit={handleSubmit} className="auth-form">
@@ -64,7 +64,7 @@ export function Login() {
 
           {isSuspended && (
             <p className="auth-hint">
-              Your credentials are correct — this account has been suspended. Contact your Super Admin.
+              Your password is right, but this account is suspended. Contact the site admin to get it back.
             </p>
           )}
 

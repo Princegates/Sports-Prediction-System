@@ -6,7 +6,7 @@ import { Home, ChartLine, ShoppingCatalog, AiGenerate, Live as LiveIcon, PinFill
 const ITEMS: { to: string; label: string; end?: boolean; icon?: typeof Home }[] = [
   { to: "/app", label: "Home", end: true, icon: Home },
   { to: "/app/ai-picks", label: "AI Picks", icon: PinFilled },
-  { to: "/app/predictions", label: "Picks", icon: ChartLine },
+  { to: "/app/predictions", label: "Predict", icon: ChartLine },
   { to: "/app/markets", label: "Markets", icon: ShoppingCatalog },
   { to: "/app/betcodes", label: "AI Gen", icon: AiGenerate },
   { to: "/app/live", label: "Live", icon: LiveIcon },

@@ -55,9 +55,12 @@ export function RequireSuperadmin() {
  * /login. Mirrors the backend's require_active_access split. */
 export function RequireAccess() {
   const { accessStatus, accessLoading } = useAuth();
+  const location = useLocation();
 
   if (accessLoading) return <AuthLoading />;
-  if (!accessStatus?.has_access) return <Navigate to="/app/access" replace />;
+  // Says which page sent them, so the Access page can tell them why they
+  // landed there instead of on the page they tapped.
+  if (!accessStatus?.has_access) return <Navigate to="/app/access" replace state={{ from: location.pathname }} />;
 
   return <Outlet />;
 }

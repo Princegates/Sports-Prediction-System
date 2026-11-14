@@ -60,13 +60,14 @@ export function WeeklyPicksSection({ picks: allPicks }: { picks: AdminPick[] | n
       <div className="section-header">
         <h2>This Week's Picks</h2>
         <span className="meta">
-          10-15 leg accumulators for the week -- Low (every leg 85%+ likely), Medium (70-85%) and High (55-70%)
+          Three slips of 10 to 15 games from the week's matches, grouped by how likely each game is: 85% or more, 70
+          to 85%, and 55 to 70%. Every game must win, so each slip's own chance is shown on it.
         </span>
       </div>
       <div className="picks-grid">
         {picks.map((pick) => (
           <div key={pick.id}>
-            <AdminPickCard pick={pick} whatsapp={whatsapp} riskOverride={tierOf(pick) ?? undefined} />
+            <AdminPickCard pick={pick} whatsapp={whatsapp} />
             <PickBookingCodes pick={pick} viewerHasPremium={viewerHasPremium} />
           </div>
         ))}

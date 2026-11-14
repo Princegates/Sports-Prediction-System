@@ -141,7 +141,10 @@ export function Dashboard() {
     load();
     // Re-fetch periodically so a card for a match that just finished drops
     // off during an open session, not only on the next full page load.
-    const interval = setInterval(load, 60_000);
+    // Skipped while the tab is in the background (same as Live).
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") load();
+    }, 60_000);
 
     return () => {
       cancelled = true;

@@ -20,7 +20,7 @@
 
   --text-primary: #f4f4f6;
   --text-secondary: #b6b8c0;
-  --text-muted: #7c7e88;
+  --text-muted: #9a9ca6;
 
   --border: #2c2d33;
   --border-strong: #3a3b42;
@@ -37,6 +37,9 @@
   --critical: #ef4444;
   --critical-soft: color-mix(in srgb, #ef4444 14%, transparent);
   --live: #ef4444;
+  --good-ink: var(--good);
+  --warning-ink: var(--warning);
+  --critical-ink: var(--critical);
 
   // Decorative-only (mascot sparkles).
   --spark-lime: #22c55e;
@@ -73,9 +76,19 @@
   --topbar-h: 56px;
   --sidebar-w: 240px;
   --sidebar-rail-w: 64px;
+
+  // Native controls (date pickers, number spinners, autofill, scrollbars)
+  // follow the theme instead of always drawing light.
+  color-scheme: dark;
 }
 
 :root[data-theme="light"] {
+  color-scheme: light;
+  // Status *text* on its own pale tint (risk/confidence tags) -- the bright
+  // status colours are about 2:1 there on white. Fills keep --good etc.
+  --good-ink: #166534;
+  --warning-ink: #92400e;
+  --critical-ink: #b91c1c;
   --bg-page: #f5f5f7;
   --bg-surface: #ffffff;
   --bg-surface-2: #fafafb;
@@ -85,7 +98,7 @@
 
   --text-primary: #15161a;
   --text-secondary: #55575f;
-  --text-muted: #8a8c94;
+  --text-muted: #6b6d76;
 
   --border: #e7e7ea;
   --border-strong: #d3d4d9;
@@ -144,6 +157,26 @@ body[data-accent="cobalt"] { --accent: #2f6fed; }
 body[data-accent="indigo"] { --accent: #6366f1; }
 body[data-accent="cyan"] { --accent: #22d3ee; --accent-on-accent: #15161a; }
 body[data-accent="denim"] { --accent: #3b6ea5; }
+
+// --accent-ink is the accent as *text*, and as the fill behind white button
+// text. On the dark theme it is the accent itself. On the light theme the
+// bright accents (the brand orange is 3:1 on white) fail WCAG AA as text, so
+// it is the accent darkened to about 68% -- 5.9:1 for the orange, and every
+// preset clears 4.5:1 on white. Large decorative fills, borders, glows and
+// icons keep var(--accent), so the brand still reads as bright orange.
+body {
+  --accent-ink: var(--accent);
+  --accent-ink-on: var(--accent-on-accent);
+}
+
+:root[data-theme="light"] body {
+  --accent-ink: color-mix(in srgb, var(--accent) 68%, black);
+  --accent-ink-on: #fff;
+}
+
+:root[data-theme="light"] .btn:not(.ghost):hover {
+  background: color-mix(in srgb, var(--accent) 58%, black);
+}
 
 // ==========================================================================
 // Bespoke widgets -- recolored onto the literal tokens above (no more
@@ -307,7 +340,7 @@ body[data-accent="denim"] { --accent: #3b6ea5; }
 }
 
 .public-footer-col a:hover {
-  color: var(--accent);
+  color: var(--accent-ink);
   text-decoration: underline;
 }
 
@@ -500,6 +533,9 @@ body[data-accent="denim"] { --accent: #3b6ea5; }
   // the topbar (the tab row above is hidden here) -- room enough to grow it
   // without crowding anything else out.
   .topbar-icon-btn { width: 44px; height: 44px; }
+  // Same reason: the avatar opens the menu that holds Profile and Pay.
+  .topbar-avatar { width: 44px; height: 44px; }
+  .topbar-trial-btn { min-height: 44px; }
   // MobileBottomNav duplicates every one of these six destinations with
   // room for an icon and a full label -- this horizontally-scrolling pill
   // row, squeezed in beside the brand, league select and icon cluster in a
@@ -653,13 +689,13 @@ body[data-accent="denim"] { --accent: #3b6ea5; }
 .odds-cell.ai-top {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .odds-cell.picked {
-  background: var(--accent);
+  background: var(--accent-ink);
   border-color: var(--accent);
-  color: var(--accent-on-accent);
+  color: var(--accent-ink-on);
 }
 
 .odds-cell.empty { opacity: 0.35; cursor: default; border-style: dashed; }
@@ -693,7 +729,7 @@ body[data-accent="denim"] { --accent: #3b6ea5; }
 .fixture-calendar-cell.empty { cursor: default; visibility: hidden; }
 .fixture-calendar-cell:not(:disabled):hover { border-color: var(--border-strong); color: var(--text-primary); }
 .fixture-calendar-cell.today .day-number { color: var(--accent); font-weight: 700; }
-.fixture-calendar-cell.selected { background: var(--accent); border-color: var(--accent); color: var(--accent-on-accent); }
+.fixture-calendar-cell.selected { background: var(--accent-ink); border-color: var(--accent); color: var(--accent-ink-on); }
 .fixture-calendar-cell.selected .day-number { color: var(--accent-on-accent); }
 .fixture-calendar-cell:disabled { opacity: 0.3; cursor: default; }
 .fixture-calendar-cell.no-fixtures:not(.selected) { color: var(--text-muted); }

@@ -136,8 +136,8 @@ export function MyCodesHistory() {
                     )}
                     <button
                       type="button"
-                      className="btn ghost"
-                      style={{ padding: "2px 8px", fontSize: 12, marginLeft: 8 }}
+                      className="btn ghost btn-icon"
+                      style={{ fontSize: 13, marginLeft: 8 }}
                       disabled={deletingId === slip.id}
                       onClick={() => handleDelete(slip.id)}
                     >
@@ -179,8 +179,8 @@ export function MyCodesHistory() {
                   <div style={{ marginTop: 8 }}>
                     <button
                       type="button"
-                      className="btn ghost"
-                      style={{ padding: "2px 8px", fontSize: 12 }}
+                      className="btn ghost btn-icon"
+                      style={{ fontSize: 13 }}
                       disabled={deletingId === slip.id}
                       onClick={() => handleDelete(slip.id)}
                     >

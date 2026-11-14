@@ -18,6 +18,7 @@ import { isHotPick } from "../lib/filters";
 import { useAuth } from "../lib/AuthContext";
 import type { BettingOutcome, MarketSummary, MatchSummary, OutcomesResponse } from "../types";
 import { marketLabel } from "../lib/marketLabel";
+import { MarketHint, type MarketHintLine } from "../components/MarketHint";
 
 /**
  * Every available betting outcome, grouped by league -- laid out as a
@@ -150,6 +151,16 @@ interface GridColumn {
 interface GridMarket {
   market: string;
   columns: GridColumn[];
+}
+
+/** What each outcome in a coupon market means, read off the first row that
+ * has it -- definitions don't change from match to match. */
+function marketDefinitions(g: GridMarket, rows: { cells: Map<string, BettingOutcome> }[]): MarketHintLine[] {
+  return g.columns.map((c) => {
+    const key = cellKey(c.market, c.selection);
+    const found = rows.find((r) => r.cells.get(key))?.cells.get(key);
+    return { label: c.header === c.selection ? c.selection : `${c.header} (${c.selection})`, definition: found?.definition ?? "" };
+  });
 }
 
 const RESULT_SHORT: Record<string, string> = { "Home Win": "1", Home: "1", Draw: "X", "Away Win": "2", Away: "2" };
@@ -624,6 +635,7 @@ export function Markets() {
                               {gridMarkets.map((g) => (
                                 <th key={g.market} colSpan={g.columns.length} className="market-head">
                                   {marketLabel(g.market)}
+                                  <MarketHint name={marketLabel(g.market)} text={marketDefinitions(g, rows)} />
                                 </th>
                               ))}
                             </tr>
@@ -709,7 +721,10 @@ export function Markets() {
                             </div>
                             {gridMarkets.map((g) => (
                               <div className="coupon-mobile-market" key={g.market}>
-                                <div className="coupon-mobile-market-label">{marketLabel(g.market)}</div>
+                                <div className="coupon-mobile-market-label">
+                                  {marketLabel(g.market)}
+                                  <MarketHint name={marketLabel(g.market)} text={marketDefinitions(g, [row])} />
+                                </div>
                                 <div className="coupon-mobile-odds-row">
                                   {g.columns.map((c) => {
                                     const key = cellKey(c.market, c.selection);
@@ -820,7 +835,6 @@ export function Markets() {
                           <tr
                             key={`${o.match_id}-${o.market}-${o.selection}-${i}`}
                             onClick={() => navigate(`/app/match/${o.match_id}`)}
-                            title={o.definition}
                           >
                             <td data-label="Match">
                               <div className="match-cell">
@@ -830,6 +844,7 @@ export function Markets() {
                             <td className="sub" data-label="Market">{marketLabel(o.market)}</td>
                             <td data-label="Selection">
                               <strong>{o.selection}</strong>
+                              <MarketHint name={o.selection} text={o.definition} />
                               {isHotPick(o.probability, o.data_quality_score, o.model_agreement_score) && (
                                 <span style={{ marginLeft: 6 }}>
                                   <HotPickBadge compact />

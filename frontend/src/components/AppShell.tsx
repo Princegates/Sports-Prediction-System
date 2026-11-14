@@ -269,7 +269,7 @@ export function AppShell() {
                 </button>
                 {!isSuperadmin && (
                   <button type="button" className="account-menu-item" onClick={() => navigate("/app/access")}>
-                    <Locked size={16} /> {needsAccess ? "Redeem access" : "Access code"}
+                    <Locked size={16} /> {needsAccess ? "Pay / Redeem access" : "Pay / Access code"}
                   </button>
                 )}
                 <button type="button" className="account-menu-item" onClick={() => navigate("/app/share-win")}>

@@ -65,7 +65,10 @@ export function AIPicks() {
     // Re-fetch periodically so a slip drops off (or loses a leg, or
     // settles) the moment one of its matches finishes, not only on the
     // next page load -- same cadence the three sections used individually.
-    const interval = setInterval(load, 60_000);
+    // Skipped while the tab is in the background (same as Live).
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") load();
+    }, 60_000);
 
     return () => {
       cancelled = true;

@@ -53,6 +53,7 @@ import type {
   Prediction,
 } from "../types";
 import { marketLabel } from "../lib/marketLabel";
+import { MarketHint } from "../components/MarketHint";
 
 const TAB_NAMES = ["Overview", "AI Prediction", "Form", "H2H", "Team news", "Live", "Markets", "Explanation"];
 
@@ -508,7 +509,7 @@ export function MatchDetail() {
                             const key = `${o.market}|${o.selection}`;
                             const checked = selectedPick?.market === o.market && selectedPick?.selection === o.selection;
                             return (
-                              <tr key={o.selection} title={o.definition}>
+                              <tr key={o.selection}>
                                 <td style={{ width: 28 }}>
                                   <input
                                     type="checkbox"
@@ -519,6 +520,7 @@ export function MatchDetail() {
                                 </td>
                                 <td>
                                   {o.selection}
+                                  <MarketHint name={o.selection} text={o.definition} />
                                   {isHotPick(o.probability, o.data_quality_score, o.model_agreement_score) && (
                                     <span style={{ marginLeft: 6 }}>
                                       <HotPickBadge compact />
