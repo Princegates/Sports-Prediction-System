@@ -69,6 +69,16 @@ def db_session():
         Base.metadata.drop_all(bind=engine)
 
 
+def sqlite_foreign_keys(db, on: bool) -> None:
+    """SQLite ignores foreign keys unless told to; Postgres always enforces
+    them, so there this is a no-op and the test checks the real thing."""
+
+    if db.get_bind().dialect.name == "sqlite":
+        from sqlalchemy import text
+
+        db.execute(text(f"PRAGMA foreign_keys={'ON' if on else 'OFF'}"))
+
+
 def grant_active_access(db_session, user: User, days: int = 30) -> AccessGrant:
     """Gives ``user`` a live AccessGrant directly, bypassing the redemption
     endpoint -- for fixtures and tests that just need *some* user with

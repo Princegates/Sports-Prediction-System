@@ -97,8 +97,10 @@ def _team_regulars(
         select(MatchLineup.match_id)
         .join(Match, Match.id == MatchLineup.match_id)
         .where(MatchLineup.team_id == team_id, Match.date < as_of)
+        # GROUP BY rather than DISTINCT: Postgres refuses DISTINCT with an
+        # ORDER BY on a column that isn't selected (SQLite allows it).
+        .group_by(MatchLineup.match_id, Match.date)
         .order_by(Match.date.desc())
-        .distinct()
         .limit(window)
     ).scalars().all()
     if not recent_match_ids:

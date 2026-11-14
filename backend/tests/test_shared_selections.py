@@ -11,6 +11,7 @@ import datetime as dt
 from fastapi.testclient import TestClient
 from sqlalchemy import select, text
 
+from tests.conftest import sqlite_foreign_keys
 from app.api.routes_betcodes import MAX_ACTIVE_SHARES, SHARE_LINK_DAYS
 from app.db.models import AuditLog, SavedSelection, SharedSelection, User
 from app.main import app
@@ -170,11 +171,11 @@ def test_deleting_the_sender_removes_their_share_links_on_a_database_that_enforc
     settings = get_settings()
     headers = {"Authorization": "Bearer " + create_token({"user_id": admin.id, "role": admin.role}, settings.secret_key, settings.session_ttl_seconds)}
 
-    db_session.execute(text("PRAGMA foreign_keys=ON"))
+    sqlite_foreign_keys(db_session, True)
     try:
         response = client.delete(f"/api/admin/users/{owner_id}", headers=headers)
         assert response.status_code == 200, response.text
         db_session.expire_all()
         assert db_session.execute(select(SharedSelection)).first() is None
     finally:
-        db_session.execute(text("PRAGMA foreign_keys=OFF"))
+        sqlite_foreign_keys(db_session, False)

@@ -129,8 +129,9 @@ def test_a_broken_schema_patch_never_blocks_the_others(monkeypatch, db_session):
     finally:
         monkeypatch.setattr(migrate, "_ADDED_COLUMNS", original_add_columns)
 
-    with engine.connect() as conn:
-        columns = {row[1] for row in conn.execute(sa_text("PRAGMA table_info(users)"))}
+    from sqlalchemy import inspect as sa_inspect
+
+    columns = {c["name"] for c in sa_inspect(engine).get_columns("users")}
     assert "_test_col_a" in columns
     assert "_test_col_c" in columns
     assert "_test_col_b" not in columns

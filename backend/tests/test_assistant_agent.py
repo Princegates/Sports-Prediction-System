@@ -84,6 +84,12 @@ def _member_one(db_session):
     if db_session.get(User, 1) is None:
         db_session.add(User(id=1, email="member-one@example.com", name="One", password_hash="x", role="user", status="active"))
         db_session.commit()
+        if db_session.get_bind().dialect.name == "postgresql":
+            # An explicit id doesn't move the sequence; later inserts would reuse 1.
+            from sqlalchemy import text as sql_text
+
+            db_session.execute(sql_text("SELECT setval(pg_get_serial_sequence('users', 'id'), (SELECT MAX(id) FROM users))"))
+            db_session.commit()
 
 
 def enable(db, fake, **settings):
@@ -350,7 +356,12 @@ def test_a_user_past_their_daily_limit_falls_back(db_session, claude):
 
 def test_the_whole_site_daily_cap_applies_to_everyone(db_session, claude):
     claude(reply(text("hi")), assistant_agent_daily_total=3)
-    _agent_answers(db_session, 7, 3)
+    from app.db.models import User
+
+    other = User(email="other-member@example.com", name="Other", password_hash="x", role="user", status="active")
+    db_session.add(other)
+    db_session.commit()
+    _agent_answers(db_session, other.id, 3)
 
     assert run(db_session, user_id=1) is None
 

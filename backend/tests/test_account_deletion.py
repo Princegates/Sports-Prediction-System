@@ -11,7 +11,7 @@ from sqlalchemy import select
 from app.db.models import AccessCode, AccessGrant, AuditLog, BookingSlip, ChatMessage, User
 from app.main import app
 from app.timeutil import utcnow
-from tests.conftest import grant_active_access
+from tests.conftest import grant_active_access, sqlite_foreign_keys
 from tests.test_admin_hardening import _headers, _make_user
 
 client = TestClient(app)
@@ -95,7 +95,7 @@ def test_a_member_who_used_ai_generation_can_be_deleted_on_a_database_that_enfor
     ])
     db_session.commit()
     target_id = target.id
-    db_session.execute(text("PRAGMA foreign_keys=ON"))
+    sqlite_foreign_keys(db_session, True)
     try:
         response = client.delete(f"/api/admin/users/{target_id}", headers=_headers(admin))
 
@@ -107,7 +107,7 @@ def test_a_member_who_used_ai_generation_can_be_deleted_on_a_database_that_enfor
     finally:
         # The setting belongs to the connection, which later tests share: leaving
         # it on makes unrelated tests that use made-up user ids fail.
-        db_session.execute(text("PRAGMA foreign_keys=OFF"))
+        sqlite_foreign_keys(db_session, False)
 
 
 def test_every_table_that_points_at_users_is_cleared_on_delete():

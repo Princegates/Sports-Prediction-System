@@ -15,6 +15,7 @@ import datetime as dt
 
 import pytest
 
+from tests.conftest import sqlite_foreign_keys
 from app.timeutil import utcnow
 from app.data.api_football_ingest import TeamIndex, import_fixtures
 from app.data.source_cleanup import retire_free_fixtures
@@ -162,7 +163,7 @@ def test_injury_reports_and_lineups_do_not_block_removing_a_duplicate(db_session
     db.add(MatchLineup(match_id=free.id, team_id=portugal["braga_long"].id, player_id=player.id))
     db.commit()
     free_id, api_id = free.id, api.id
-    db.execute(text("PRAGMA foreign_keys=ON"))  # SQLite ignores FKs unless told, unlike Postgres
+    sqlite_foreign_keys(db, True)  # SQLite ignores FKs unless told, unlike Postgres
 
     retire_free_fixtures(db, PT)
     db.commit()
