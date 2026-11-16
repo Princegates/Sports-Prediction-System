@@ -3478,4 +3478,14 @@
     <changefreq>hourly</changefreq>
     <priority>0.7</priority>
   </url>
+  <url>
+    <loc>https://soccaintel.com/predict/45407-dila-vs-samgurali</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/45408-fc-iberia-1999-vs-dinamo-batumi</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
 </urlset>
