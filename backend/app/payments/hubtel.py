@@ -320,3 +320,70 @@ def callback_reference(payload: Any) -> str | None:
         return None
     reference = data.get("ClientReference") or data.get("clientReference")
     return str(reference) if reference else None
+
+
+# --- checking the saved keys (Settings -> Online payments -> Check Hubtel keys) --------
+
+
+def key_hint(value: str) -> str:
+    """Enough of a key to compare with Hubtel's dashboard, never the key: its
+    first and last four characters and its length."""
+
+    value = value or ""
+    if not value:
+        return "not set"
+    if len(value) <= 10:
+        return f"{len(value)} characters"
+    return f"starts {value[:4]}, ends {value[-4:]}, {len(value)} characters"
+
+
+def secret_hint(value: str) -> str:
+    """Less than key_hint, because this one is a secret: only its last four
+    characters and its length, the way a card number is shown."""
+
+    value = value or ""
+    if not value:
+        return "not set"
+    if len(value) <= 10:
+        return f"{len(value)} characters"
+    return f"ends {value[-4:]}, {len(value)} characters"
+
+
+@dataclass(frozen=True)
+class KeyCheck:
+    ok: bool
+    detail: str
+    http_status: int | None
+
+
+def check_keys(config: HubtelConfig) -> KeyCheck:
+    """Whether Hubtel accepts the saved API ID and secret, without creating
+    anything: asks the Transaction Status Check about a reference that doesn't
+    exist. 401 means the keys are rejected; 403 or no answer means this
+    server's IP isn't whitelisted for status checks (which says nothing about
+    the keys); any other answer means the keys got through."""
+
+    if not (config.client_id and config.client_secret and config.merchant_account):
+        return KeyCheck(False, "The API ID, secret and merchant account number all need to be saved first.", None)
+    url = f"{config.status_url}/transactions/{config.merchant_account}/status"
+    try:
+        response = requests.get(
+            url, params={"clientReference": "SI-KEYCHECK"}, auth=(config.client_id, config.client_secret),
+            timeout=TIMEOUT_SECONDS,
+        )
+    except requests.Timeout:
+        return KeyCheck(False, "Hubtel didn't answer. For status checks that usually means this server's IP "
+                               "isn't whitelisted yet, so this can't tell whether the keys are right.", None)
+    except requests.RequestException as exc:
+        return KeyCheck(False, f"Couldn't reach Hubtel's status service ({type(exc).__name__}).", None)
+
+    code = response.status_code
+    if code == 401:
+        return KeyCheck(False, "Rejected (HTTP 401): Hubtel doesn't accept this API ID and secret together. "
+                               "Compare the hints below with Hubtel's dashboard.", code)
+    if code == 403:
+        return KeyCheck(False, "Hubtel refused (HTTP 403) because this server's IP isn't whitelisted for status "
+                               "checks, so this can't tell whether the keys are right. Ask Hubtel to whitelist it.", code)
+    if code >= 500:
+        return KeyCheck(False, f"Hubtel had a problem on its side (HTTP {code}). Try again shortly.", code)
+    return KeyCheck(True, f"Accepted: Hubtel took these keys (HTTP {code} for a made-up reference, as expected).", code)

@@ -696,6 +696,17 @@ class TestGithubOut(BaseModel):
     detail: str
 
 
+class TestHubtelOut(BaseModel):
+    """Never the keys themselves: hints to compare with Hubtel's dashboard."""
+
+    ok: bool
+    detail: str
+    http_status: int | None = None
+    api_id_hint: str
+    secret_hint: str
+    merchant_account: str
+
+
 class SystemStatusOut(BaseModel):
     database_reachable: bool
     matches: int

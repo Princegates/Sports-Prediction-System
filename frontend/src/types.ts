@@ -1023,3 +1023,13 @@ export interface BannerItemInput {
   ends_at?: string | null;
   sort_order?: number;
 }
+
+/** Settings -> Online payments -> Check Hubtel keys. Hints only, never the keys. */
+export interface HubtelKeyCheck {
+  ok: boolean;
+  detail: string;
+  http_status: number | null;
+  api_id_hint: string;
+  secret_hint: string;
+  merchant_account: string;
+}

@@ -10,6 +10,7 @@ import type {
   SuggestedPicks,
   SavedSelection,
   SharedSelection,
+  HubtelKeyCheck,
   OutcomesResponse,
   Branding,
   SettingsPayload,
@@ -923,6 +924,10 @@ export function saveSettings(payload: {
   reset?: string[];
 }): Promise<SettingsPayload> {
   return patch("/api/admin/settings", payload);
+}
+
+export function testHubtelKeys(): Promise<HubtelKeyCheck> {
+  return post("/api/admin/settings/test-hubtel", {});
 }
 
 export function testGithubConnection(): Promise<{ ok: boolean; detail: string }> {

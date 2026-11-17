@@ -31,8 +31,11 @@ from app.api.schemas import (
     TestEmailIn,
     TestEmailOut,
     TestGithubOut,
+    TestHubtelOut,
 )
+from app.api.rate_limit import enforce_key
 from app.betcode import reachability
+from app.payments import hubtel
 from app.db.models import AccessCode, AccessGrant, AppSetting, AuditLog, Match, Prediction, User
 from app.model_store import MODEL_DIR
 
@@ -165,6 +168,24 @@ def test_github_connection(
 
     ok, detail = github_dispatch.check_connection(github_dispatch.resolve_config(db))
     return TestGithubOut(ok=ok, detail=detail)
+
+
+@router.post("/settings/test-hubtel", response_model=TestHubtelOut)
+def test_hubtel_keys(admin: User = Depends(require_superadmin), db: Session = Depends(get_db)) -> TestHubtelOut:
+    """Whether Hubtel accepts the saved API ID and secret, and enough of each to
+    compare with Hubtel's dashboard. Creates nothing at Hubtel; never returns a key."""
+
+    enforce_key(f"test_hubtel-admin:{admin.id}", 10, 600)
+    config = hubtel.resolve_config(db)
+    result = hubtel.check_keys(config)
+    return TestHubtelOut(
+        ok=result.ok,
+        detail=result.detail,
+        http_status=result.http_status,
+        api_id_hint=hubtel.key_hint(config.client_id),
+        secret_hint=hubtel.secret_hint(config.client_secret),
+        merchant_account=config.merchant_account or "not set",
+    )
 
 
 @router.post("/betting-sites/check", response_model=list[BettingSiteCheckOut])

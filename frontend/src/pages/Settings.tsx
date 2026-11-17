@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { checkBettingSites, fetchSettings, fetchSystemStatus, saveSettings, sendTestEmail, testGithubConnection } from "../api";
+import { checkBettingSites, fetchSettings, fetchSystemStatus, saveSettings, sendTestEmail, testGithubConnection, testHubtelKeys } from "../api";
 import { ACCENT_PROFILES } from "../lib/accentProfiles";
 import { ErrorState } from "../components/ErrorState";
 import { MARKET_PRESETS } from "./Markets";
-import type { BettingSiteCheck, SettingSpec, SettingsPayload, SystemStatus } from "../types";
+import type { BettingSiteCheck, HubtelKeyCheck, SettingSpec, SettingsPayload, SystemStatus } from "../types";
 
 type Draft = Record<string, string | number | boolean>;
 
@@ -55,6 +55,9 @@ export function Settings() {
   const [testResult, setTestResult] = useState<string | null>(null);
   const [githubTesting, setGithubTesting] = useState(false);
   const [githubResult, setGithubResult] = useState<{ ok: boolean; detail: string } | null>(null);
+  const [hubtelTesting, setHubtelTesting] = useState(false);
+  const [hubtelResult, setHubtelResult] = useState<HubtelKeyCheck | null>(null);
+  const [hubtelError, setHubtelError] = useState<string | null>(null);
   const [siteChecks, setSiteChecks] = useState<BettingSiteCheck[] | null>(null);
   const [checkingSites, setCheckingSites] = useState(false);
   const [siteCheckError, setSiteCheckError] = useState<string | null>(null);
@@ -136,6 +139,19 @@ export function Settings() {
       setTestResult(String(e instanceof Error ? e.message : e));
     } finally {
       setTesting(false);
+    }
+  }
+
+  async function handleTestHubtel() {
+    setHubtelTesting(true);
+    setHubtelResult(null);
+    setHubtelError(null);
+    try {
+      setHubtelResult(await testHubtelKeys());
+    } catch (e) {
+      setHubtelError(String(e instanceof Error ? e.message : e));
+    } finally {
+      setHubtelTesting(false);
     }
   }
 
@@ -299,6 +315,29 @@ export function Settings() {
           {GROUP_NOTES[group] && <p className="setting-note">{GROUP_NOTES[group]}</p>}
 
           <div className="settings-grid">{payload.specs.filter((s) => s.group === group).map(renderField)}</div>
+
+          {group === "payments" && (
+            <div style={{ marginTop: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <button type="button" className="btn btn-secondary" onClick={handleTestHubtel} disabled={hubtelTesting || dirty}>
+                  {hubtelTesting ? "Checking…" : "Check Hubtel keys"}
+                </button>
+                {dirty && <span className="setting-help">Save your changes first — the check uses what's saved.</span>}
+                {hubtelError && <span className="auth-error" role="alert">{hubtelError}</span>}
+              </div>
+              {hubtelResult && (
+                <div role="status" style={{ marginTop: 10 }}>
+                  <p className={hubtelResult.ok ? "setting-help" : "auth-error"} style={{ margin: "0 0 6px" }}>
+                    {hubtelResult.detail}
+                  </p>
+                  <p className="setting-help" style={{ margin: 0 }}>
+                    What this server has saved (compare with Hubtel's dashboard): API ID {hubtelResult.api_id_hint} · API
+                    secret {hubtelResult.secret_hint} · merchant account {hubtelResult.merchant_account}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {group === "automation" && (
             <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>

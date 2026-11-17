@@ -977,3 +977,75 @@ def test_the_admin_sees_hubtels_reason_and_the_member_a_plain_message(db_session
     assert payment.provider_detail["http_status"] == 401
     assert payment.provider_detail["hubtel_reply"] == {"message": "Unauthorized"}
     assert "API ID and secret" in payment.provider_detail["explanation"]
+
+
+# --- Settings -> Online payments -> Check Hubtel keys ----------------------------------
+
+
+def _admin(db_session):
+    return _admin_headers(db_session)
+
+
+def _status_reply(monkeypatch, status_code=None, error=None):
+    seen = {}
+
+    def get(url, params=None, auth=None, timeout=None):
+        seen.update(url=url, params=params, auth=auth)
+        if error is not None:
+            raise error
+        return _HubtelReply(status_code, "")
+
+    monkeypatch.setattr(hubtel.requests, "get", get)
+    return seen
+
+
+def test_checking_keys_creates_nothing_and_never_returns_them(db_session, configured, monkeypatch):
+    app_settings.set_values(db_session, {"hubtel_client_id": "abcd1234efgh5678", "hubtel_client_secret": "s3cr3t-value-wxyz"})
+    seen = _status_reply(monkeypatch, 404)
+
+    body = client.post("/api/admin/settings/test-hubtel", headers=_admin(db_session)).json()
+
+    assert body["ok"] is True and body["http_status"] == 404
+    assert body["api_id_hint"] == "starts abcd, ends 5678, 16 characters"
+    assert body["secret_hint"] == "ends wxyz, 17 characters"
+    assert body["merchant_account"] == "11684"
+    assert "s3cr3t" not in str(body) and "abcd1234efgh5678" not in str(body)
+    # A status check about a made-up reference -- nothing is created at Hubtel.
+    assert seen["url"].endswith("/transactions/11684/status") and seen["params"] == {"clientReference": "SI-KEYCHECK"}
+    assert seen["auth"] == ("abcd1234efgh5678", "s3cr3t-value-wxyz")
+
+
+def test_checking_keys_says_what_each_answer_means(db_session, configured, monkeypatch):
+    import requests
+
+    admin = _admin(db_session)
+    _status_reply(monkeypatch, 401)
+    rejected = client.post("/api/admin/settings/test-hubtel", headers=admin).json()
+    assert rejected["ok"] is False and "401" in rejected["detail"] and "doesn't accept" in rejected["detail"]
+
+    _status_reply(monkeypatch, 403)
+    blocked = client.post("/api/admin/settings/test-hubtel", headers=admin).json()
+    assert blocked["ok"] is False and "whitelisted" in blocked["detail"] and "can't tell" in blocked["detail"]
+
+    _status_reply(monkeypatch, error=requests.Timeout())
+    silent = client.post("/api/admin/settings/test-hubtel", headers=admin).json()
+    assert silent["ok"] is False and "whitelisted" in silent["detail"] and silent["http_status"] is None
+
+
+def test_checking_keys_needs_them_saved_first(db_session, monkeypatch):
+    seen = _status_reply(monkeypatch, 200)
+    body = client.post("/api/admin/settings/test-hubtel", headers=_admin(db_session)).json()
+    assert body["ok"] is False and "saved first" in body["detail"]
+    assert body["api_id_hint"] == "not set" and seen == {}
+
+
+def test_only_a_superadmin_can_check_keys(auth_headers, configured, monkeypatch):
+    _status_reply(monkeypatch, 200)
+    assert client.post("/api/admin/settings/test-hubtel", headers=auth_headers).status_code == 403
+    assert client.post("/api/admin/settings/test-hubtel").status_code == 401
+
+
+def test_short_keys_only_show_their_length():
+    assert hubtel.key_hint("abc") == "3 characters"
+    assert hubtel.secret_hint("abcdefgh") == "8 characters"
+    assert hubtel.secret_hint("") == "not set"
