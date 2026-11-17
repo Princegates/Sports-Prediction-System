@@ -54,6 +54,10 @@ jobs:
           SSH_HOST: ${{ secrets.ORACLE_HOST }}
           SSH_USER: ${{ secrets.ORACLE_SSH_USER }}
           TARGET_SHA: ${{ github.event.workflow_run.head_sha || '' }}
+          # The repository is private, so the VM can't fetch it anonymously.
+          # This job's own token (read-only on this repository, revoked by
+          # GitHub when the job ends) is handed to the VM for that one fetch.
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh
@@ -61,10 +65,18 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
-          ssh -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" "TARGET_SHA='$TARGET_SHA' bash -s" <<'REMOTE'
+          # The token travels on the script's stdin, never on a command line
+          # (which other users of the VM could see in the process list), and
+          # is never written to git's config on the VM.
+          {
+            printf 'GH_TOKEN=%q\n' "$GH_TOKEN"
+            cat <<'REMOTE'
             set -euo pipefail
             cd ~/Sports-Prediction-System
-            git fetch origin main
+            # Authenticate this one fetch with the job's token.
+            git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')" \
+              fetch origin main
+            unset GH_TOKEN
             TARGET="${TARGET_SHA:-$(git rev-parse origin/main)}"
             # Never deploy something that isn't on main, and never go
             # backwards: a slower run for an older commit is skipped.
@@ -108,3 +120,4 @@ jobs:
             wait_healthy || echo "Previous version is not healthy either -- check the VM"
             exit 1
           REMOTE
+          } | ssh -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" "TARGET_SHA='$TARGET_SHA' bash -s"
