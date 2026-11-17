@@ -37,7 +37,66 @@ TIMEOUT_SECONDS = 15
 
 class HubtelError(RuntimeError):
     """Hubtel couldn't be reached, refused the request, or sent something
-    unintelligible -- the payment's real state is unknown, not "unpaid"."""
+    unintelligible -- the payment's real state is unknown, not "unpaid".
+
+    ``detail`` says what actually happened (HTTP status, Hubtel's own reply, a
+    plain explanation) for the admin Payments page. It never holds our
+    credentials: they are only ever sent, never echoed back."""
+
+    def __init__(self, message: str, detail: dict | None = None):
+        super().__init__(message)
+        self.detail = detail or {}
+
+
+# What an HTTP status from the checkout endpoint usually means, in plain words.
+_HTTP_MEANING = {
+    401: "Hubtel didn't accept our API ID and secret. Copy them again from Hubtel's dashboard "
+         "(API & Integrations -> API Credentials) into Settings -> Online payments, and save both together.",
+    403: "Hubtel refused the request. The API keys may not be allowed to use Online Checkout yet, or the "
+         "account isn't activated for it -- ask your Hubtel engineer.",
+    404: "The checkout address is wrong. Set 'Hubtel checkout URL' to "
+         "https://payproxyapi.hubtel.com/items/initiate.",
+    405: "The checkout address is wrong. Set 'Hubtel checkout URL' to "
+         "https://payproxyapi.hubtel.com/items/initiate.",
+}
+# Hubtel's own response codes, from its Online Checkout document.
+_CODE_MEANING = {
+    "4000": "Hubtel says something in the request isn't valid -- most often the merchant account number "
+            "(it must be your Collection Account Number).",
+    "4070": "Hubtel says fees aren't set up for your account, or the amount is below its minimum. Ask your "
+            "Hubtel relationship manager to set up fees.",
+    "2001": "Hubtel's payment processor reported an error. Try again in a few minutes.",
+    "0005": "Hubtel couldn't reach its payment partner, so the state is unknown. Ask your Hubtel engineer.",
+}
+
+
+def _reply(response: requests.Response) -> Any:
+    """Hubtel's reply as data where possible, else its text, kept short."""
+
+    try:
+        return response.json()
+    except ValueError:
+        return (response.text or "")[:1000]
+
+
+def _response_code(reply: Any) -> str | None:
+    if isinstance(reply, dict):
+        code = _field(reply, "responseCode")
+        return str(code) if code is not None else None
+    return None
+
+
+def _explain(status: int, reply: Any) -> str:
+    code = _response_code(reply)
+    if code in _CODE_MEANING:
+        return _CODE_MEANING[code]
+    if status in _HTTP_MEANING:
+        return _HTTP_MEANING[status]
+    if status >= 500:
+        return "Hubtel had a problem on its side. Try again in a few minutes."
+    if 400 <= status < 500:
+        return "Hubtel rejected the request -- see its reply for the reason."
+    return "Hubtel answered without a payment page -- see its reply."
 
 
 @dataclass(frozen=True)
@@ -124,22 +183,41 @@ def create_checkout(
         response = requests.post(
             config.initiate_url, json=body, auth=(config.client_id, config.client_secret), timeout=TIMEOUT_SECONDS
         )
-        response.raise_for_status()
-        payload = response.json()
-    except (requests.RequestException, ValueError) as exc:
+    except requests.RequestException as exc:
         logger.warning("Hubtel checkout initiation failed: %s", exc)
-        raise HubtelError("Couldn't reach Hubtel to start the payment.") from exc
+        raise HubtelError(
+            "Couldn't reach Hubtel to start the payment.",
+            {
+                "problem": "no connection",
+                "explanation": "Our server couldn't connect to Hubtel at all (network, address or timeout). "
+                               "Check 'Hubtel checkout URL' and try again; if it persists, the server's "
+                               "network may be blocking Hubtel.",
+                "technical": type(exc).__name__,
+            },
+        ) from exc
 
-    data = payload.get("data") if isinstance(payload, dict) else None
+    reply = _reply(response)
+    if response.status_code >= 400:
+        detail = {"http_status": response.status_code, "explanation": _explain(response.status_code, reply),
+                  "hubtel_reply": reply}
+        logger.warning("Hubtel refused checkout initiation: %s", detail)
+        raise HubtelError(f"Hubtel refused the payment request (HTTP {response.status_code}).", detail)
+
+    payload = reply if isinstance(reply, dict) else None
+    data = _field(payload, "data") if payload is not None else None
     data = data if isinstance(data, dict) else {}
-    url = data.get("checkoutUrl")
+    url = _field(data, "checkoutUrl")
     if not url:
-        logger.warning("Hubtel checkout response had no checkoutUrl: %s", payload)
-        raise HubtelError("Hubtel didn't return a payment page.")
+        detail = {"http_status": response.status_code, "explanation": _explain(response.status_code, reply),
+                  "hubtel_reply": reply}
+        logger.warning("Hubtel checkout response had no checkoutUrl: %s", detail)
+        raise HubtelError("Hubtel didn't return a payment page.", detail)
+    checkout_id = _field(data, "checkoutId")
+    direct_url = _field(data, "checkoutDirectUrl")
     return CheckoutResult(
-        checkout_id=str(data["checkoutId"]) if data.get("checkoutId") else None,
+        checkout_id=str(checkout_id) if checkout_id else None,
         checkout_url=str(url),
-        direct_url=str(data["checkoutDirectUrl"]) if data.get("checkoutDirectUrl") else None,
+        direct_url=str(direct_url) if direct_url else None,
     )
 
 

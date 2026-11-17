@@ -56,6 +56,12 @@ SWEEP_BATCH = 10
 FULFILLING_STUCK_AFTER = dt.timedelta(minutes=5)
 
 
+MEMBER_CHECKOUT_FAILED = (
+    "Online payment couldn't be started right now. Please try again in a few minutes, "
+    "or message an admin for a code."
+)
+
+
 class PaymentError(Exception):
     """Something the member should be told, verbatim."""
 
@@ -155,9 +161,11 @@ def start_checkout(db: Session, user: User, product_key: str = products.ACCESS) 
         )
     except hubtel.HubtelError as exc:
         payment.status = "failed"
-        payment.provider_detail = {"error": str(exc)}
+        # The full story for the admin Payments page ("What Hubtel said")...
+        payment.provider_detail = {"error": str(exc), **exc.detail}
         db.commit()
-        raise PaymentError(str(exc)) from exc
+        # ...and a plain one for the member, who can't fix Hubtel settings.
+        raise PaymentError(MEMBER_CHECKOUT_FAILED) from exc
 
     payment.checkout_id = result.checkout_id
     payment.checkout_url = result.checkout_url

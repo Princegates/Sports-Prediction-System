@@ -850,8 +850,8 @@ def test_the_checkout_request_follows_hubtels_rules(monkeypatch):
     sent = {}
 
     class Resp:
-        def raise_for_status(self):
-            pass
+        status_code = 200
+        text = ""
 
         def json(self):
             return {"data": {"checkoutUrl": "https://pay.hubtel.test/x", "checkoutId": "c1"}}
@@ -897,3 +897,83 @@ def test_the_documented_sample_callback_names_our_payment():
         "PaymentDetails": {"MobileMoneyNumber": "233242825109", "PaymentType": "mobilemoney", "Channel": "mtn-gh"},
         "Description": "The MTN Mobile Money payment has been approved and processed successfully."}}
     assert hubtel.callback_reference(sample) == "Kaks545253"
+
+
+# --- when Hubtel won't start a payment, say why ----------------------------------------
+
+
+class _HubtelReply:
+    def __init__(self, status_code, body):
+        self.status_code = status_code
+        self._body = body
+        self.text = body if isinstance(body, str) else ""
+
+    def json(self):
+        if isinstance(self._body, str):
+            raise ValueError("not JSON")
+        return self._body
+
+
+def _initiate(monkeypatch, status_code=None, body=None, error=None):
+    def post(url, **kwargs):
+        if error is not None:
+            raise error
+        return _HubtelReply(status_code, body)
+
+    monkeypatch.setattr(hubtel.requests, "post", post)
+    config = hubtel.HubtelConfig("id", "secret", "11684", "https://x.test/init", "https://s.test", "https://api.test")
+    try:
+        hubtel.create_checkout(
+            config, amount=20, description="x", client_reference="SIREF",
+            callback_url="https://api.test/cb", return_url="https://s.test/r", cancellation_url="https://s.test/c",
+        )
+    except hubtel.HubtelError as exc:
+        return exc
+    raise AssertionError("expected a HubtelError")
+
+
+def test_wrong_credentials_are_named_as_such_with_hubtels_own_reply(monkeypatch):
+    exc = _initiate(monkeypatch, 401, {"message": "Unauthorized"})
+    assert exc.detail["http_status"] == 401
+    assert exc.detail["hubtel_reply"] == {"message": "Unauthorized"}
+    assert "API ID and secret" in exc.detail["explanation"]
+    assert "secret" not in str(exc.detail["hubtel_reply"]).lower()  # nothing of ours echoed back
+
+
+def test_hubtels_documented_response_codes_are_explained(monkeypatch):
+    fees = _initiate(monkeypatch, 200, {"responseCode": "4070", "status": "Failed", "data": None})
+    assert "fees" in fees.detail["explanation"].lower()
+    invalid = _initiate(monkeypatch, 400, {"responseCode": "4000", "message": "Validation errors"})
+    assert "merchant account" in invalid.detail["explanation"]
+    assert invalid.detail["hubtel_reply"]["message"] == "Validation errors"
+
+
+def test_other_failures_still_say_what_happened(monkeypatch):
+    import requests
+
+    gone = _initiate(monkeypatch, error=requests.ConnectionError("no route"))
+    assert gone.detail["problem"] == "no connection" and gone.detail["technical"] == "ConnectionError"
+    assert "checkout URL" in _initiate(monkeypatch, 404, "Not Found").detail["explanation"]
+    down = _initiate(monkeypatch, 503, "<html>Service Unavailable</html>")
+    assert down.detail["http_status"] == 503 and "on its side" in down.detail["explanation"]
+    assert down.detail["hubtel_reply"] == "<html>Service Unavailable</html>"
+
+
+def test_a_long_non_json_reply_is_kept_short(monkeypatch):
+    exc = _initiate(monkeypatch, 500, "x" * 5000)
+    assert len(exc.detail["hubtel_reply"]) == 1000
+
+
+def test_the_admin_sees_hubtels_reason_and_the_member_a_plain_message(db_session, auth_headers, configured, monkeypatch):
+    monkeypatch.setattr(hubtel.requests, "post", lambda url, **k: _HubtelReply(401, {"message": "Unauthorized"}))
+
+    response = client.post("/api/payments/checkout", headers=auth_headers)
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == service.MEMBER_CHECKOUT_FAILED
+    assert "API" not in response.json()["detail"]  # nothing a member can't act on
+    payment = db_session.query(Payment).one()
+    assert payment.status == "failed"
+    assert payment.provider_detail["http_status"] == 401
+    assert payment.provider_detail["hubtel_reply"] == {"message": "Unauthorized"}
+    assert "API ID and secret" in payment.provider_detail["explanation"]
