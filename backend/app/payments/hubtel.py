@@ -20,6 +20,7 @@ Unverified against a live account, so flagged rather than assumed:
 
 from __future__ import annotations
 
+import datetime as dt
 import logging
 import re
 from dataclasses import dataclass, field
@@ -77,6 +78,33 @@ def _reply(response: requests.Response) -> Any:
         return response.json()
     except ValueError:
         return (response.text or "")[:1000]
+
+
+# Response headers never worth keeping (and Set-Cookie could carry a session).
+_DROP_HEADERS = {"set-cookie"}
+
+
+def _exchange(config: "HubtelConfig", body: dict, response: Any, reply: Any) -> dict:
+    """The whole request and response, for Hubtel's engineers: what we sent
+    (the login shown only as which API ID, never the key), and exactly what came
+    back -- status, headers (often carrying a request id they can look up) and
+    body -- with the time, in UTC."""
+
+    headers = getattr(response, "headers", None) or {}
+    return {
+        "at_utc": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+        "request": {
+            "method": "POST",
+            "url": config.initiate_url,
+            "authorization": f"Basic (API ID {key_hint(config.client_id)}; key not shown)",
+            "body": body,
+        },
+        "response": {
+            "status": response.status_code,
+            "headers": {k: v for k, v in dict(headers).items() if k.lower() not in _DROP_HEADERS},
+            "body": reply,
+        },
+    }
 
 
 def _response_code(reply: Any) -> str | None:
@@ -199,7 +227,7 @@ def create_checkout(
     reply = _reply(response)
     if response.status_code >= 400:
         detail = {"http_status": response.status_code, "explanation": _explain(response.status_code, reply),
-                  "hubtel_reply": reply}
+                  "hubtel_reply": reply, "exchange": _exchange(config, body, response, reply)}
         logger.warning("Hubtel refused checkout initiation: %s", detail)
         raise HubtelError(f"Hubtel refused the payment request (HTTP {response.status_code}).", detail)
 
@@ -209,7 +237,7 @@ def create_checkout(
     url = _field(data, "checkoutUrl")
     if not url:
         detail = {"http_status": response.status_code, "explanation": _explain(response.status_code, reply),
-                  "hubtel_reply": reply}
+                  "hubtel_reply": reply, "exchange": _exchange(config, body, response, reply)}
         logger.warning("Hubtel checkout response had no checkoutUrl: %s", detail)
         raise HubtelError("Hubtel didn't return a payment page.", detail)
     checkout_id = _field(data, "checkoutId")

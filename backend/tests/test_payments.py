@@ -903,10 +903,11 @@ def test_the_documented_sample_callback_names_our_payment():
 
 
 class _HubtelReply:
-    def __init__(self, status_code, body):
+    def __init__(self, status_code, body, headers=None):
         self.status_code = status_code
         self._body = body
         self.text = body if isinstance(body, str) else ""
+        self.headers = headers or {}
 
     def json(self):
         if isinstance(self._body, str):
@@ -1049,3 +1050,29 @@ def test_short_keys_only_show_their_length():
     assert hubtel.key_hint("abc") == "3 characters"
     assert hubtel.secret_hint("abcdefgh") == "8 characters"
     assert hubtel.secret_hint("") == "not set"
+
+
+def test_a_refused_checkout_keeps_the_whole_exchange_for_hubtels_engineers(monkeypatch):
+    headers = {"Content-Type": "application/json", "X-Request-Id": "req-123", "Set-Cookie": "sid=abc"}
+    monkeypatch.setattr(hubtel.requests, "post", lambda url, **k: _HubtelReply(401, "", headers))
+    config = hubtel.HubtelConfig("apiid1234567890", "the-secret-key-value", "2017101",
+                                 "https://payproxyapi.hubtel.com/items/initiate", "https://s.test", "https://api.test")
+    try:
+        hubtel.create_checkout(
+            config, amount=20, description="7 day access", client_reference="SIREF",
+            callback_url="https://api.test/cb", return_url="https://s.test/r", cancellation_url="https://s.test/c",
+        )
+    except hubtel.HubtelError as exc:
+        exchange = exc.detail["exchange"]
+    else:
+        raise AssertionError("expected a HubtelError")
+
+    assert exchange["request"]["url"] == "https://payproxyapi.hubtel.com/items/initiate"
+    assert exchange["request"]["body"]["merchantAccountNumber"] == "2017101"
+    assert exchange["request"]["body"]["clientReference"] == "SIREF"
+    assert "starts apii" in exchange["request"]["authorization"]
+    assert exchange["response"] == {
+        "status": 401, "headers": {"Content-Type": "application/json", "X-Request-Id": "req-123"}, "body": "",
+    }
+    assert "the-secret-key-value" not in str(exchange) and "apiid1234567890" not in str(exchange)
+    assert exchange["at_utc"]
