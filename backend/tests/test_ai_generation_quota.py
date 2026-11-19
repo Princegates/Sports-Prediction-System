@@ -1,4 +1,4 @@
-"""Unit tests for app.ai_generation_quota -- the rolling-24-hour cap on AI
+"""Unit tests for app.ai_generation_quota -- the daily cap (renewed at midnight) on AI
 Generation calls, admin-configurable globally with a per-user override for
 members who pay for more.
 """
@@ -63,23 +63,32 @@ def test_recording_a_generation_counts_against_the_limit(db_session):
     assert ai_generation_quota.has_quota_left(db_session, user) is False
 
 
-def test_the_window_is_rolling_not_a_calendar_day(db_session):
-    """A call from 25 hours ago has already rolled off -- this isn't a
-    midnight reset, it's a trailing 24 hours."""
+def test_the_allowance_renews_in_full_at_midnight(db_session):
+    """Runs used yesterday -- even a minute before midnight -- don't count
+    today; runs used since midnight do."""
 
-    user = _make_user(db_session, "member3@example.com", override=1)
-    old = utcnow() - dt.timedelta(hours=25)
-    db_session.add(AIGenerationLog(user_id=user.id, created_at=old))
+    user = _make_user(db_session, "member3@example.com", override=2)
+    now = dt.datetime(2026, 11, 19, 9, 30)
+    db_session.add_all([
+        AIGenerationLog(user_id=user.id, created_at=dt.datetime(2026, 11, 18, 23, 59)),
+        AIGenerationLog(user_id=user.id, created_at=dt.datetime(2026, 11, 18, 12, 0)),
+    ])
     db_session.commit()
+    assert ai_generation_quota.used_today(db_session, user.id, now) == 0
+    assert ai_generation_quota.quota_remaining(db_session, user, now) == 2
 
-    assert ai_generation_quota.used_today(db_session, user.id) == 0
-    assert ai_generation_quota.has_quota_left(db_session, user) is True
-
-    recent = utcnow() - dt.timedelta(hours=1)
-    db_session.add(AIGenerationLog(user_id=user.id, created_at=recent))
+    db_session.add(AIGenerationLog(user_id=user.id, created_at=dt.datetime(2026, 11, 19, 0, 0)))
     db_session.commit()
-    assert ai_generation_quota.used_today(db_session, user.id) == 1
-    assert ai_generation_quota.has_quota_left(db_session, user) is False
+    assert ai_generation_quota.used_today(db_session, user.id, now) == 1
+    assert ai_generation_quota.quota_remaining(db_session, user, now) == 1
+
+
+def test_a_run_just_before_midnight_still_counts_until_midnight(db_session):
+    user = _make_user(db_session, "late@example.com", override=1)
+    db_session.add(AIGenerationLog(user_id=user.id, created_at=dt.datetime(2026, 11, 18, 23, 58)))
+    db_session.commit()
+    assert ai_generation_quota.quota_remaining(db_session, user, dt.datetime(2026, 11, 18, 23, 59)) == 0
+    assert ai_generation_quota.quota_remaining(db_session, user, dt.datetime(2026, 11, 19, 0, 0)) == 1
 
 
 def test_quota_is_per_user_not_shared(db_session):
@@ -90,14 +99,16 @@ def test_quota_is_per_user_not_shared(db_session):
     assert ai_generation_quota.has_quota_left(db_session, b) is True
 
 
-def test_next_free_at_is_when_the_oldest_run_ages_out(db_session):
+def test_next_free_at_is_the_coming_midnight(db_session):
     user = _make_user(db_session, "waiting@example.com", override=2)
-    now = utcnow()
-    first, second = now - dt.timedelta(hours=20), now - dt.timedelta(hours=2)
-    db_session.add_all([AIGenerationLog(user_id=user.id, created_at=first), AIGenerationLog(user_id=user.id, created_at=second)])
+    now = dt.datetime(2026, 11, 19, 15, 0)
+    db_session.add_all([
+        AIGenerationLog(user_id=user.id, created_at=dt.datetime(2026, 11, 19, 8, 0)),
+        AIGenerationLog(user_id=user.id, created_at=dt.datetime(2026, 11, 19, 13, 0)),
+    ])
     db_session.commit()
 
-    assert ai_generation_quota.next_free_at(db_session, user, now) == first + dt.timedelta(hours=24)
+    assert ai_generation_quota.next_free_at(db_session, user, now) == dt.datetime(2026, 11, 20, 0, 0)
 
 
 def test_next_free_at_is_none_while_runs_remain_or_unlimited(db_session):
@@ -109,17 +120,20 @@ def test_next_free_at_is_none_while_runs_remain_or_unlimited(db_session):
     assert ai_generation_quota.next_free_at(db_session, admin) is None
 
 
-def test_next_free_at_waits_for_every_excess_run_when_the_limit_was_lowered(db_session):
-    """Three runs counted but the limit is now 1: a slot only opens once all
-    three have aged out, i.e. when the newest does -- not the oldest."""
+def test_a_lowered_limit_still_renews_at_midnight(db_session):
+    """Three runs counted but the limit is now 1: nothing frees up before
+    midnight, and the full (new) allowance is back after it."""
 
     user = _make_user(db_session, "lowered@example.com", override=1)
-    now = utcnow()
-    times = [now - dt.timedelta(hours=h) for h in (22, 10, 1)]
-    db_session.add_all([AIGenerationLog(user_id=user.id, created_at=t) for t in times])
+    now = dt.datetime(2026, 11, 19, 20, 0)
+    db_session.add_all([
+        AIGenerationLog(user_id=user.id, created_at=dt.datetime(2026, 11, 19, h, 0)) for h in (2, 10, 19)
+    ])
     db_session.commit()
 
-    assert ai_generation_quota.next_free_at(db_session, user, now) == times[2] + dt.timedelta(hours=24)
+    assert ai_generation_quota.quota_remaining(db_session, user, now) == 0
+    assert ai_generation_quota.next_free_at(db_session, user, now) == dt.datetime(2026, 11, 20, 0, 0)
+    assert ai_generation_quota.quota_remaining(db_session, user, dt.datetime(2026, 11, 20, 0, 1)) == 1
 
 
 def test_a_run_is_taken_before_the_engine_and_only_once_for_the_last_slot(db_session):

@@ -11,9 +11,10 @@ On top of the daily allowance a member can buy extras (app.payments):
 credits, spent one per run only once the day's allowance is used up, and a
 24-hour pass that lifts the limit entirely.
 
-Modeled as a rolling 24-hour window, not a calendar day -- same reasoning as
-app.assistant.engine.llm_quota_left: a user who calls at 11:59pm and again
-at 12:01am shouldn't get two days' worth back to back.
+The allowance is per calendar day: it starts again in full at midnight,
+counted in UTC -- which is also Ghana's time (GMT all year, no daylight
+saving), so it renews at midnight for members there. Runs used before
+midnight no longer count after it.
 """
 
 from __future__ import annotations
@@ -40,12 +41,25 @@ def daily_limit(db: Session, user: User) -> int | None:
     return int(app_settings.get_value(db, "ai_generation_daily_limit") or 0)
 
 
-def used_today(db: Session, user_id: int, now: dt.datetime | None = None) -> int:
+def day_start(now: dt.datetime | None = None) -> dt.datetime:
+    """Midnight at the start of ``now``'s day (UTC, naive like every stored
+    time) -- when the allowance last renewed."""
+
     now = now or utcnow()
+    return now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def next_renewal(now: dt.datetime | None = None) -> dt.datetime:
+    """The coming midnight, when the allowance next renews in full."""
+
+    return day_start(now) + dt.timedelta(days=1)
+
+
+def used_today(db: Session, user_id: int, now: dt.datetime | None = None) -> int:
     return db.execute(
         select(func.count(AIGenerationLog.id)).where(
             AIGenerationLog.user_id == user_id,
-            AIGenerationLog.created_at >= now - dt.timedelta(hours=24),
+            AIGenerationLog.created_at >= day_start(now),
         )
     ).scalar_one()
 
@@ -68,27 +82,17 @@ def quota_remaining(db: Session, user: User, now: dt.datetime | None = None) -> 
 
 
 def next_free_at(db: Session, user: User, now: dt.datetime | None = None) -> dt.datetime | None:
-    """When the daily allowance next frees a run -- the moment the oldest
-    counted run ages out of the 24 hours. ``None`` while runs remain (or
-    there is no limit to run out of)."""
+    """When the daily allowance next gives a run back: the coming midnight,
+    when it renews in full. ``None`` while runs remain (or there is no limit
+    to run out of)."""
 
     now = now or utcnow()
     limit = daily_limit(db, user)
     if limit is None or is_unlimited_now(user, now):
         return None
-    used = used_today(db, user.id, now)
-    if used < limit:
+    if used_today(db, user.id, now) < limit:
         return None
-    # An admin lowering the limit can leave used > limit; then several runs
-    # must age out before one is free, so skip to the one that matters.
-    oldest = db.execute(
-        select(AIGenerationLog.created_at)
-        .where(AIGenerationLog.user_id == user.id, AIGenerationLog.created_at >= now - dt.timedelta(hours=24))
-        .order_by(AIGenerationLog.created_at)
-        .offset(used - limit)
-        .limit(1)
-    ).scalar()
-    return oldest + dt.timedelta(hours=24) if oldest is not None else None
+    return next_renewal(now)
 
 
 def has_quota_left(db: Session, user: User, now: dt.datetime | None = None) -> bool:
@@ -112,7 +116,7 @@ def record_generation(db: Session, user: User, now: dt.datetime | None = None) -
         )
         db.expire(user)
         # The run is paid for by the credit, so it isn't also logged against
-        # the allowance (it would otherwise delay the allowance's recovery).
+        # the allowance.
         db.commit()
         return
     db.add(AIGenerationLog(user_id=user.id, created_at=now or utcnow()))
@@ -148,7 +152,7 @@ def reserve(db: Session, user: User, now: dt.datetime | None = None) -> str | in
     position = db.execute(
         select(func.count(AIGenerationLog.id)).where(
             AIGenerationLog.user_id == user.id,
-            AIGenerationLog.created_at >= now - dt.timedelta(hours=24),
+            AIGenerationLog.created_at >= day_start(now),
             AIGenerationLog.id <= row.id,
         )
     ).scalar_one()
@@ -156,7 +160,7 @@ def reserve(db: Session, user: User, now: dt.datetime | None = None) -> str | in
         return row.id
 
     # Past the daily allowance: this run is paid for by a credit instead, and
-    # isn't logged against the allowance (it would delay its recovery).
+    # isn't logged against the allowance.
     db.delete(row)
     spent = db.execute(
         update(User)

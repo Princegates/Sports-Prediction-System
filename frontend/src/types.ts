@@ -454,7 +454,7 @@ export interface AIGenerationQuota {
   remaining_today: number | null;
   credits: number;
   unlimited_until: string | null;
-  // When the next run frees up, once the daily allowance is used up.
+  // When the daily allowance renews (the coming midnight), once it is used up.
   next_free_at: string | null;
 }
 

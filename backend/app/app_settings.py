@@ -142,7 +142,7 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 default=8, minimum=1, maximum=15),
     SettingSpec("ai_generation_daily_limit", "int", "betcode", "AI Generation calls per user per day",
                 "Caps how many times a member can run AI Generation (including the Refresh button) "
-                "in a rolling 24 hours -- superadmins are never limited. Set a higher per-user limit "
+                "each day; the allowance renews in full at midnight (UTC, which is Ghana time) -- superadmins are never limited. Set a higher per-user limit "
                 "under that member's row on the Users page for someone who's paid for more access.",
                 default=50, minimum=1, maximum=100000),
 

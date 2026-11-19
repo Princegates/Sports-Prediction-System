@@ -13,7 +13,7 @@ function formatFreeAt(iso: string): string {
 }
 
 /** What a member sees the moment they're out of AI Generation runs: when the
- * next one frees up, the extras they can buy (when online payment is on), and
+ * daily allowance renews (midnight), the extras they can buy (when online payment is on), and
  * -- always, as the backup -- a WhatsApp message to an admin, which is also
  * the only way to get more when online payment isn't switched on. Meant to
  * sit right where the disabled Generate button is, so there's always a next
@@ -23,7 +23,6 @@ export function OutOfRunsPanel({ heading = "You've used all your AI Generation r
   const quota = useAIGenerationQuota();
   const [whatsapp, setWhatsapp] = useState<string | null>(null);
   const canBuy = useAIProducts().length > 0;
-  const comesBack = "runs come back on a rolling 24-hour basis";
 
   useEffect(() => {
     fetchBranding()
@@ -36,8 +35,8 @@ export function OutOfRunsPanel({ heading = "You've used all your AI Generation r
       <p style={{ margin: "0 0 4px", fontWeight: 600 }}>{heading}</p>
       <p className="setting-note" style={{ margin: "0 0 12px" }}>
         {quota?.next_free_at
-          ? `Your next run frees up ${formatFreeAt(quota.next_free_at)} -- ${comesBack}.`
-          : `${comesBack[0].toUpperCase()}${comesBack.slice(1)}.`}
+          ? `Your daily runs renew in full ${formatFreeAt(quota.next_free_at)}.`
+          : "Your daily runs renew in full at midnight."}
         {canBuy ? " Or get more now:" : " Need more sooner? An admin can add runs for you."}
       </p>
 
