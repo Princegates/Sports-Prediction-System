@@ -733,3 +733,66 @@ def test_request_timeouts_shrink_to_what_is_left_of_the_deadline():
 
 def _leg_for_breaker() -> Leg:
     return _leg(1, "Arsenal", "Chelsea", dt.datetime(2030, 1, 1, 15, 0))
+
+
+
+def test_a_league_list_that_failed_is_asked_for_again_next_time():
+    """A failed league list used to be cached as empty for five minutes, so
+    one slow moment sent every booking in that time down the slow paged list."""
+
+    session = _Session(leagues={"sr:tournament:17": _Response(503, {})})
+    connector = sb.SportyBetConnector(session)
+    leg = _epl_leg(1, "Manchester United FC", "Tottenham Hotspur FC", MAN_UTD_SPURS)
+
+    connector.create_code([leg])
+    session.leagues["sr:tournament:17"] = _Response(payload=PREMIER_LEAGUE)
+    connector.create_code([_epl_leg(2, "Tottenham Hotspur FC", "Coventry City FC", SPURS_COVENTRY)])
+
+    assert len(session.league_posts) == 2
+
+
+def test_running_out_of_time_on_a_league_list_ends_the_booking_and_caches_nothing(monkeypatch):
+    from app.betcode import budget
+
+    session = _Session(leagues={"sr:tournament:17": _Response(payload=PREMIER_LEAGUE)})
+    connector = sb.SportyBetConnector(session)
+    monkeypatch.setattr(budget, "BOOKING_DEADLINE_SECONDS", 0.1)
+
+    with pytest.raises(budget.DeadlineExceeded, match="taking too long"):
+        connector.create_code([_epl_leg(1, "Tottenham Hotspur FC", "Coventry City FC", SPURS_COVENTRY)])
+    assert session.league_posts == []  # no request was even attempted without time left
+
+    monkeypatch.setattr(budget, "BOOKING_DEADLINE_SECONDS", 40.0)
+    result = connector.create_code([_epl_leg(1, "Tottenham Hotspur FC", "Coventry City FC", SPURS_COVENTRY)])
+    assert result.code and len(session.league_posts) == 1
+
+
+def test_a_booking_gets_forty_seconds():
+    from app.betcode import budget
+
+    assert budget.BOOKING_DEADLINE_SECONDS == 40.0
+    with budget.deadline():
+        assert 39.0 < budget._remaining() <= 40.0
+
+
+def test_several_sites_are_booked_side_by_side(monkeypatch):
+    import threading
+    import time as _time
+
+    active, peak, lock = [0], [0], threading.Lock()
+
+    def slow(site_key, legs):
+        with lock:
+            active[0] += 1
+            peak[0] = max(peak[0], active[0])
+        _time.sleep(0.2)
+        with lock:
+            active[0] -= 1
+        return sites.SiteCode(site=site_key, name=site_key, status="code_ready", code=site_key.upper())
+
+    monkeypatch.setattr(sites, "code_for_site", slow)
+    started = _time.monotonic()
+    codes = sites.codes_for_sites(["a", "b", "a", "c"], [])
+
+    assert [c.site for c in codes] == ["a", "b", "c"]  # order kept, duplicate dropped
+    assert peak[0] == 3 and _time.monotonic() - started < 0.5

@@ -13,6 +13,7 @@ as not connected and the booking step stays hidden from members.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Callable, Protocol
 
@@ -149,4 +150,10 @@ def codes_for_sites(site_keys: list[str], legs: list[Leg]) -> list[SiteCode]:
 
     seen: set[str] = set()
     ordered = [k for k in site_keys if not (k in seen or seen.add(k))]
-    return [code_for_site(key, legs) for key in ordered]
+    if len(ordered) <= 1:
+        return [code_for_site(key, legs) for key in ordered]
+    # Side by side, so the wait is the slowest site rather than all of them
+    # added up (each is held to its own booking deadline). Each site has its
+    # own connection and locks, so they don't contend with each other.
+    with ThreadPoolExecutor(max_workers=len(ordered)) as pool:
+        return list(pool.map(lambda key: code_for_site(key, legs), ordered))

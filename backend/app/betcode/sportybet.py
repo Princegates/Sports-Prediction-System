@@ -394,7 +394,15 @@ class _EventList:
         self._exhausted = False
         self._fetched_at = time.monotonic()
 
-    def _fetch_league(self, tournament_id: str) -> list[Event]:
+    def _fetch_league(self, tournament_id: str) -> list[Event] | None:
+        """The league's events, or ``None`` if the list couldn't be had this
+        time -- which is never cached, so the next booking asks again. (It
+        used to be cached as an empty list for five minutes, so one slow
+        moment sent every booking in that time down the slow paged list,
+        which ran out of time too and tripped the breaker.) Running out of
+        the booking's time isn't swallowed: there is no time left to search
+        anywhere else either."""
+
         body = [{"sportId": FOOTBALL, "marketId": LEAGUE_MARKETS, "tournamentId": [[tournament_id]]}]
         try:
             response = self._session.post(
@@ -404,12 +412,14 @@ class _EventList:
             if response.status_code != 200:
                 raise BookingCodeError(f"HTTP {response.status_code}")
             return _parse_events(response.json())[0]
+        except budget.DeadlineExceeded:
+            raise
         except (requests.RequestException, BookingCodeError, ValueError) as exc:
             # The cross-league list still covers the next round, so a league
             # list that fails narrows the search rather than failing the
             # booking.
             logger.warning("%s league list %s unavailable: %s", SITE_NAME, tournament_id, exc)
-            return []
+            return None
 
     def _fetch_page(self, page: int) -> tuple[list[Event], int]:
         params = {
@@ -437,10 +447,13 @@ class _EventList:
                 self._reset()
             found: dict[int, str] = {}
             for tournament_id in dict.fromkeys(TOURNAMENTS[l.league] for l in legs if l.league in TOURNAMENTS):
-                if tournament_id not in self._leagues:
-                    self._leagues[tournament_id] = self._fetch_league(tournament_id)
+                events = self._leagues.get(tournament_id)
+                if events is None:
+                    events = self._fetch_league(tournament_id)
+                    if events is not None:
+                        self._leagues[tournament_id] = events
                 in_league = [l for l in legs if TOURNAMENTS.get(l.league) == tournament_id]
-                found.update(_match_legs(in_league, self._leagues[tournament_id]))
+                found.update(_match_legs(in_league, events or []))
             rest = [l for l in legs if l.match_id not in found]
             if rest:
                 found.update(self._find_upcoming(rest))

@@ -5,7 +5,10 @@ share calls), each with its own timeout -- unbounded in total, and the event
 list is fetched under a lock, so one stalled site used to hold every other
 booking in that worker for minutes. Two guards:
 
-- ``deadline``: the whole booking gets ``BOOKING_DEADLINE_SECONDS``; every
+- ``deadline``: the whole booking gets ``BOOKING_DEADLINE_SECONDS`` (40s:
+  a slip across several leagues needs a list per league plus paging, each a
+  round trip to the site, so 20s failed real bookings; 40s stays well inside
+  nginx's 60s and the sites are booked side by side); every
   request's timeout is cut to what is left (``request_timeout``), and waiting
   for the event-list lock counts against it too (``acquire``).
 - ``Breaker``: after two bookings in a row fail to reach a site, the next
@@ -24,7 +27,7 @@ import requests
 
 from app.betcode.sites import BookingCodeError
 
-BOOKING_DEADLINE_SECONDS = 20.0
+BOOKING_DEADLINE_SECONDS = 40.0
 BREAKER_FAILURES = 2
 BREAKER_OPEN_SECONDS = 60.0
 
@@ -36,8 +39,8 @@ class DeadlineExceeded(BookingCodeError):
 
 
 @contextlib.contextmanager
-def deadline(seconds: float = BOOKING_DEADLINE_SECONDS):
-    token = _deadline.set(time.monotonic() + seconds)
+def deadline(seconds: float | None = None):
+    token = _deadline.set(time.monotonic() + (BOOKING_DEADLINE_SECONDS if seconds is None else seconds))
     try:
         yield
     finally:
