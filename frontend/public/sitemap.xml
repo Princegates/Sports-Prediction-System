@@ -294,61 +294,6 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://soccaintel.com/predict/29923-imisli-fk-vs-zira</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/45395-gagra-vs-dila</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/26083-skenderbeu-korce-vs-egnatia-rrogozhine</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/29922-sumqayt-vs-sabah-fa</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/27780-alashkert-vs-fc-noah</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/27781-pyunik-yerevan-vs-sardarapat</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/27782-ararat-armenia-vs-bkma</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/27783-ararat-armenia-vs-van</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/27784-shirak-vs-gandzasar</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/27785-syunik-vs-fc-urartu</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/45396-dinamo-tbilisi-vs-torpedo-kutaisi</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
     <loc>https://soccaintel.com/predict/80506-af-elbasani-vs-dinamo-tirana</loc>
     <changefreq>hourly</changefreq>
     <priority>0.7</priority>
@@ -3760,6 +3705,66 @@
   </url>
   <url>
     <loc>https://soccaintel.com/predict/38534-aris-vs-omonia-29is-maiou</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/37139-hnk-rijeka-vs-dinamo-zagreb</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/38535-omonia-nicosia-vs-pafos</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/38536-krasava-ypsonas-vs-nea-salamis</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/26094-partizani-vs-egnatia-rrogozhine</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/26097-af-elbasani-vs-tirana</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/2021-tottenham-hotspur-fc-vs-fulham-fc</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/27792-alashkert-vs-fc-urartu</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/27793-ararat-armenia-vs-fc-noah</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/27794-ararat-armenia-vs-pyunik-yerevan</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/27795-shirak-vs-van</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/27796-bkma-vs-gandzasar</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/27797-syunik-vs-sardarapat</loc>
     <changefreq>hourly</changefreq>
     <priority>0.7</priority>
   </url>
