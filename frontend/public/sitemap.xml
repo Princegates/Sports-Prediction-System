@@ -294,11 +294,6 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://soccaintel.com/predict/4303-real-racing-club-de-santander-vs-real-sociedad-de-futbol</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
     <loc>https://soccaintel.com/predict/46074-magpies-vs-lincoln-red-imps-fc</loc>
     <changefreq>hourly</changefreq>
     <priority>0.7</priority>
@@ -3670,6 +3665,11 @@
   </url>
   <url>
     <loc>https://soccaintel.com/predict/57647-swift-hesperange-vs-us-mondorf-les-bains</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/21819-athletic-club-vs-real-madrid-cf</loc>
     <changefreq>hourly</changefreq>
     <priority>0.7</priority>
   </url>
