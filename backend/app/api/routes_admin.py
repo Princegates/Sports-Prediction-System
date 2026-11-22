@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import datetime as dt
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -63,6 +65,8 @@ from app.db.models import AccessCode, AccessGrant, AdminPick, AuditLog, BookingS
 from app.winning_slips import WinningSlipImageError, admin_winning_slip_to_schema, decode_image, image_data_url, winning_slip_to_schema
 from app.outcomes.registry import find_outcome
 from app.pick_settlement import frozen_admin_pick_legs, settle_admin_pick, settle_booking_slip, settle_featured_pick
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_superadmin)])
 
@@ -207,6 +211,18 @@ def _get_target_user(user_id: int, db: Session) -> User:
     return user
 
 
+def _email_member(db: Session, user: User, message: tuple[str, str]) -> None:
+    """Best-effort notice to a member after an admin action: a bounced email
+    is a courtesy lost, never a reason to undo or fail what the admin did."""
+
+    if not mailer.is_configured(db):
+        return
+    try:
+        mailer.send_email(user.email, message[0], message[1], db=db)
+    except Exception:  # noqa: BLE001 -- the action already succeeded
+        logger.warning("Couldn't email %s about an admin action", user.email, exc_info=True)
+
+
 @router.post("/users/{user_id}/suspend", response_model=AdminUserOut)
 def suspend_user(user_id: int, admin: User = Depends(require_superadmin), db: Session = Depends(get_db)) -> AdminUserOut:
     if user_id == admin.id:
@@ -235,6 +251,7 @@ def reinstate_user(user_id: int, admin: User = Depends(require_superadmin), db: 
     target.status = "active"
     _record(db, admin, "user.reinstated", target, {"from_status": previous_status})
     db.commit()
+    _email_member(db, target, mailer.account_reinstated_message(mailer.resolve_config(db).site_url or None))
     db.refresh(target)
     return admin_user_to_schema(target, db)
 
@@ -603,7 +620,13 @@ def activate_user(
     trial_days = 0
     if not had_trial:
         trial_days, _ = routes_auth.start_free_access(db, target)
-    routes_auth._send_welcome(db, target, trial_days)
+    _email_member(
+        db, target,
+        mailer.account_approved_message(
+            mailer.resolve_config(db).site_url or None, trial_days=trial_days,
+            whatsapp=str(app_settings.get_value(db, "contact_whatsapp") or "") or None,
+        ),
+    )
     db.refresh(target)
     return admin_user_to_schema(target, db)
 

@@ -332,6 +332,37 @@ def welcome_message(site_url: str | None = None, trial_days: int = 0, whatsapp: 
     return "Your account is ready", body
 
 
+def account_approved_message(site_url: str | None = None, trial_days: int = 0, whatsapp: str | None = None) -> tuple[str, str]:
+    """Sent when an admin approves (activates) an account by hand -- for
+    someone who couldn't use the confirmation link. Says so, rather than the
+    generic "account created" of a self-confirmed signup."""
+
+    where = site_url or "the site"
+    if trial_days:
+        days = "1 day" if trial_days == 1 else f"{trial_days} days"
+        access = f"You have full access to predictions, teams and matches for the next {days}, no code needed yet."
+    else:
+        access = "You'll start on the free tier (one headline pick per league) until you redeem an access code."
+    contact = (
+        f"\n\nTo get a code, message {format_whatsapp(whatsapp)} on WhatsApp -- WhatsApp only, no calls or texts."
+        if whatsapp
+        else ""
+    )
+    body = f"Good news -- an admin has approved your account.\n\nSign in at {where}. {access}{contact}\n"
+    return "Your account has been approved", body
+
+
+def account_reinstated_message(site_url: str | None = None) -> tuple[str, str]:
+    """Sent when an admin lifts a suspension: the account works again."""
+
+    where = site_url or "the site"
+    body = (
+        "Your account has been reinstated by an admin.\n\n"
+        f"You can sign in again at {where}. Everything in your account is as you left it.\n"
+    )
+    return "Your account has been reinstated", body
+
+
 def password_changed_message() -> tuple[str, str]:
     """Subject and body for a password-change security notice."""
 

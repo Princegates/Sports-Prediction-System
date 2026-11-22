@@ -148,3 +148,36 @@ def test_members_cannot_use_these_tools(db_session, admin, email_ready):
     other = _user(db_session, "other@example.com")
     assert client.post(f"/api/admin/users/{member.id}/activate", headers=_headers(other)).status_code == 403
     assert client.post(f"/api/admin/users/{member.id}/resend-verification", headers=_headers(other)).status_code == 403
+
+
+def test_activating_an_account_emails_the_member_that_it_was_approved(db_session, admin, email_ready):
+    member = _user(db_session, "waiting@example.com")
+
+    client.post(f"/api/admin/users/{member.id}/activate", headers=_headers(admin))
+
+    to, subject, body = email_ready[-1]
+    assert to == "waiting@example.com" and subject == "Your account has been approved"
+    assert "approved your account" in body and "5 days" in body and "https://example.test" in body
+    assert len(email_ready) == 1  # not also the generic "account created" welcome
+
+
+def test_reinstating_a_suspended_account_emails_the_member(db_session, admin, email_ready):
+    member = _user(db_session, "back@example.com", verified=True)
+    client.post(f"/api/admin/users/{member.id}/suspend", headers=_headers(admin))
+    assert email_ready == []  # suspending says nothing
+
+    assert client.post(f"/api/admin/users/{member.id}/reinstate", headers=_headers(admin)).status_code == 200
+
+    assert [(to, subject) for to, subject, _ in email_ready] == [("back@example.com", "Your account has been reinstated")]
+
+
+def test_a_failing_email_never_undoes_the_admin_action(db_session, admin, email_ready, monkeypatch):
+    member = _user(db_session, "waiting@example.com")
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("smtp down")
+
+    monkeypatch.setattr(mailer, "send_email", boom)
+    response = client.post(f"/api/admin/users/{member.id}/activate", headers=_headers(admin))
+
+    assert response.status_code == 200 and response.json()["activation_pending"] is False
