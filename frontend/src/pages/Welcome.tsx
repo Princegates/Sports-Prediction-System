@@ -107,7 +107,9 @@ export function Welcome() {
     },
     {
       q: "How do I pay?",
-      a: `Payment happens outside the site: message our team on WhatsApp and pay by mobile money or bank transfer. Once it's confirmed, you get an access code by email or WhatsApp, enter it on the Access page, and everything unlocks for the code's duration.${price ? ` Access is ${price}${perDay ? ` (${perDay})` : ""}.` : ""}`,
+      a: branding?.online_payments
+        ? `Sign in, open the Access page and tap Pay now: you pay by mobile money or card on Hubtel's secure checkout and your access starts as soon as it goes through, with no code to enter. Prefer a person? Message our team on WhatsApp and pay by mobile money or bank transfer, and they'll send you a code.${price ? ` Access is ${price}${perDay ? ` (${perDay})` : ""}.` : ""}`
+        : `Payment happens outside the site: message our team on WhatsApp and pay by mobile money or bank transfer. Once it's confirmed, you get an access code by email or WhatsApp, enter it on the Access page, and everything unlocks for the code's duration.${price ? ` Access is ${price}${perDay ? ` (${perDay})` : ""}.` : ""}`,
     },
     {
       q: "How accurate is it, honestly?",

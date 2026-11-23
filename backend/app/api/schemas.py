@@ -763,6 +763,10 @@ class BrandingOut(BaseModel):
     price_per_day: str = ""
     # Public WhatsApp Channel, "" when not set.
     whatsapp_channel_url: str = ""
+    # Whether members can pay online right now (the same answer the Access
+    # page's "Pay now" uses), so the public pricing copy only says "pay
+    # online" while it's true.
+    online_payments: bool = False
 
 
 # --- Outcome browser -------------------------------------------------------

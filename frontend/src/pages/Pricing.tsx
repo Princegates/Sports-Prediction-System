@@ -10,8 +10,9 @@ import type { Branding } from "../types";
  * Public pricing page.
  *
  * Leads with the three ways in (free, the trial, full access) and a trial
- * button on the first screen. There's still no in-app payment gateway:
- * payment happens outside the platform and our team sends an access code.
+ * button on the first screen. When online payment is on, members pay on
+ * Hubtel's hosted checkout and the code is applied for them; otherwise (and
+ * always as an alternative) they pay our team on WhatsApp and are sent a code.
  *
  * The headline is static text on purpose -- it used to read "Access is
  * <price>", which changed once branding loaded and shifted the whole page
@@ -37,16 +38,21 @@ export function Pricing() {
   const perDay = branding?.price_per_day || null;
   const trialDays = branding?.trial_days ?? 0;
   const whatsapp = branding?.contact_whatsapp || null;
+  const online = branding?.online_payments === true;
   const trialCta = trialDays > 0 ? `Start your ${trialDays}-day free trial` : "Create a free account";
 
   const faqs = [
     {
       q: "How do I pay?",
-      a: "Message our team on WhatsApp and pay by mobile money or bank transfer. Nothing on this site takes card details or processes a payment.",
+      a: online
+        ? "Sign in, open the Access page and tap Pay now. You pay by mobile money (or card) on Hubtel's secure checkout, and your access starts as soon as the payment goes through. This site never sees your card number or mobile money PIN. Prefer a person? Message our team on WhatsApp and pay by mobile money or bank transfer instead."
+        : "Message our team on WhatsApp and pay by mobile money or bank transfer. Nothing on this site takes card details or processes a payment.",
     },
     {
       q: "How quickly do I get my code?",
-      a: "As soon as the payment is confirmed. From the Access page you can send the team your payment reference, which tells them straight away, and the code arrives by email or WhatsApp.",
+      a: online
+        ? "Straight away when you pay online: your access starts as soon as the payment is confirmed, with no code to type. If you paid our team on WhatsApp instead, the code arrives by email or WhatsApp once they confirm it."
+        : "As soon as the payment is confirmed. From the Access page you can send the team your payment reference, which tells them straight away, and the code arrives by email or WhatsApp.",
     },
     {
       q: "What happens when my access ends?",
@@ -135,30 +141,64 @@ export function Pricing() {
       <section className="doc-section">
         <h2>How paying works</h2>
         <div className="access-steps">
-          <div className="access-step">
-            <span className="access-step-num">1</span>
-            <h3>Pay our team</h3>
-            <p>
-              Message us on WhatsApp and pay by mobile money or bank transfer.
-              {price && (
-                <>
-                  {" "}
-                  Current price: <strong>{price}</strong>
-                  {perDay && <> ({perDay})</>}.
-                </>
-              )}
-            </p>
-          </div>
-          <div className="access-step">
-            <span className="access-step-num">2</span>
-            <h3>Get your code</h3>
-            <p>Once the payment is confirmed you get a personal access code by email or WhatsApp.</p>
-          </div>
-          <div className="access-step">
-            <span className="access-step-num">3</span>
-            <h3>Redeem it</h3>
-            <p>Enter it on the Access page. Everything unlocks straight away, for the code's full duration.</p>
-          </div>
+          {online ? (
+            <>
+              <div className="access-step">
+                <span className="access-step-num">1</span>
+                <h3>Tap Pay now</h3>
+                <p>
+                  Sign in and open the Access page.
+                  {price && (
+                    <>
+                      {" "}
+                      Current price: <strong>{price}</strong>
+                      {perDay && <> ({perDay})</>}.
+                    </>
+                  )}
+                </p>
+              </div>
+              <div className="access-step">
+                <span className="access-step-num">2</span>
+                <h3>Pay securely</h3>
+                <p>Pay by mobile money or card on Hubtel's checkout. We never see your card number or PIN.</p>
+              </div>
+              <div className="access-step">
+                <span className="access-step-num">3</span>
+                <h3>You're in</h3>
+                <p>
+                  Your access starts as soon as the payment goes through, with no code to enter. Prefer a person? Pay our
+                  team on WhatsApp and they'll send you a code.
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="access-step">
+                <span className="access-step-num">1</span>
+                <h3>Pay our team</h3>
+                <p>
+                  Message us on WhatsApp and pay by mobile money or bank transfer.
+                  {price && (
+                    <>
+                      {" "}
+                      Current price: <strong>{price}</strong>
+                      {perDay && <> ({perDay})</>}.
+                    </>
+                  )}
+                </p>
+              </div>
+              <div className="access-step">
+                <span className="access-step-num">2</span>
+                <h3>Get your code</h3>
+                <p>Once the payment is confirmed you get a personal access code by email or WhatsApp.</p>
+              </div>
+              <div className="access-step">
+                <span className="access-step-num">3</span>
+                <h3>Redeem it</h3>
+                <p>Enter it on the Access page. Everything unlocks straight away, for the code's full duration.</p>
+              </div>
+            </>
+          )}
         </div>
       </section>
 

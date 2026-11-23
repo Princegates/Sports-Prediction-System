@@ -1076,3 +1076,13 @@ def test_a_refused_checkout_keeps_the_whole_exchange_for_hubtels_engineers(monke
     }
     assert "the-secret-key-value" not in str(exchange) and "apiid1234567890" not in str(exchange)
     assert exchange["at_utc"]
+
+
+def test_public_branding_says_whether_members_can_pay_online(db_session, configured):
+    """The public pricing copy switches on this flag, so it must follow the
+    same answer the Access page's Pay now uses -- and need no sign-in."""
+
+    assert client.get("/api/public/branding").json()["online_payments"] is True
+
+    app_settings.set_values(db_session, {"hubtel_enabled": False})
+    assert client.get("/api/public/branding").json()["online_payments"] is False

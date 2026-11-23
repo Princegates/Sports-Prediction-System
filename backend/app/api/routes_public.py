@@ -50,6 +50,7 @@ from app.api.schemas import (
     TrackRecordOut,
 )
 from app import app_settings
+from app.payments import service as payment_service
 from app.api.serializers import TEAM_LOGO_URL, public_teaser_pick_to_schema
 from app.assistant import retrieval
 from app.betcode.selection import Leg, price_legs
@@ -402,6 +403,7 @@ def public_branding(db: Session) -> BrandingOut:
         pricing_label=price_label,
         price_per_day=price_per_day,
         whatsapp_channel_url=str(values.get("whatsapp_channel_url") or ""),
+        online_payments=payment_service.options(db)["enabled"],
         default_market_tab=str(values["default_market_tab"]),
         referral_enabled=bool(values["referral_enabled"]),
         referral_bonus_days=int(values["referral_bonus_days"]),

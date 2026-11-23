@@ -749,6 +749,8 @@ export interface Branding {
   /** "about GH₵4 a day" when the price is set as amount + days, else "". */
   price_per_day?: string;
   whatsapp_channel_url?: string;
+  /** True while members can pay online (Hubtel) -- public copy switches on it. */
+  online_payments?: boolean;
 }
 
 // --- Outcome browser -------------------------------------------------------
