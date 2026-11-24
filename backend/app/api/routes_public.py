@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
+import hmac
 import threading
 import time
 
@@ -33,6 +34,7 @@ from app.api.schemas import (
     AdminPickLegOut,
     AdminPickTrackRecordOut,
     BrandingOut,
+    WidgetCountsOut,
     ConfidenceBandRecordOut,
     LeagueAccuracyOut,
     LandingOut,
@@ -50,11 +52,13 @@ from app.api.schemas import (
     TrackRecordOut,
 )
 from app import app_settings
+from app.access import count_activation_pending
 from app.payments import service as payment_service
+from app.api import rate_limit
 from app.api.serializers import TEAM_LOGO_URL, public_teaser_pick_to_schema
 from app.assistant import retrieval
 from app.betcode.selection import Leg, price_legs
-from app.db.models import AdminPick, FeaturedPick, Match, Prediction, PublicFreePickSet, User, WinningSlip
+from app.db.models import AccessGrant, AdminPick, FeaturedPick, Match, Prediction, PublicFreePickSet, User, WinningSlip
 from app.winning_slips import winning_slip_to_schema
 from app.outcomes.grading import grade_outcome
 from app.outcomes.registry import full_registry_market_count
@@ -358,6 +362,43 @@ def public_teaser_pick(db: Session = Depends(get_db)) -> PublicTeaserPickOut:
     endpoints, shows real selections."""
 
     return resolve_public_teaser_pick(db)
+
+
+WIDGET_KEY_MIN_LENGTH = 24
+
+
+@router.get("/widget/users", response_model=WidgetCountsOut)
+def widget_counts(
+    request: Request, response: Response, key: str = "", db: Session = Depends(get_db)
+) -> WidgetCountsOut:
+    """Member counts for a desktop widget, behind a long random key that
+    Settings holds (Automatic refresh -> Desktop widget key). Counts only.
+    Off until a key of at least 24 characters is set, and it answers 404 then
+    so it doesn't advertise itself; a wrong key is 403. Rate-limited per IP so
+    the key can't be guessed, with room for a widget polling every minute."""
+
+    rate_limit.enforce(request, "widget_counts", 60, 600)
+    response.headers["Cache-Control"] = "no-store"
+    configured = str(app_settings.get_value(db, "widget_key") or "")
+    if len(configured) < WIDGET_KEY_MIN_LENGTH:
+        raise HTTPException(status_code=404, detail="Not found")
+    supplied = key or request.headers.get("x-widget-key", "")
+    if not hmac.compare_digest(supplied.encode(), configured.encode()):
+        raise HTTPException(status_code=403, detail="Wrong key")
+
+    now = utcnow()
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    total = db.execute(select(func.count()).select_from(User)).scalar() or 0
+    new_today = db.execute(select(func.count()).select_from(User).where(User.created_at >= today)).scalar() or 0
+    active_access = db.execute(
+        select(func.count(func.distinct(AccessGrant.user_id))).where(
+            AccessGrant.status == "active", AccessGrant.expires_at > now
+        )
+    ).scalar() or 0
+    return WidgetCountsOut(
+        total_users=total, new_today=new_today, active_access=active_access,
+        unverified=count_activation_pending(db), as_of=now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+    )
 
 
 @router.get("/branding", response_model=BrandingOut)

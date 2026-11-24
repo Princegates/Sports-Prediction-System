@@ -376,6 +376,11 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 "A fine-grained personal access token limited to this one repository, with "
                 "Actions: Read and write. Create it at github.com/settings/personal-access-tokens.",
                 secret=True, env_attr="github_dispatch_token"),
+    SettingSpec("widget_key", "str", "automation", "Desktop widget key",
+                "Lets a desktop widget (see tools/rainmeter) read the member counts without signing in. "
+                "Use a long random string, at least 24 characters; anything shorter, or empty, switches "
+                "the widget feed off. It exposes only counts, never names or emails.",
+                secret=True),
     SettingSpec("github_dispatch_repo", "str", "automation", "Repository",
                 "owner/name, for example Princegates/Sports-Prediction-System.",
                 env_attr="github_dispatch_repo"),

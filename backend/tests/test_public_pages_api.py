@@ -254,3 +254,56 @@ def test_a_stale_etag_gets_the_full_fresh_answer(db_session):
 
 def test_the_landing_bundle_still_carries_the_same_branding(db_session):
     assert client.get("/api/public/landing").json()["branding"] == client.get("/api/public/branding").json()
+
+
+# --- Desktop widget feed -----------------------------------------------------
+
+WIDGET_KEY = "k" * 32
+
+
+def _widget_user(db, email, created_at=None, verified=True):
+    from app.auth.passwords import hash_password
+    from app.db.models import User
+
+    user = User(email=email, name=email.split("@")[0], password_hash=hash_password("a-good-password"),
+                role="user", status="active", email_verified_at=utcnow() if verified else None)
+    if created_at is not None:
+        user.created_at = created_at
+    db.add(user)
+    db.commit()
+    return user
+
+
+def test_widget_feed_is_off_until_a_long_key_is_set(db_session):
+    assert client.get("/api/public/widget/users", params={"key": WIDGET_KEY}).status_code == 404
+    app_settings.set_values(db_session, {"widget_key": "too-short"})
+    assert client.get("/api/public/widget/users", params={"key": "too-short"}).status_code == 404
+
+
+def test_widget_feed_needs_the_right_key(db_session):
+    app_settings.set_values(db_session, {"widget_key": WIDGET_KEY})
+    assert client.get("/api/public/widget/users").status_code == 403
+    assert client.get("/api/public/widget/users", params={"key": "x" * 32}).status_code == 403
+    assert client.get("/api/public/widget/users", headers={"X-Widget-Key": "x" * 32}).status_code == 403
+
+
+def test_widget_feed_returns_counts_only(db_session):
+    app_settings.set_values(db_session, {"widget_key": WIDGET_KEY})
+    _widget_user(db_session, "old@example.com", created_at=utcnow() - dt.timedelta(days=3))
+    _widget_user(db_session, "today@example.com")
+    _widget_user(db_session, "waiting@example.com", verified=False)
+
+    response = client.get("/api/public/widget/users", params={"key": WIDGET_KEY})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total_users"] == 3 and body["new_today"] == 2 and body["unverified"] == 1
+    assert set(body) == {"total_users", "new_today", "active_access", "unverified", "as_of"}
+    assert response.headers["cache-control"] == "no-store"
+    # The header works as well as the query string.
+    assert client.get("/api/public/widget/users", headers={"X-Widget-Key": WIDGET_KEY}).status_code == 200
+
+
+def test_widget_key_is_never_shown_by_settings(db_session):
+    spec = app_settings.BY_KEY["widget_key"]
+    assert spec.secret is True

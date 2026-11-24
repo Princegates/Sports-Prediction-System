@@ -735,6 +735,16 @@ class BettingSiteCheckOut(BaseModel):
     note: str
 
 
+class WidgetCountsOut(BaseModel):
+    """What the desktop widget shows: counts only -- no names, no emails."""
+
+    total_users: int
+    new_today: int
+    active_access: int
+    unverified: int
+    as_of: str
+
+
 class BrandingOut(BaseModel):
     """Public site identity and default look, needed before anyone logs in."""
 
