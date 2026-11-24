@@ -41,6 +41,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import select
 from sqlalchemy.orm import Session, aliased
 
+from app import app_settings
 from app.timeutil import utcnow
 from app.db.models import AppSetting, EloHistory, Match, Team
 from app.prediction_models.elo import EUROPEAN_COMPETITIONS, elo_diff_to_1x2
@@ -199,10 +200,33 @@ def calibrate(
     if home_league == away_league:
         return CalibratedRatings(home=home_elo, away=away_elo, home_advantage=default_home_advantage)
 
-    home_shift = strength.offsets.get(home_league, 0.0)
-    away_shift = strength.offsets.get(away_league, 0.0)
+    # A league nobody has calibrated is *not* average. The fitted offsets are
+    # centred on the leagues that supply the Champions League evidence, which
+    # are the strong ones, so treating an unfitted league as zero rates its
+    # champion as an equal of theirs: a club that tops a weak league by
+    # beating weak sides ends up with a rating that looks like a top-league
+    # club's (an Azerbaijani champion rated alongside Barcelona). Such a
+    # league gets a conservative default below the fitted ones instead, which
+    # Settings can change; a better answer is to fit it, once enough of its
+    # clubs have met clubs from other leagues.
+    unrated_offset = float(app_settings.get_value(db, "unrated_league_offset") or 0.0)
+
+    def shift_for(league: str) -> tuple[float, bool]:
+        if league in strength.offsets:
+            return strength.offsets[league], False
+        if league:
+            return unrated_offset, True
+        return 0.0, False
+
+    home_shift, home_assumed = shift_for(home_league)
+    away_shift, away_assumed = shift_for(away_league)
     if not home_shift and not away_shift:
         return CalibratedRatings(home=home_elo, away=away_elo, home_advantage=default_home_advantage)
+
+    assumed = [league for league, guessed in ((home_league, home_assumed), (away_league, away_assumed)) if guessed]
+    assumed_note = (
+        f"; no fitted strength for {' and '.join(assumed)}, so assumed {unrated_offset:+.0f}" if assumed else ""
+    )
 
     return CalibratedRatings(
         home=home_elo + home_shift,
@@ -211,7 +235,7 @@ def calibrate(
         applied=True,
         note=(
             f"{home_league} {home_shift:+.0f} vs {away_league} {away_shift:+.0f} "
-            f"(fitted on {strength.matches} cross-league matches)"
+            f"(fitted on {strength.matches} cross-league matches){assumed_note}"
         ),
     )
 

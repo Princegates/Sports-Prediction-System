@@ -262,6 +262,13 @@ REGISTRY: tuple[SettingSpec, ...] = (
                 env_attr="ensemble_weight_ml", minimum=0, maximum=1),
     SettingSpec("home_advantage_elo", "float", "model", "Home advantage (Elo points)",
                 env_attr="home_advantage_elo", minimum=0, maximum=300),
+    SettingSpec("unrated_league_offset", "float", "model", "Strength of an uncalibrated league (Elo points)",
+                "In a Champions League or Europa League tie, a club from a league with no fitted strength "
+                "(for example Azerbaijan) is moved by this many Elo points relative to the fitted leagues, "
+                "because a champion of a weak league is not the equal of one from a top league. 0 treats such "
+                "a league as average, which over-rates its clubs; -150 is about the gap between the strongest "
+                "and weakest leagues we have fitted.",
+                minimum=-400, maximum=0, default=-150.0),
     SettingSpec("elo_k_factor", "float", "model", "Elo K-factor",
                 "How sharply ratings move after each result.",
                 env_attr="elo_k_factor", minimum=1, maximum=100),

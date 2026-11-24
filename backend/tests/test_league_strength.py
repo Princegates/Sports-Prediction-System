@@ -331,3 +331,49 @@ def test_the_calibration_moves_the_published_probability(db_session, two_clubs):
     assert calibrated.home_win > uncalibrated.home_win + 0.02, (
         uncalibrated.home_win, calibrated.home_win
     )
+
+
+
+def test_a_club_from_an_uncalibrated_league_is_not_treated_as_average(db_session):
+    """Sabah (Azerbaijan) against Barcelona: the league has no fitted offset,
+    and rating it as average made a weak league's champion Barcelona's equal."""
+
+    sabah = Team(name="Sabah FA", league="Azerbaijan Premyer Liqa", aliases=[])
+    barca = Team(name="FC Barcelona", league="Spanish La Liga", aliases=[])
+    db_session.add_all([sabah, barca])
+    db_session.commit()
+    strength = LeagueStrength(offsets={"Spanish La Liga": -25.0, "English Premier League": 25.0}, home_advantage=85.0, matches=419)
+
+    result = _calibrate(db_session, sabah, barca, "UEFA Champions League", strength)
+
+    assert result.applied
+    assert result.home == 1500.0 - 150.0      # the default, not 0
+    assert result.away == 1500.0 - 25.0
+    assert "no fitted strength for Azerbaijan Premyer Liqa" in result.note
+
+
+def test_the_default_for_an_uncalibrated_league_can_be_changed_or_switched_off(db_session):
+    from app import app_settings
+
+    sabah = Team(name="Sabah FA", league="Azerbaijan Premyer Liqa", aliases=[])
+    barca = Team(name="FC Barcelona", league="Spanish La Liga", aliases=[])
+    db_session.add_all([sabah, barca])
+    db_session.commit()
+    strength = LeagueStrength(offsets={"Spanish La Liga": -25.0}, home_advantage=85.0, matches=419)
+
+    app_settings.set_values(db_session, {"unrated_league_offset": -80})
+    assert _calibrate(db_session, sabah, barca, "UEFA Champions League", strength).home == 1420.0
+
+    app_settings.set_values(db_session, {"unrated_league_offset": 0})
+    result = _calibrate(db_session, sabah, barca, "UEFA Champions League", strength)
+    assert result.home == 1500.0 and "assumed +0" in result.note  # switched off, and the note still says so
+
+
+def test_a_fully_fitted_tie_is_unchanged_by_the_default(db_session, two_clubs):
+    home, away = two_clubs
+    strength = LeagueStrength(offsets={"English Premier League": 104.0, "French Ligue 1": -37.0}, home_advantage=85.0, matches=419)
+
+    result = _calibrate(db_session, home, away, "UEFA Champions League", strength)
+
+    assert (result.home, result.away) == (1604.0, 1463.0)
+    assert "no fitted strength" not in result.note
