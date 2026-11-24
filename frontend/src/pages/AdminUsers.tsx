@@ -64,6 +64,7 @@ export function AdminUsers() {
   const [busyId, setBusyId] = useState<number | null>(null);
 
   const [onlyPending, setOnlyPending] = useState(false);
+  const [userSearch, setUserSearch] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
 
   const [msgTo, setMsgTo] = useState("");
@@ -252,7 +253,13 @@ export function AdminUsers() {
 
   const recipientCount = msgTo.split(/[\s,;]+/).filter(Boolean).length;
   const pendingUsers = (users ?? []).filter((u) => u.activation_pending);
-  const shownUsers = onlyPending ? pendingUsers : users;
+  const userQuery = userSearch.trim().toLowerCase();
+  const baseUsers = onlyPending ? pendingUsers : users;
+  // Name or email, anywhere in it, so "gmail" or "kwame" both find people.
+  const shownUsers =
+    baseUsers === null || !userQuery
+      ? baseUsers
+      : baseUsers.filter((u) => u.name.toLowerCase().includes(userQuery) || u.email.toLowerCase().includes(userQuery));
 
   async function handleResendLink(u: AdminUser) {
     setNotice(null);
@@ -553,6 +560,24 @@ export function AdminUsers() {
       </div>
 
 
+      <div className="admin-header" style={{ marginBottom: 12 }}>
+        <input
+          type="search"
+          value={userSearch}
+          onChange={(e) => setUserSearch(e.target.value)}
+          placeholder="Search users by name or email..."
+          aria-label="Search users"
+          style={{ maxWidth: 320 }}
+          className="admin-ref-input"
+        />
+        {userQuery && (
+          <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+            {shownUsers?.length ?? 0} found
+            {filter !== "all" && " in this view. Switch to All to search every account."}
+          </span>
+        )}
+      </div>
+
       <div className="card admin-table-wrapper">
         <table className="admin-table">
           <thead>
@@ -580,7 +605,7 @@ export function AdminUsers() {
                 <td colSpan={8}>Loading...</td>
               </tr>
             )}
-            {shownUsers !== null && shownUsers.length === 0 && <tr><td colSpan={8}>No users in this view.</td></tr>}
+            {shownUsers !== null && shownUsers.length === 0 && <tr><td colSpan={8}>{userQuery ? "No users match that search." : "No users in this view."}</td></tr>}
             {shownUsers?.map((u) => {
               const isSelf = u.id === currentUser?.id;
               const busy = busyId === u.id;
