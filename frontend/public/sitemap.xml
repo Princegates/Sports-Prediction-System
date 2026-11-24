@@ -294,21 +294,6 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://soccaintel.com/predict/6579-ac-monza-vs-acf-fiorentina</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/4310-levante-ud-vs-elche-cf</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/2008-brentford-fc-vs-everton-fc</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
     <loc>https://soccaintel.com/predict/45400-gagra-vs-dinamo-tbilisi</loc>
     <changefreq>hourly</changefreq>
     <priority>0.7</priority>
@@ -3740,6 +3725,21 @@
   </url>
   <url>
     <loc>https://soccaintel.com/predict/41342-viborg-vs-sonderjyske</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/6595-acf-fiorentina-vs-cagliari-calcio</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/4322-sevilla-fc-vs-malaga-cf</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/12848-fc-alverca-vs-moreirense-fc</loc>
     <changefreq>hourly</changefreq>
     <priority>0.7</priority>
   </url>
