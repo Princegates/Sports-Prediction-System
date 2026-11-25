@@ -294,36 +294,6 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://soccaintel.com/predict/45401-samgurali-vs-torpedo-kutaisi</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/78769-kryvbas-kr-vs-fc-kharkiv</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/45402-dinamo-batumi-vs-dila</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/45403-rustavi-vs-meshakhte</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/80245-slavia-praha-vs-villarreal-cf</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://soccaintel.com/predict/80246-sabah-fa-vs-fc-barcelona</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
     <loc>https://soccaintel.com/predict/19896-watford-fc-vs-blackburn-rovers-fc</loc>
     <changefreq>hourly</changefreq>
     <priority>0.7</priority>
@@ -3745,6 +3715,41 @@
   </url>
   <url>
     <loc>https://soccaintel.com/predict/80254-aek-athens-fc-vs-galatasaray</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/61564-sutjeska-vs-buducnost-podgorica</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/61565-petrovac-vs-bokelj</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/61566-decic-vs-arsenal-fc</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/61567-jezero-vs-mornar</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/61568-mladost-dg-vs-otrant-olympic</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/10742-real-betis-balompie-vs-como-1907</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://soccaintel.com/predict/80255-slovan-bratislava-vs-shakhtar-donetsk</loc>
     <changefreq>hourly</changefreq>
     <priority>0.7</priority>
   </url>
