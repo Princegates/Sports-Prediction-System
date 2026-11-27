@@ -73,12 +73,18 @@ def _fuzzy_normalize(name: str) -> str:
 _MIN_PREFIX_LEN = 3
 
 
+# Letters with no Unicode decomposition, so folding combining marks leaves
+# them in place and the tokenizer then drops them: "Kasımpaşa" lost its dotless
+# i and "Brøndby" its o, and neither matched a provider's ASCII spelling.
+_NO_DECOMPOSITION = str.maketrans({"ı": "i", "ø": "o", "æ": "ae", "œ": "oe", "ł": "l", "đ": "d", "ß": "ss"})
+
+
 def _strip_accents(text: str) -> str:
     """Fold accented characters to ASCII, so "Atlético" and "Atletico" are
     the same club. Decomposing and dropping combining marks handles every
     accent rather than a hand-maintained character list."""
 
-    decomposed = unicodedata.normalize("NFKD", text)
+    decomposed = unicodedata.normalize("NFKD", text.translate(_NO_DECOMPOSITION))
     return "".join(ch for ch in decomposed if not unicodedata.combining(ch))
 
 
@@ -213,6 +219,18 @@ EXPLICIT_ALIASES: dict[str, str] = {
     "psg": "paris saint germain",
     "st etienne": "saint etienne",
     "clermont": "clermont foot",
+    # Smaller leagues, where providers disagree on the club's own name rather
+    # than just abbreviating it. Each pair was read off SportyBet Ghana's list
+    # against the name we hold for the same fixture.
+    "oh leuven": "oud heverlee leuven",
+    "brondby": "broendby",
+    "broendby if": "broendby",
+    "cambrian clydach": "cambrian united",
+    "penybont": "pen y bont",
+    "gap connah s quay fc": "connahs quay nomads",
+    "cs maritimo": "maritimo madeira",
+    "omonia 29is maiou": "als omonia",
+    "dinamo tirana": "dinamo city",
 }
 
 

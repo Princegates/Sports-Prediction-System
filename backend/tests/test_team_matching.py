@@ -1,3 +1,5 @@
+import pytest
+
 from app.data.team_matching import name_match_score, name_similarity, normalize_team_name
 
 
@@ -111,3 +113,37 @@ def test_legitimate_abbreviations_still_match_despite_the_city_guard():
     ]
     for a, b in pairs:
         assert name_similarity(a, b) == 1.0, f"{a!r} vs {b!r}"
+
+
+# Fixtures a member could not book because SportyBet Ghana lists the same club
+# under a different name than ours. Each pair was read off its own list.
+@pytest.mark.parametrize(
+    "ours, theirs",
+    [
+        ("Cambrian & Clydach", "Cambrian United"),
+        ("OH Leuven", "Oud-Heverlee Leuven"),
+        ("Brondby", "Broendby IF"),
+        ("Brøndby", "Broendby IF"),
+        ("Kasımpaşa", "Kasimpasa Istanbul"),
+        ("CS Marítimo", "Maritimo Madeira"),
+        ("Penybont", "Pen-y-Bont FC"),
+        ("GAP Connah S Quay FC", "Connah`s Quay Nomads FC"),
+        ("Omonia 29is Maiou", "Als Omonia"),
+        ("Dinamo Tirana", "FC Dinamo City"),
+    ],
+)
+def test_the_same_club_under_a_providers_other_name_matches(ours, theirs):
+    assert name_match_score(ours, theirs, abbreviation_only=True)[0] >= 0.82
+
+
+@pytest.mark.parametrize(
+    "ours, theirs",
+    [
+        ("Ararat-Armenia", "Ararat Yerevan FC"),  # two different Armenian clubs
+        ("Pyunik Yerevan", "Ararat Yerevan FC"),
+        ("Lille OSC", "Lillestrøm SK"),
+        ("Aston Villa", "Villarreal"),
+    ],
+)
+def test_different_clubs_still_do_not_match(ours, theirs):
+    assert name_match_score(ours, theirs, abbreviation_only=True)[0] < 0.82
